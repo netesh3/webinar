@@ -86,14 +86,16 @@ func TestRegistrantBecomesAccountAfterEmailVerification(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.login("neeraj@acme.dev")
-	res, raw = h.do(http.MethodGet, "/api/admin/users?q="+email, nil)
+	// A registration makes an audience account, listed apart from customers.
+	res, raw = h.do(http.MethodGet, "/api/admin/users?kind=audience&q="+email, nil)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("admin users: status %d body %s", res.StatusCode, raw)
 	}
 	var listed []types.AdminUser
 	h.decode(raw, &listed)
 	if len(listed) != 1 || listed[0].Email != email || listed[0].Name != "Rina Shah" ||
-		listed[0].CanHost || listed[0].EmailVerified || listed[0].IsAdmin {
+		listed[0].CanHost || listed[0].EmailVerified || listed[0].IsAdmin ||
+		listed[0].AccountKind != types.AccountAudience {
 		t.Fatalf("accounts list = %+v", listed)
 	}
 	h.logout()

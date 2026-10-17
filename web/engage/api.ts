@@ -18,7 +18,13 @@ import type {
   CRMContactTagRequest,
   CRMContactIDsResponse,
   CRMDoneRequest,
+  CRMImportCommitRequest,
+  CRMImportPreview,
+  CRMImportResult,
   CRMInboxResponse,
+  CRMList,
+  CRMListRequest,
+  CRMListsResponse,
   CRMPeopleResponse,
   CRMRepliesResponse,
   CRMSummaryResponse,
@@ -311,15 +317,35 @@ export const engageApi = {
    *  Its own call because the count is the decision: a host choosing "everyone who
    *  opted in" is entitled to know whether that is eleven people or four thousand,
    *  and to find out without creating anything. */
-  crmAudience: (audience: string, webinarId = "", tagId = "") => {
+  crmAudience: (audience: string, webinarId = "", tagId = "", listId = "") => {
     const params = new URLSearchParams({ audience });
     if (webinarId) params.set("webinarId", webinarId);
     if (tagId) params.set("tagId", tagId);
+    if (listId) params.set("listId", listId);
     return request<CRMAudienceResponse>(
       `/api/host/crm/audience?${params.toString()}`,
       fresh,
     );
   },
+
+  /** Saved lists (usually imported CSVs), most recently updated first. */
+  crmLists: () => request<CRMListsResponse>("/api/host/crm/lists", fresh),
+
+  renameCrmList: (id: string, name: string) =>
+    patch<CRMList>(`/api/host/crm/lists/${seg(id)}`, { name } satisfies CRMListRequest),
+
+  deleteCrmList: (id: string) => del<StatusResponse>(`/api/host/crm/lists/${seg(id)}`),
+
+  /** Reads a CSV and answers with what importing it would do. Nothing is written yet. */
+  previewCrmImport: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<CRMImportPreview>("/api/host/crm/imports", { method: "POST", body: form });
+  },
+
+  /** Writes a previewed import into a new list, or into an existing one with listId. */
+  commitCrmImport: (id: string, body: CRMImportCommitRequest) =>
+    post<CRMImportResult>(`/api/host/crm/imports/${seg(id)}/commit`, body),
 
   /** The host's broadcasts, newest first, with their stats. */
   crmBroadcasts: () =>

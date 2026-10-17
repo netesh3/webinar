@@ -18,6 +18,8 @@ import {
   PlanEnterprise,
   PlanLaunchAttendees,
   PlanProfessional,
+  type AccountKind,
+  type AdminAccountCounts,
   type AdminUser,
   type Plan,
   type PlanFeatures,
@@ -157,6 +159,11 @@ function AdminAccounts() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /* Two lists: people who signed up for Webinar Liv, and people a coach's webinar
+   * brought in (an account is made when somebody registers). */
+  const [kind, setKind] = useState<AccountKind>("customer");
+  const [counts, setCounts] = useState<AdminAccountCounts | null>(null);
+  const [confirmMove, setConfirmMove] = useState<AdminUser | null>(null);
   /* Reset with the query. The page index outlives the filtered list, and
    * paginate() would clamp onto the last page of a narrower search rather
    * than the first. A delete that only shortens the current list is left to
@@ -173,7 +180,7 @@ function AdminAccounts() {
 
   const load = useCallback(() => {
     api
-      .adminUsers()
+      .adminUsers("", kind)
       .then((rows) => {
         setUsers(rows);
         setError(null);
@@ -182,10 +189,14 @@ function AdminAccounts() {
         setError(e instanceof Error ? e.message : "Could not load accounts.");
       });
     api
+      .adminAccountCounts()
+      .then(setCounts)
+      .catch(() => setCounts(null));
+    api
       .planFeatures()
       .then((body) => setTiers(body.tiers))
       .catch(() => setTiers(null));
-  }, []);
+  }, [kind]);
 
   useEffect(load, [load]);
 
@@ -311,6 +322,33 @@ function AdminAccounts() {
     }
   }
 
+  // Moves an account to the other list. Hosting is not granted or removed by this.
+  async function moveAccount(u: AdminUser, to: AccountKind) {
+    setBusy(u.id);
+    try {
+      await api.setAccountKind(u.id, to);
+      setUsers((prev) => (prev ?? []).filter((row) => row.id !== u.id));
+      setCounts((c) =>
+        c
+          ? to === "customer"
+            ? { customers: c.customers + 1, audience: Math.max(0, c.audience - 1) }
+            : { customers: Math.max(0, c.customers - 1), audience: c.audience + 1 }
+          : c,
+      );
+      setConfirmMove(null);
+      notify(
+        to === "customer"
+          ? `${u.name || u.email} moved to customers.`
+          : `${u.name || u.email} moved to webinar audience.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /* Refused server-side too — for the caller's own account, and for one that
    * still owns webinars — this only saves the round trip and gives the error
    * a place to land next to the button that caused it. */
@@ -342,6 +380,38 @@ function AdminAccounts() {
 
       {error && <Alert tone="error">{error}</Alert>}
 
+      <div role="tablist" aria-label="Account lists" className="flex flex-wrap gap-1.5">
+        {(
+          [
+            ["customer", "Customers", counts?.customers],
+            ["audience", "Webinar audience", counts?.audience],
+          ] as const
+        ).map(([value, label, n]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={kind === value}
+            onClick={() => {
+              if (kind === value) return;
+              setKind(value);
+              setUsers(null);
+              setRoleFilter("all");
+              setPinned(new Set());
+              setPageIndex(0);
+            }}
+            className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+              kind === value
+                ? "border-brand/40 bg-brand-soft text-brand"
+                : "border-line text-ink-2 hover:bg-surface-2"
+            }`}
+          >
+            {label}
+            {n !== undefined ? ` (${n})` : ""}
+          </button>
+        ))}
+      </div>
+
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <input
@@ -355,42 +425,48 @@ function AdminAccounts() {
             }}
             aria-label="Search accounts"
           />
-          <div
-            role="group"
-            aria-label="Filter accounts by role"
-            className="flex flex-wrap gap-1.5"
-          >
-            {ACCOUNT_ROLE_FILTERS.map((r) => {
-              const active = roleFilter === r;
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => {
-                    if (r === roleFilter) return;
-                    setRoleFilter(r);
-                    setPinned(new Set());
-                    setPageIndex(0);
-                  }}
-                  aria-pressed={active}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                    active ? "bg-brand-soft text-brand" : "text-ink-2 hover:bg-surface-2"
-                  }`}
-                >
-                  {ACCOUNT_ROLE_LABEL[r]}
-                  <span
-                    className={`rounded-full px-1.5 text-[11px] leading-4 tabular-nums ${
-                      active ? "bg-brand text-stage" : "bg-surface-2 text-ink-2"
+          {/* Hosts / Attendees only split the customer list: an audience account
+              never hosts (granting hosting promotes it to a customer). */}
+          {kind === "customer" && (
+            <div
+              role="group"
+              aria-label="Filter accounts by role"
+              className="flex flex-wrap gap-1.5"
+            >
+              {ACCOUNT_ROLE_FILTERS.map((r) => {
+                const active = roleFilter === r;
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      if (r === roleFilter) return;
+                      setRoleFilter(r);
+                      setPinned(new Set());
+                      setPageIndex(0);
+                    }}
+                    aria-pressed={active}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                      active ? "bg-brand-soft text-brand" : "text-ink-2 hover:bg-surface-2"
                     }`}
                   >
-                    {users ? roleCounts[r] : "–"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                    {ACCOUNT_ROLE_LABEL[r]}
+                    <span
+                      className={`rounded-full px-1.5 text-[11px] leading-4 tabular-nums ${
+                        active ? "bg-brand text-stage" : "bg-surface-2 text-ink-2"
+                      }`}
+                    >
+                      {users ? roleCounts[r] : "–"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <span className="ml-auto text-[12.5px] text-ink-3">
-            {hosts} of {users?.length ?? 0} can host
+            {kind === "customer"
+              ? `${hosts} of ${users?.length ?? 0} can host`
+              : "Created by registering for a webinar"}
           </span>
         </div>
 
@@ -451,6 +527,10 @@ function AdminAccounts() {
                         u.webinarCount > 0
                           ? `${u.webinarCount} webinar${u.webinarCount === 1 ? "" : "s"}`
                           : "",
+                        kind === "audience" && u.registrationCount > 0
+                          ? `Registered for ${u.registrationCount} webinar${u.registrationCount === 1 ? "" : "s"}` +
+                            (u.lastWebinarTopic ? ` · latest: ${u.lastWebinarTopic}` : "")
+                          : "",
                       ]
                         .filter(Boolean)
                         .join(" · ")}
@@ -459,8 +539,25 @@ function AdminAccounts() {
 
                   {busy === u.id ? (
                     <Spinner className="size-4" />
+                  ) : kind === "audience" ? (
+                    <button
+                      type="button"
+                      onClick={() => void moveAccount(u, "customer")}
+                      className="rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-ink-1 transition-colors hover:bg-surface-2 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                    >
+                      Move to customers
+                    </button>
                   ) : (
                     <div className="flex items-center gap-2 flex-wrap">
+                      {!u.canHost && !u.plan && !u.isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmMove(u)}
+                          className="text-[11.5px] text-ink-2 underline-offset-2 hover:text-ink hover:underline"
+                        >
+                          Move to audience
+                        </button>
+                      )}
                       <Toggle
                         checked={u.canHost}
                         /* Self-revoke is refused by the server too — this only saves the
@@ -553,7 +650,7 @@ function AdminAccounts() {
                       account would create. CDN broadcast used to sit in the header
                       for every account, and that patch is still accepted for a
                       non-host, so the list is shown either way. */}
-                  <div className="w-full">
+                  {kind === "customer" && <div className="w-full">
                     <AccountFeatures
                       user={u}
                       tiers={tiers}
@@ -572,7 +669,7 @@ function AdminAccounts() {
                         )
                       }
                     />
-                  </div>
+                  </div>}
                 </div>
               );
             })}
@@ -605,6 +702,16 @@ function AdminAccounts() {
         title={`Delete ${confirmDelete?.name || confirmDelete?.email || "this account"}?`}
         body="This removes the account entirely. Registrations, panelist seats and notifications tied to it go with it. Refused if it still hosts any webinar — delete those first."
         confirmLabel="Delete account"
+      />
+
+      <ConfirmModal
+        open={confirmMove !== null}
+        busy={confirmMove !== null && busy === confirmMove.id}
+        onClose={() => setConfirmMove(null)}
+        onConfirm={() => confirmMove && void moveAccount(confirmMove, "audience")}
+        title={`Move ${confirmMove?.name || confirmMove?.email || "this account"} to webinar audience?`}
+        body="They leave the customer list and appear under Webinar audience. Nothing else about the account changes, and you can move them back."
+        confirmLabel="Move to audience"
       />
     </div>
   );

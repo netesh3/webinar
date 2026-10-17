@@ -72,6 +72,7 @@ func audienceFromRequest(body types.CRMBroadcastRequest) crmstore.Audience {
 		TagID:       strings.TrimSpace(body.TagID),
 		Segment:     body.Segment,
 		ContactIDs:  ids,
+		ListID:      strings.TrimSpace(body.ListID),
 	}
 }
 
@@ -94,6 +95,7 @@ func (s *Module) handleCRMAudience(w http.ResponseWriter, r *http.Request) {
 		// tagId, spelled the way webinarId beside it is and the way the request body spells
 		// it — one name for one thing, since the picker posts whichever it previewed.
 		body.TagID = q.Get("tagId")
+		body.ListID = q.Get("listId")
 	}
 	a := audienceFromRequest(body)
 	if !s.audienceAllowed(w, r, user, a) {
@@ -190,6 +192,22 @@ func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 		if !s.crmTagAllowed(w, r, user.ID, a.TagID) {
 			return false
 		}
+	case types.AudienceList:
+		if !s.featureAllowed(w, user, types.FeatureWhatsAppCRM) {
+			return false
+		}
+		if a.ListID == "" {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_list",
+				"Pick the saved list that should get this.")
+			return false
+		}
+		if _, err := s.store.List(r.Context(), user.ID, a.ListID); errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_list", "That list is not one of yours.")
+			return false
+		} else if err != nil {
+			s.fail(w, r, "crm audience: list", err)
+			return false
+		}
 	case types.AudienceSegment:
 		if a.Segment == nil {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_segment",
@@ -253,7 +271,7 @@ func (s *Module) audienceAllowed(w http.ResponseWriter, r *http.Request, user st
 		}
 	default:
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_bad_audience",
-			"Send to everyone who opted in, to one webinar's people, to one tag, or to people you picked.")
+			"Send to everyone who opted in, to one webinar's people, to one tag, to a saved list, or to people you picked.")
 		return false
 	}
 	if a.Kind == types.AudienceWebinar && a.WebinarSlug == "" {
@@ -507,6 +525,7 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 		Audience:         a.Kind,
 		WebinarSlug:      slug,
 		TagID:            a.TagID,
+		ListID:           a.ListID,
 		Segment:          segmentToStore(a),
 		ScheduledAt:      scheduled,
 		HeaderFileID:     headerFileID,
