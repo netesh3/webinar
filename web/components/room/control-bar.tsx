@@ -65,7 +65,8 @@ import {
 import { isTypingTarget, mediaHotkey } from "@/lib/media-hotkeys";
 import { usePictureInPicture } from "@/lib/pip";
 import { canShareFile } from "@/lib/file-share";
-import { Spinner } from "../controls";
+import { useShareLock } from "@/lib/use-share-lock";
+import { ConfirmModal, Spinner } from "../controls";
 import {
   CameraIcon,
   CameraOffIcon,
@@ -658,6 +659,36 @@ export function ControlBar() {
     }
   }, [previewChrome, fileShare, localParticipant, notify]);
 
+  /* One screen share at a time (lib/share-lock.ts). A host or co-host may take the
+   * screen from whoever has it, after saying so; anybody else waits for it to be free.
+   * The same hook stops our own share when somebody else's outranks it — a host taking
+   * over, or the server muting the loser of a race. */
+  const shareLock = useShareLock(previewChrome ? null : room, {
+    privileged: isHost,
+    sharing,
+    stop: stopSharing,
+    onYield: (message) => notify(message, "info"),
+  });
+  /** The takeover confirmation, holding the share it will start once confirmed. */
+  const [takeover, setTakeover] = useState<{ sharer: string; run: () => void } | null>(null);
+  const shareBlocked = !sharing && shareLock.gate.kind === "blocked";
+  /** Every way of starting a share goes through here: screen, and a video file. */
+  const guardShare = useCallback(
+    (run: () => void) => {
+      const gate = shareLock.gate;
+      if (gate.kind === "blocked") {
+        notify(`${gate.sharer} is sharing right now. You can share once they stop.`, "info");
+        return;
+      }
+      if (gate.kind === "takeover") {
+        setTakeover({ sharer: gate.sharer, run });
+        return;
+      }
+      run();
+    },
+    [shareLock.gate, notify, setTakeover],
+  );
+
   /** Hands off to the browser's own picker, with a hint at which pane to open on. */
   const startScreenShare = useCallback(
     (surface: "browser" | "window" | "monitor") => {
@@ -784,7 +815,8 @@ export function ControlBar() {
       return;
     }
     if (id === "sharefile") {
-      setShareFileOpen(true);
+      if (fileShare.active) setShareFileOpen(true);
+      else guardShare(() => setShareFileOpen(true));
       return;
     }
     if (id === "youtube") {
@@ -839,9 +871,10 @@ export function ControlBar() {
     // Straight to the browser's own picker, pre-focused on its Chrome-tab pane —
     // the common case, and the one Chrome, Meet and Zoom all default to. Sharing a
     // recorded file instead is a rarer, deliberate choice with its own flow now;
-    // see shareFileAction below and ShareVideoFileButton.
-    startScreenShare("browser");
-  }, [previewChrome, canShare, sharing, stopSharing, startScreenShare, notify]);
+    // see shareFileAction below and ShareVideoFileButton. Unless somebody else has
+    // the screen: see guardShare.
+    guardShare(() => startScreenShare("browser"));
+  }, [previewChrome, canShare, sharing, stopSharing, startScreenShare, notify, guardShare]);
 
   return (
     <PhoneBarMetricsProvider
@@ -948,7 +981,7 @@ export function ControlBar() {
             <BarButton
               label={sharing ? "Stop sharing" : "Share"}
               active={sharing}
-              dimmed={!previewChrome && !canShare}
+              dimmed={(!previewChrome && !canShare) || shareBlocked}
               busy={pending === "share" || fileShare.starting}
               onClick={onShareClick}
               icon={
@@ -1203,7 +1236,7 @@ export function ControlBar() {
                         <ScreenShareIcon className="size-5" />
                       ),
                       active: sharing,
-                      dimmed: !previewChrome && !canShare,
+                      dimmed: (!previewChrome && !canShare) || shareBlocked,
                       busy: pending === "share" || fileShare.starting,
                       onClick: onShareClick,
                     }
@@ -1219,7 +1252,10 @@ export function ControlBar() {
                   active: fileShare.active,
                   busy: fileShare.starting,
                   title: fileShare.active ? "Sharing a video file" : "Share a video file",
-                  onClick: () => setShareFileOpen(true),
+                  onClick: () =>
+                    fileShare.active
+                      ? setShareFileOpen(true)
+                      : guardShare(() => setShareFileOpen(true)),
                 },
                 ...(captionsAction
                   ? {
@@ -1421,6 +1457,22 @@ export function ControlBar() {
           onScreenShare={startScreenShare}
         />
       )}
+
+      {/* A host or co-host taking the screen from somebody else. Confirmed rather than
+          done outright: it ends another person's presentation mid-sentence. */}
+      <ConfirmModal
+        open={takeover !== null}
+        onClose={() => setTakeover(null)}
+        onConfirm={() => {
+          const run = takeover?.run;
+          setTakeover(null);
+          run?.();
+        }}
+        title="Take over the screen share?"
+        body={`${takeover?.sharer ?? "Someone"} is sharing right now. If you share, their share stops and yours takes its place.`}
+        confirmLabel="Share instead"
+        dark
+      />
 
       {/* Mounted here whether YouTube's button is on the bar or in More, so
           opening it from either place — and More closing behind it — works. */}

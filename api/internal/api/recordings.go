@@ -524,7 +524,8 @@ func eventTime(event *livekit.WebhookEvent) time.Time {
 	return time.Now()
 }
 
-// handleLiveKitWebhook receives events from LiveKit: attendance, and EGRESS_ENDED.
+// handleLiveKitWebhook receives events from LiveKit: attendance, the one-screen-share
+// rule, and EGRESS_ENDED.
 func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 	event, err := webhook.ReceiveWebhookEvent(r, s.sfu.KeyProvider())
 	if err != nil {
@@ -572,6 +573,11 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			s.log.Warn("livekit webhook: could not close a visit",
 				"slug", slug, "identity", identity, "error", err)
 		}
+
+	/* One screen share at a time: mute every share but the one the room agrees on.
+	 * See share_lock.go. */
+	case webhook.EventTrackPublished:
+		s.handleSharePublished(r.Context(), event)
 
 	/* The room is gone, so nobody is in it — whatever the participant events managed to say.
 	 *

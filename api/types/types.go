@@ -3504,6 +3504,19 @@ type LiveParticipant struct {
 	// CoHost is a panelist the host made their equal: full moderation rights,
 	// not just a stage seat. See lk.Spec.CoHost.
 	CoHost bool `json:"coHost"`
+	// ScreenShare is this participant's live screen share, nil when they have none.
+	// Server-side only (the one-share-at-a-time rule in api/internal/api/share_lock.go);
+	// never sent to a browser, so the host's roster is unchanged.
+	ScreenShare *LiveScreenShare `json:"-"`
+}
+
+// LiveScreenShare is what the one-share-at-a-time rule needs to know about a share.
+type LiveScreenShare struct {
+	// StartedAtMicro is the SFU's publish stamp (TrackInfo.Version.UnixMicro): set once,
+	// when the track's media first arrives, by the server's clock. Zero when unknown.
+	StartedAtMicro int64
+	// Muted is true once the share was muted, which is what the rule does to a loser.
+	Muted bool
 }
 
 type LiveRoom struct {

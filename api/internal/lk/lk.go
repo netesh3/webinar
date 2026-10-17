@@ -477,6 +477,12 @@ func describe(p *livekit.ParticipantInfo) types.LiveParticipant {
 		if t.Source == livekit.TrackSource_MICROPHONE {
 			lp.AudioMuted = t.Muted
 		}
+		if t.Source == livekit.TrackSource_SCREEN_SHARE {
+			lp.ScreenShare = &types.LiveScreenShare{
+				StartedAtMicro: t.GetVersion().GetUnixMicro(),
+				Muted:          t.Muted,
+			}
+		}
 	}
 	return lp
 }
