@@ -1,6 +1,6 @@
 # Zoom app checklist
 
-Create this as an unpublished OAuth app in the Zoom Marketplace, user-managed (not account-level). Do not submit it for review from this pass. Do not put any secret in git. The values below are names and URLs only.
+Create this as an OAuth app in the Zoom Marketplace, user-managed (not account-level). To submit it for review, use [zoom-marketplace-submission.md](zoom-marketplace-submission.md). Do not put any secret in git. The values below are names and URLs only.
 
 The app stays in development until Marketplace review. Allowlist the hosts who will test Connect. After approval the same app can be published as unlisted. This build talks to whatever client id and secret the process is given.
 
@@ -38,9 +38,8 @@ Subscribe to:
 - `webinar.participant_joined`
 - `webinar.participant_left`
 - `webinar.ended`
-- `recording.completed`
 
-The URL challenge and `app_deauthorized` are handled on their own. `meeting.ended` and `webinar.ended` mark the webinar ended and pull who attended. Join and leave events record the same attendance while the session is open. `recording.completed` is acknowledged and not stored. Ending the session still happens in Zoom.
+The URL challenge and `app_deauthorized` are handled on their own. `meeting.ended` and `webinar.ended` mark the webinar ended and pull who attended. Join and leave events record the same attendance while the session is open. Anything else Zoom sends, including `recording.completed`, is acknowledged and not stored, so do not subscribe to it. Ending the session still happens in Zoom.
 
 ## Scopes
 
@@ -52,23 +51,15 @@ User-managed names only. Do not add the `:admin` twin of any of these.
 - `meeting:update:meeting`
 - `meeting:delete:meeting`
 - `meeting:write:registrant`
-- `meeting:read:list_registrants`
 - `meeting:read:list_past_participants`
-- `meeting:read:list_polls`
 - `webinar:write:webinar`
 - `webinar:read:webinar`
 - `webinar:update:webinar`
 - `webinar:delete:webinar`
 - `webinar:write:registrant`
-- `webinar:read:list_registrants`
-- `webinar:read:list_panelists`
 - `webinar:read:list_past_participants`
-- `webinar:read:list_absentees`
-- `webinar:read:list_polls`
-- `webinar:read:past_qa`
-- `cloud_recording:read:list_user_recordings`
 
-Not requested: any `:admin` scope, report scopes, survey scopes, chat-message scopes, `webinar:write:panelist`, `user:write`.
+Not requested, because nothing calls them: any `:admin` scope, registrant lists, polls, panelists, absentees, Q&A, cloud recordings, report scopes, survey scopes, chat-message scopes, `webinar:write:panelist`, `user:write`.
 
 ## Environment
 

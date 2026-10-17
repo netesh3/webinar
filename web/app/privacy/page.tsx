@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/privacy" },
 };
 
-const UPDATED = "September 21, 2026";
+const UPDATED = "October 17, 2026";
 
 export default function PrivacyPage() {
   return (
@@ -114,6 +114,35 @@ export default function PrivacyPage() {
         , including the Limited Use requirements.
       </p>
 
+      <h3>Zoom (optional)</h3>
+      <p>
+        Hosts may connect a Zoom account so a webinar can run as a Zoom meeting
+        or Zoom webinar while registration, reminders, and follow-up stay in
+        Webinar Liv. Connecting uses Zoom OAuth. We store, on the host account,
+        the Zoom user and account ids, the account&apos;s email, and a refresh
+        token encrypted at rest. We do not receive the host&apos;s Zoom
+        password.
+      </p>
+      <p>
+        We use this access only for webinars the host chooses to run on Zoom:
+        to create, update, and delete that meeting or webinar; to add each
+        registrant (name and email) so they get their own Zoom join link; and,
+        after the session, to read who attended. Zoom also notifies us when
+        someone joins or leaves and when the session ends. From these we keep
+        each attendee&apos;s name, email, and join and leave times, shown to
+        that host as attendance. We do not read the host&apos;s other meetings,
+        recordings, chat, or contacts, and we do not use Zoom data for
+        advertising or sell it.
+      </p>
+      <p>
+        A host can disconnect Zoom in Settings → Integrations, which revokes the grant
+        and deletes the stored token. Removing the app in the Zoom App
+        Marketplace does the same when Zoom tells us. Attendance already
+        recorded stays with the webinar until the host deletes the webinar or
+        their account. Use of Zoom is also subject to{" "}
+        <a href="https://explore.zoom.us/en/privacy/">Zoom&apos;s Privacy Statement</a>.
+      </p>
+
       <h2>5. Live media (LiveKit)</h2>
       <p>
         Real-time audio and video are delivered through LiveKit infrastructure.
@@ -146,6 +175,10 @@ export default function PrivacyPage() {
         <li>
           <strong>Google</strong> — optional OAuth sign-in and, if a host
           connects YouTube, the YouTube Data API for live broadcasts
+        </li>
+        <li>
+          <strong>Zoom</strong> — if a host connects Zoom, the Zoom API for
+          meetings, webinars, registrants, and attendance
         </li>
       </ul>
       <p>
@@ -207,6 +240,7 @@ export default function PrivacyPage() {
         <li>Request account or data deletion by emailing {SUPPORT_EMAIL}</li>
         <li>Control camera, microphone, and screen share from your browser and in-room controls</li>
         <li>Manage Google account permissions for third-party apps in your Google settings</li>
+        <li>Disconnect Zoom in Settings → Integrations, or remove Webinar Liv from your Zoom App Marketplace apps</li>
       </ul>
 
       <h2>12. Children</h2>
