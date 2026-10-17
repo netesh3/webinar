@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  draftValues,
   fieldWorksIn,
   followsTemplate,
   insertField,
@@ -108,6 +109,18 @@ test("inherit is no values; customised is any", () => {
   assert.equal(sameAsDefaults([{ field: "topic" }], [{ field: "topic" }]), true);
   assert.equal(sameAsDefaults([{ text: "hi " }], [{ text: "hi" }]), true);
   assert.equal(sameAsDefaults([{ field: "topic" }], [{ text: "topic" }]), false);
+});
+
+test("the editor preview fills each blank with its field's example", () => {
+  const ex = [
+    { token: "first_name", example: "Asha" },
+    { token: "when", example: "6:00 PM" },
+  ];
+  assert.deepEqual(
+    draftValues("Hi {{1}}, at {{2}}, {{3}} and {{4}}", [{ field: "first_name" }, { field: "when" }, null, { text: " soon " }], ex),
+    ["Asha", "6:00 PM", "", "soon"],
+  );
+  assert.deepEqual(draftValues("No blanks", [{ field: "first_name" }], ex), []);
 });
 
 console.log(`PASS ${passed}/${passed} template-mapping checks`);

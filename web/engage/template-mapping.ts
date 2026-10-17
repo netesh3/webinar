@@ -157,6 +157,25 @@ export function unmappedBlanks(body: string, mapping: Draft[]): number[] {
   });
 }
 
+/** What the preview shows in each blank while writing: the mapped field's example, or the
+ *  words; "" for an unmapped blank, which the preview draws as a warning chip. */
+export function draftValues(
+  body: string,
+  mapping: Draft[],
+  fields: Pick<CRMMergeField, "token" | "example">[],
+): string[] {
+  let count = 0;
+  for (const m of body.matchAll(PLACEHOLDER)) {
+    const inner = (m[1] ?? "").trim();
+    if (/^\d+$/.test(inner)) count = Math.max(count, Number(inner));
+  }
+  return Array.from({ length: count }, (_, i) => {
+    const p = mapping[i];
+    if (p?.field) return fields.find((f) => f.token === p.field)?.example || "";
+    return (p?.text ?? "").trim();
+  });
+}
+
 /** The mapping to submit with new wording: one entry per blank, an open one left empty for
  *  the server to suggest. Nothing when the host chose nothing. */
 export function mappingForSubmit(body: string, mapping: Draft[]): CRMParam[] | undefined {

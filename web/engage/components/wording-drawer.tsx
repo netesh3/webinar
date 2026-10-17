@@ -1,7 +1,7 @@
 "use client";
 
 import { WordingWithFields } from "./template-mapping";
-import { mappingForSubmit, type Draft } from "../template-mapping";
+import { draftValues, mappingForSubmit, type Draft } from "../template-mapping";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { engageApi } from "../api";
@@ -730,7 +730,10 @@ function WriteOwn({
         </div>
       )}
       <div className="mt-2">
-        <WhatsAppPreview model={previewFromDraft(header, typed, options)} />
+        <WhatsAppPreview
+            model={previewFromDraft(header, typed, options)}
+            fill={{ values: draftValues(typed, mapping, fields), active: null }}
+          />
       </div>
       {note && <p className="mt-2 text-[12px] text-ink-2">{note}</p>}
       <div className="mt-2 flex items-center justify-between gap-2">

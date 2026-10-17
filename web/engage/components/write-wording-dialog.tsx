@@ -35,7 +35,7 @@ import {
 } from "../template-options";
 import { TemplateOptionsFields, WhatsAppPreview, previewFromDraft } from "./template-options";
 import { WordingWithFields } from "./template-mapping";
-import { mappingForSubmit, type Draft } from "../template-mapping";
+import { draftValues, mappingForSubmit, type Draft } from "../template-mapping";
 
 /* The "Write your own wording" dialog opened from a message in Setup. The
  * WhatsApp page uses the wording drawer instead. The templates library uses
@@ -268,7 +268,10 @@ export function WriteWordingDialog({
               }
             />
           )}
-          <WhatsAppPreview model={previewFromDraft(header, typed, options)} />
+          <WhatsAppPreview
+            model={previewFromDraft(header, typed, options)}
+            fill={{ values: draftValues(typed, mapping, fields), active: null }}
+          />
           {note && <p className="text-[12.5px] text-ink-2">{note}</p>}
           <div className="flex justify-end">
             <Button type="submit" size="sm" disabled={busy || (!typed && !isAuth)}>
