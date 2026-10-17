@@ -233,11 +233,10 @@ func TestTemplatesReadsComponents(t *testing.T) {
 		t.Errorf("Unsupported = %q, want sendable", first.Unsupported)
 	}
 
-	/* A video header needs a file of its own for every send, which nothing here has —
-	 * so it is listed with a reason rather than silently offered and then rejected by
-	 * Meta. (An image header is filled with the webinar's cover; see TestRichTemplate.) */
-	if !strings.Contains(got[1].Unsupported, "video") {
-		t.Errorf("promo_video Unsupported = %q, want it to say the header is a video", got[1].Unsupported)
+	/* A video header is filled with the host's file at send time, so Meta's side of the
+	 * template is sendable; whether a file has been set is checked by the app. */
+	if got[1].Unsupported != "" || got[1].HeaderFormat != "VIDEO" {
+		t.Errorf("promo_video = %+v, want a sendable VIDEO header", got[1])
 	}
 	// Status is Meta's and is kept as-is: a host needs to see that the template
 	// they submitted is still waiting rather than missing.
@@ -361,7 +360,7 @@ func TestRichTemplate(t *testing.T) {
 	defer srv.Close()
 	if _, err := newTestClient(srv.URL).SendTemplate(context.Background(), "tok", "p1", OutgoingTemplate{
 		To: "+27831112222", Name: "wl_reminder", Language: "en", BodyParams: []string{"Thandi"},
-		HeaderImage: "https://webinarliv.com/api/webinars/a/image?v=1",
+		HeaderMedia: &HeaderMedia{Type: "image", Link: "https://webinarliv.com/api/webinars/a/image?v=1"},
 		URLButtons:  []URLButtonParam{{Index: 0, Suffix: "webinars/a/room?k=K"}},
 	}); err != nil {
 		t.Fatal(err)

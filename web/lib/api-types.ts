@@ -3197,6 +3197,12 @@ export interface CRMAttachment {
    * * Meta's errors[].title (or message) for that same case.
    */
   unsupportedTitle?: string;
+  /**
+   * * On a template the business sent: its header's kind (image, video or document)
+   * 	 *  and the public link it was sent from, so the thread can show it.
+   */
+  header?: string;
+  url?: string;
 }
 /**
  * * CRMMessage is one message in a thread, from the host's point of view:
@@ -3569,13 +3575,75 @@ export interface CRMTemplate {
    */
   unsupported?: string;
   /**
-   * * IMAGE when the header is a picture — the webinar's cover is sent in it.
+   * * TEXT, IMAGE, VIDEO or DOCUMENT, or empty for no header. An IMAGE header without a
+   * 	 *  file of its own is sent with the webinar's cover.
    */
   headerFormat?: string;
+  /**
+   * * The file sent in a media header by default, when the host has set one. A VIDEO or
+   * 	 *  DOCUMENT header cannot be sent without it (see NeedsHeaderFile).
+   */
+  headerFile?: CRMMediaFile;
+  /**
+   * * A VIDEO or DOCUMENT header with no file set yet: not sendable until one is.
+   */
+  needsHeaderFile?: boolean;
   /**
    * * Buttons, in order, as Meta approved them.
    */
   buttons: CRMTemplateButton[];
+}
+/**
+ *  CRMMediaFile is a file a host uploaded for a WhatsApp template's header.
+ *  *
+ *  * Kind is the header format it fits. URL is the unguessable public link Meta fetches
+ *  * at send time; the editor also uses it as a preview.
+ */
+export interface CRMMediaFile {
+  id: string;
+  /**
+   * * image, video or document.
+   */
+  kind: string;
+  mimeType: string;
+  filename?: string;
+  bytes: number /* int64 */;
+  url: string;
+}
+/**
+ *  CRMWordingRequest is wording the host typed, submitted to Meta for approval.
+ *  *
+ *  * Header is optional. A media header names a file uploaded first (POST
+ *  * /crm/media); it becomes the template's default header file once submitted.
+ */
+export interface CRMWordingRequest {
+  body: string;
+  category: string;
+  header?: CRMTemplateHeaderInput;
+}
+/**
+ * CRMTemplateHeaderInput is the header of a template being written here.
+ */
+export interface CRMTemplateHeaderInput {
+  /**
+   * * NONE, TEXT, IMAGE, VIDEO or DOCUMENT.
+   */
+  format: string;
+  /**
+   * * For TEXT: fixed text, up to 60 characters, no variables.
+   */
+  text?: string;
+  /**
+   * * For IMAGE, VIDEO and DOCUMENT: a file from POST /crm/media.
+   */
+  fileId?: string;
+}
+/**
+ *  CRMTemplateMediaRequest sets a template's default header file, for templates written
+ *  * in WhatsApp Manager as well as here. An empty FileID clears it.
+ */
+export interface CRMTemplateMediaRequest {
+  fileId: string;
 }
 /**
  *  CRMTemplateButton is one button on a template. A quick reply's tap comes back as a
@@ -3913,6 +3981,14 @@ export interface CRMBroadcast {
    * * How it is going, counted from the outbox and the conversations.
    */
   stats: CRMBroadcastStats;
+  /**
+   * * This broadcast's own header file, when it overrides the template's default.
+   */
+  headerFile?: CRMMediaFile;
+  /**
+   * * An image header sent with the webinar cover instead of a file.
+   */
+  headerUseCover?: boolean;
 }
 /**
  *  CRMBroadcastStats is one broadcast's progress.
@@ -4003,6 +4079,15 @@ export interface CRMBroadcastRequest {
    * * RFC3339, or empty for now.
    */
   scheduledAt?: string;
+  /**
+   * * For a template with a media header: a file for this broadcast only, instead of
+   * 	 *  the template's default.
+   */
+  headerFileId?: string;
+  /**
+   * * For an IMAGE header: send the webinar cover, ignoring any default file.
+   */
+  headerUseCover?: boolean;
 }
 /**
  *  CRMAudienceResponse is how many people an audience would reach, before anybody
@@ -4814,6 +4899,17 @@ export interface AdminUser {
    */
   trialExemption?: boolean;
   /**
+   * AccountKind says whether this person signed up for Webinar Liv (customer) or
+   * only registered for somebody's webinar (audience). See AccountKind.
+   */
+  accountKind: AccountKind;
+  /**
+   * RegistrationCount is how many webinars this account has registered for, and
+   * LastWebinarTopic the most recent of them; the audience list shows both.
+   */
+  registrationCount: number /* int */;
+  lastWebinarTopic?: string;
+  /**
    * CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
    */
   canCdnBroadcast: boolean;
@@ -4840,6 +4936,12 @@ export interface AdminUser {
  */
 export interface AdminStats {
   accounts: number /* int */;
+  /**
+   * Customers and Audience split Accounts: signed up for the app vs made by a
+   * webinar registration (see AccountKind).
+   */
+  customers: number /* int */;
+  audience: number /* int */;
   hosts: number /* int */;
   admins: number /* int */;
   cdnBroadcast: number /* int */;
@@ -4997,6 +5099,11 @@ export interface SupabaseAuthRequest {
 export interface GoogleAuthRequest {
   idToken: string;
   nonce?: string;
+  /**
+   * From is "webinar" when One Tap ran on a webinar's registration page: a new
+   * account made there is audience, not a customer. See AccountKind.
+   */
+  from?: string;
 }
 /**
  *  HostRequest is POST /api/me/host-request.
@@ -5271,6 +5378,28 @@ export interface DeleteAccountRequest {
 }
 export interface SetUserPlanRequest {
   plan: Plan;
+}
+/**
+ *  AccountKind separates the people who signed up for Webinar Liv from the people
+ *  * a coach's webinar brought in. An audience account is created by registering for
+ *  * a webinar; it becomes a customer when it signs in from the app, pays, starts a
+ *  * trial, is given a plan or hosting, or an admin moves it.
+ */
+export type AccountKind = string;
+export const AccountCustomer: AccountKind = "customer";
+export const AccountAudience: AccountKind = "audience";
+/**
+ * SetAccountKindRequest is PATCH /api/admin/users/{id}/kind.
+ */
+export interface SetAccountKindRequest {
+  kind: AccountKind;
+}
+/**
+ * AdminAccountCounts is GET /api/admin/users/counts: the size of each list.
+ */
+export interface AdminAccountCounts {
+  customers: number /* int */;
+  audience: number /* int */;
 }
 /**
  * RoomMeta is mirrored into LiveKit room metadata on every control change.

@@ -12,6 +12,8 @@ import { MESSAGE_ROWS } from "./messages/catalog";
 import { templateKey } from "./crm-templates";
 import { CategoryPill, PhoneFrame, friendlyTemplateName } from "./wa-kit";
 import { WriteWordingDialog } from "./write-wording-dialog";
+import { HeaderMediaBlock, TemplateHeaderFile } from "./header-media";
+import { headerSummary } from "../header-media";
 
 /* Templates tab: search and New template on one row, then the list and the
  * phone preview. New template opens the existing wording dialog. */
@@ -192,6 +194,13 @@ export function WhatsAppTemplates({
                             {friendlyTemplateName(template.name)}
                           </b>
                           <span className="text-[11.5px] text-ink-3">{template.name}</span>
+                          {headerSummary(template) && (
+                            <span
+                              className={`block text-[11px] ${template.needsHeaderFile ? "text-warn" : "text-ink-3"}`}
+                            >
+                              {headerSummary(template)}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5">
                           <CategoryPill category={template.category} />
@@ -236,6 +245,7 @@ export function WhatsAppTemplates({
               </div>
               <PhoneFrame title={coach} subtitle="Business account">
                 <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-none bg-white text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">
+                  <HeaderMediaBlock format={selected.headerFormat} file={selected.headerFile} />
                   <div className="px-2.5 py-1.5">
                     {selected.header && <p className="font-semibold">{selected.header}</p>}
                     {selected.body || "This template has no message text."}
@@ -254,6 +264,9 @@ export function WhatsAppTemplates({
                   </div>
                 </div>
               </PhoneFrame>
+              {selected.status.toUpperCase() === "APPROVED" && (
+                <TemplateHeaderFile template={selected} onSaved={onCreated} />
+              )}
               <p className="text-[12px] text-ink-3">
                 {usedIn(selected, slots)
                   ? `Used in ${usedIn(selected, slots)}`

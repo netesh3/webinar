@@ -911,7 +911,8 @@ func attachmentBlank(a types.CRMAttachment) bool {
 	return a.ID == "" && a.MimeType == "" && a.Filename == "" &&
 		a.Latitude == nil && a.Longitude == nil &&
 		a.Name == "" && a.Address == "" && a.Emoji == "" && a.Target == "" &&
-		len(a.Contacts) == 0 && a.UnsupportedCode == 0 && a.UnsupportedTitle == ""
+		len(a.Contacts) == 0 && a.UnsupportedCode == 0 && a.UnsupportedTitle == "" &&
+		a.Header == "" && a.URL == ""
 }
 
 /* SetMessageStatus applies one of Meta's delivery statuses to a message.

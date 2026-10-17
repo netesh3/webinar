@@ -17,6 +17,14 @@ import { guessParams } from "./wa-messages";
 import { timingForSave } from "./message-timing";
 import { isFollowup, wordingKind } from "./messages/catalog";
 import { StarterTemplates } from "./starter-templates";
+import {
+  HeaderPicker,
+  NO_HEADER,
+  WordingPreview,
+  headerDraftProblem,
+  headerInput,
+  type HeaderDraft,
+} from "./header-media";
 
 /* The "Write your own wording" dialog opened from a message in Setup. The
  * WhatsApp page uses the wording drawer instead. The templates library uses
@@ -121,14 +129,18 @@ export function WriteWordingDialog({
   const [category, setCategory] = useState<"UTILITY" | "MARKETING">("UTILITY");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [header, setHeader] = useState<HeaderDraft>(NO_HEADER);
 
   const ready = Boolean(
     starters?.length && starters.every((t) => t.status === "APPROVED" && !t.error),
   );
   const typed = draft.trim();
-  const match = starters?.find(
-    (t) => t.status === "APPROVED" && !t.error && sameBody(t.body, typed),
-  );
+  // A starter has no header, so wording with one is always the host's own.
+  const match =
+    header.format === "NONE"
+      ? starters?.find((t) => t.status === "APPROVED" && !t.error && sameBody(t.body, typed))
+      : undefined;
+  const headerProblem = headerDraftProblem(header);
 
   async function submitOwn() {
     if (!typed || busy) return;
@@ -136,10 +148,18 @@ export function WriteWordingDialog({
       await onUse(match);
       return;
     }
+    if (headerProblem) {
+      setNote(headerProblem);
+      return;
+    }
     setBusy(true);
     setNote(null);
     try {
-      const saved = await engageApi.createCrmWording({ body: typed, category });
+      const saved = await engageApi.createCrmWording({
+        body: typed,
+        category,
+        header: headerInput(header),
+      });
       onCreated();
       if (saved.status === "APPROVED") {
         await onUse({
@@ -155,6 +175,7 @@ export function WriteWordingDialog({
         return;
       }
       setDraft("");
+      setHeader(NO_HEADER);
       setNote(
         "Submitted to Meta. You can use it on this message once it is approved, usually in a few minutes.",
       );
@@ -190,6 +211,7 @@ export function WriteWordingDialog({
           }}
         >
           <h3 className="text-[15px] font-semibold">Write your own</h3>
+          <HeaderPicker value={header} onChange={setHeader} disabled={busy || !connected} />
           <textarea
             className="field min-h-24 resize-y py-2"
             value={draft}
@@ -214,6 +236,7 @@ export function WriteWordingDialog({
               </select>
             </label>
           )}
+          <WordingPreview header={header} body={typed} />
           {note && <p className="text-[12.5px] text-ink-2">{note}</p>}
           <div className="flex justify-end">
             <Button type="submit" size="sm" disabled={busy || !typed}>

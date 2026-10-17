@@ -32,12 +32,65 @@ import (
 
 // handleAdminUsers is GET /api/admin/users?q=…
 func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.store.AdminUsers(r.Context(), r.URL.Query().Get("q"), 200)
+	// ?kind=customer (the default) or audience picks one list; all lists both.
+	kind := types.AccountCustomer
+	switch q := r.URL.Query().Get("kind"); q {
+	case "", string(types.AccountCustomer):
+	case string(types.AccountAudience):
+		kind = types.AccountAudience
+	case "all":
+		kind = ""
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_kind",
+			"kind is customer, audience or all.")
+		return
+	}
+	users, err := s.store.AdminUsers(r.Context(), r.URL.Query().Get("q"), kind, 200)
 	if err != nil {
 		s.fail(w, r, "admin users", err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, users)
+}
+
+// handleAdminAccountCounts is GET /api/admin/users/counts: the size of each list.
+func (s *Server) handleAdminAccountCounts(w http.ResponseWriter, r *http.Request) {
+	counts, err := s.store.AdminAccountCounts(r.Context())
+	if err != nil {
+		s.fail(w, r, "admin account counts", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, counts)
+}
+
+/* handleSetAccountKind is PATCH /api/admin/users/{id}/kind: moving an account
+ * between the customer list and the webinar-audience list. It does not grant or
+ * take away hosting; that is the host switch. */
+func (s *Server) handleSetAccountKind(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	targetID := chi.URLParam(r, "id")
+
+	var body types.SetAccountKindRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if body.Kind != types.AccountCustomer && body.Kind != types.AccountAudience {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_kind",
+			"kind is customer or audience.")
+		return
+	}
+	updated, err := s.store.SetAccountKind(r.Context(), targetID, body.Kind, admin.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "set account kind", err)
+		return
+	}
+	s.log.Info("account kind changed", "admin", admin.ID, "target", updated.ID, "kind", body.Kind)
+	httpx.JSON(w, http.StatusOK, updated.Public())
 }
 
 /* handleSetHostCapability is PATCH /api/admin/users/{id}/host.

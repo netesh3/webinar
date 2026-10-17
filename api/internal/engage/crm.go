@@ -329,6 +329,18 @@ func (s *Module) handleCRMTemplates(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	/* With each media header's default file, which lives beside the cache. Read once
+	 * more rather than threaded through the sync above: it is one indexed query, and the
+	 * sync path is the rare one. */
+	full, _, err := s.store.TemplatesWithFiles(r.Context(), user.ID)
+	if err != nil {
+		s.fail(w, r, "crm templates: files", err)
+		return
+	}
+	templates = make([]types.CRMTemplate, 0, len(full))
+	for _, t := range full {
+		templates = append(templates, s.templateJSON(t))
+	}
 	res := types.CRMTemplatesResponse{
 		Templates:         templates,
 		WhatsAppConnected: user.WhatsAppToken != "",
@@ -520,11 +532,7 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !tmpl.Sendable {
-			msg := tmpl.Unsupported
-			if msg == "" {
-				msg = "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
-			}
-			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", msg)
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 			return
 		}
 		if len(body.Params) != tmpl.Variables {
@@ -551,7 +559,7 @@ func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 			BodyParams: body.Params,
 		}
 		// No webinar here: a dynamic link button goes to the host's newest webinar page.
-		if reason := s.fillRich(r.Context(), &msg, tmpl, crmstore.WhatsAppOutbound{
+		if reason := s.fillRich(r.Context(), &msg, tmpl, user.ID, crmstore.WhatsAppOutbound{
 			WebinarSlug: s.latestWebinarSlug(r.Context(), user.ID)}, map[string]*types.Webinar{}); reason != "" {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", reason)
 			return
