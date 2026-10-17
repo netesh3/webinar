@@ -36,7 +36,7 @@
 #     Connect Zoom. All four or the card stays "Zoom is not configured".
 #     ZOOM_WEBHOOK_SECRET signs POST /api/webhooks/zoom; unset, that route
 #     refuses the body. See docs/zoom-app-checklist.md.
-#   CLOUDFLARE_AI_ACCOUNT_ID / CLOUDFLARE_AI_TOKEN, GROQ_API_KEY, OPENROUTER_API_KEY (+ OPENROUTER_MODEL)
+#   CLOUDFLARE_AI_ACCOUNT_ID / CLOUDFLARE_AI_TOKEN, GROQ_API_KEY, OPENROUTER_API_KEY (+ optional OPENROUTER_MODEL)
 #     — the sales chat's AI, tried in that order (or AI_PROVIDERS, one JSON list). All optional;
 #     without any the chat hands every visitor to a person. *_MODEL as repo Variables.
 #   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET — self-serve plans (Buy on /pricing).

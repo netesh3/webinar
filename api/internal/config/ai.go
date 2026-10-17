@@ -23,7 +23,7 @@ import (
  *
  *   CLOUDFLARE_AI_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN [CLOUDFLARE_AI_MODEL]   tried first
  *   GROQ_API_KEY [GROQ_MODEL]
- *   OPENROUTER_API_KEY + OPENROUTER_MODEL
+ *   OPENROUTER_API_KEY [OPENROUTER_MODEL]
  *   OLLAMA_URL [OLLAMA_MODEL]                                              tried last
  *
  * Set the ones you have; unset ones are not in the chain.
@@ -33,7 +33,7 @@ import (
  *
  *   AI_PROVIDERS=[
  *     {"id":"cloudflare","baseUrl":"https://api.cloudflare.com/client/v4/accounts/ACCOUNT/ai/v1",
- *      "apiKey":"…","model":"@cf/meta/llama-3.1-8b-instruct"},
+ *      "apiKey":"…","model":"@cf/meta/llama-3.1-8b-instruct-fp8-fast"},
  *     {"id":"groq","baseUrl":"https://api.groq.com/openai/v1","apiKey":"gsk_…","model":"openai/gpt-oss-20b"}
  *   ]
  *
@@ -60,11 +60,25 @@ type AIProvider struct {
  * shows up as "model or endpoint not found" in the log and on /api/admin/ai, and the chain
  * moves on to the next provider rather than failing the visitor.
  */
+/* Cloudflare's default is the fp8-fast build of Llama 3.1 8B: the same model, quantised,
+ * at about a fifth of the Neurons per reply (a sales turn is ~2,000 prompt tokens, which
+ * fp8-fast prices at 4,119/M against 25,608/M). On the free 10,000 Neurons a day that is
+ * roughly 800 replies instead of 160. */
 const (
-	defaultCloudflareModel = "@cf/meta/llama-3.1-8b-instruct"
+	defaultCloudflareModel = "@cf/meta/llama-3.1-8b-instruct-fp8-fast"
 	defaultGroqModel       = "openai/gpt-oss-20b"
 	defaultOllamaModel     = "qwen2.5:7b"
 )
+
+/* OpenRouter's default is its Free Models Router, not one model.
+ *
+ * Single free models come and go month to month, and a pinned one that stopped being
+ * free would start spending credits. openrouter/free only ever picks from the models
+ * that are free right now (at random, among those that can serve the request), so it
+ * neither breaks when the list changes nor costs anything. The trade-off is that the
+ * model behind it varies; set OPENROUTER_MODEL to a specific ":free" id to pin one.
+ */
+const defaultOpenRouterModel = "openrouter/free"
 
 func loadAIProviders() ([]AIProvider, error) {
 	if raw := strings.TrimSpace(os.Getenv("AI_PROVIDERS")); raw != "" {
@@ -96,11 +110,9 @@ func loadAIProviders() ([]AIProvider, error) {
 		})
 	}
 	if key := env("OPENROUTER_API_KEY", ""); key != "" {
-		// No default model: OpenRouter's free list changes month to month, and a
-		// default that silently stopped being free would start spending credits.
 		list = append(list, AIProvider{
 			ID: "openrouter", BaseURL: "https://openrouter.ai/api/v1",
-			APIKey: key, Model: env("OPENROUTER_MODEL", ""),
+			APIKey: key, Model: env("OPENROUTER_MODEL", defaultOpenRouterModel),
 		})
 	}
 	if base := env("OLLAMA_URL", ""); base != "" {
@@ -147,7 +159,7 @@ func validateAIProviders(list []AIProvider, dev bool) error {
 			}
 		}
 		if p.Model == "" {
-			errs = append(errs, fmt.Errorf("%s: model is required (for OpenRouter, set OPENROUTER_MODEL to a model id ending in :free)", where))
+			errs = append(errs, fmt.Errorf("%s: model is required", where))
 		}
 		u, err := url.Parse(p.BaseURL)
 		switch {
