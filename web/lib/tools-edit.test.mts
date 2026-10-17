@@ -313,6 +313,25 @@ const HOST_YT = [...HOST, "youtube"] as ToolId[];
 }
 
 {
+  // LinkedIn is a home tool too: on the bar by default, draggable into More and
+  // back, and only ever offered to someone who may stream (the host).
+  const H = [...HOST_YT, "linkedin"] as ToolId[];
+  const fresh = parseStoredToolbar(null);
+  ok(isPinnable("linkedin"), "LinkedIn can move");
+  ok(!tuckedTools(fresh).includes("linkedin"), "LinkedIn starts on the bar");
+  const out = removeFromBar(fresh, "linkedin");
+  ok(out.change?.kind === "removed" && tuckedTools(out.layout).includes("linkedin"), "dragging LinkedIn into More tucks it");
+  ok(gridItems(out.layout, barSlots(out.layout, 6, H), H).includes("linkedin"), "and lists it in More");
+  const back = placeOnBar(out.layout, "linkedin", 6, H);
+  ok(back.change !== null && !tuckedTools(back.layout).includes("linkedin"), "and it can come back to the bar");
+  const attendee: ToolId[] = ["chat", "qa", "participants", "invite", "settings"];
+  ok(
+    !gridItems(out.layout, barSlots(out.layout, 6, attendee), attendee).includes("linkedin"),
+    "someone who may not stream never sees LinkedIn",
+  );
+}
+
+{
   // Availability: YouTube is the host's.
   const attendee: ToolId[] = ["chat", "qa", "participants", "invite", "settings"];
   const tucked = removeFromBar(layout(), "youtube").layout;
