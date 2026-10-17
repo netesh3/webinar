@@ -201,6 +201,17 @@ func (s *Module) Mount(public, host chi.Router) {
  * a lead. ErrNotFound is the documented answer for a registrant with neither a phone nor
  * an email (a guest) and is not logged as a problem.
  */
+// WhatsAppOptedIn implements api.Engage: an opted-in contact of this host matching
+// the person. A failed read is false, so the person is asked rather than assumed.
+func (s *Module) WhatsAppOptedIn(ctx context.Context, hostID, email, phone string) bool {
+	ok, err := s.store.ContactOptedIn(ctx, hostID, email, phone)
+	if err != nil {
+		s.log.Warn("crm: could not read whatsapp consent", "host", hostID, "error", err)
+		return false
+	}
+	return ok
+}
+
 func (s *Module) OnRegistered(ctx context.Context, wb types.Webinar, reg types.Registration, optIn bool) {
 	contact, err := s.store.ContactFromRegistration(ctx, wb.ID, reg, optIn)
 	if errors.Is(err, store.ErrNotFound) {

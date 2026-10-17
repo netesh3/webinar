@@ -202,7 +202,12 @@ export function SignupForm() {
     setError(null);
     setFields({});
     const digits = phoneNumber.replace(/\D/g, "");
-    if (digits && digits.length !== 10) {
+    if (!digits) {
+      setBusy(false);
+      setFields({ phone: "Add a mobile number." });
+      return;
+    }
+    if (digits.length !== 10) {
       setBusy(false);
       setFields({ phone: "Enter a 10-digit mobile number." });
       return;
@@ -273,7 +278,7 @@ export function SignupForm() {
 
         <div>
           <label className="label" htmlFor="phone">
-            Mobile number <span className="text-ink-3">(optional)</span>
+            Mobile number
           </label>
           <div className="flex gap-2">
             <select

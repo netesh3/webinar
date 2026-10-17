@@ -88,7 +88,11 @@ func (f *fakeRazorpay) wasCancelled(sub string) bool {
 
 func TestTrialStartsChargesAndHalts(t *testing.T) {
 	h, fake := billingHarness(t)
-	h.signup("Trial Coach", "trial-coach@example.com", false)
+	coach := h.signup("Trial Coach", "trial-coach@example.com", false)
+	// Signup asks for a phone now; an older account may still have none.
+	if _, err := h.store.Pool().Exec(t.Context(), `UPDATE users SET phone = '' WHERE id = $1::uuid`, coach.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	if code, _, raw := h.startTrial("business"); code != http.StatusUnprocessableEntity || errorCode(t, []byte(raw)) != "phone_required" {
 		t.Fatalf("trial without a phone: %d %s, want 422 phone_required", code, raw)

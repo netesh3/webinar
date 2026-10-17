@@ -21,7 +21,6 @@ import { appHome } from "@/lib/access";
 import { noteAttendeeVisit } from "@/lib/host-welcome";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
-import { PhoneNeededBanner } from "./phone-needed";
 import { HostAlerts } from "./host-alerts";
 import { BookmarkIcon, CalendarIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon, WhatsAppIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
@@ -150,7 +149,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="sb-main">
         <Chrome />
-        <PhoneNeededBanner />
         {children}
       </div>
     </div>

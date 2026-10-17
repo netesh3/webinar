@@ -34,6 +34,7 @@ func TestSignupStartsWithoutHosting(t *testing.T) {
 		"name":      "New Signup",
 		"email":     "newsignup@test.dev",
 		"password":  "a-long-enough-password",
+		"phone":     testPhone,
 		"wantsHost": true,
 	})
 	if res.StatusCode != http.StatusCreated {
@@ -512,8 +513,11 @@ func TestAdminUsersCarryTheSignupPhone(t *testing.T) {
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup with phone: status %d body %s", res.StatusCode, raw)
 	}
-	// No phone on this one, the shape every OAuth account has.
-	h.signup("Silent Host", "silent@test.dev", true)
+	// No phone on this one, the shape every Google account starts with.
+	silent := h.signup("Silent Host", "silent@test.dev", true)
+	if _, err := h.store.Pool().Exec(t.Context(), `UPDATE users SET phone = '' WHERE id = $1`, silent.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, _, err := h.store.PromoteAdmins(t.Context(), []string{"neeraj@acme.dev"}); err != nil {
 		t.Fatalf("promote admin: %v", err)

@@ -2512,7 +2512,22 @@ type CdnBroadcastGrant struct {
 type FeatureGrant struct {
 	/** One of the Feature keys. Anything else is refused rather than stored. */
 	Feature string `json:"feature"`
-	Enabled bool   `json:"enabled"`
+	// Enabled forces the feature on or off for this account, whatever its plan says.
+	Enabled bool `json:"enabled"`
+	// Inherit clears this account's override, so its plan decides. Enabled is ignored.
+	Inherit bool `json:"inherit,omitempty"`
+}
+
+/* PlanFeatures is one column of the tier matrix: the features a plan includes. Plan ""
+ * is no plan. GET and PUT /api/admin/plan-features carry all four tiers. */
+type PlanFeatures struct {
+	Plan     Plan     `json:"plan"`
+	Features []string `json:"features"`
+}
+
+// PlanFeaturesBody is the tier matrix, read and replaced whole.
+type PlanFeaturesBody struct {
+	Tiers []PlanFeatures `json:"tiers"`
 }
 
 /* AdminUser is one row of the admin panel.
@@ -2554,9 +2569,12 @@ type AdminUser struct {
 	TrialExemption bool `json:"trialExemption,omitempty"`
 	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
-	// Features are the per-account switches that are on — see Features and
-	// FeatureGrant. Always present, empty for an account with none.
+	// Features are the switches in effect: the plan's, with this account's overrides
+	// applied. Always present, empty for an account with none.
 	Features []string `json:"features"`
+	// FeatureOverrides are this account's own decisions: true forced on, false forced
+	// off. A feature absent here inherits from the plan.
+	FeatureOverrides map[string]bool `json:"featureOverrides"`
 }
 
 /* AdminStats is the admin dashboard's first read.
@@ -2919,6 +2937,16 @@ func PlanAttendeeCap(p Plan) int {
 // Valid is true for a paid plan.
 func (p Plan) Valid() bool {
 	return p == PlanProfessional || p == PlanBusiness || p == PlanEnterprise
+}
+
+/* WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
+ * page needs to decide whether to ask a signed-in person for their phone and for
+ * WhatsApp consent with this webinar's host. */
+type WhatsAppConsent struct {
+	// Phone prefills the prompt: the account's typed number, else Google's.
+	Phone string `json:"phone"`
+	// OptedIn is true when this host may already message them on WhatsApp.
+	OptedIn bool `json:"optedIn"`
 }
 
 // SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes

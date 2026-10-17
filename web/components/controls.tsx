@@ -85,6 +85,7 @@ export function Modal({
   footer,
   size = "md",
   dark = false,
+  dismissible = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -96,13 +97,16 @@ export function Modal({
   /** Use the room's dark surface. A white dialog over a near-black video stage is
    *  a flashbang in a session someone has been sitting in for an hour. */
   dark?: boolean;
+  /** False for a step that has to be completed: no close button, and Escape or a
+   *  click outside does nothing. The content must offer its own way out. */
+  dismissible?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
   const restoreTo = useRef<HTMLElement | null>(null);
 
-  useDismiss(panel, open, onClose);
+  useDismiss(panel, open && dismissible, onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -159,9 +163,11 @@ export function Modal({
               </p>
             )}
           </div>
-          <IconButton label="Close" onClick={onClose}>
-            <CloseIcon className="size-4" />
-          </IconButton>
+          {dismissible && (
+            <IconButton label="Close" onClick={onClose}>
+              <CloseIcon className="size-4" />
+            </IconButton>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
