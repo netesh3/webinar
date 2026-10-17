@@ -1,6 +1,6 @@
 "use client";
 
-import { useParticipants, useTracks, VideoTrack } from "@livekit/components-react";
+import { useParticipants, useTracks } from "@livekit/components-react";
 import { Track, type LocalVideoTrack } from "livekit-client";
 import {
   useCallback,
@@ -22,8 +22,6 @@ import {
 } from "@/lib/layout";
 import { isHighlighted } from "@/lib/speaker";
 import { isPrivileged, pickShare, shareStartedAt } from "@/lib/share-lock";
-import { shareOnlyView, subscriptionPlan, viewerOf } from "@/lib/share-only";
-import { useStageShareActive, useSubscriptionPlan } from "@/lib/use-share-only";
 import { API_BASE } from "@/lib/api";
 import { useCompact } from "@/lib/compact";
 import {
@@ -295,27 +293,6 @@ export function Stage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
-  /* "Show only the shared video to the audience" (lib/share-only.ts).
-   *
-   * For the audience only, and only while a share is on the stage: the stage's
-   * cameras (and, if the host chose, its microphones) are unsubscribed and the share
-   * is drawn full-bleed with no name, role chip or filmstrip. With nothing shared
-   * this is the ordinary stage, so the switch can never leave anybody looking at
-   * black. Read from publications, not from subscriptions, so dropping the cameras
-   * cannot change the answer. */
-  const shareActive = useStageShareActive();
-  const shareOnlyInput = {
-    shareOnly: controls.audienceShareOnly === true,
-    muteStage: controls.audienceMuteStage === true,
-    shareActive,
-    viewer: viewerOf({ isHost, canPresent }),
-  };
-  useSubscriptionPlan(subscriptionPlan(shareOnlyInput));
-
-  if (shareOnlyView(shareOnlyInput)) {
-    return <ShareOnlyStage tile={screenShare} />;
-  }
-
   if (tiles.length === 0) {
     return (
       <WaitingForStage
@@ -355,26 +332,6 @@ export function Stage() {
         <SpeakerLayout focus={focus} rest={rest} pinned={pinned} onTogglePin={stage.togglePin} />
       )}
 
-      <ReactionOverlay />
-    </div>
-  );
-}
-
-/* The audience's stage while the host shows only the shared video: the share,
- * full-bleed and contained, and nothing else drawn over it — no name, no
- * "'s screen", no role chip, no pin. Reactions still float, because they are the
- * audience's own. Black for the moment between the share being published and its
- * track arriving, never the stage behind it. */
-function ShareOnlyStage({ tile }: { tile: Tile | undefined }) {
-  const publication = tile?.publication;
-  return (
-    <div className="relative flex size-full min-h-0 min-w-0 flex-col bg-black" data-share-only>
-      {tile && publication?.track && !publication.isMuted && (
-        <VideoTrack
-          trackRef={{ participant: tile.participant, source: tile.source, publication }}
-          className="absolute inset-0 size-full object-contain"
-        />
-      )}
       <ReactionOverlay />
     </div>
   );

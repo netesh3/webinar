@@ -15,11 +15,10 @@ import { formatBytes } from "@/lib/format";
 import { isSafari, shareCaptureOptions, SHARE_AUDIO_SURFACES } from "@/lib/media";
 import type { ShareMode } from "@/lib/share-mode";
 import type { ScreenShareCaptureOptions } from "livekit-client";
-import { Alert, Modal, Spinner, Toggle } from "../controls";
+import { Alert, Modal, Spinner } from "../controls";
 import { ImageIcon, PlayIcon, RecordIcon, ScreenShareIcon } from "../icons";
 import { useAppConfig } from "../providers";
 import { useRoomUI } from "./context";
-import { useShareOnlyControl } from "./share-only";
 
 /* "Share a video file".
  *
@@ -96,12 +95,6 @@ function ShareSteps({
   const { fileShare } = useRoomUI();
   const [step, setStep] = useState<Step>({ at: "source" });
   const [error, setError] = useState<string | null>(null);
-  /* "Audience sees only this video", offered where a recording is being played as
-   * if live. Starts from the room's current setting, and only applied once the
-   * share has started — though a share that fails with it on is harmless: with
-   * nothing shared, the audience gets the normal stage. */
-  const shareOnly = useShareOnlyControl();
-  const [onlyThisVideo, setOnlyThisVideo] = useState(shareOnly.on);
 
   const supported = canShareFile();
 
@@ -110,12 +103,9 @@ function ShareSteps({
       setStep({ at: "loading", label: "Starting the share…", progress: null });
       setError(null);
       await fileShare.start(source, startAt);
-      if (shareOnly.canControl && onlyThisVideo !== shareOnly.on) {
-        await shareOnly.setOn(onlyThisVideo);
-      }
       onClose();
     },
-    [fileShare, onClose, shareOnly, onlyThisVideo],
+    [fileShare, onClose],
   );
 
   return (
@@ -181,8 +171,6 @@ function ShareSteps({
             setStep({ at: "source" });
           }}
           onShare={(startAt) => void share(step.source, startAt)}
-          onlyThisVideo={shareOnly.canControl ? onlyThisVideo : null}
-          onOnlyThisVideo={setOnlyThisVideo}
         />
       )}
 
@@ -455,15 +443,10 @@ function PreviewStep({
   source,
   onBack,
   onShare,
-  onlyThisVideo,
-  onOnlyThisVideo,
 }: {
   source: FileSource;
   onBack: () => void;
   onShare: (startAt: number) => void;
-  /** Null for a presenter who cannot change session controls (a panelist). */
-  onlyThisVideo: boolean | null;
-  onOnlyThisVideo: (next: boolean) => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [ready, setReady] = useState(false);
@@ -527,15 +510,6 @@ function PreviewStep({
         including anyone who joins later. Keep this tab open — playback stops if you
         close it.
       </Alert>
-
-      {onlyThisVideo !== null && (
-        <Toggle
-          checked={onlyThisVideo}
-          onChange={onOnlyThisVideo}
-          label="Audience sees only this video"
-          description="No cameras, names or labels from the stage while it plays, and stage microphones muted for them. Your stage view is unchanged."
-        />
-      )}
 
       <button
         type="button"
