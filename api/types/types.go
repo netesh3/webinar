@@ -1588,6 +1588,109 @@ type CRMNoteRequest struct {
  */
 const NoteMaxLength = 2000
 
+/* CRMList is a saved list of contacts, usually made by importing a CSV. Deleting it
+ * keeps the contacts. */
+type CRMList struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Source string `json:"source"`
+	/** Members, and how many of them a broadcast would reach now. */
+	Size      int    `json:"size"`
+	OptedIn   int    `json:"optedIn"`
+	CreatedAt string `json:"createdAt"`
+	/** Last time people were imported into it or it was renamed. */
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// CRMListRequest renames a saved list.
+type CRMListRequest struct {
+	Name string `json:"name"`
+}
+
+/* Import fields an uploaded column can be mapped to. Empty ignores the column.
+ * Service, payment cycle and the two dates are TagMango's export columns. */
+const (
+	ImportFieldName               = "name"
+	ImportFieldEmail              = "email"
+	ImportFieldPhone              = "phone"
+	ImportFieldService            = "service"
+	ImportFieldPaymentCycle       = "payment_cycle"
+	ImportFieldLastTransaction    = "last_transaction"
+	ImportFieldSubscriptionExpiry = "subscription_expiry"
+)
+
+// CRMImportMaxRows and CRMImportMaxBytes bound one upload.
+const (
+	CRMImportMaxRows  = 10000
+	CRMImportMaxBytes = 5 << 20
+)
+
+// CRMImportRowError is a row that will not be imported, numbered as in the file (header = 1).
+type CRMImportRowError struct {
+	Row    int    `json:"row"`
+	Value  string `json:"value"`
+	Reason string `json:"reason"`
+}
+
+// CRMImportRow is one person as the import will write them.
+type CRMImportRow struct {
+	Name       string            `json:"name"`
+	Email      string            `json:"email"`
+	Phone      string            `json:"phone"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+/* CRMImportPreview is what an upload would do, before anything is written.
+ * Mapping lines up with Columns: the field each column fills, "" to ignore it. */
+type CRMImportPreview struct {
+	ID       string   `json:"id"`
+	FileName string   `json:"fileName"`
+	Columns  []string `json:"columns"`
+	Mapping  []string `json:"mapping"`
+	/** Data rows read, not counting the header. */
+	Rows int `json:"rows"`
+	/** People who would be imported: a usable phone, not repeated earlier in the file. */
+	Valid int `json:"valid"`
+	/** Rows left out, the first 50; InvalidCount is all of them. */
+	Invalid      []CRMImportRowError `json:"invalid"`
+	InvalidCount int                 `json:"invalidCount"`
+	/** Rows whose phone appeared earlier in the file. */
+	Duplicates int `json:"duplicates"`
+	/** Valid people who are already contacts (matched by phone or email); updated, not duplicated. */
+	Existing int `json:"existing"`
+	/** The first ten valid people, normalised. */
+	Sample []CRMImportRow `json:"sample"`
+}
+
+// CRMImportCommitRequest writes a previewed import.
+type CRMImportCommitRequest struct {
+	/** An existing list to add these people to; empty makes a new list called ListName.
+	 *  Someone already on the list is not added twice. */
+	ListID   string   `json:"listId,omitempty"`
+	ListName string   `json:"listName"`
+	Mapping  []string `json:"mapping"`
+	/** The host confirms these people agreed to WhatsApp messages from them. Without it
+	 *  they are saved but not opted in, so broadcasts leave them out. */
+	ConsentConfirmed bool `json:"consentConfirmed"`
+}
+
+// CRMImportResult is what a commit did.
+type CRMImportResult struct {
+	List    CRMList `json:"list"`
+	Created int     `json:"created"`
+	Updated int     `json:"updated"`
+	/** Newly opted in by this import's consent. */
+	OptedIn int `json:"optedIn"`
+	/** People who had opted out before; an import never opts them back in. */
+	OptedOut int `json:"optedOut"`
+	Invalid  int `json:"invalid"`
+}
+
+// CRMListsResponse is GET /api/host/crm/lists.
+type CRMListsResponse struct {
+	Lists []CRMList `json:"lists"`
+}
+
 // TagMaxLength caps a tag name: a label, not a sentence.
 const TagMaxLength = 48
 
@@ -1815,6 +1918,9 @@ const (
 	/** AudienceContacts is people the host picked by hand, by contact id. Only the
 	 *  opted-in ones among them are messaged. */
 	AudienceContacts = "contacts"
+	/** AudienceList is a saved list, usually an imported CSV — see CRMList. Only the
+	 *  opted-in members are messaged. */
+	AudienceList = "list"
 )
 
 /* CRMSegment narrows one webinar's registrants. Every part is optional and they combine
@@ -1865,6 +1971,10 @@ type CRMBroadcast struct {
 	 *  the name as it is now, because a renamed tag is the same tag. */
 	TagID   string `json:"tagId,omitempty"`
 	TagName string `json:"tagName,omitempty"`
+	/** The saved list this went to, when Audience is `list`. Empty once the list is
+	 *  deleted; the queued copies are unaffected. */
+	ListID   string `json:"listId,omitempty"`
+	ListName string `json:"listName,omitempty"`
 	/** The webinar slug this message is about: the audience when Audience is
 	 *  `webinar`, and the source of the `topic` and `when` merge fields either way.
 	 *  Empty when the broadcast names no webinar. */
@@ -1944,6 +2054,8 @@ type CRMBroadcastRequest struct {
 	Segment *CRMSegment `json:"segment,omitempty"`
 	/** Required when Audience is `contacts`, ignored otherwise. */
 	ContactIDs []string `json:"contactIds,omitempty"`
+	/** Required when Audience is `list`, ignored otherwise. */
+	ListID string `json:"listId,omitempty"`
 	/** RFC3339, or empty for now. */
 	ScheduledAt string `json:"scheduledAt,omitempty"`
 }

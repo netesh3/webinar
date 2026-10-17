@@ -37,6 +37,8 @@ type BroadcastInput struct {
 	WebinarSlug string
 	// TagID is required for the tag audience and empty for the others.
 	TagID string
+	// ListID is required for the list audience and empty for the others.
+	ListID string
 	// Segment is the rule for the segment audience, stored so the broadcast reads back.
 	Segment     *types.CRMSegment
 	ScheduledAt time.Time
@@ -67,6 +69,8 @@ type Audience struct {
 	Segment *types.CRMSegment
 	// ContactIDs is required for the contacts audience.
 	ContactIDs []string
+	// ListID is required for the list audience.
+	ListID string
 }
 
 /* pickContactForRegistration is the one contact a registration `r` of webinar `w` is
@@ -147,6 +151,13 @@ func audienceFrom(hostID string, a Audience) (string, []any) {
 			  JOIN crm_tags t ON t.id = ct.tag_id
 			 WHERE ct.contact_id = c.id AND t.id = $2::uuid AND t.host_id = c.host_id
 		)` + excludeOwnAccount, []any{hostID, a.TagID}
+	case types.AudienceList:
+		// Through the list's own host as well as the contact's, as for tags.
+		return base + ` AND EXISTS (
+			SELECT 1 FROM crm_list_members lm
+			  JOIN crm_lists l ON l.id = lm.list_id
+			 WHERE lm.contact_id = c.id AND l.id = $2::uuid AND l.host_id = c.host_id
+		)` + excludeOwnAccount, []any{hostID, a.ListID}
 	case types.AudienceWebinar:
 		return base + ` AND ` + contactRegisteredFor(`$2`) + excludeOwnAccount, []any{hostID, a.WebinarSlug}
 	case types.AudienceContacts:
@@ -509,14 +520,15 @@ func (s *Store) CreateBroadcast(ctx context.Context, hostID string, in Broadcast
 	err = tx.QueryRow(ctx, `
 		INSERT INTO crm_broadcasts
 			(host_id, name, template_name, template_language, params, audience,
-			 webinar_id, scheduled_at, tag_id, segment)
+			 webinar_id, scheduled_at, tag_id, segment, list_id)
 		VALUES ($1::uuid, $2, $3, $4, $5, $6,
 		        (SELECT id FROM webinars WHERE slug = $7 AND host_id = $1::uuid), $8,
 		        (SELECT id FROM crm_tags WHERE id = NULLIF($9,'')::uuid AND host_id = $1::uuid),
-		        $10)
+		        $10,
+		        (SELECT id FROM crm_lists WHERE id = NULLIF($11,'')::uuid AND host_id = $1::uuid))
 		RETURNING id::text`,
 		hostID, strings.TrimSpace(in.Name), in.TemplateName, in.TemplateLanguage,
-		params, in.Audience, in.WebinarSlug, due, in.TagID, in.Segment).Scan(&id)
+		params, in.Audience, in.WebinarSlug, due, in.TagID, in.Segment, in.ListID).Scan(&id)
 	if err != nil {
 		return "", err
 	}
@@ -619,10 +631,11 @@ func (s *Store) ReplaceScheduledBroadcast(ctx context.Context, hostID, id string
 			scheduled_at = $9,
 			tag_id = (SELECT id FROM crm_tags WHERE id = NULLIF($10,'')::uuid AND host_id = $1::uuid),
 			segment = $11,
+			list_id = (SELECT id FROM crm_lists WHERE id = NULLIF($12,'')::uuid AND host_id = $1::uuid),
 			updated_at = now()
 		 WHERE host_id = $1::uuid AND id = $2::uuid AND deleted_at IS NULL`,
 		hostID, id, strings.TrimSpace(in.Name), in.TemplateName, in.TemplateLanguage,
-		params, in.Audience, in.WebinarSlug, due, in.TagID, in.Segment)
+		params, in.Audience, in.WebinarSlug, due, in.TagID, in.Segment, in.ListID)
 	if err != nil {
 		return err
 	}
@@ -666,10 +679,12 @@ const broadcastSelect = `
 	            WHERE inb.contact_id = m.contact_id AND inb.direction = 'in'
 	              AND inb.created_at > m.created_at)),
 	       b.segment,
-	       (SELECT count(*) FROM notifications n WHERE n.broadcast_id = b.id)
+	       (SELECT count(*) FROM notifications n WHERE n.broadcast_id = b.id),
+	       COALESCE(l.id::text,''), COALESCE(l.name,'')
 	  FROM crm_broadcasts b
 	  LEFT JOIN webinars w ON w.id = b.webinar_id
-	  LEFT JOIN crm_tags t ON t.id = b.tag_id`
+	  LEFT JOIN crm_tags t ON t.id = b.tag_id
+	  LEFT JOIN crm_lists l ON l.id = b.list_id`
 
 func scanBroadcast(row scanner) (types.CRMBroadcast, error) {
 	var (
@@ -685,7 +700,7 @@ func scanBroadcast(row scanner) (types.CRMBroadcast, error) {
 		&b.Audience, &b.WebinarID, &b.WebinarTopic, &b.TagID, &b.TagName,
 		&scheduledAt, &createdAt, &canceledAt,
 		&st.Recipients, &st.Queued, &st.Sent, &st.Failed, &st.Skipped,
-		&st.Delivered, &st.Read, &st.Replied, &segment, &picked); err != nil {
+		&st.Delivered, &st.Read, &st.Replied, &segment, &picked, &b.ListID, &b.ListName); err != nil {
 		return types.CRMBroadcast{}, err
 	}
 	switch b.Audience {

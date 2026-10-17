@@ -20,6 +20,7 @@ import { Badge, Button, Card } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import {
   AudienceContacts,
+  AudienceList,
   AudienceOptedIn,
   AudienceTag,
   AudienceWebinar,
@@ -41,6 +42,7 @@ import type {
 import { formatRelative, instantToZoned, localTimeZone, zonedToInstant } from "@/lib/format";
 import { useNow } from "@/lib/clock";
 import { rupees, templateRate } from "./wa-kit";
+import { SavedLists } from "./saved-lists";
 import {
   audienceDraft,
   audienceLabel,
@@ -606,7 +608,7 @@ function whenLine(b: CRMBroadcast): string {
 // ----------------------------------------------------------------- composer
 
 type Timing = "now" | "later";
-type Kind = "opted_in" | "people" | "webinar" | "tag" | "locked";
+type Kind = "opted_in" | "people" | "webinar" | "tag" | "list" | "locked";
 
 function futureSchedule(seed: CRMBroadcast | null): { timing: Timing; at: string } {
   if (!seed?.scheduledAt) return { timing: "now", at: "" };
@@ -668,6 +670,8 @@ function Composer({
   const [peopleFilter, setPeopleFilter] = useState(draft?.peopleFilter || seeded);
   const [webinarId, setWebinarId] = useState(draft?.webinarId ?? "");
   const [tagId, setTagId] = useState(draft?.tagId ?? "");
+  const [listId, setListId] = useState(draft?.listId ?? "");
+  const [listName, setListName] = useState(seed?.listName ?? "");
   const [chosen, setChosen] = useState(seed ? `${seed.template}\u0000${seed.language}` : "");
   const [params, setParams] = useState<CRMParam[]>(seed?.params ?? []);
   const [timing, setTiming] = useState<Timing>(openedAt.timing);
@@ -740,29 +744,33 @@ function Composer({
 
   const needsWebinar = resolvedKind === "webinar";
   const needsTag = resolvedKind === "tag";
+  const needsList = resolvedKind === "list";
   const needsPeople = resolvedKind === "people";
   const locked = resolvedKind === "locked";
   const askable =
     !needsPeople &&
     !locked &&
     (!needsWebinar || webinarId !== "") &&
-    (!needsTag || tagId !== "");
+    (!needsTag || tagId !== "") &&
+    (!needsList || listId !== "");
   const audienceKey = needsPeople
     ? `people\u0000${resolvedFilter}`
     : locked
       ? `locked\u0000${seed?.id ?? ""}`
-      : `${resolvedKind}\u0000${webinarId}\u0000${tagId}`;
+      : `${resolvedKind}\u0000${webinarId}\u0000${tagId}\u0000${needsList ? listId : ""}`;
 
   useEffect(() => {
     if (!askable) return;
     let cancelled = false;
-    const audience = needsTag
-      ? AudienceTag
-      : needsWebinar
-        ? AudienceWebinar
-        : AudienceOptedIn;
+    const audience = needsList
+      ? AudienceList
+      : needsTag
+        ? AudienceTag
+        : needsWebinar
+          ? AudienceWebinar
+          : AudienceOptedIn;
     engageApi
-      .crmAudience(audience, webinarId, tagId)
+      .crmAudience(audience, webinarId, tagId, needsList ? listId : "")
       .then((res) => {
         if (!cancelled) setCounted({ key: audienceKey, res });
       })
@@ -779,7 +787,7 @@ function Composer({
     return () => {
       cancelled = true;
     };
-  }, [askable, audienceKey, needsTag, needsWebinar, webinarId, tagId]);
+  }, [askable, audienceKey, needsTag, needsList, needsWebinar, webinarId, tagId, listId]);
 
   useEffect(() => {
     if (!needsPeople || !resolvedFilter) return;
@@ -839,6 +847,7 @@ function Composer({
         audience: seed.audience,
         webinarId: seed.webinarId || undefined,
         tagId: seed.tagId || undefined,
+        listId: seed.listId || undefined,
         segment: seed.segment,
         contactIds: seed.contactIds,
       })
@@ -911,6 +920,8 @@ function Composer({
         ? "Pick the webinar whose registrants you mean."
         : needsTag && !tagId
           ? "Pick the tag you mean."
+          : needsList && !listId
+            ? "Pick a saved list, or upload a CSV."
             : needsPeople && !resolvedFilter
             ? "Pick who should get this."
             : usesWebinarField && !mergeWebinarId
@@ -938,6 +949,7 @@ function Composer({
       const tag = (tags ?? []).find((t) => t.id === tagId);
       return tag ? `Everybody tagged ${tag.name}` : "Tagged";
     }
+    if (resolvedKind === "list") return listName ? `List: ${listName}` : "Saved list";
     return "Everyone who opted in";
   }
 
@@ -962,11 +974,14 @@ function Composer({
           ? seed.audience
           : needsPeople
             ? AudienceContacts
-            : needsTag
-              ? AudienceTag
-              : needsWebinar
-                ? AudienceWebinar
-                : AudienceOptedIn,
+            : needsList
+              ? AudienceList
+              : needsTag
+                ? AudienceTag
+                : needsWebinar
+                  ? AudienceWebinar
+                  : AudienceOptedIn,
+        listId: locked ? seed?.listId || undefined : needsList ? listId : undefined,
         webinarId: locked
           ? seed?.webinarId || (usesWebinarField && webinarId ? webinarId : undefined)
           : (needsWebinar || usesWebinarField) && webinarId
@@ -1111,7 +1126,26 @@ function Composer({
                   onPick={() => pickKind("tag")}
                 />
               )}
+              {tags !== null && (
+                <WhoRow
+                  label="A saved list or uploaded CSV"
+                  count={rowCount("list")}
+                  checked={resolvedKind === "list"}
+                  onPick={() => pickKind("list")}
+                />
+              )}
             </div>
+
+            {needsList && (
+              <SavedLists
+                mode="pick"
+                selectedId={listId}
+                onPick={(l) => {
+                  setListId(l.id);
+                  setListName(l.name);
+                }}
+              />
+            )}
 
             {needsTag && (
               <Select
@@ -1165,7 +1199,9 @@ function Composer({
                   ? "webinar"
                   : needsTag && !tagId
                     ? "tag"
-                    : null
+                    : needsList && !listId
+                      ? "list"
+                      : null
               }
             />
           </section>
@@ -1461,7 +1497,7 @@ function Audience({
 }: {
   preview: CRMAudienceResponse | null;
   error: string | null;
-  waitingFor: "webinar" | "tag" | null;
+  waitingFor: "webinar" | "tag" | "list" | null;
 }) {
   if (error) return <Alert tone="warn">{error}</Alert>;
   if (waitingFor) {
@@ -1469,7 +1505,9 @@ function Audience({
       <p className="text-[12px] text-ink-3">
         {waitingFor === "tag"
           ? "Pick a tag to see how many of the people carrying it can be messaged."
-          : "Pick a webinar to see how many of its registrants can be messaged."}
+          : waitingFor === "list"
+            ? "Pick a list, or upload a CSV, to see how many of them can be messaged."
+            : "Pick a webinar to see how many of its registrants can be messaged."}
       </p>
     );
   }

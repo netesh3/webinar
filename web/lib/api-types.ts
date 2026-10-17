@@ -3516,6 +3516,166 @@ export interface CRMNoteRequest {
  */
 export const NoteMaxLength = 2000;
 /**
+ *  CRMList is a saved list of contacts, usually made by importing a CSV. Deleting it
+ *  * keeps the contacts.
+ */
+export interface CRMList {
+  id: string;
+  name: string;
+  source: string;
+  /**
+   * * Members, and how many of them a broadcast would reach now.
+   */
+  size: number /* int */;
+  optedIn: number /* int */;
+  createdAt: string;
+  /**
+   * * Last time people were imported into it or it was renamed.
+   */
+  updatedAt: string;
+}
+/**
+ * CRMListRequest renames a saved list.
+ */
+export interface CRMListRequest {
+  name: string;
+}
+/**
+ *  Import fields an uploaded column can be mapped to. Empty ignores the column.
+ *  * Service, payment cycle and the two dates are TagMango's export columns.
+ */
+export const ImportFieldName = "name";
+/**
+ *  Import fields an uploaded column can be mapped to. Empty ignores the column.
+ *  * Service, payment cycle and the two dates are TagMango's export columns.
+ */
+export const ImportFieldEmail = "email";
+/**
+ *  Import fields an uploaded column can be mapped to. Empty ignores the column.
+ *  * Service, payment cycle and the two dates are TagMango's export columns.
+ */
+export const ImportFieldPhone = "phone";
+/**
+ *  Import fields an uploaded column can be mapped to. Empty ignores the column.
+ *  * Service, payment cycle and the two dates are TagMango's export columns.
+ */
+export const ImportFieldService = "service";
+/**
+ *  Import fields an uploaded column can be mapped to. Empty ignores the column.
+ *  * Service, payment cycle and the two dates are TagMango's export columns.
+ */
+export const ImportFieldPaymentCycle = "payment_cycle";
+/**
+ *  Import fields an uploaded column can be mapped to. Empty ignores the column.
+ *  * Service, payment cycle and the two dates are TagMango's export columns.
+ */
+export const ImportFieldLastTransaction = "last_transaction";
+/**
+ *  Import fields an uploaded column can be mapped to. Empty ignores the column.
+ *  * Service, payment cycle and the two dates are TagMango's export columns.
+ */
+export const ImportFieldSubscriptionExpiry = "subscription_expiry";
+/**
+ * CRMImportMaxRows and CRMImportMaxBytes bound one upload.
+ */
+export const CRMImportMaxRows = 10000;
+/**
+ * CRMImportMaxRows and CRMImportMaxBytes bound one upload.
+ */
+export const CRMImportMaxBytes = 5 << 20;
+/**
+ * CRMImportRowError is a row that will not be imported, numbered as in the file (header = 1).
+ */
+export interface CRMImportRowError {
+  row: number /* int */;
+  value: string;
+  reason: string;
+}
+/**
+ * CRMImportRow is one person as the import will write them.
+ */
+export interface CRMImportRow {
+  name: string;
+  email: string;
+  phone: string;
+  attributes?: { [key: string]: string};
+}
+/**
+ *  CRMImportPreview is what an upload would do, before anything is written.
+ *  * Mapping lines up with Columns: the field each column fills, "" to ignore it.
+ */
+export interface CRMImportPreview {
+  id: string;
+  fileName: string;
+  columns: string[];
+  mapping: string[];
+  /**
+   * * Data rows read, not counting the header.
+   */
+  rows: number /* int */;
+  /**
+   * * People who would be imported: a usable phone, not repeated earlier in the file.
+   */
+  valid: number /* int */;
+  /**
+   * * Rows left out, the first 50; InvalidCount is all of them.
+   */
+  invalid: CRMImportRowError[];
+  invalidCount: number /* int */;
+  /**
+   * * Rows whose phone appeared earlier in the file.
+   */
+  duplicates: number /* int */;
+  /**
+   * * Valid people who are already contacts (matched by phone or email); updated, not duplicated.
+   */
+  existing: number /* int */;
+  /**
+   * * The first ten valid people, normalised.
+   */
+  sample: CRMImportRow[];
+}
+/**
+ * CRMImportCommitRequest writes a previewed import.
+ */
+export interface CRMImportCommitRequest {
+  /**
+   * * An existing list to add these people to; empty makes a new list called ListName.
+   * 	 *  Someone already on the list is not added twice.
+   */
+  listId?: string;
+  listName: string;
+  mapping: string[];
+  /**
+   * * The host confirms these people agreed to WhatsApp messages from them. Without it
+   * 	 *  they are saved but not opted in, so broadcasts leave them out.
+   */
+  consentConfirmed: boolean;
+}
+/**
+ * CRMImportResult is what a commit did.
+ */
+export interface CRMImportResult {
+  list: CRMList;
+  created: number /* int */;
+  updated: number /* int */;
+  /**
+   * * Newly opted in by this import's consent.
+   */
+  optedIn: number /* int */;
+  /**
+   * * People who had opted out before; an import never opts them back in.
+   */
+  optedOut: number /* int */;
+  invalid: number /* int */;
+}
+/**
+ * CRMListsResponse is GET /api/host/crm/lists.
+ */
+export interface CRMListsResponse {
+  lists: CRMList[];
+}
+/**
  * TagMaxLength caps a tag name: a label, not a sentence.
  */
 export const TagMaxLength = 48;
@@ -3820,6 +3980,11 @@ export const AudienceSegment = "segment";
  */
 export const AudienceContacts = "contacts";
 /**
+ * * AudienceList is a saved list, usually an imported CSV — see CRMList. Only the
+ * 	 *  opted-in members are messaged.
+ */
+export const AudienceList = "list";
+/**
  *  CRMSegment narrows one webinar's registrants. Every part is optional and they combine
  *  * with AND. Watch minutes are the session report's (store.WatchByRegistrationSQL), so the
  *  * Attendees tab's chips, the report and the audience count the same people.
@@ -3885,6 +4050,12 @@ export interface CRMBroadcast {
    */
   tagId?: string;
   tagName?: string;
+  /**
+   * * The saved list this went to, when Audience is `list`. Empty once the list is
+   * 	 *  deleted; the queued copies are unaffected.
+   */
+  listId?: string;
+  listName?: string;
   /**
    * * The webinar slug this message is about: the audience when Audience is
    * 	 *  `webinar`, and the source of the `topic` and `when` merge fields either way.
@@ -3999,6 +4170,10 @@ export interface CRMBroadcastRequest {
    * * Required when Audience is `contacts`, ignored otherwise.
    */
   contactIds?: string[];
+  /**
+   * * Required when Audience is `list`, ignored otherwise.
+   */
+  listId?: string;
   /**
    * * RFC3339, or empty for now.
    */
