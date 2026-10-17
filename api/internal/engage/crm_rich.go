@@ -45,13 +45,13 @@ func (s *Module) roomLink(ctx context.Context, slug, registrationID string) stri
 }
 
 func (s *Module) fillRich(ctx context.Context, out *wa.OutgoingTemplate, tmpl types.CRMTemplate,
-	m crmstore.WhatsAppOutbound, webinars map[string]*types.Webinar) string {
-	needsImage := tmpl.HeaderFormat == "IMAGE"
+	hostID string, m crmstore.WhatsAppOutbound, webinars map[string]*types.Webinar) string {
+	needsMedia := tmpl.HeaderFormat == "IMAGE" || tmpl.HeaderFormat == "VIDEO" || tmpl.HeaderFormat == "DOCUMENT"
 	dynamic := false
 	for _, b := range tmpl.Buttons {
 		dynamic = dynamic || b.Dynamic
 	}
-	if !needsImage && !dynamic {
+	if !needsMedia && !dynamic {
 		return ""
 	}
 	var wb *types.Webinar
@@ -63,8 +63,12 @@ func (s *Module) fillRich(ctx context.Context, out *wa.OutgoingTemplate, tmpl ty
 			webinars[m.WebinarSlug] = wb
 		}
 	}
-	if needsImage {
-		out.HeaderImage = s.coverURL(wb)
+	if needsMedia {
+		media, reason := s.headerFor(ctx, tmpl, hostID, m, wb)
+		if reason != "" {
+			return reason
+		}
+		out.HeaderMedia = media
 	}
 	if dynamic {
 		link := m.LinkURL

@@ -79,7 +79,7 @@ func (s *Module) enqueueWhatsAppReplay(ctx context.Context, wb types.Webinar, ho
 			RegistrationID:   p.RegistrationID,
 			TemplateName:     reminder.Template,
 			TemplateLanguage: reminder.Language,
-			TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, url, 0),
+			TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, url, 0, s.replayLinks(ctx, wb.ID, p.RegistrationID, reminder.Params)),
 			LinkURL:          url,
 			DueAt:            due,
 		}); err != nil {

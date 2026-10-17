@@ -93,6 +93,37 @@ type fakeGraph struct {
 	// Meta does once an attachment is gone: code 100, subcode 33.
 	media      map[string][]byte
 	mediaCalls int
+
+	// uploads is every file posted through the Resumable Upload API, with the
+	// Authorization header it came with.
+	uploads []fakeUpload
+}
+
+type fakeUpload struct {
+	Query string
+	Auth  string
+	Body  []byte
+}
+
+// addTemplate lists one more template, the way WhatsApp Manager would after approval.
+func (g *fakeGraph) addTemplate(t map[string]any) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.templates = append(g.templates, t)
+}
+
+// uploaded is every Resumable Upload the fake received.
+func (g *fakeGraph) uploaded() []fakeUpload {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]fakeUpload(nil), g.uploads...)
+}
+
+// createdTemplates is every template submitted for approval.
+func (g *fakeGraph) createdTemplates() []map[string]any {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]map[string]any(nil), g.created...)
 }
 
 // holdMedia makes Graph serve bytes for a media id; nil forgets it.
@@ -131,6 +162,16 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 				data = map[string]any{"is_valid": true, "expires_at": 0}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+		case r.URL.Path == "/meta-app-id/uploads" && r.Method == http.MethodPost:
+			g.uploads = append(g.uploads, fakeUpload{Query: r.URL.RawQuery})
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "upload:SESSION" + fmt.Sprint(len(g.uploads))})
+		case strings.HasPrefix(r.URL.Path, "/upload:SESSION") && r.Method == http.MethodPost:
+			raw, _ := io.ReadAll(r.Body)
+			if n := len(g.uploads); n > 0 {
+				g.uploads[n-1].Auth = r.Header.Get("Authorization")
+				g.uploads[n-1].Body = raw
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"h": "4::handle-" + fmt.Sprint(len(g.uploads))})
 		case strings.HasPrefix(r.URL.Path, "/media-"):
 			g.mediaCalls++
 			id := strings.TrimPrefix(r.URL.Path, "/media-")

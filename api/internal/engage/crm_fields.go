@@ -53,6 +53,14 @@ func exampleValue(token string, f crmstore.PreviewFacts, base string) string {
 		if f.Slug != "" {
 			return base + "/w/" + f.Slug + "/recording/…"
 		}
+	case "webinar_link":
+		if f.Slug != "" {
+			return base + "/webinars/" + f.Slug
+		}
+	case "join_link":
+		if f.Slug != "" {
+			return base + "/webinars/" + f.Slug + "/room?k=…"
+		}
 	}
 	return ""
 }

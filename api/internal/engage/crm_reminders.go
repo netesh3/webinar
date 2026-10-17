@@ -59,6 +59,11 @@ var mergeFields = []types.CRMMergeField{
 	{Token: "topic", Label: "Webinar title", Example: "Scaling Postgres"},
 	{Token: "when", Label: "When it starts", Example: "Tue 14 Oct, 14:00"},
 	{Token: "host", Label: "Your name", Example: "Acme Coaching"},
+	{Token: "webinar_link", Label: "Webinar link", Example: "https://webinarliv.com/webinars/scaling-postgres"},
+	{
+		Token: "join_link", Label: "Personal join link",
+		Example: "https://webinarliv.com/webinars/scaling-postgres/room?k=…",
+	},
 	{
 		Token: "starts_in", Label: "How soon it starts", Example: "in 1 hour",
 		OnlyKind: types.NotifyWhatsAppReminder,
@@ -72,6 +77,46 @@ var mergeFields = []types.CRMMergeField{
 		Example:  "https://webinarliv.com/w/scaling-postgres/recording/…",
 		OnlyKind: types.NotifyWhatsAppReplay,
 	},
+}
+
+// needsWebinar is a token that has nothing to resolve against unless the message names
+// a webinar.
+func needsWebinar(token string) bool {
+	switch strings.TrimSpace(token) {
+	case "topic", "when", "webinar_link", "join_link":
+		return true
+	}
+	return false
+}
+
+/* mergeLinks are the two link fields for one recipient, worked out by the caller —
+ * a join link needs the person's registration, which mergeValue cannot look up. An
+ * empty Join falls back to the webinar's page (a broadcast to a contact who never
+ * registered for it). */
+type mergeLinks struct {
+	Webinar string
+	Join    string
+}
+
+/* replayLinks is mergeLinks for one replay recipient. The join link costs two lookups
+ * per person, so it is only worked out when the template uses it. */
+func (s *Module) replayLinks(ctx context.Context, slug, registrationID string, tokens []string) mergeLinks {
+	links := mergeLinks{Webinar: s.webinarPage(slug)}
+	for _, t := range tokens {
+		if strings.TrimSpace(t) == "join_link" {
+			links.Join = s.joinLink(ctx, slug, registrationID)
+			break
+		}
+	}
+	return links
+}
+
+// webinarPage is the public page of a webinar, the `webinar_link` value.
+func (s *Module) webinarPage(slug string) string {
+	if slug == "" {
+		return ""
+	}
+	return s.publicBase() + "/webinars/" + slug
 }
 
 func knownMergeField(token string) bool {
@@ -306,6 +351,8 @@ func (s *Module) queueWhatsApp(
 	if !ok {
 		return
 	}
+	join := s.joinLink(ctx, wb.ID, registrationID)
+	links := mergeLinks{Webinar: s.webinarPage(wb.ID), Join: join}
 	if err := s.store.Notify(ctx, s.store.DB(), store.Notification{
 		Kind:             kind,
 		Channel:          "whatsapp",
@@ -314,8 +361,8 @@ func (s *Module) queueWhatsApp(
 		RegistrationID:   registrationID,
 		TemplateName:     reminder.Template,
 		TemplateLanguage: reminder.Language,
-		TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, "", offset),
-		LinkURL:          s.joinLink(ctx, wb.ID, registrationID),
+		TemplateParams:   resolveMergeFields(reminder.Params, contact, wb, "", offset, links),
+		LinkURL:          join,
 		DueAt:            due,
 		OffsetMin:        offset,
 	}); err != nil {
@@ -330,10 +377,10 @@ func (s *Module) queueWhatsApp(
  * what was promised: a webinar renamed an hour before it starts must not silently
  * rewrite the reminder somebody is about to receive.
  */
-func resolveMergeFields(tokens []string, contact types.CRMContact, wb types.Webinar, replayURL string, offsetMin int) []string {
+func resolveMergeFields(tokens []string, contact types.CRMContact, wb types.Webinar, replayURL string, offsetMin int, links mergeLinks) []string {
 	out := make([]string, 0, len(tokens))
 	for _, token := range tokens {
-		out = append(out, mergeValue(token, contact, wb, wb.Host.Name, replayURL, offsetMin))
+		out = append(out, mergeValue(token, contact, wb, wb.Host.Name, replayURL, offsetMin, links))
 	}
 	return out
 }
@@ -348,7 +395,7 @@ func resolveMergeFields(tokens []string, contact types.CRMContact, wb types.Webi
  * template parameter that is blank or contains a newline, a tab or a run of spaces —
  * and it rejects the whole send, so one missing surname would lose the message.
  */
-func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostName, replayURL string, offsetMin int) string {
+func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostName, replayURL string, offsetMin int, links mergeLinks) string {
 	var value string
 	switch token {
 	case "replay":
@@ -374,6 +421,13 @@ func mergeValue(token string, contact types.CRMContact, wb types.Webinar, hostNa
 		value = wb.Topic
 	case "when":
 		value = notify.WhenText(wb.StartsAt, wb.TimeZone)
+	case "webinar_link":
+		value = links.Webinar
+	case "join_link":
+		value = links.Join
+		if value == "" {
+			value = links.Webinar
+		}
 	case "host":
 		value = hostName
 	case "starts_in":
@@ -469,7 +523,7 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) bool {
 			Language:   tmpl.Language,
 			BodyParams: m.Params,
 		}
-		if reason := s.fillRich(ctx, &out, tmpl, m, webinars); reason != "" {
+		if reason := s.fillRich(ctx, &out, tmpl, m.HostID, m, webinars); reason != "" {
 			s.skipWhatsApp(ctx, m, reason)
 			continue
 		}
@@ -495,6 +549,7 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) bool {
 			WAMID:          wamid,
 			Body:           wa.Render(tmpl.Body, m.Params),
 			TemplateName:   tmpl.Name,
+			Attachment:     headerAttachment(out.HeaderMedia),
 			BroadcastID:    m.BroadcastID,
 			NotificationID: m.ID,
 			WebinarID:      m.WebinarSlug,

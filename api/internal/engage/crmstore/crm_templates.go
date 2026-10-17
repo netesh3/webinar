@@ -110,28 +110,55 @@ func buttonsOrEmpty(b []types.CRMTemplateButton) []types.CRMTemplateButton {
 	return b
 }
 
+/* crmTemplateColumns reads a template with its default header file (migration 0110),
+ * which lives beside the cache rather than in it. Use with crmTemplateFrom. */
 const crmTemplateColumns = `
-	name, language, status, category, header, body, footer, variables,
-	unsupported, synced_at, header_format, buttons`
+	t.name, t.language, t.status, t.category, t.header, t.body, t.footer, t.variables,
+	t.unsupported, t.synced_at, t.header_format, t.buttons,
+	f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token`
 
-func scanTemplate(row scanner) (types.CRMTemplate, time.Time, error) {
+const crmTemplateFrom = `
+	  FROM crm_templates t
+	  LEFT JOIN crm_template_media tm
+	    ON tm.host_id = t.host_id AND tm.name = t.name AND tm.language = t.language
+	  LEFT JOIN crm_media_files f ON f.id = tm.file_id`
+
+/* TemplateWithFile is a template with the stored file behind its default header, which
+ * the send path needs (the wire type only carries a public link). */
+type TemplateWithFile struct {
+	types.CRMTemplate
+	File *MediaFile
+}
+
+func scanTemplate(row scanner) (TemplateWithFile, time.Time, error) {
 	var (
-		t      types.CRMTemplate
-		synced time.Time
+		t                                  types.CRMTemplate
+		synced                             time.Time
+		fileID, hostID, key, mime, fn, tok *string
+		bytes                              *int64
 	)
 	if err := row.Scan(&t.Name, &t.Language, &t.Status, &t.Category, &t.Header,
 		&t.Body, &t.Footer, &t.Variables, &t.Unsupported, &synced,
-		&t.HeaderFormat, &t.Buttons); err != nil {
-		return types.CRMTemplate{}, time.Time{}, err
+		&t.HeaderFormat, &t.Buttons,
+		&fileID, &hostID, &key, &mime, &fn, &bytes, &tok); err != nil {
+		return TemplateWithFile{}, time.Time{}, err
 	}
 	if t.Buttons == nil {
 		t.Buttons = []types.CRMTemplateButton{}
 	}
+	out := TemplateWithFile{CRMTemplate: t}
+	if fileID != nil {
+		out.File = &MediaFile{ID: *fileID, HostID: *hostID, StorageKey: *key, Mime: *mime,
+			Filename: *fn, Bytes: *bytes, Token: *tok}
+	}
+	/* A video or document header has nothing to fall back on: without a file of the
+	 * host's own it cannot be sent. An image header falls back to the webinar's cover. */
+	out.NeedsHeaderFile = (t.HeaderFormat == "VIDEO" || t.HeaderFormat == "DOCUMENT") && out.File == nil
 	/* Sendable, derived rather than stored, so one rule answers both the picker and
-	 * the send path. Two conditions: Meta approved it, and it is made only of the
-	 * parts this code fills in. */
-	t.Sendable = t.Status == "APPROVED" && t.Unsupported == ""
-	return t, synced, nil
+	 * the send path: Meta approved it, it is made only of the parts this code fills
+	 * in, and a media header has its file. */
+	out.Sendable = t.Status == "APPROVED" && t.Unsupported == "" && !out.NeedsHeaderFile
+	return out, synced, nil
 }
 
 /* Templates lists a host's cached templates alphabetically, with the last time
@@ -142,18 +169,30 @@ func scanTemplate(row scanner) (types.CRMTemplate, time.Time, error) {
  * every time an approval came through.
  */
 func (s *Store) Templates(ctx context.Context, hostID string) ([]types.CRMTemplate, time.Time, error) {
+	full, newest, err := s.TemplatesWithFiles(ctx, hostID)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	out := make([]types.CRMTemplate, 0, len(full))
+	for _, t := range full {
+		out = append(out, t.CRMTemplate)
+	}
+	return out, newest, nil
+}
+
+// TemplatesWithFiles is Templates with each default header's stored file.
+func (s *Store) TemplatesWithFiles(ctx context.Context, hostID string) ([]TemplateWithFile, time.Time, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT `+crmTemplateColumns+`
-		  FROM crm_templates
-		 WHERE host_id = $1
-		 ORDER BY name, language`, hostID)
+		SELECT `+crmTemplateColumns+crmTemplateFrom+`
+		 WHERE t.host_id = $1
+		 ORDER BY t.name, t.language`, hostID)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
 	defer rows.Close()
 
 	// Never nil: a host with no templates has an empty list on the wire.
-	out := make([]types.CRMTemplate, 0, 16)
+	out := make([]TemplateWithFile, 0, 16)
 	var newest time.Time
 	for rows.Next() {
 		t, synced, err := scanTemplate(rows)
@@ -171,13 +210,18 @@ func (s *Store) Templates(ctx context.Context, hostID string) ([]types.CRMTempla
 // Template reads one by its full identity, which is what a send has to check
 // before spending a Graph call on a name that is not approved.
 func (s *Store) Template(ctx context.Context, hostID, name, language string) (types.CRMTemplate, error) {
+	t, err := s.TemplateWithFile(ctx, hostID, name, language)
+	return t.CRMTemplate, err
+}
+
+// TemplateWithFile is Template with its default header's stored file.
+func (s *Store) TemplateWithFile(ctx context.Context, hostID, name, language string) (TemplateWithFile, error) {
 	t, _, err := scanTemplate(s.pool.QueryRow(ctx, `
-		SELECT `+crmTemplateColumns+`
-		  FROM crm_templates
-		 WHERE host_id = $1 AND name = $2 AND language = $3`,
+		SELECT `+crmTemplateColumns+crmTemplateFrom+`
+		 WHERE t.host_id = $1 AND t.name = $2 AND t.language = $3`,
 		hostID, strings.TrimSpace(name), strings.TrimSpace(language)))
 	if noRows(err) {
-		return types.CRMTemplate{}, store.ErrNotFound
+		return TemplateWithFile{}, store.ErrNotFound
 	}
 	return t, err
 }

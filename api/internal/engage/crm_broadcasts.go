@@ -1,6 +1,7 @@
 package engage
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -141,6 +142,10 @@ func (s *Module) audienceSamples(r *http.Request, user store.User, a crmstore.Au
 			}
 		}
 	}
+	linksFor, err := s.broadcastLinks(ctx, user.ID, a.WebinarSlug, params)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]types.CRMAudienceSample, 0, len(contacts))
 	for _, c := range contacts {
 		name := c.Name
@@ -150,7 +155,7 @@ func (s *Module) audienceSamples(r *http.Request, user store.User, a crmstore.Au
 		out = append(out, types.CRMAudienceSample{
 			ContactID: c.ID,
 			Name:      name,
-			Params:    resolveBroadcastParams(params, c, wb, user.Name, watched[c.ID]),
+			Params:    resolveBroadcastParams(params, c, wb, user.Name, watched[c.ID], linksFor(c.ID)),
 		})
 	}
 	return out, nil
@@ -313,6 +318,7 @@ func (s *Module) handleCRMBroadcast(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "crm broadcast", err)
 		return
 	}
+	s.withHeader(r.Context(), &b)
 	httpx.JSON(w, http.StatusOK, b)
 }
 
@@ -348,6 +354,7 @@ func (s *Module) handleCreateCRMBroadcast(w http.ResponseWriter, r *http.Request
 	s.log.Info("whatsapp broadcast queued", "host", user.ID, "broadcast", id,
 		"template", in.TemplateName, "audience", in.Audience, "recipients", len(to),
 		"due", in.ScheduledAt.Format(time.RFC3339))
+	s.withHeader(r.Context(), &created)
 	httpx.JSON(w, http.StatusCreated, created)
 }
 
@@ -397,12 +404,11 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 		s.fail(w, r, "crm broadcast: template", err)
 		return crmstore.BroadcastInput{}, nil, false
 	}
-	if !tmpl.Sendable {
-		msg := tmpl.Unsupported
-		if msg == "" {
-			msg = "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
-		}
-		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", msg)
+	// A broadcast that brings its own header file can use a video or document template
+	// that has no default file yet; that is the only way round Sendable here.
+	ownFile := strings.TrimSpace(body.HeaderFileID) != ""
+	if !tmpl.Sendable && !(tmpl.NeedsHeaderFile && ownFile && tmpl.Status == "APPROVED" && tmpl.Unsupported == "") {
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 		return crmstore.BroadcastInput{}, nil, false
 	}
 	if len(body.Params) != tmpl.Variables {
@@ -411,6 +417,10 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 		return crmstore.BroadcastInput{}, nil, false
 	}
 	if !s.paramsAllowed(w, body.Params, slug) {
+		return crmstore.BroadcastInput{}, nil, false
+	}
+	headerFileID, useCover, ok := s.broadcastHeaderChoice(w, r, user, tmpl, body)
+	if !ok {
 		return crmstore.BroadcastInput{}, nil, false
 	}
 
@@ -462,11 +472,16 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 			return crmstore.BroadcastInput{}, nil, false
 		}
 	}
+	linksFor, err := s.broadcastLinks(r.Context(), user.ID, slug, body.Params)
+	if err != nil {
+		s.fail(w, r, "crm broadcast: join links", err)
+		return crmstore.BroadcastInput{}, nil, false
+	}
 	to := make([]crmstore.BroadcastRecipient, 0, len(contacts))
 	for _, c := range contacts {
 		to = append(to, crmstore.BroadcastRecipient{
 			ContactID: c.ID,
-			Params:    resolveBroadcastParams(body.Params, c, wb, user.Name, watched[c.ID]),
+			Params:    resolveBroadcastParams(body.Params, c, wb, user.Name, watched[c.ID], linksFor(c.ID)),
 		})
 	}
 
@@ -486,7 +501,76 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 		TagID:            a.TagID,
 		Segment:          segmentToStore(a),
 		ScheduledAt:      scheduled,
+		HeaderFileID:     headerFileID,
+		HeaderUseCover:   useCover,
 	}, to, true
+}
+
+/* broadcastHeaderChoice checks a broadcast's header override against its template: a
+ * file of the header's kind, owned by this host, or the cover for an image header. */
+func (s *Module) broadcastHeaderChoice(w http.ResponseWriter, r *http.Request, user store.User,
+	tmpl types.CRMTemplate, body types.CRMBroadcastRequest) (string, bool, bool) {
+	fileID := strings.TrimSpace(body.HeaderFileID)
+	format := tmpl.HeaderFormat
+	media := format == "IMAGE" || format == "VIDEO" || format == "DOCUMENT"
+	if !media {
+		if fileID != "" || body.HeaderUseCover {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_media_header",
+				"That template has no image, video or document header.")
+			return "", false, false
+		}
+		return "", false, true
+	}
+	if body.HeaderUseCover {
+		if format != "IMAGE" {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_header_cover",
+				"Only an image header can use the webinar cover.")
+			return "", false, false
+		}
+		return "", true, true
+	}
+	if fileID == "" {
+		return "", false, true
+	}
+	file, err := s.store.MediaFileForHost(r.Context(), user.ID, fileID)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "media_not_found", "Upload the file again.")
+		return "", false, false
+	}
+	if err != nil {
+		s.fail(w, r, "crm broadcast: header file", err)
+		return "", false, false
+	}
+	if headerMediaTypes[file.Mime].kind != strings.ToLower(format) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "media_wrong_kind",
+			"This template's header is "+strings.ToLower(format)+"; that file is "+headerMediaTypes[file.Mime].kind+".")
+		return "", false, false
+	}
+	return file.ID, false, true
+}
+
+// unusableMessage is why a template cannot be sent, in words a host can act on.
+func unusableMessage(tmpl types.CRMTemplate) string {
+	switch {
+	case tmpl.Unsupported != "":
+		return tmpl.Unsupported
+	case tmpl.NeedsHeaderFile:
+		return "That template's header is a " + strings.ToLower(tmpl.HeaderFormat) +
+			" — add the file on the WhatsApp templates page first."
+	default:
+		return "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
+	}
+}
+
+// withHeader adds a broadcast's own header choice to it, for the wire.
+func (s *Module) withHeader(ctx context.Context, b *types.CRMBroadcast) {
+	h, err := s.store.BroadcastHeaderFor(ctx, b.ID)
+	if err != nil {
+		s.log.Warn("crm broadcast: header choice", "broadcast", b.ID, "error", err)
+		return
+	}
+	b.HeaderFile = s.fileJSON(h.File)
+	b.HeaderUseCover = h.UseCover
 }
 
 /* paramsProblem checks what each {{n}} is filled with, and returns the refusal rather
@@ -533,7 +617,7 @@ func paramsProblem(params []types.CRMParam, hasWebinar bool, what string) (code,
 				"Value {{" + at + "}} is " + token + ", which only has a value on a timed " +
 					"reminder — a " + what + " is not sent a set time before a webinar."
 		}
-		if (token == "topic" || token == "when" || token == "watched") && !hasWebinar {
+		if (needsWebinar(token) || token == "watched") && !hasWebinar {
 			return "crm_no_webinar",
 				"Value {{" + at + "}} is " + token + ", so this " + what +
 					" has to say which webinar it is about."
@@ -559,7 +643,7 @@ func (s *Module) paramsAllowed(w http.ResponseWriter, params []types.CRMParam, s
  * scheduling a broadcast about it has changed the webinar, not the thing four
  * thousand people are about to read.
  */
-func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, wb types.Webinar, hostName string, watchedMin int) []string {
+func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, wb types.Webinar, hostName string, watchedMin int, links mergeLinks) []string {
 	out := make([]string, 0, len(params))
 	for _, p := range params {
 		if token := strings.TrimSpace(p.Field); token != "" {
@@ -567,7 +651,7 @@ func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, w
 				out = append(out, watchedText(watchedMin))
 				continue
 			}
-			out = append(out, mergeValue(token, contact, wb, hostName, "", 0))
+			out = append(out, mergeValue(token, contact, wb, hostName, "", 0, links))
 			continue
 		}
 		// Single-spaced for Meta's sake, exactly like a merge value: a parameter with a
@@ -575,6 +659,31 @@ func resolveBroadcastParams(params []types.CRMParam, contact types.CRMContact, w
 		out = append(out, strings.Join(strings.Fields(p.Text), " "))
 	}
 	return out
+}
+
+/* broadcastLinks gives each recipient's link fields for a broadcast about slug. Join
+ * links are read for the whole webinar in one query, and only when a value uses them;
+ * a contact with no registration for it gets the webinar's page. */
+func (s *Module) broadcastLinks(ctx context.Context, hostID, slug string, params []types.CRMParam) (func(contactID string) mergeLinks, error) {
+	page := s.webinarPage(slug)
+	if slug == "" || !usesField(params, "join_link") {
+		return func(string) mergeLinks { return mergeLinks{Webinar: page} }, nil
+	}
+	keys, err := s.store.ContactJoinKeys(ctx, hostID, slug)
+	if err != nil {
+		return nil, err
+	}
+	return func(contactID string) mergeLinks {
+		k, ok := keys[contactID]
+		switch {
+		case !ok || k.JoinKey == "" && k.ZoomURL == "":
+			return mergeLinks{Webinar: page}
+		case k.ZoomURL != "":
+			return mergeLinks{Webinar: page, Join: k.ZoomURL}
+		default:
+			return mergeLinks{Webinar: page, Join: page + "/room?k=" + k.JoinKey}
+		}
+	}, nil
 }
 
 // segmentToStore is the rule to keep on the broadcast: only a segment audience has one.
@@ -636,6 +745,7 @@ func (s *Module) handleCancelCRMBroadcast(w http.ResponseWriter, r *http.Request
 	}
 	s.log.Info("whatsapp broadcast cancelled", "host", user.ID, "broadcast", id,
 		"sent", b.Stats.Sent, "skipped", b.Stats.Skipped)
+	s.withHeader(r.Context(), &b)
 	httpx.JSON(w, http.StatusOK, b)
 }
 
@@ -696,6 +806,7 @@ func (s *Module) handleUpdateCRMBroadcast(w http.ResponseWriter, r *http.Request
 	}
 	s.log.Info("whatsapp broadcast updated", "host", user.ID, "broadcast", id,
 		"template", in.TemplateName, "audience", in.Audience, "recipients", len(to))
+	s.withHeader(r.Context(), &updated)
 	httpx.JSON(w, http.StatusOK, updated)
 }
 

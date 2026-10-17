@@ -270,8 +270,7 @@ func (s *Module) handleCRMTestSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !tmpl.Sendable {
-		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable",
-			"Meta has not approved that template yet.")
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 		return
 	}
 	if len(body.Params) != tmpl.Variables {
@@ -280,9 +279,10 @@ func (s *Module) handleCRMTestSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := types.CRMContact{Name: user.Name, Phone: phone}
-	params := resolveBroadcastParams(body.Params, me, wb, user.Name, 58)
+	// The host is not a registrant, so their join link is the webinar page.
+	params := resolveBroadcastParams(body.Params, me, wb, user.Name, 58, mergeLinks{Webinar: s.webinarPage(slug)})
 	msg := wa.OutgoingTemplate{To: phone, Name: tmpl.Name, Language: tmpl.Language, BodyParams: params}
-	if reason := s.fillRich(r.Context(), &msg, tmpl, crmstore.WhatsAppOutbound{WebinarSlug: slug},
+	if reason := s.fillRich(r.Context(), &msg, tmpl, user.ID, crmstore.WhatsAppOutbound{WebinarSlug: slug},
 		map[string]*types.Webinar{}); reason != "" {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", reason)
 		return
