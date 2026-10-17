@@ -78,6 +78,9 @@ const RIM_KEEP = 4;
 /** How far (matte texels) past their recorded outline the presenter's side of a split
  *  reaches: an arm moved since, a lean. */
 const PRESENTER_REACH = 8;
+/** How far (matte texels) from the presenter's body a small region of its own may be and
+ *  still be their hand or arm. About 3% of the frame's width at 256 texels. */
+const LIMB_GAP = 8;
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -98,6 +101,7 @@ export class PresenterLock {
   private scratch: Float32Array | null = null;
   private keep: Float32Array | null = null;
   private reach: Float32Array | null = null;
+  private near: Float32Array | null = null;
   private templateAt: { x: number; y: number } | null = null;
   private templateArea = 0;
   private templateFaceW = 0;
@@ -209,6 +213,7 @@ export class PresenterLock {
       this.scratch = new Float32Array(n);
       this.keep = new Float32Array(n);
       this.reach = new Float32Array(n);
+      this.near = new Float32Array(n);
       this.templateAt = null;
     }
     const labels = this.labels;
@@ -299,7 +304,9 @@ export class PresenterLock {
       const fy = (y + 0.5) / h;
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
-        if ((labels[i] && labels[i] !== main.id) || owner[i] === OTHER) {
+        /* Somebody else's region, or a texel taken for somebody else, goes. A region of
+         * its own that is the presenter's (a hand off the body: see splitOwners) stays. */
+        if ((labels[i] && labels[i] !== main.id && owner[i] !== PRESENTER) || owner[i] === OTHER) {
           matte[i] = 0;
           continue;
         }
@@ -338,7 +345,10 @@ export class PresenterLock {
      * was left: their outline, faint, on the background. Only faint texels near what was
      * kept stay — the presenter's own soft edge and hair. */
     const keep = this.keep!;
-    for (let i = 0; i < n; i++) keep[i] = labels[i] === main.id && owner[i] !== OTHER ? 1 : 0;
+    for (let i = 0; i < n; i++) {
+      const presenters = labels[i] === main.id ? owner[i] !== OTHER : !!labels[i] && owner[i] === PRESENTER;
+      keep[i] = presenters ? 1 : 0;
+    }
     dilate(keep, this.scratch!, w, h, RIM_KEEP);
     for (let i = 0; i < n; i++) if (!labels[i] && !keep[i]) matte[i] = 0;
 
@@ -383,11 +393,35 @@ export class PresenterLock {
     }
     const personLike = (b: Blob) =>
       b.area >= n * OTHER_MIN_AREA && b.maxY - b.minY + 1 >= h * OTHER_MIN_HEIGHT && b.maxY - b.minY >= (b.maxX - b.minX) * 0.9;
+    /* Another face inside a region makes it somebody else's, however small or close. */
+    const faceLabels = new Set<number>();
+    for (const o of this.others) {
+      const c = centre(o);
+      const x = Math.min(w - 1, Math.max(0, Math.floor(c.x * w)));
+      const y = Math.min(h - 1, Math.max(0, Math.floor(c.y * h)));
+      const l = labels[y * w + x]!;
+      if (l) faceLabels.add(l);
+    }
+    /* Close to the presenter's body: within LIMB_GAP texels of the main region. The mask
+     * often goes faint along a forearm or wrist — thin, blurred by motion, lit from behind —
+     * and a raised hand then comes out as a region of its own, a few texels from the body. */
+    const nearBody = this.near!;
+    for (let i = 0; i < n; i++) nearBody[i] = labels[i] === main.id ? 1 : 0;
+    dilate(nearBody, this.scratch!, w, h, LIMB_GAP);
+    const touchesBody = new Uint8Array(blobs.length + 1);
+    for (let i = 0; i < n; i++) {
+      const l = labels[i]!;
+      if (l && l !== main.id && nearBody[i]! > 0) touchesBody[l] = 1;
+    }
     const regionOwner = new Uint8Array(blobs.length + 1);
     for (const b of blobs) {
       if (b.id === main.id) continue;
-      if (mine[b.id]! > theirs[b.id]!) regionOwner[b.id] = PRESENTER;
+      if (faceLabels.has(b.id)) regionOwner[b.id] = OTHER;
+      else if (mine[b.id]! > theirs[b.id]!) regionOwner[b.id] = PRESENTER;
       else if (theirs[b.id]! > 0 || personLike(b)) regionOwner[b.id] = OTHER;
+      /* A hand or a piece of arm: small, beside the body, nobody else's face on it and
+       * nobody else's last frame. Without this it was nobody's, and nobody's is erased. */
+      else if (touchesBody[b.id] && b.area < n * OTHER_MIN_AREA) regionOwner[b.id] = PRESENTER;
     }
 
     /* The presenter is in front. Anybody behind them is hidden where they are, so what lies
