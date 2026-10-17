@@ -1011,6 +1011,9 @@ type Account struct {
 	// HostRequestedAt is when this account asked to host, RFC3339. Empty means
 	// they have not asked. See migrations/0080.
 	HostRequestedAt string `json:"hostRequestedAt,omitempty"`
+	// HasPassword is false for a Google-only account. Deleting the account asks for
+	// the password when there is one and the email otherwise.
+	HasPassword bool `json:"hasPassword"`
 	// IsAdmin may grant CanHost to others. Set only from ADMIN_EMAILS at boot — there is no
 	// endpoint that promotes an admin, deliberately, because a privilege grantable in-band is
 	// grantable by whoever takes over one account.
@@ -2915,6 +2918,13 @@ func (p Plan) Valid() bool {
 
 // SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes
 // the subscription, back to the launch default.
+/* DeleteAccountRequest is DELETE /api/auth/account. Password for an account
+ * that has one; a Google-only account types its email back instead. */
+type DeleteAccountRequest struct {
+	Password string `json:"password,omitempty"`
+	Email    string `json:"email,omitempty"`
+}
+
 type SetUserPlanRequest struct {
 	Plan Plan `json:"plan"`
 }

@@ -1,6 +1,7 @@
 import type {
   ChatMessage as ChatTranscriptMessage,
   Account,
+  DeleteAccountRequest,
   Plan,
   SetUserPlanRequest,
   AdminStats,
@@ -375,6 +376,9 @@ export const api = {
     }),
 
   logout: () => post<StatusResponse>("/api/auth/logout"),
+  /** Erase the signed-in account. Password, or the email for a Google-only account. */
+  deleteAccount: (req: DeleteAccountRequest) =>
+    del<StatusResponse>("/api/auth/account", req),
 
   me: (force = false) => cachedGet<Account>(ME_KEY, { ttl: TTL_SESSION, force }),
 

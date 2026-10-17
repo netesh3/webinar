@@ -2633,6 +2633,11 @@ export interface Account {
    */
   hostRequestedAt?: string;
   /**
+   * HasPassword is false for a Google-only account. Deleting the account asks for
+   * the password when there is one and the email otherwise.
+   */
+  hasPassword: boolean;
+  /**
    * IsAdmin may grant CanHost to others. Set only from ADMIN_EMAILS at boot — there is no
    * endpoint that promotes an admin, deliberately, because a privilege grantable in-band is
    * grantable by whoever takes over one account.
@@ -4909,7 +4914,13 @@ export const PlanLaunchAttendees = 200;
 /**
  * SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes
  * the subscription, back to the launch default.
+ *  DeleteAccountRequest is DELETE /api/auth/account. Password for an account
+ *  * that has one; a Google-only account types its email back instead.
  */
+export interface DeleteAccountRequest {
+  password?: string;
+  email?: string;
+}
 export interface SetUserPlanRequest {
   plan: Plan;
 }

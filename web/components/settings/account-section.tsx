@@ -1,7 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Modal } from "../controls";
 import { HostRequest } from "../host-request";
-import { Badge, Card } from "../ui";
+import { useSession } from "../providers";
+import { Badge, Button, Card } from "../ui";
+import { api } from "@/lib/api";
 import type { Account } from "@/lib/api-types";
 
 /** The account itself: the address you sign in with, and whether an
@@ -43,6 +48,98 @@ export function AccountSection({ account }: { account: Account }) {
           </Badge>
         </div>
       </Card>
+      <DeleteAccount account={account} />
     </section>
+  );
+}
+
+/** Erasing the account. Confirmed with the password, or the email for an account
+ *  that signs in with Google only. */
+function DeleteAccount({ account }: { account: Account }) {
+  const router = useRouter();
+  const { signOut } = useSession();
+  const [open, setOpen] = useState(false);
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function close() {
+    if (busy) return;
+    setOpen(false);
+    setSecret("");
+    setError(null);
+  }
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteAccount(
+        account.hasPassword ? { password: secret } : { email: secret },
+      );
+      await signOut().catch(() => {});
+      router.push("/");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That didn't work.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mt-4 grid max-w-lg gap-3 border-live/30 p-5">
+      <div>
+        <div className="text-[13px] font-medium text-live">Delete account</div>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-2">
+          Permanently deletes your account, your webinars and their recordings, and your
+          contacts and messages. Payment records are kept, as tax law requires.
+        </p>
+      </div>
+      <div>
+        <Button variant="danger" size="sm" onClick={() => setOpen(true)}>
+          Delete account…
+        </Button>
+      </div>
+      <Modal
+        open={open}
+        onClose={close}
+        size="sm"
+        title="Delete your account?"
+        description="This can't be undone."
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={close} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void confirm()}
+              disabled={busy || secret.trim() === ""}
+            >
+              {busy ? "Deleting…" : "Delete account"}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-2">
+          <p className="text-[12.5px] leading-relaxed text-ink-2">
+            Your webinars, recordings, contacts and messages are deleted. Payment records
+            are kept, as tax law requires.
+          </p>
+          <label className="label" htmlFor="delete-confirm">
+            {account.hasPassword ? "Your password" : `Type ${account.email} to confirm`}
+          </label>
+          <input
+            id="delete-confirm"
+            className="field"
+            type={account.hasPassword ? "password" : "email"}
+            autoComplete={account.hasPassword ? "current-password" : "off"}
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+          />
+          {error && <p className="text-[12px] font-medium text-live">{error}</p>}
+        </div>
+      </Modal>
+    </Card>
   );
 }

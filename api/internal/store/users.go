@@ -155,6 +155,7 @@ func (u User) Public() types.Account {
 	if u.HostRequestedAt != nil {
 		a.HostRequestedAt = u.HostRequestedAt.UTC().Format(time.RFC3339)
 	}
+	a.HasPassword = u.PasswordHash != ""
 	if u.YouTubeRefresh != "" {
 		a.YouTube = &types.YouTubeLink{
 			Connected:    true,
@@ -476,33 +477,67 @@ func (s *Store) ClearHostRequest(ctx context.Context, id string) error {
 	return err
 }
 
-/* DeleteUser removes an account, for the admin panel.
+/* DeleteUser removes an account and returns its avatar's storage key, so the
+ * caller can delete that file once the row is gone.
  *
  * Refuses with ErrHasWebinars while the account still hosts any webinar —
  * webinars.host_id is ON DELETE RESTRICT on purpose (see the error's own
  * comment), so this checks first and returns a message an admin can act on,
  * rather than letting the query fail and surfacing a raw constraint
- * violation. Everything else the account owns — registrations, panelist
- * seats, notifications — cascades at the schema level and needs no help here.
+ * violation. webinar_series.host_id is RESTRICT too; a series with no
+ * webinars left is only a recurrence rule, so it goes with the account.
+ * Everything else the account owns cascades at the schema level. Billing
+ * orders are the exception that is kept: their user_id goes NULL (0104), since
+ * invoices outlive the account for tax law.
  */
-func (s *Store) DeleteUser(ctx context.Context, id string) error {
+func (s *Store) DeleteUser(ctx context.Context, id string) (string, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
 	var owned int
-	if err := s.pool.QueryRow(ctx,
+	if err := tx.QueryRow(ctx,
 		`SELECT count(*) FROM webinars WHERE host_id = $1`, id).Scan(&owned); err != nil {
-		return err
+		return "", err
 	}
 	if owned > 0 {
-		return ErrHasWebinars
+		return "", ErrHasWebinars
 	}
-
-	tag, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if _, err := tx.Exec(ctx, `DELETE FROM webinar_series WHERE host_id = $1`, id); err != nil {
+		return "", err
+	}
+	var avatarKey string
+	err = tx.QueryRow(ctx,
+		`DELETE FROM users WHERE id = $1 RETURNING avatar_storage_key`, id).Scan(&avatarKey)
+	if noRows(err) {
+		return "", ErrNotFound
+	}
 	if err != nil {
-		return err
+		return "", err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	return avatarKey, tx.Commit(ctx)
+}
+
+// WebinarSlugsHostedBy lists every webinar an account hosts, for deleting the account.
+func (s *Store) WebinarSlugsHostedBy(ctx context.Context, hostID string) (slugs []string, live bool, err error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT slug, status = 'live' FROM webinars WHERE host_id = $1 ORDER BY starts_at`, hostID)
+	if err != nil {
+		return nil, false, err
 	}
-	return nil
+	defer rows.Close()
+	for rows.Next() {
+		var slug string
+		var isLive bool
+		if err := rows.Scan(&slug, &isLive); err != nil {
+			return nil, false, err
+		}
+		slugs = append(slugs, slug)
+		live = live || isLive
+	}
+	return slugs, live, rows.Err()
 }
 
 // TouchLogin records a successful sign-in. Best-effort by design: failing to

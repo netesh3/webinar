@@ -98,7 +98,11 @@ export const patch = <T>(path: string, body: unknown) =>
 export const put = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PUT", body: JSON.stringify(body) });
 
-export const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
+export const del = <T>(path: string, body?: unknown) =>
+  request<T>(path, {
+    method: "DELETE",
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 
 /** Reads the browser must not keep: a live badge, the room, the inbox, alerts. */
 export const fresh = { cache: "no-store" } as const;

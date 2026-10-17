@@ -253,6 +253,11 @@ func (s *Server) handleRazorpayWebhook(w http.ResponseWriter, r *http.Request) {
 			"kept", order.RazorpayPaymentID, "extra", p.PaymentID)
 		w.WriteHeader(http.StatusOK)
 		return
+	case errors.Is(err, store.ErrAccountGone):
+		s.log.Error("billing: payment for a deleted account, refund it", "order", p.OrderID,
+			"payment", p.PaymentID)
+		w.WriteHeader(http.StatusOK)
+		return
 	case err != nil:
 		// 5xx: Razorpay retries, which is what a transient database error wants.
 		s.fail(w, r, "razorpay webhook: fulfil", err)

@@ -441,6 +441,8 @@ func (s *Server) Routes() http.Handler {
 		r.With(s.requireUser).Get("/auth/avatar", s.handleAvatar)
 		r.With(s.requireUser).Post("/auth/avatar", s.handleUploadAvatar)
 		r.With(s.requireUser).Delete("/auth/avatar", s.handleDeleteAvatar)
+		// Erasure. Same budget as login: it checks a password.
+		r.With(s.requireUser, loginLimit.Middleware).Delete("/auth/account", s.handleDeleteAccount)
 
 		// ---------------- telemetry (off unless TelemetryEnabled; see handleTelemetry) ----------------
 		r.With(telemetryLimit.Middleware).Post("/telemetry", s.handleTelemetry)

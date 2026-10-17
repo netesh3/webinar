@@ -316,7 +316,7 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.store.DeleteUser(r.Context(), targetID)
+	avatarKey, err := s.store.DeleteUser(r.Context(), targetID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
@@ -330,6 +330,7 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.removeAccountFiles(r.Context(), targetID, avatarKey)
 	s.log.Info("account deleted by admin", "admin", admin.ID, "target", targetID)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
 }
