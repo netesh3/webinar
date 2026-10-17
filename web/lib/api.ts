@@ -5,6 +5,9 @@ import type {
   SalesInbox,
   ChatMessage as ChatTranscriptMessage,
   Account,
+  AccountKind,
+  AdminAccountCounts,
+  SetAccountKindRequest,
   DeleteAccountRequest,
   Plan,
   PlanFeatures,
@@ -399,12 +402,13 @@ export const api = {
   resetPassword: (token: string, password: string) =>
     post<Account>("/api/auth/password/reset", { token, password }),
 
-  /** Exchange a Google ID token for the webcast_session cookie.
-   *  Unused by the product UI (no One Tap). nonce must match GIS when used. */
-  googleAuth: (idToken: string, nonce?: string) =>
+  /** Exchange a One Tap Google ID token for the webcast_session cookie. nonce must
+   *  match GIS. from "webinar" marks a new account as webinar audience. */
+  googleAuth: (idToken: string, nonce?: string, from?: "webinar") =>
     post<Account>("/api/auth/google", {
       idToken,
       ...(nonce ? { nonce } : {}),
+      ...(from ? { from } : {}),
     }),
 
   /** Legacy: exchange a Supabase Auth access token for webcast_session. */
@@ -948,11 +952,21 @@ export const api = {
 
   /** Every account, for the admin panel. Admin-only server side; `q` filters by
    *  email or name. */
-  adminUsers: (q = "") =>
+  adminUsers: (q = "", kind: AccountKind = "customer") =>
     request<AdminUser[]>(
-      `/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+      `/api/admin/users?kind=${kind}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
       fresh,
     ),
+
+  /** How many accounts are in each admin list (customers, webinar audience). */
+  adminAccountCounts: () => request<AdminAccountCounts>("/api/admin/users/counts", fresh),
+
+  /** Move an account between the customer list and the webinar-audience list.
+   *  Does not grant or remove hosting. */
+  setAccountKind: (userId: string, kind: AccountKind) =>
+    patch<Account>(`/api/admin/users/${seg(userId)}/kind`, {
+      kind,
+    } satisfies SetAccountKindRequest),
 
   /** Grant or revoke the hosting capability. A PATCH stating what the value should BE,
    *  not a grant/revoke pair, so a retried request cannot double-apply. */

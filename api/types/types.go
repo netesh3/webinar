@@ -2567,6 +2567,13 @@ type AdminUser struct {
 	TrialFlag string `json:"trialFlag,omitempty"`
 	// TrialExemption is an admin's open "allow another trial" for this account.
 	TrialExemption bool `json:"trialExemption,omitempty"`
+	// AccountKind says whether this person signed up for Webinar Liv (customer) or
+	// only registered for somebody's webinar (audience). See AccountKind.
+	AccountKind AccountKind `json:"accountKind"`
+	// RegistrationCount is how many webinars this account has registered for, and
+	// LastWebinarTopic the most recent of them; the audience list shows both.
+	RegistrationCount int    `json:"registrationCount"`
+	LastWebinarTopic  string `json:"lastWebinarTopic,omitempty"`
 	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 	// Features are the switches in effect: the plan's, with this account's overrides
@@ -2587,7 +2594,11 @@ type AdminUser struct {
  * actually draws.
  */
 type AdminStats struct {
-	Accounts      int `json:"accounts"`
+	Accounts int `json:"accounts"`
+	// Customers and Audience split Accounts: signed up for the app vs made by a
+	// webinar registration (see AccountKind).
+	Customers     int `json:"customers"`
+	Audience      int `json:"audience"`
 	Hosts         int `json:"hosts"`
 	Admins        int `json:"admins"`
 	CdnBroadcast  int `json:"cdnBroadcast"`
@@ -2732,6 +2743,9 @@ type SupabaseAuthRequest struct {
 type GoogleAuthRequest struct {
 	IDToken string `json:"idToken"`
 	Nonce   string `json:"nonce,omitempty"`
+	// From is "webinar" when One Tap ran on a webinar's registration page: a new
+	// account made there is audience, not a customer. See AccountKind.
+	From string `json:"from,omitempty"`
 }
 
 /* HostRequest is POST /api/me/host-request.
@@ -3011,6 +3025,28 @@ type DeleteAccountRequest struct {
 
 type SetUserPlanRequest struct {
 	Plan Plan `json:"plan"`
+}
+
+/* AccountKind separates the people who signed up for Webinar Liv from the people
+ * a coach's webinar brought in. An audience account is created by registering for
+ * a webinar; it becomes a customer when it signs in from the app, pays, starts a
+ * trial, is given a plan or hosting, or an admin moves it. */
+type AccountKind string
+
+const (
+	AccountCustomer AccountKind = "customer"
+	AccountAudience AccountKind = "audience"
+)
+
+// SetAccountKindRequest is PATCH /api/admin/users/{id}/kind.
+type SetAccountKindRequest struct {
+	Kind AccountKind `json:"kind"`
+}
+
+// AdminAccountCounts is GET /api/admin/users/counts: the size of each list.
+type AdminAccountCounts struct {
+	Customers int `json:"customers"`
+	Audience  int `json:"audience"`
 }
 
 // RoomMeta is mirrored into LiveKit room metadata on every control change.

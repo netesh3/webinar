@@ -652,7 +652,9 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		Name:          identity.Name,
 		Picture:       identity.Picture,
 		EmailVerified: identity.EmailVerified,
-	}, "supabase auth")
+		// Kind unknown on this path (it does not say where it started): a new account
+		// gets the default, an existing one keeps its kind.
+	}, "supabase auth", "")
 	if errors.Is(err, errOAuthSignupClosed) {
 		httpx.Error(w, http.StatusForbidden, "signup_closed",
 			"New accounts are closed on this instance.")
