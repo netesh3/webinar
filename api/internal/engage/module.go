@@ -114,6 +114,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	public.Post("/webhooks/whatsapp", s.handleWhatsAppWebhook)
 	// A template header's file, by its unguessable link: what Meta fetches at send time.
 	public.Get("/wa/files/{token}", s.handleCRMPublicFile)
+	public.Get("/wa/files/{token}/thumb", s.handleCRMPublicThumb)
 	s.mountEmail(public, host)
 
 	/* Connect WhatsApp. A POST callback rather than a GET one, because Embedded Signup
@@ -164,6 +165,11 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Post("/crm/templates/starters", s.handleCreateCRMStarterTemplates)
 	host.Post("/crm/templates", s.handleCreateCRMWording)
 	host.Post("/crm/media", s.handleUploadCRMMedia)
+	// The media library behind the gallery: list, rename, delete one or several.
+	host.Get("/crm/media", s.handleCRMMediaLibrary)
+	host.Patch("/crm/media/{id}", s.handleRenameCRMMedia)
+	host.Delete("/crm/media/{id}", s.handleDeleteCRMMedia)
+	host.Post("/crm/media/delete", s.handleDeleteCRMMediaBatch)
 	host.Put("/crm/templates/{name}/{language}/media", s.handleSetCRMTemplateMedia)
 	host.Put("/crm/recipes/{id}", s.handleSaveCRMRecipe)
 	host.Post("/crm/test-send", s.handleCRMTestSend)

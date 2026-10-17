@@ -488,14 +488,9 @@ function CardsEditor({
           <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-3">
             <HeaderFileButton
               format="IMAGE"
+              formats={["IMAGE", "VIDEO"]}
               aspect={value.cardAspect}
-              label={c.file?.kind === "image" ? "Replace image" : "Upload image"}
-              disabled={disabled}
-              onUploaded={(file) => update(i, { file })}
-            />
-            <HeaderFileButton
-              format="VIDEO"
-              label={c.file?.kind === "video" ? "Replace video" : "Video"}
+              label={c.file ? "Replace media" : "Choose media"}
               disabled={disabled}
               onUploaded={(file) => update(i, { file })}
             />
@@ -867,7 +862,7 @@ export function BroadcastExtras({
           <legend className="label">Card pictures</legend>
           <p className="text-[11.5px] text-ink-3">
             {template.needsCardFiles
-              ? `This carousel was written in WhatsApp Manager, so upload a picture for each of its ${cards.length} cards.`
+              ? `This carousel was written in WhatsApp Manager, so choose a picture for each of its ${cards.length} cards.`
               : "Each card sends its template picture unless you choose new ones here — for every card, or none."}
           </p>
           <div className="grid gap-1.5 sm:grid-cols-2">
@@ -886,7 +881,7 @@ export function BroadcastExtras({
                   <HeaderFileButton
                     format={format}
                     aspect={format === "IMAGE" ? aspect : undefined}
-                    label={own ? "Replace" : "Upload"}
+                    label={own ? "Replace" : "Choose"}
                     onUploaded={(f) =>
                       onChange({
                         ...value,

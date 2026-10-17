@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { WebinarImagePicker } from "../webinar-image-picker";
 import { api } from "@/lib/api";
+import type { CRMMediaFile } from "@/lib/api-types";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
 import { FormSection, Text } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
@@ -13,6 +14,7 @@ export function BasicsSection({
   fields,
   imagePreview,
   onImage,
+  onImageFromMedia,
   onImageRemove,
 }: {
   form: FormState;
@@ -20,6 +22,7 @@ export function BasicsSection({
   fields: Record<string, string>;
   imagePreview: string | null;
   onImage: (prepared: PreparedWebinarImage, preview: string) => void;
+  onImageFromMedia?: (file: CRMMediaFile, preview: string) => void;
   onImageRemove: () => void;
 }) {
   /* Topic tag suggestions: this host's OWN tags, fetched from the API rather
@@ -133,6 +136,7 @@ export function BasicsSection({
             <WebinarImagePicker
               previewUrl={imagePreview}
               onChange={onImage}
+              onPickMedia={onImageFromMedia}
               onRemove={onImageRemove}
             />
           </div>

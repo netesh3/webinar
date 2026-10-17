@@ -22,6 +22,7 @@ export {
   MessagesNavButton,
 } from "./slots";
 export { WhatsAppScreen } from "./components/whatsapp-screen";
+export { CoverGallery, useMediaLibrary } from "./components/media-gallery";
 export { WhatsAppFrame, type WhatsAppTab } from "./components/whatsapp-frame";
 export { useRosterMessaging } from "./components/roster";
 export { followupGroups, type FollowupGroup } from "./buckets";

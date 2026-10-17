@@ -3819,12 +3819,127 @@ export interface CRMMediaFile {
   bytes: number /* int64 */;
   url: string;
   /**
-   * * For an image just uploaded: its size after processing, and the upload's size
-   * 	 *  before. Absent on files read back later.
+   * * An image's pixels, when known. OriginalBytes is the upload's size before
+   * 	 *  processing, only on the upload's own response.
    */
   width?: number /* int */;
   height?: number /* int */;
   originalBytes?: number /* int64 */;
+  /**
+   * * In the media library: a small preview for the grid (images only) and a link
+   * 	 *  for the browser to show the file. Short-lived when the store signs links.
+   */
+  thumbUrl?: string;
+  viewUrl?: string;
+  createdAt?: string;
+  /**
+   * * Where the file is still used; deleting it is refused while this is non-empty.
+   */
+  inUse?: boolean;
+  usages?: CRMMediaUsage[];
+}
+/**
+ *  CRMMediaUsage is one place a library file is used: a template's default header,
+ *  * a carousel card of a template, or a broadcast that has not gone out yet.
+ */
+export interface CRMMediaUsage {
+  /**
+   * * template, carousel or broadcast.
+   */
+  kind: string;
+  name: string;
+  language?: string;
+  /**
+   * * A broadcast's send time, RFC 3339.
+   */
+  scheduledAt?: string;
+}
+/**
+ * CRMMediaLibrary is GET /crm/media: one page of the host's files, newest first.
+ */
+export interface CRMMediaLibrary {
+  files: CRMMediaFile[];
+  nextCursor?: string;
+  /**
+   * UsedBytes of LimitBytes: the library's space, all kinds together. A file
+   * bigger than what is left is refused (413 media_quota_exceeded).
+   */
+  usedBytes: number /* int64 */;
+  limitBytes: number /* int64 */;
+}
+/**
+ *  CRMMediaQuotaError is the 413 media_quota_exceeded body: the upload does not fit in
+ *  * what is left of the library's space. FileBytes is the upload's size (at least, for a
+ *  * stream cut off when it passed the limit).
+ */
+export interface CRMMediaQuotaError {
+  error: string;
+  message: string;
+  usedBytes: number /* int64 */;
+  limitBytes: number /* int64 */;
+  fileBytes: number /* int64 */;
+}
+/**
+ *  DefaultMediaQuotaMB is the media library's space for an account with no limit of
+ *  * its own (MEDIA_QUOTA_DEFAULT_MB overrides it per deployment). MaxMediaQuotaMB is
+ *  * the most an admin can give one account.
+ */
+export const DefaultMediaQuotaMB = 10;
+/**
+ *  DefaultMediaQuotaMB is the media library's space for an account with no limit of
+ *  * its own (MEDIA_QUOTA_DEFAULT_MB overrides it per deployment). MaxMediaQuotaMB is
+ *  * the most an admin can give one account.
+ */
+export const MaxMediaQuotaMB = 10 * 1024;
+/**
+ * WebinarImageFromMediaRequest is POST /host/webinars/{slug}/image/from-media.
+ */
+export interface WebinarImageFromMediaRequest {
+  mediaId: string;
+}
+/**
+ * SetUserMediaQuotaRequest is PATCH /api/admin/users/{id}/media-quota. Null is the default.
+ */
+export interface SetUserMediaQuotaRequest {
+  mediaQuotaBytes?: number /* int64 */;
+}
+/**
+ * CRMMediaRenameRequest is PATCH /crm/media/{id}.
+ */
+export interface CRMMediaRenameRequest {
+  filename: string;
+}
+/**
+ * CRMMediaDeleteRequest is POST /crm/media/delete: several files at once.
+ */
+export interface CRMMediaDeleteRequest {
+  ids: string[];
+}
+/**
+ *  CRMMediaDeleteResult says what a delete did: the files removed, and the ones kept
+ *  * with why (still used — and where — or the storage refused).
+ */
+export interface CRMMediaDeleteResult {
+  deleted: string[];
+  skipped: CRMMediaSkipped[];
+  /**
+   * The library's space after the delete: freed at once.
+   */
+  usedBytes: number /* int64 */;
+  limitBytes: number /* int64 */;
+}
+/**
+ * CRMMediaSkipped is one file a delete left in place.
+ */
+export interface CRMMediaSkipped {
+  id: string;
+  filename?: string;
+  /**
+   * * in_use, not_found or storage.
+   */
+  reason: string;
+  message: string;
+  usages?: CRMMediaUsage[];
 }
 /**
  *  CRMWordingRequest is wording the host typed, submitted to Meta for approval.
@@ -5279,6 +5394,14 @@ export interface AdminUser {
    * off. A feature absent here inherits from the plan.
    */
   featureOverrides: { [key: string]: boolean};
+  /**
+   * MediaQuotaBytes is this account's own media library limit; absent is the default.
+   * MediaLimitBytes is the limit in effect (its own, or the deployment default), and
+   * MediaUsedBytes what its library holds now.
+   */
+  mediaQuotaBytes?: number /* int64 */;
+  mediaLimitBytes: number /* int64 */;
+  mediaUsedBytes: number /* int64 */;
 }
 /**
  *  AdminStats is the admin dashboard's first read.

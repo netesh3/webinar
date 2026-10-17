@@ -169,6 +169,20 @@ func (s *Store) SetUserMaxDuration(ctx context.Context, userID string, maxDurati
 	return u, err
 }
 
+/* SetUserMediaQuota sets an account's media library limit in bytes; nil puts it back
+ * on the deployment default (MEDIA_QUOTA_DEFAULT_MB). Lowering it below what the
+ * library already holds deletes nothing — further uploads are refused until it fits. */
+func (s *Store) SetUserMediaQuota(ctx context.Context, userID string, quotaBytes *int64) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET media_quota_bytes = $2 WHERE id = $1`, userID, quotaBytes)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 /* SetCdnBroadcastCapability configures whether an account's webinars stream to attendees via CDN HLS.
  */
 func (s *Store) SetCdnBroadcastCapability(ctx context.Context, userID string, canCdnBroadcast bool) (User, error) {
@@ -350,7 +364,9 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		       u.account_kind, coalesce(u.sfu_project, ''),
 		       (SELECT count(*) FROM registrations r WHERE r.user_id = u.id),
 		       coalesce((SELECT w.topic FROM registrations r JOIN webinars w ON w.id = r.webinar_id
-		                  WHERE r.user_id = u.id ORDER BY r.created_at DESC LIMIT 1), '')
+		                  WHERE r.user_id = u.id ORDER BY r.created_at DESC LIMIT 1), ''),
+		       u.media_quota_bytes,
+		       coalesce((SELECT sum(m.bytes) FROM crm_media_files m WHERE m.host_id = u.id), 0)::bigint
 		  FROM users u
 		 WHERE (lower(u.email) LIKE $1 OR lower(u.name) LIKE $1)
 		   AND ($3 = '' OR u.account_kind = $3)
@@ -372,7 +388,8 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
 			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff,
 			&u.TrialFlag, &u.TrialExemption,
-			&u.AccountKind, &u.SFUProject, &u.RegistrationCount, &u.LastWebinarTopic); err != nil {
+			&u.AccountKind, &u.SFUProject, &u.RegistrationCount, &u.LastWebinarTopic,
+			&u.MediaQuotaBytes, &u.MediaUsedBytes); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)

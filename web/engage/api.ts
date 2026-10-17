@@ -56,7 +56,11 @@ import type {
   CRMTag,
   CRMTagRequest,
   CRMTagsResponse,
+  CRMMediaDeleteRequest,
+  CRMMediaDeleteResult,
   CRMMediaFile,
+  CRMMediaLibrary,
+  CRMMediaRenameRequest,
   CRMTemplate,
   CRMTemplateMediaRequest,
   CRMTemplatesResponse,
@@ -548,6 +552,27 @@ export const engageApi = {
         headers: { "Content-Type": file.type || "application/octet-stream" },
       },
     ),
+
+  /** One page of the media library, newest first. `type` is image, video or document;
+   *  `cursor` is the previous page's nextCursor. The links in it are short-lived. */
+  listCrmMedia: (opts: { type?: string; q?: string; cursor?: string; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.type) qs.set("type", opts.type);
+    if (opts.q?.trim()) qs.set("q", opts.q.trim());
+    if (opts.cursor) qs.set("cursor", opts.cursor);
+    if (opts.limit) qs.set("limit", String(opts.limit));
+    const tail = qs.toString();
+    return request<CRMMediaLibrary>(`/api/host/crm/media${tail ? `?${tail}` : ""}`, fresh);
+  },
+
+  /** Rename a library file (the name a document is sent with). */
+  renameCrmMedia: (id: string, filename: string) =>
+    patch<CRMMediaFile>(`/api/host/crm/media/${seg(id)}`, { filename } satisfies CRMMediaRenameRequest),
+
+  /** Delete one or several library files. Files still in use are kept, listed with
+   *  where they are used; the rest leave storage and then the library. */
+  deleteCrmMedia: (ids: string[]) =>
+    post<CRMMediaDeleteResult>("/api/host/crm/media/delete", { ids } satisfies CRMMediaDeleteRequest),
 
   /** Set (or, with no fileId, clear) the file a media-header template sends by default. */
   setCrmTemplateMedia: async (name: string, language: string, fileId: string) => {

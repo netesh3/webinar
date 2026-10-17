@@ -1,8 +1,7 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { engageApi } from "../api";
-import { Spinner } from "@/components/controls";
 import { MaterialIcon } from "@/components/icons";
 import { useToast } from "@/components/providers";
 import { Button } from "@/components/ui";
@@ -11,7 +10,6 @@ import type { CRMMediaFile, CRMTemplate, CRMTemplateHeaderInput } from "@/lib/ap
 import {
   MEDIA_RULES,
   MAX_HEADER_TEXT,
-  headerFileProblem,
   headerSummary,
   headerTextProblem,
   isMediaFormat,
@@ -19,8 +17,8 @@ import {
   type HeaderFormat,
   type MediaFormat,
 } from "../header-media";
-import { isHeic, processedSummary, sizeText } from "../template-options";
-import { prepareImage } from "./image-upload";
+import { processedSummary, sizeText } from "../template-options";
+import { MediaGallery } from "./media-gallery";
 
 /* A template's header, everywhere it is written or shown: the picker in the editors,
  * the top of a WhatsApp bubble, the file a template sends by default, and a
@@ -34,7 +32,7 @@ export const NO_HEADER: HeaderDraft = { format: "NONE", text: "", file: null };
 export function headerDraftProblem(h: HeaderDraft): string | null {
   if (h.format === "TEXT") return headerTextProblem(h.text);
   if (isMediaFormat(h.format) && !h.file) {
-    return `Upload the ${MEDIA_RULES[h.format].label.toLowerCase()} Meta should review it with.`;
+    return `Choose the ${MEDIA_RULES[h.format].label.toLowerCase()} Meta should review it with.`;
   }
   return null;
 }
@@ -119,79 +117,50 @@ export function fileDetail(f: CRMMediaFile): string {
   return f.width ? processedSummary(f) : sizeText(f.bytes);
 }
 
-/** A button that picks a file, checks it against Meta's limits, and uploads it. */
+/** A button that opens the media gallery: pick a file uploaded before, or upload a
+ *  new one there (checked against Meta's limits). `onUploaded` gets the chosen file. */
 export function HeaderFileButton({
   format,
+  formats,
   label,
   disabled,
   aspect,
   onUploaded,
 }: {
   format: MediaFormat;
+  /** More than one kind is fine here (a carousel card: image or video). */
+  formats?: MediaFormat[];
   label: string;
   disabled?: boolean;
-  /** A carousel card's shape: the server center-crops the image to it. */
+  /** A carousel card's shape: other images cannot be picked, uploads are cropped to it. */
   aspect?: "square" | "wide";
   onUploaded: (file: CRMMediaFile) => void | Promise<void>;
 }) {
-  const { notify } = useToast();
-  const input = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const rule = MEDIA_RULES[format];
-
-  async function pick(file: File | undefined) {
-    if (!file) return;
-    setBusy(true);
-    try {
-      // An iPhone photo is converted here when the browser can read it.
-      const ready = format === "IMAGE" && isHeic(file) ? await prepareImage(file) : file;
-      const problem = headerFileProblem(format, ready);
-      if (problem) {
-        notify(problem, "error");
-        return;
-      }
-      const saved = await engageApi.uploadCrmMedia(ready, format === "IMAGE" ? aspect : undefined);
-      if (saved.width && saved.originalBytes && saved.originalBytes !== saved.bytes) {
-        notify(`Image ready for WhatsApp: ${processedSummary(saved)}.`, "ok");
-      }
-      await onUploaded(saved);
-    } catch (e) {
-      notify(
-        e instanceof ApiError || e instanceof Error ? e.message : "Could not upload that file.",
-        "error",
-      );
-    } finally {
-      setBusy(false);
-      if (input.current) input.current.value = "";
-    }
-  }
-
+  const [open, setOpen] = useState(false);
+  const accept = formats ?? [format];
+  const close = useCallback(() => setOpen(false), []);
   return (
     <>
-      <input
-        ref={input}
-        type="file"
-        className="sr-only"
-        accept={(format === "IMAGE"
-          ? [...rule.types, "image/heic", "image/heif", ".heic", ".heif"]
-          : rule.types
-        ).join(",")}
-        aria-label={`${rule.label} file`}
-        onChange={(e) => void pick(e.target.files?.[0])}
-        tabIndex={-1}
-      />
       <Button
         type="button"
         size="sm"
         variant="secondary"
         className="h-7 px-2.5 text-[12px]"
-        disabled={disabled || busy}
-        onClick={() => input.current?.click()}
-        title={rule.hint}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        title={accept.map((f) => MEDIA_RULES[f].hint).join(" · ")}
       >
-        {busy ? <Spinner className="size-3.5" /> : <MaterialIcon name="upload" className="!text-[15px]" />}
+        <MaterialIcon name="perm_media" className="!text-[15px]" />
         {label}
       </Button>
+      <MediaGallery
+        open={open}
+        onClose={close}
+        accept={accept}
+        aspect={accept.includes("IMAGE") ? aspect : undefined}
+        title={label}
+        onSelect={onUploaded}
+      />
     </>
   );
 }
@@ -254,7 +223,7 @@ export function HeaderPicker({
         <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-3">
           <HeaderFileButton
             format={media}
-            label={value.file ? "Replace" : `Upload ${MEDIA_RULES[media].label.toLowerCase()}`}
+            label={value.file ? "Replace" : `Choose ${MEDIA_RULES[media].label.toLowerCase()}`}
             disabled={disabled}
             onUploaded={(file) => onChange({ ...value, file })}
           />
@@ -318,7 +287,7 @@ export function TemplateHeaderFile({
         </span>
         <HeaderFileButton
           format={format}
-          label={file ? "Replace" : "Set file"}
+          label={file ? "Replace" : "Choose file"}
           disabled={busy}
           onUploaded={(f) => save(f.id)}
         />
@@ -400,7 +369,7 @@ export function BroadcastHeaderPicker({
       <div>
         <HeaderFileButton
           format={format}
-          label={ownFile ? "Choose another file" : "Upload a file for this broadcast"}
+          label={ownFile ? "Choose another file" : "Choose a file for this broadcast"}
           onUploaded={(f) => onChange({ mode: "file", fileId: f.id }, f)}
         />
       </div>

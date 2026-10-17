@@ -48,6 +48,7 @@ only calls webinar code makes into the CRM:
 | `DecorateRegistrants` | roster GET | fill `whatsappStatus` and `lastInboundAt` |
 | `Tick` | sweeper, realtime lane | advance drips, advance bots, flush the WhatsApp outbox, reply digests |
 | `Maintain` | sweeper, maintenance lane (runs beside `Tick`) | WhatsApp token checks, media copies and expiry, finished bot-session cleanup |
+| `OpenMediaForHost` | `POST /host/webinars/{slug}/image/from-media` | opens one of the host's media library files (bytes + type) so the webinar side can copy it into the cover; `store.ErrNotFound` when not theirs. Not a hook: a read, and its error is the caller's |
 
 The contract for every hook:
 

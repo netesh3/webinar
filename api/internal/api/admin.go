@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -49,6 +50,12 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, r, "admin users", err)
 		return
+	}
+	for i := range users {
+		users[i].MediaLimitBytes = s.cfg.MediaQuotaDefaultBytes()
+		if q := users[i].MediaQuotaBytes; q != nil {
+			users[i].MediaLimitBytes = *q
+		}
 	}
 	httpx.JSON(w, http.StatusOK, users)
 }
@@ -139,6 +146,32 @@ func (s *Server) handleSetHostCapability(w http.ResponseWriter, r *http.Request)
 		"admin", admin.ID, "target", updated.ID, "can_host", updated.CanHost)
 
 	httpx.JSON(w, http.StatusOK, updated.Public())
+}
+
+/* handleSetUserMediaQuota is PATCH /api/admin/users/{id}/media-quota: how much this
+ * account may keep in its WhatsApp media library, in bytes. Null is the default. */
+func (s *Server) handleSetUserMediaQuota(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	targetID := chi.URLParam(r, "id")
+	var body types.SetUserMediaQuotaRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if q := body.MediaQuotaBytes; q != nil && (*q <= 0 || *q > int64(types.MaxMediaQuotaMB)<<20) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_quota",
+			fmt.Sprintf("The media limit is above 0 and at most %d GB, or blank for the default.", types.MaxMediaQuotaMB/1024))
+		return
+	}
+	if err := s.store.SetUserMediaQuota(r.Context(), targetID, body.MediaQuotaBytes); errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
+		return
+	} else if err != nil {
+		s.fail(w, r, "set user media quota", err)
+		return
+	}
+	s.log.Info("user media quota changed", "admin", admin.ID, "target", targetID, "media_quota_bytes", body.MediaQuotaBytes)
+	httpx.JSON(w, http.StatusOK, body)
 }
 
 /* handleSetUserMaxDuration is PATCH /api/admin/users/{id}/max-duration.
