@@ -46,7 +46,8 @@ only calls webinar code makes into the CRM:
 | `OnScored` | after engagement is computed (end of session, recompute) | `attended` drips narrowed to engagement tiers (Follow up recipes) |
 | `OnRecordingPublished` | recording made public | queue `wa_replay` for opted-in contacts |
 | `DecorateRegistrants` | roster GET | fill `whatsappStatus` and `lastInboundAt` |
-| `Tick` | 30 s sweeper | advance drips, advance bots, flush the WhatsApp outbox |
+| `Tick` | sweeper, realtime lane | advance drips, advance bots, flush the WhatsApp outbox, reply digests |
+| `Maintain` | sweeper, maintenance lane (runs beside `Tick`) | WhatsApp token checks, media copies and expiry, finished bot-session cleanup |
 
 The contract for every hook:
 
