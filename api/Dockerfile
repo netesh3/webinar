@@ -16,17 +16,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-# `go mod download` above already fetched everything go.sum already knew
-# about; this catches anything the source imports that go.sum does not yet
-# have an entry for — normally nothing, so normally a fast no-op check, not
-# a real resolution pass. It exists because go.mod/go.sum are sometimes
-# updated by hand alongside new source in the same change, on a machine
-# without network access to run `go get` itself; this build environment
-# does have one, and self-healing the module graph here beats a build that
-# fails on a missing go.sum entry for a dependency the source clearly needs.
-# A repo that runs `go mod tidy` locally before every commit never notices
-# this step does anything at all.
-RUN go mod tidy
+# No `go mod tidy` here. It used to run on every build, which made the image
+# depend on what the module proxy answered that day rather than on the go.sum
+# in the commit. go.mod/go.sum are kept tidy in the repo instead; CI's
+# types/vet/test steps build from exactly what is committed, as this does.
 
 # CGO off so the result is fully static; -trimpath and -s -w for a smaller,
 # reproducible binary.

@@ -91,9 +91,14 @@ run gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
 # --suppress-logs: CI deploy SAs often lack permission to stream the default
 # Cloud Build log bucket; the build itself still runs. Status is returned either way.
+#
+# --machine-type: the default Cloud Build worker has a single vCPU, and compiling the
+# API (LiveKit, pion, pgx) was most of a ~4 minute build. An 8-vCPU worker builds it
+# in a fraction of that for a few cents more per deploy.
 run gcloud builds submit "$ROOT/api" \
   --tag "$IMAGE" \
   --project "$PROJECT" \
+  --machine-type=e2-highcpu-8 \
   --suppress-logs
 
 if [[ "$BUILD_ONLY" -eq 1 ]]; then

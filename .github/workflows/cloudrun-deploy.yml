@@ -203,7 +203,11 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
+      # gcloud is preinstalled on ubuntu-latest; skip the ~25s download and use it.
+      # The auth step above still provides the credentials.
       - uses: google-github-actions/setup-gcloud@v2
+        with:
+          skip_install: true
 
       - name: Deploy
         run: chmod +x deploy/cloudrun-deploy.sh && ./deploy/cloudrun-deploy.sh
