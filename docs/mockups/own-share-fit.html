@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Own share — fit to stage (mock)</title>
+<style>
+  :root { --ok:#22c55e; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px; background:#e9ebef; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#111; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#555; margin:0 0 24px; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:36px; }
+  .label { font-weight:600; margin:0 0 8px; display:flex; gap:8px; align-items:center; }
+  .tag { font-size:11px; padding:2px 8px; border-radius:99px; font-weight:600; }
+  .now { background:#fde2e2; color:#b42318; } .new { background:#dcfce7; color:#166534; }
+  .note { color:#444; font-size:12.5px; margin:8px 0 0; }
+
+  /* the room */
+  .room { aspect-ratio:16/9.4; background:#0b0b0c; border-radius:10px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(0,0,0,.18); }
+  .topbar { height:26px; display:flex; align-items:center; gap:6px; padding:0 10px; color:#ddd; font-size:10px; }
+  .topbar .pill { background:#1f1f22; border-radius:6px; padding:2px 7px; }
+  .stage { flex:1; position:relative; min-height:0; margin:0 8px; }
+  .ctrl { height:34px; display:flex; align-items:center; justify-content:center; gap:10px; color:#bbb; font-size:9px; }
+  .ctrl span { background:#1f1f22; padding:4px 8px; border-radius:6px; }
+  .ctrl .stop { background:#2563eb; color:#fff; }
+
+  .live { display:inline-flex; gap:4px; align-items:center; background:rgba(34,197,94,.15); color:var(--ok); font-weight:700; font-size:8.5px; letter-spacing:.06em; padding:2px 6px; border-radius:99px; }
+  .live:before { content:""; width:5px; height:5px; border-radius:99px; background:var(--ok); }
+  .hdr { display:flex; align-items:center; gap:6px; padding:5px 9px; font-size:10.5px; color:#eee; }
+  .hdr .t { color:#888; font-variant-numeric:tabular-nums; }
+  .btns { display:flex; justify-content:center; gap:6px; }
+  .btn { background:rgba(255,255,255,.12); color:#eee; font-size:9.5px; padding:5px 9px; border-radius:6px; }
+
+  /* fake screen content */
+  .screen { background:linear-gradient(#f6f7f9,#f6f7f9) padding-box; border:1px solid rgba(255,255,255,.18); border-radius:5px; position:relative; overflow:hidden; }
+  .screen:before { content:""; position:absolute; inset:0 0 auto 0; height:7%; background:#2f6fe4; }
+  .screen .side { position:absolute; left:0; top:7%; bottom:0; width:20%; background:#eceef2; }
+  .screen .card { position:absolute; background:#fff; border:1px solid #dde1e7; border-radius:3px; }
+  .screen .dock { position:absolute; left:25%; right:25%; bottom:2%; height:6%; background:rgba(0,0,0,.18); border-radius:4px; }
+  .win { background:#fff; border-radius:4px; position:relative; overflow:hidden; }
+  .win .side { position:absolute; left:0; top:0; bottom:0; width:20%; background:#f2f2f0; }
+  .win .text { position:absolute; left:23%; top:6%; width:30%; bottom:10%; background:repeating-linear-gradient(#e2e2e2 0 4px, transparent 4px 10px); }
+  .win .art { position:absolute; left:57%; top:6%; right:3%; bottom:10%; background:#f4f5f7; border:1px solid #e3e5e9; border-radius:3px; }
+
+  /* CURRENT entire screen */
+  .cur-full { position:absolute; inset:0; display:grid; place-items:center; text-align:center; color:#fff; }
+  .cur-full h3 { margin:0; font-size:13px; }
+  .cur-full p { margin:3px 0 0; font-size:8.5px; color:#aaa; }
+  .cur-full .screen { width:150px; aspect-ratio:16/10; margin:8px auto 0; }
+
+  /* NEW entire screen */
+  .new-stage { position:absolute; inset:0; display:flex; flex-direction:column; }
+  .fit { flex:1; min-height:0; display:grid; place-items:center; padding:4px 0; position:relative; }
+  .fit .screen { height:100%; aspect-ratio:16/10; max-width:100%; }
+  .snapchip { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.72); color:#fff; font-size:9px; padding:4px 9px; border-radius:99px; white-space:nowrap; }
+  .dim { filter:saturate(.75) brightness(.8); }
+  .foot { padding:5px 0 7px; }
+
+  /* window, current = overlays */
+  .ov-top { position:absolute; inset:0 0 auto 0; background:rgba(0,0,0,.55); }
+  .ov-bot { position:absolute; left:0; right:0; bottom:14px; }
+  .fill { position:absolute; inset:0; display:grid; place-items:center; }
+  .fill .win { width:100%; height:100%; }
+  .new-stage .fit .win { height:100%; aspect-ratio:16/10; max-width:100%; }
+</style>
+</head>
+<body>
+<h1>Your own share, fitted to the stage</h1>
+<p class="sub">Mock only. Left is how it looks now, right is the proposal. One layout for both: a header row, the picture as large as the stage allows (aspect kept, no cropping), and a row of buttons under the picture instead of on top of it.</p>
+
+<!-- ENTIRE SCREEN -->
+<div class="row">
+  <div>
+    <p class="label">Entire screen <span class="tag now">Now</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="hdr" style="position:absolute;top:0;left:0"><span class="live">LIVE</span>Sharing your entire screen <span class="t">0:15</span></div>
+        <div class="cur-full"><div>
+          <h3>Everyone can see your entire screen</h3>
+          <p>Including this page. Go to what you want to present.</p>
+          <div class="screen"><div class="side"></div><div class="dock"></div></div>
+          <p>When you started. No live preview here, or everyone would see an endless mirror of this page.</p>
+        </div></div>
+        <div class="btns" style="position:absolute;left:0;right:0;bottom:14px"><span class="btn">Share a window instead</span><span class="btn">Floating controls</span></div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span>Stop sharing</span><span class="stop">Stop sharing</span><span>More</span></div>
+    </div>
+    <p class="note">The snapshot is capped at 360 px wide, so on a laptop it fills about 20% of the stage.</p>
+  </div>
+
+  <div>
+    <p class="label">Entire screen <span class="tag new">Proposed</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="new-stage">
+          <div class="hdr"><span class="live">LIVE</span><b style="font-weight:600">Everyone can see your entire screen</b>, including this page <span class="t">0:15</span></div>
+          <div class="fit">
+            <div class="screen dim"><div class="side"></div>
+              <div class="card" style="left:26%;top:16%;width:30%;height:38%"></div>
+              <div class="card" style="left:60%;top:16%;width:34%;height:60%"></div>
+              <div class="dock"></div></div>
+            <span class="snapchip">Snapshot from when you started · not live, so this page doesn't mirror itself</span>
+          </div>
+          <div class="btns foot"><span class="btn">Share a window instead</span><span class="btn">Floating controls</span></div>
+        </div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span>Stop sharing</span><span class="stop">Stop sharing</span><span>More</span></div>
+    </div>
+    <p class="note">The snapshot fills the stage (object-contain), slightly dimmed, with a "not live" chip on it so nobody mistakes it for the live picture. The two text lines move into the header, and the mirror caption goes into the chip.</p>
+  </div>
+</div>
+
+<!-- WINDOW -->
+<div class="row">
+  <div>
+    <p class="label">Window <span class="tag now">Now</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="fill"><div class="win"><div class="side"></div><div class="text"></div><div class="art"></div></div></div>
+        <div class="ov-top hdr"><span class="live">LIVE</span>This is what everyone sees · a window <span class="t">0:37</span></div>
+        <div class="ov-bot btns"><span class="btn">Share something else</span><span class="btn">Hide preview</span><span class="btn">Floating controls</span></div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span>Stop sharing</span><span class="stop">Stop sharing</span><span>More</span></div>
+    </div>
+    <p class="note">The live picture fills the stage, but the header and buttons cover its top and bottom, which is exactly where window chrome and docks are.</p>
+  </div>
+
+  <div>
+    <p class="label">Window <span class="tag new">Proposed</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="new-stage">
+          <div class="hdr"><span class="live">LIVE</span>This is what everyone sees · a window <span class="t">0:37</span></div>
+          <div class="fit"><div class="win" style="outline:1px solid rgba(255,255,255,.15)"><div class="side"></div><div class="text"></div><div class="art"></div></div></div>
+          <div class="btns foot"><span class="btn">Share something else</span><span class="btn">Hide preview</span><span class="btn">Floating controls</span></div>
+        </div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span>Stop sharing</span><span class="stop">Stop sharing</span><span>More</span></div>
+    </div>
+    <p class="note">Same picture and size, but nothing sits on top of it: header above, buttons below, and a thin outline marking the edge of what is shared. The frozen-window warning stays as an overlay, since it has to be seen.</p>
+  </div>
+</div>
+</body>
+</html>
