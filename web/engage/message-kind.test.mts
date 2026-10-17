@@ -164,6 +164,29 @@ eq(
   "template fallback",
 );
 
+// A template sent with a header file shows it above the text.
+eq(
+  threadModel({
+    id: "m9",
+    body: "Hi Thandi, your notes.",
+    templateName: "promo_doc",
+    media: { header: "document", url: "https://x.test/api/wa/files/abc", filename: "notes.pdf" },
+  }),
+  {
+    type: "template",
+    text: "Hi Thandi, your notes.",
+    header: "document",
+    url: "https://x.test/api/wa/files/abc",
+    filename: "notes.pdf",
+  },
+  "template with a document header",
+);
+eq(
+  threadModel({ id: "m10", body: "Hi", media: { header: "image", url: "javascript:alert(1)" } }).type,
+  "text",
+  "a header link that is not http is not drawn",
+);
+
 if (failures > 0) {
   console.log(`\n${failures} of ${checks} failed`);
   process.exit(1);

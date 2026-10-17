@@ -245,13 +245,14 @@ func readTemplate(t graphTemplate) Template {
 		case "HEADER":
 			format := strings.ToUpper(strings.TrimSpace(comp.Format))
 			out.HeaderFormat = format
-			if format == "IMAGE" {
-				// Filled with the webinar's cover at send time.
+			if format == "IMAGE" || format == "VIDEO" || format == "DOCUMENT" {
+				/* Filled at send time with the host's file for this template (or, for an
+				 * image, the webinar's cover). Whether a video or document header has a
+				 * file yet is the app's to know, not Meta's, so it is checked there. */
 				continue
 			}
 			if format != "" && format != "TEXT" {
-				// A video or document header needs a file of its own for every send,
-				// which nothing here has.
+				// LOCATION and anything newer: nothing here can fill it.
 				reasons = append(reasons, "its header is "+strings.ToLower(format))
 				continue
 			}
@@ -325,12 +326,22 @@ type OutgoingTemplate struct {
 	// count does not match the approved template, so the caller checks first —
 	// see store.Template's Variables.
 	BodyParams []string
-	// HeaderImage is a public https link to the image, for a template with an IMAGE
-	// header. Meta fetches it when the message is sent.
-	HeaderImage string
+	// HeaderMedia fills an IMAGE, VIDEO or DOCUMENT header. Meta fetches the link when
+	// the message is sent.
+	HeaderMedia *HeaderMedia
 	// URLButtons fills dynamic link buttons: the button's index on the template, and
 	// the text that replaces its `{{1}}`.
 	URLButtons []URLButtonParam
+}
+
+// HeaderMedia is the file in a template's media header for one send.
+type HeaderMedia struct {
+	// Type is image, video or document (lower-case, as the send API spells it).
+	Type string
+	// Link is a public https URL Meta can fetch.
+	Link string
+	// Filename is what a document is called on the recipient's phone. Documents only.
+	Filename string
 }
 
 // URLButtonParam is the variable part of one dynamic link button.
@@ -376,16 +387,19 @@ func (c *Client) SendTemplate(ctx context.Context, token, phoneNumberID string, 
 	})
 }
 
-/* templateComponents is the parameters a send supplies: the header image, the body's
+/* templateComponents is the parameters a send supplies: the header file, the body's
  * values, and the dynamic part of each link button — in the shape Graph expects. */
 func templateComponents(msg OutgoingTemplate) []map[string]any {
 	var out []map[string]any
-	if img := strings.TrimSpace(msg.HeaderImage); img != "" {
+	if h := msg.HeaderMedia; h != nil && strings.TrimSpace(h.Link) != "" {
+		kind := strings.ToLower(strings.TrimSpace(h.Type))
+		media := map[string]string{"link": strings.TrimSpace(h.Link)}
+		if kind == "document" && strings.TrimSpace(h.Filename) != "" {
+			media["filename"] = strings.TrimSpace(h.Filename)
+		}
 		out = append(out, map[string]any{
-			"type": "header",
-			"parameters": []map[string]any{{
-				"type": "image", "image": map[string]string{"link": img},
-			}},
+			"type":       "header",
+			"parameters": []map[string]any{{"type": kind, kind: media}},
 		})
 	}
 	if len(msg.BodyParams) > 0 {
@@ -608,6 +622,18 @@ type NewTemplate struct {
 	Examples []string
 	Footer   string
 	Buttons  []NewButton
+	// Header is optional: fixed text, or a media header with a sample file's handle.
+	Header *NewHeader
+}
+
+// NewHeader is a template header to submit.
+type NewHeader struct {
+	// Format is TEXT, IMAGE, VIDEO or DOCUMENT.
+	Format string
+	// Text for a TEXT header.
+	Text string
+	// Handle for a media header: from UploadHeaderSample, the sample Meta reviews.
+	Handle string
 }
 
 // NewButton is one button on a template to submit.
@@ -635,7 +661,22 @@ func (c *Client) CreateTemplate(ctx context.Context, token, wabaID string, t New
 	if len(t.Examples) > 0 {
 		body["example"] = map[string]any{"body_text": [][]string{t.Examples}}
 	}
-	comps := []map[string]any{body}
+	comps := []map[string]any{}
+	if h := t.Header; h != nil {
+		switch format := strings.ToUpper(strings.TrimSpace(h.Format)); format {
+		case "TEXT":
+			comps = append(comps, map[string]any{"type": "HEADER", "format": "TEXT", "text": h.Text})
+		case "IMAGE", "VIDEO", "DOCUMENT":
+			if h.Handle == "" {
+				return "", errors.New("a media header needs a sample file")
+			}
+			comps = append(comps, map[string]any{
+				"type": "HEADER", "format": format,
+				"example": map[string]any{"header_handle": []string{h.Handle}},
+			})
+		}
+	}
+	comps = append(comps, body)
 	if t.Footer != "" {
 		comps = append(comps, map[string]any{"type": "FOOTER", "text": t.Footer})
 	}

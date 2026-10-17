@@ -3,6 +3,7 @@ package engage
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/netkumar/webcast/api/internal/authctx"
+	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/wa"
@@ -148,10 +150,7 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 			"Connect your WhatsApp Business account first.")
 		return
 	}
-	var req struct {
-		Body     string `json:"body"`
-		Category string `json:"category"`
-	}
+	var req types.CRMWordingRequest
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
@@ -174,6 +173,10 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_body", err.Error())
 		return
 	}
+	header, file, ok := s.wordingHeader(w, r, user, req.Header)
+	if !ok {
+		return
+	}
 	name, err := customTemplateName()
 	if err != nil {
 		s.fail(w, r, "crm wording name", err)
@@ -181,7 +184,7 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 	}
 	status, err := s.whatsapp.CreateTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppWABAID, wa.NewTemplate{
 		Name: name, Language: "en", Category: category, Body: body,
-		Examples: examples, Footer: "Reply STOP to opt out",
+		Examples: examples, Footer: "Reply STOP to opt out", Header: header,
 	})
 	if err != nil {
 		httpx.Error(w, http.StatusUnprocessableEntity, "template_refused", err.Error())
@@ -189,6 +192,12 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 	}
 	if status == "" {
 		status = "PENDING"
+	}
+	if file != nil {
+		// The file Meta reviewed becomes what is sent until the host picks another.
+		if err := s.store.SetTemplateMedia(r.Context(), user.ID, name, "en", file.ID); err != nil {
+			s.log.Error("crm wording: remember header file", "host", user.ID, "error", err)
+		}
 	}
 	if err := s.syncTemplates(r.Context(), user); err != nil {
 		s.log.Warn("crm wording: resync", "host", user.ID, "error", err)
@@ -200,6 +209,58 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 		Category string `json:"category"`
 		Body     string `json:"body"`
 	}{Name: name, Language: "en", Status: status, Category: category, Body: body})
+}
+
+/* wordingHeader checks the header of wording being written here and, for a media
+ * header, uploads its file to Meta as the sample the template is reviewed against.
+ * Writes the refusal itself; ok is false after it has. */
+func (s *Module) wordingHeader(w http.ResponseWriter, r *http.Request, user store.User,
+	in *types.CRMTemplateHeaderInput) (*wa.NewHeader, *crmstore.MediaFile, bool) {
+	if in == nil {
+		return nil, nil, true
+	}
+	switch format := strings.ToUpper(strings.TrimSpace(in.Format)); format {
+	case "", "NONE":
+		return nil, nil, true
+	case "TEXT":
+		text := strings.Join(strings.Fields(in.Text), " ")
+		if text == "" || utf8.RuneCountInString(text) > 60 || anyPlaceholder.MatchString(text) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_header",
+				"A text header is up to 60 characters, with no {{1}} blanks.")
+			return nil, nil, false
+		}
+		return &wa.NewHeader{Format: "TEXT", Text: text}, nil, true
+	case "IMAGE", "VIDEO", "DOCUMENT":
+		file, err := s.store.MediaFileForHost(r.Context(), user.ID, strings.TrimSpace(in.FileID))
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "media_not_found",
+				"Upload the "+strings.ToLower(format)+" for the header first.")
+			return nil, nil, false
+		}
+		if err != nil {
+			s.fail(w, r, "crm wording: header file", err)
+			return nil, nil, false
+		}
+		if headerMediaTypes[file.Mime].kind != strings.ToLower(format) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "media_wrong_kind",
+				"That file is a "+headerMediaTypes[file.Mime].kind+", not a "+strings.ToLower(format)+".")
+			return nil, nil, false
+		}
+		handle, err := s.headerSample(r.Context(), user, file)
+		if err != nil {
+			if whatsappAPIError(w, err) {
+				return nil, nil, false
+			}
+			httpx.Error(w, http.StatusUnprocessableEntity, "template_refused",
+				"Meta would not take the header file: "+err.Error())
+			return nil, nil, false
+		}
+		return &wa.NewHeader{Format: format, Handle: handle}, &file, true
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_header",
+			"A header is text, an image, a video or a document.")
+		return nil, nil, false
+	}
 }
 
 var (
