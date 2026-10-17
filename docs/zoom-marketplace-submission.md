@@ -148,10 +148,10 @@ Answers to the questions Zoom usually asks.
 | Encryption in transit | HTTPS/TLS everywhere. Calls to Zoom are made over HTTPS from the API only. |
 | Encryption at rest | Zoom refresh tokens are encrypted with AES-256-GCM using a 32-byte key held as a deployment secret (`ZOOM_TOKEN_KEY`), on top of database encryption at rest. Access tokens are short-lived and not stored. |
 | Webhook verification | Every webhook is checked against Zoom's `x-zm-signature` HMAC and timestamp before it is read, and the URL validation challenge is answered. |
-| What Zoom data is stored? | The Zoom user and account id and the email; the encrypted refresh token; the id and join link of meetings and webinars created from Webinar Liv; and, for those sessions only, each attendee's name, email and join and leave times. |
+| What Zoom data is stored? | The Zoom user and account id and the email; the encrypted refresh token; the id, join link and host start link of meetings and webinars created from Webinar Liv; and, for those sessions only, each attendee's name, email and join and leave times. |
 | What is not accessed? | Other meetings, recordings, chat, contacts, and account settings. No `:admin` scopes. |
 | Is Zoom data shared or sold? | No. It is used only to run the host's webinar and show their attendance. |
-| Is the host's start link logged? | No. It is fetched from Zoom on each Go live click and is not written to logs. |
+| Is the host's start link logged? | No. It is kept in the database (it is short-lived), fetched again from Zoom on each Go live click, and never written to logs. |
 | Deauthorization | `app_deauthorized` deletes the stored connection for that Zoom user. Disconnect in Settings also revokes the token with Zoom (`/oauth/revoke`) and deletes it. |
 | Data deletion | Hosts can delete a webinar (with its attendance) or their whole account in Settings. Requests to support@webinarliv.com are handled too. |
 | Who can reach the data? | Only the host who owns the webinar, and Webinar Liv admins for support. |

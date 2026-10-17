@@ -68,6 +68,8 @@ const nextConfig: NextConfig = {
     ];
     return config;
   },
+  // No "X-Powered-By: Next.js" on responses: it tells a scanner what to try.
+  poweredByHeader: false,
   // Local same-origin `/api` is handled by app/api/[...path]/route.ts (cookie
   // softening for http://localhost). Production Workers use worker.ts instead.
   async headers() {
@@ -82,6 +84,28 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: 'identity-credentials-get=(self "https://accounts.google.com")',
           },
+          /* Browser hardening that Zoom's Marketplace security review (and any
+           * scanner) checks for.
+           *
+           * HSTS: HTTPS only for a year. No includeSubDomains, so a subdomain that
+           * is not on HTTPS yet is not locked out.
+           *
+           * The CSP sets only directives that cannot break a page: no other site
+           * may frame ours (clickjacking), no plugins, no <base> hijack. A full
+           * script/connect allowlist would have to cover Google sign-in, Razorpay,
+           * LiveKit and R2, and is not worth the breakage risk here.
+           * X-Frame-Options is the same rule for browsers without frame-ancestors. */
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+          },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
     ];

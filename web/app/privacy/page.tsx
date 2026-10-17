@@ -243,6 +243,31 @@ export default function PrivacyPage() {
         <li>Disconnect Zoom in Settings → Integrations, or remove Webinar Liv from your Zoom App Marketplace apps</li>
       </ul>
 
+      <h3>Your rights</h3>
+      <p>
+        Depending on where you live (for example under the GDPR in the EU and
+        UK, or India&apos;s Digital Personal Data Protection Act), you may have
+        the right to:
+      </p>
+      <ul>
+        <li>Access the personal information we hold about you and get a copy</li>
+        <li>Correct information that is wrong or incomplete</li>
+        <li>Have your information deleted</li>
+        <li>Receive your information in a portable format</li>
+        <li>Object to or ask us to restrict some processing</li>
+        <li>Withdraw consent you gave, such as to WhatsApp messages, at any time</li>
+        <li>Complain to your data protection authority</li>
+      </ul>
+      <p>
+        To use any of these, email{" "}
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> from the address
+        on your account. We may need to confirm it is you, and we reply within
+        30 days. If you registered for someone else&apos;s webinar, that host
+        decides what is collected; we will pass your request to them or help
+        directly where we can. You can also delete your own account in
+        Settings.
+      </p>
+
       <h2>12. Children</h2>
       <p>
         The Service is not directed to children under 13 (or the minimum age

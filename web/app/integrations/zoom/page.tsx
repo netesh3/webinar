@@ -101,7 +101,7 @@ export default function ZoomIntegrationPage() {
         your account, or email us.
       </p>
 
-      <h2>Support</h2>
+      <h2 id="support">Support</h2>
       <p>
         Email <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
       </p>
