@@ -548,5 +548,33 @@ export function displayMediaOptions(
   mode: ShareMode,
 ): ScreenShareCaptureOptions {
   const video = surface === "browser" && isSafari() ? true : { displaySurface: surface };
-  return { ...shareCaptureOptions(mode), video };
+  return { ...shareCaptureOptions(mode), video, controller: focusCapturedSurface() };
+}
+
+/* Take the presenter to what they just shared.
+ *
+ * A CaptureController with focus-captured-surface: Chrome and Edge bring the chosen tab or
+ * window to the front when the share starts, the way Zoom does. The entire screen has nothing
+ * to bring forward and Chrome ignores the request for it.
+ *
+ * Set before getDisplayMedia rather than after, because after is a race: the browser only
+ * honours a focus decision made in the same task the capture resolved in, and that task is
+ * inside LiveKit's setScreenShareEnabled where we cannot reach it. A controller drives exactly
+ * one capture, so this makes a new one every time. Undefined where the API does not exist
+ * (Safari, Firefox), which leaves their behaviour exactly as it was. */
+function focusCapturedSurface(): unknown {
+  const Ctor = (
+    globalThis as {
+      CaptureController?: new () => { setFocusBehavior?: (behavior: string) => void };
+    }
+  ).CaptureController;
+  if (typeof Ctor !== "function") return undefined;
+  const controller = new Ctor();
+  try {
+    controller.setFocusBehavior?.("focus-captured-surface");
+  } catch {
+    // An older Chrome that only allows it after the capture: keep its default, which for a
+    // tab or window is also to focus it.
+  }
+  return controller;
 }
