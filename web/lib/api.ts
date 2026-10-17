@@ -3,6 +3,8 @@ import type {
   Account,
   DeleteAccountRequest,
   Plan,
+  PlanFeatures,
+  PlanFeaturesBody,
   SetUserPlanRequest,
   WhatsAppConsent,
   AdminStats,
@@ -914,6 +916,22 @@ export const api = {
       feature,
       enabled,
     } satisfies FeatureGrant),
+
+  /** Sets this account's override for one feature: true forces it on, false off,
+   *  null clears it so the account's plan decides. */
+  setUserFeatureOverride: (userId: string, feature: string, state: boolean | null) =>
+    patch<Account>(`/api/admin/users/${seg(userId)}/features`, {
+      feature,
+      enabled: state === true,
+      inherit: state === null,
+    } satisfies FeatureGrant),
+
+  /** The tier matrix: which features each plan includes. */
+  planFeatures: () => request<PlanFeaturesBody>("/api/admin/plan-features", fresh),
+
+  /** Replaces the tier matrix whole. */
+  setPlanFeatures: (tiers: PlanFeatures[]) =>
+    put<PlanFeaturesBody>("/api/admin/plan-features", { tiers } satisfies PlanFeaturesBody),
 
   /** Set a custom max meeting duration for a user in minutes. Pass null to reset to system default. */
   setUserMaxDuration: (userId: string, maxDurationMin: number | null) =>
