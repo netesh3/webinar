@@ -52,6 +52,7 @@ var Facts = []string{
 	"WhatsApp reminders use your own WhatsApp Business number through Meta's official sign-up. Meta bills message fees to your own WhatsApp Business account; Webinar Liv does not mark them up.",
 	"You own your contacts and data: export registrants, attendance and chat as CSV at any time.",
 	"Buying: choose a plan on the pricing page, pay with UPI, cards, netbanking or wallets through Razorpay, and host access turns on immediately — no waiting for approval.",
+	"Free trial: 7 days on the monthly Professional and Business plans paid in INR. It needs a card or UPI, with a ₹5 authorisation that is refunded; the first charge is on day 8 unless cancelled before. Yearly plans and USD payments are paid upfront. One free trial per person.",
 	"GSTIN can be added at checkout for the invoice.",
 	"Support email: support@webinarliv.com.",
 }
@@ -76,6 +77,12 @@ PLANS (prices before tax; yearly is ten times monthly, two months free`)
 	}
 	b.WriteString("):\n")
 	for _, p := range billing.Plans {
+		if p.ContactOnly {
+			// Not sold online: no price to quote, so a question about it reaches a person.
+			fmt.Fprintf(&b, "- %s (%s): up to %d live attendees per webinar; priced on request, so hand off for a quote. Includes: %s.\n",
+				p.Name, p.Who, p.Attendees(), strings.Join(p.Features, "; "))
+			continue
+		}
 		inr, _ := p.Price(billing.INR, billing.Monthly)
 		usd, _ := p.Price(billing.USD, billing.Monthly)
 		fmt.Fprintf(&b, "- %s (%s): up to %d live attendees per webinar; %s/month or %s/year; or $%d/month. Includes: %s.\n",
