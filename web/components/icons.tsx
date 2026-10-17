@@ -650,6 +650,19 @@ export function YouTubeIcon(props: IconProps) {
   );
 }
 
+/** LinkedIn, drawn as a rounded square with "in" — stroke style, like the
+ *  other bar icons, so it takes the bar's colour. */
+export function LinkedInIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="3" />
+      <path d="M8 10.5V16" />
+      <circle cx="8" cy="7.75" r="0.6" fill="currentColor" />
+      <path d="M11.5 16v-5.5M11.5 13a2.25 2.25 0 0 1 4.5 0v3" />
+    </Icon>
+  );
+}
+
 /** WhatsApp's filled mark, in the brand green. The colour is fixed so a chip,
  *  a badge and a heading all show the same logo rather than inheriting the
  *  text colour beside them. */

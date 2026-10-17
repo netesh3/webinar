@@ -77,6 +77,7 @@ const ON_WORD: Partial<Record<ToolId, string>> = {
   captions: "On",
   sharefile: "Sharing",
   youtube: "On",
+  linkedin: "On",
   whiteboard: "On",
   hand: "Raised",
 };
