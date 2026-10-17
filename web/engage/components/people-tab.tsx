@@ -28,6 +28,7 @@ import { messagesHref } from "../hrefs";
 import { PersonAvatar } from "./wa-kit";
 import { SendDialog, type SendTarget } from "./send-dialog";
 import { AudienceSummary } from "./audience-summary";
+import { SavedLists } from "./saved-lists";
 
 /* Hosting → People: everybody who has registered for any of your webinars, once each.
  *
@@ -247,6 +248,19 @@ export function HostPeopleTab({
           onMessage={(ids, label) => setTarget({ kind: "contacts", contactIds: ids, label })}
           canMessage={canMessage}
         />
+      )}
+      {canMessage && !webinar && (
+        <details className="rounded-xl border border-line bg-surface px-4 py-3">
+          <summary className="cursor-pointer text-[13.5px] font-medium">
+            Saved lists
+            <span className="ml-2 text-[12px] font-normal text-ink-3">
+              Imported CSVs you can send a broadcast to
+            </span>
+          </summary>
+          <div className="mt-3">
+            <SavedLists mode="manage" />
+          </div>
+        </details>
       )}
       <div className="flex flex-wrap items-center gap-3">
         <label className="relative min-w-0 w-72 max-w-full">
