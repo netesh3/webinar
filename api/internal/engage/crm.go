@@ -239,6 +239,53 @@ func (s *Module) handleCRMOptOut(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, contact)
 }
 
+/* handleDeleteCRMContact is DELETE /api/host/crm/contacts/{id}: erasing a person
+ * from this host's CRM, for when they ask.
+ *
+ * Their stored WhatsApp attachments are removed first, and a failure stops the
+ * delete so it can be retried rather than leaving a file nothing points at. Then
+ * the contact row, which takes their messages, tags, notes, sequences, bot
+ * sessions and any WhatsApp still queued for them.
+ *
+ * Not their webinar registrations: those are the attendance record of a webinar,
+ * which the host keeps for the session's reports, and a new registration simply
+ * makes a new contact. No feature gate, unlike some CRM writes: erasure has to stay
+ * possible when the CRM is switched off.
+ */
+func (s *Module) handleDeleteCRMContact(w http.ResponseWriter, r *http.Request) {
+	user := authctx.User(r.Context())
+	id := chi.URLParam(r, "id")
+
+	keys, err := s.store.ContactMediaKeys(r.Context(), user.ID, id)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such contact.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "crm delete contact: media", err)
+		return
+	}
+	if len(keys) > 0 && s.blobs == nil {
+		s.fail(w, r, "crm delete contact: media", errors.New("media copies exist but no media store is configured"))
+		return
+	}
+	for _, key := range keys {
+		if err := s.blobs.Delete(r.Context(), key); err != nil {
+			s.fail(w, r, "crm delete contact: media file", err)
+			return
+		}
+	}
+	if err := s.store.DeleteContact(r.Context(), user.ID, id); errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such contact.")
+		return
+	} else if err != nil {
+		s.fail(w, r, "crm delete contact", err)
+		return
+	}
+	s.log.Info("crm contact deleted", "host", user.ID, "contact", id, "files", len(keys))
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
+}
+
 // ------------------------------------------------------------------ templates
 
 /* handleCRMTemplates lists the host's WhatsApp templates.
