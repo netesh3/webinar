@@ -175,30 +175,113 @@ func (s *Store) SetCdnBroadcastCapability(ctx context.Context, userID string, ca
 	return u, err
 }
 
-/* SetFeature switches one per-account feature on or off.
+/* SetFeature forces one feature on or off for this account, whatever its plan says.
+ * See SetFeatureOverride. */
+func (s *Store) SetFeature(ctx context.Context, userID, feature string, enabled bool) (User, error) {
+	return s.SetFeatureOverride(ctx, userID, feature, &enabled)
+}
+
+/* SetFeatureOverride sets this account's override for one feature: true forces it
+ * on (users.features), false forces it off (users.features_off), nil clears both so
+ * the account inherits its plan's value (migrations/0107).
  *
  * Set arithmetic in SQL rather than read-modify-write in Go, which is what makes it
  * safe for two admins on two screens: array_remove then append touches only the key
  * being changed, so a request about `whatsapp_crm` cannot undo a decision about
- * `cloud_recording` somebody made a second earlier. Turning on something already on, and
- * off something already off, both land as no-ops rather than as a duplicate key.
+ * `cloud_recording` somebody made a second earlier. A key is never in both lists.
  *
  * The key is checked against types.Features by the handler before it gets here — the
- * column has no CHECK to lean on, so that check is the whole of the validation.
+ * columns have no CHECK to lean on, so that check is the whole of the validation.
  */
-func (s *Store) SetFeature(ctx context.Context, userID, feature string, enabled bool) (User, error) {
+func (s *Store) SetFeatureOverride(ctx context.Context, userID, feature string, state *bool) (User, error) {
+	on := state != nil && *state
+	off := state != nil && !*state
 	u, err := scanUser(s.pool.QueryRow(ctx, `
 		UPDATE users
-		   SET features = CASE WHEN $3
-		            THEN array_remove(features, $2) || ARRAY[$2]::text[]
-		            ELSE array_remove(features, $2)
-		       END
+		   SET features = CASE WHEN $3 THEN array_remove(features, $2) || ARRAY[$2]::text[]
+		                       ELSE array_remove(features, $2) END,
+		       features_off = CASE WHEN $4 THEN array_remove(features_off, $2) || ARRAY[$2]::text[]
+		                           ELSE array_remove(features_off, $2) END
 		 WHERE id = $1
-		RETURNING `+userColumns, userID, feature, enabled))
+		RETURNING `+userColumns, userID, feature, on, off))
 	if noRows(err) {
 		return User{}, ErrNotFound
 	}
 	return u, err
+}
+
+/* FeatureOverrideConversionSQL moves accounts from "every switch on the account" to
+ * "plan, then overrides" without changing what anyone has. Every tier starts with
+ * whiteboard, so it leaves users.features (now the tier's), and an account that had it
+ * turned off gets a forced-off override. Every other key stays as a forced-on override.
+ *
+ * One shot: migrations/0107 runs it, and a store test checks this text still matches.
+ * Tests apply it to rows written in the old shape to prove the guarantee. */
+const FeatureOverrideConversionSQL = `UPDATE users SET features_off = ARRAY['whiteboard']
+ WHERE NOT ('whiteboard' = ANY (features));
+UPDATE users SET features = array_remove(features, 'whiteboard')
+ WHERE 'whiteboard' = ANY (features);`
+
+// ConvertFeatureOverrides applies FeatureOverrideConversionSQL. Tests only.
+func (s *Store) ConvertFeatureOverrides(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, FeatureOverrideConversionSQL)
+	return err
+}
+
+// PlanTiers is every tier an admin configures, "" being no plan.
+var PlanTiers = []types.Plan{"", types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise}
+
+// PlanFeatures is the tier matrix: which features each plan includes, in PlanTiers order.
+func (s *Store) PlanFeatures(ctx context.Context) ([]types.PlanFeatures, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT plan, feature FROM plan_features WHERE enabled ORDER BY plan, feature`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byPlan := map[types.Plan][]string{}
+	for rows.Next() {
+		var plan, feature string
+		if err := rows.Scan(&plan, &feature); err != nil {
+			return nil, err
+		}
+		byPlan[types.Plan(plan)] = append(byPlan[types.Plan(plan)], feature)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]types.PlanFeatures, 0, len(PlanTiers))
+	for _, p := range PlanTiers {
+		f := byPlan[p]
+		if f == nil {
+			f = []string{}
+		}
+		out = append(out, types.PlanFeatures{Plan: p, Features: f})
+	}
+	return out, nil
+}
+
+/* SetPlanFeatures replaces the whole matrix in one transaction, so a reader never sees
+ * half of an admin's save. The handler has checked every plan and feature key. */
+func (s *Store) SetPlanFeatures(ctx context.Context, tiers []types.PlanFeatures) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM plan_features`); err != nil {
+		return err
+	}
+	for _, t := range tiers {
+		for _, f := range t.Features {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO plan_features (plan, feature, enabled) VALUES ($1, $2, true)
+				ON CONFLICT (plan, feature) DO NOTHING`, string(t.Plan), f); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 /* OperatorInstantWebinarSQL turns Instant webinar on for the existing operator
@@ -250,9 +333,10 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		SELECT u.id::text, u.email, u.name, u.title, u.org, u.phone, u.initials, u.hue,
 		       u.can_host, u.is_admin, u.created_at,
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
-		       u.max_duration_min, u.can_cdn_broadcast, u.features,
+		       u.max_duration_min, u.can_cdn_broadcast,
+		       effective_features(effective_plan(u.id), u.features, u.features_off),
 		       (u.email_verified_at IS NOT NULL),
-		       coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = u.id), '')
+		       effective_plan(u.id), u.features, u.features_off
 		  FROM users u
 		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
@@ -265,17 +349,25 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 	out := []types.AdminUser{}
 	for rows.Next() {
 		var (
-			u         types.AdminUser
-			createdAt time.Time
+			u                   types.AdminUser
+			createdAt           time.Time
+			forcedOn, forcedOff []string
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
-			&u.Features, &u.EmailVerified, &u.Plan); err != nil {
+			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
 		if u.Features == nil {
 			u.Features = []string{}
+		}
+		u.FeatureOverrides = map[string]bool{}
+		for _, f := range forcedOn {
+			u.FeatureOverrides[f] = true
+		}
+		for _, f := range forcedOff {
+			u.FeatureOverrides[f] = false
 		}
 		out = append(out, u)
 	}
@@ -481,10 +573,6 @@ func (s *Store) SetUserPlan(ctx context.Context, userID string, plan types.Plan)
 // PlanForUser is an account's plan, empty with no subscription.
 func (s *Store) PlanForUser(ctx context.Context, userID string) (types.Plan, error) {
 	var plan string
-	err := s.pool.QueryRow(ctx,
-		`SELECT plan FROM subscriptions WHERE user_id = $1::uuid`, userID).Scan(&plan)
-	if noRows(err) {
-		return "", nil
-	}
+	err := s.pool.QueryRow(ctx, `SELECT effective_plan($1::uuid)`, userID).Scan(&plan)
 	return types.Plan(plan), err
 }

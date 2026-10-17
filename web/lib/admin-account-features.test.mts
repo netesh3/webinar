@@ -12,6 +12,9 @@ import {
   accountFeatureRows,
   accountFeaturesOnCount,
   CDN_BROADCAST_ROW_ID,
+  overrideState,
+  planIncludes,
+  withOverride,
 } from "./admin-account-features.ts";
 
 const catalogue: Feature[] = [
@@ -99,3 +102,24 @@ assert.equal(
   accountFeaturesOnCount(guestRows, ["instant_webinar"], true),
   1,
 );
+
+/* Plan, then overrides. Inherit is the absence of an override; the plan's value
+ * comes from the tier matrix, "" being no plan. */
+assert.equal(overrideState(undefined, "zoom"), "inherit");
+assert.equal(overrideState({ zoom: true }, "zoom"), "on");
+assert.equal(overrideState({ zoom: false }, "zoom"), "off");
+assert.equal(overrideState({ zoom: true }, "whiteboard"), "inherit");
+
+const tiers = [
+  { plan: "", features: ["whiteboard"] },
+  { plan: "professional", features: ["whiteboard", "zoom"] },
+];
+assert.equal(planIncludes(null, "", "zoom"), null);
+assert.equal(planIncludes(tiers, undefined, "zoom"), false);
+assert.equal(planIncludes(tiers, "", "whiteboard"), true);
+assert.equal(planIncludes(tiers, "professional", "zoom"), true);
+assert.equal(planIncludes(tiers, "enterprise", "zoom"), false);
+
+assert.deepEqual(withOverride({ zoom: true }, "zoom", "inherit"), {});
+assert.deepEqual(withOverride(undefined, "zoom", "off"), { zoom: false });
+assert.deepEqual(withOverride({ zoom: false }, "whiteboard", "on"), { zoom: false, whiteboard: true });

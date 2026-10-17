@@ -202,7 +202,8 @@ func (u User) Person() types.Person {
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
 	coalesce(google_phone,''),
-	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast, features,
+	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast,
+	effective_features(effective_plan(users.id), features, features_off),
 	coalesce(youtube_refresh,''), coalesce(youtube_channel_id,''),
 	coalesce(youtube_channel_title,''), coalesce(youtube_stream_id,''),
 	coalesce(whatsapp_access_token,''), coalesce(whatsapp_waba_id,''),
@@ -212,7 +213,7 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	whatsapp_coexistence, whatsapp_token_rejected_at,
 	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,''),
 	email_verified_at, host_requested_at, password_changed_at,
-	coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = users.id), '')`
+	effective_plan(users.id)`
 
 func scanUser(row scanner) (User, error) {
 	var u User
