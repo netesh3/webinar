@@ -124,13 +124,14 @@ export function OwnShareView({
         ) : !isWindow && snapshot ? (
           /* The entire screen, as large as the stage allows. Still a snapshot, never live:
            * this tab is on the screen being shared, so a live picture would mirror itself
-           * for everyone. Dimmed and labelled so it is not mistaken for the live picture. */
+           * for everyone. Labelled so it is not mistaken for the live picture; not dimmed,
+           * because a dimmed screenshot reads as a blurry one. */
           <div className="relative size-full">
             {/* eslint-disable-next-line @next/next/no-img-element -- a data URL, nothing for next/image to optimise */}
             <img
               src={snapshot}
               alt="Your screen when sharing started"
-              className="absolute inset-0 size-full object-contain brightness-[0.8] saturate-[0.8]"
+              className="absolute inset-0 size-full object-contain"
             />
             <span className="pointer-events-none absolute bottom-3 left-1/2 max-w-[92%] -translate-x-1/2 truncate rounded-full bg-black/75 px-3 py-1 text-[12px] text-white/90">
               Snapshot from when you started · not live, so this page doesn&apos;t mirror itself
