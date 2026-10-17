@@ -100,7 +100,12 @@ func (s *Module) copyOneMedia(ctx context.Context, f crmstore.MediaFetch) {
 		return
 	}
 	if err := s.store.MarkMediaStored(ctx, f.MessageID, f.HostID, key, mime, int64(len(body))); err != nil {
+		// Usually the message was deleted mid-download (a contact erased): a file no
+		// row names would never be cleaned up, so it goes too.
 		s.log.Error("whatsapp media copy: could not record", "error", err, "message", f.MessageID)
+		if dErr := s.blobs.Delete(ctx, key); dErr != nil {
+			s.log.Error("whatsapp media copy: could not remove unrecorded file", "error", dErr, "key", key)
+		}
 	}
 }
 
