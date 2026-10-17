@@ -28,6 +28,15 @@ import { roomOptions, sharePublishOptions, useMediaPreferences } from "@/lib/med
 import { shareModeOfHint } from "@/lib/share-mode";
 import { publishLedger } from "@/lib/republish";
 import {
+  PRESENCE_HEARTBEAT_MS,
+  loadMedia,
+  markLeft,
+  recordPresence,
+  rejoinEntry,
+  saveMedia,
+  type RejoinRole,
+} from "@/lib/rejoin";
+import {
   useMediaPermissions,
   useLiveRole,
   useLiveCoHost,
@@ -90,7 +99,7 @@ import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
 import { stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
-import { useTelemetry } from "@/lib/telemetry";
+import { trackEvent, useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { ShareOnlyBanner } from "./share-only";
@@ -116,7 +125,9 @@ export function WebinarRoom({
   topic: initialTopic,
   imageUrl: initialImageUrl,
   joinKey,
-  onLeave,
+  onLeave: onLeaveProp,
+  door,
+  rejoined = false,
 }: {
   join: JoinResponse;
   slug: string;
@@ -130,8 +141,54 @@ export function WebinarRoom({
    *  joined on their session alone. */
   joinKey?: string;
   onLeave: () => void;
+  /** Which gate opened this room, which is the room a refresh or a reopened link goes back
+   *  to: the audience's, or the stage's (/host/<slug>/room). */
+  door: RejoinRole;
+  /** An automatic return — a refresh, or the landing page sending a recent visitor back.
+   *  A publisher skips the device check and comes back with the mic and camera as they
+   *  were (lib/rejoin.ts). */
+  rejoined?: boolean;
 }) {
   const { ready: prefsReady } = useMediaPreferences();
+  const { telemetryEnabled } = useAppConfig();
+
+  /* "This browser is in this webinar's room", for the rejoin rules in lib/rejoin.ts.
+   * Refreshed on a heartbeat and on pagehide, so a refresh finds a record seconds old.
+   * Stops for good once the person has left, been removed, or the session ended — a
+   * heartbeat after that would turn "left" back into "here", and a reopened link would
+   * put them straight back in. */
+  const departed = useRef(false);
+  useEffect(() => {
+    const beat = () => {
+      if (!departed.current) recordPresence(slug, door);
+    };
+    beat();
+    const timer = setInterval(beat, PRESENCE_HEARTBEAT_MS);
+    window.addEventListener("pagehide", beat);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("pagehide", beat);
+    };
+  }, [slug, door]);
+
+  const depart = useCallback(
+    (why: "leave" | "removed" | "ended") => {
+      if (departed.current) return;
+      departed.current = true;
+      markLeft(slug);
+      // The guest's rejoin cookie goes too, so the link does not open the room by itself.
+      // Removal and the end are refused by the server anyway; Leave is only known here.
+      if (door === "attendee" && why === "leave") void api.leaveRoom(slug).catch(() => {});
+      if (telemetryEnabled) {
+        trackEvent("rejoin_cleared", { userId: initialJoin.identity, roomName: slug }, { why, door });
+      }
+    },
+    [slug, door, telemetryEnabled, initialJoin.identity],
+  );
+  const onLeave = useCallback(() => {
+    depart("leave");
+    onLeaveProp();
+  }, [depart, onLeaveProp]);
   const [currentJoin, setCurrentJoin] = useState<JoinResponse>(initialJoin);
   const [promotedToStage, setPromotedToStage] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -268,6 +325,10 @@ export function WebinarRoom({
       onLeave={onLeave}
       onDemoted={webinarUsesCdn ? handleDemoted : undefined}
       freshCredential={freshCredential}
+      // Only the room this page opened with: a promotion or demotion later in the session
+      // is a new join the person should check their devices for, as it always was.
+      rejoined={rejoined && currentJoin === initialJoin}
+      onDeparted={depart}
     />
   );
 }
@@ -338,6 +399,8 @@ function RoomSession({
   onLeave,
   onDemoted,
   freshCredential,
+  rejoined,
+  onDeparted,
 }: {
   join: JoinResponse;
   slug: string;
@@ -347,6 +410,8 @@ function RoomSession({
   onLeave: () => void;
   onDemoted?: () => void;
   freshCredential: Credential;
+  rejoined: boolean;
+  onDeparted: (why: "removed" | "ended") => void;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
 
@@ -355,15 +420,25 @@ function RoomSession({
   // later through the Room's own device-switching API instead.
   const [room] = useState(() => new Room(roomOptions(prefs, join.canPublish)));
 
+  /* Coming back after a refresh: the mic and camera as this tab (or, for a reopened link,
+   * this browser) last had them — lib/rejoin.ts. Read once, at mount. A host-enforced mute
+   * wins over what they had, exactly as it wins over a remembered preference below: a
+   * reload must never be a way round "mute on entry" or "prevent self-unmute". The devices,
+   * the background and the speaker come back on their own — the Room is built from the
+   * preferences lib/media.ts keeps for every webinar. */
+  const [restored] = useState(() => (rejoined && join.canPublish ? loadMedia(slug) : null));
+  const hostMuted =
+    join.role !== "host" && (join.controls.muteOnEntry || !join.controls.allowUnmute);
+
   // A publisher checks their devices first; an attendee publishes nothing, so a
-  // preview screen would be a pointless click between them and the webinar.
-  const [checked, setChecked] = useState(!join.canPublish);
-  const [entry, setEntry] = useState<Entry>({
-    micEnabled: false,
-    cameraEnabled: false,
+  // preview screen would be a pointless click between them and the webinar. A publisher
+  // coming back after a refresh already checked them, minutes ago.
+  const [checked, setChecked] = useState(!join.canPublish || rejoined);
+  const [entry, setEntry] = useState<Entry>(() => ({
+    ...rejoinEntry(rejoined ? restored : null, hostMuted),
     audioTrack: null,
     videoTrack: null,
-  });
+  }));
 
   /* Warm the connection up while the presenter is still on the pre-join screen — but only as
    * far as it is safe to.
@@ -429,6 +504,10 @@ function RoomSession({
       startCamera={entry.cameraEnabled}
       entryAudio={entry.audioTrack}
       entryVideo={entry.videoTrack}
+      // A share is never restarted by itself — the browser would not allow it without a
+      // click, and it would be a surprise if it could. Offered as one tap instead.
+      offerShareAgain={Boolean(restored?.sharing)}
+      onDeparted={onDeparted}
     />
   );
 }
@@ -449,6 +528,8 @@ function ConnectedRoom({
   startCamera,
   entryAudio,
   entryVideo,
+  offerShareAgain,
+  onDeparted,
 }: {
   room: Room;
   join: JoinResponse;
@@ -466,7 +547,13 @@ function ConnectedRoom({
   /** Tracks the pre-join screen already opened; published rather than reopened. */
   entryAudio: LocalAudioTrack | null;
   entryVideo: LocalVideoTrack | null;
+  /** They were sharing their screen before the refresh. */
+  offerShareAgain: boolean;
+  /** Removed by the host, or the session ended: a refresh must not put them back. */
+  onDeparted: (why: "removed" | "ended") => void;
 }) {
+  const [shareAgain, setShareAgain] = useState(offerShareAgain);
+  const dismissShareAgain = useCallback(() => setShareAgain(false), []);
 
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<ExitReason | null>(null);
@@ -768,6 +855,44 @@ function ConnectedRoom({
       room.off(RoomEvent.Reconnected, onSettled);
     };
   }, [room, ledger]);
+
+  /* The mic, camera and share as they are now, for a refresh to come back to (lib/rejoin.ts).
+   *
+   * Written on every change the person, or the host, makes — and on nothing else. A page
+   * unloading, a Leave, or a network drop all unpublish every track on their way out, and
+   * recording those would make every refresh come back with everything off. Hence the
+   * connected check and the unload latch: those teardowns happen while the room is no
+   * longer connected, or after pagehide. */
+  useEffect(() => {
+    if (!join.canPublish) return;
+    const lp = room.localParticipant;
+    let unloading = false;
+    const save = () => {
+      if (unloading || leaving.current || room.state !== ConnectionState.Connected) return;
+      saveMedia(slug, {
+        mic: lp.isMicrophoneEnabled,
+        camera: lp.isCameraEnabled,
+        sharing: lp.isScreenShareEnabled,
+      });
+    };
+    const onUnload = () => {
+      unloading = true;
+    };
+    room.on(RoomEvent.LocalTrackPublished, save);
+    room.on(RoomEvent.LocalTrackUnpublished, save);
+    room.on(RoomEvent.TrackMuted, save);
+    room.on(RoomEvent.TrackUnmuted, save);
+    window.addEventListener("pagehide", onUnload);
+    window.addEventListener("beforeunload", onUnload);
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, save);
+      room.off(RoomEvent.LocalTrackUnpublished, save);
+      room.off(RoomEvent.TrackMuted, save);
+      room.off(RoomEvent.TrackUnmuted, save);
+      window.removeEventListener("pagehide", onUnload);
+      window.removeEventListener("beforeunload", onUnload);
+    };
+  }, [room, slug, join.canPublish]);
 
   /* Publishing again after the ladder has rebuilt the connection.
    *
@@ -1252,8 +1377,11 @@ function ConnectedRoom({
       prefs,
       updatePrefs,
       leave,
+      shareAgain: shareAgain ? dismissShareAgain : undefined,
     }),
     [
+      shareAgain,
+      dismissShareAgain,
       entryVideo,
       recovering,
       over,
@@ -1295,6 +1423,10 @@ function ConnectedRoom({
   // request is still running — that request sends the on-end survey, and navigating
   // away cancels it. EndWebinarDialog goes to Results once the response is back.
   const shownExit = exit ?? (status === "ended" ? "ended" : null);
+  // Removed, or over: a refresh of this page, or the link reopened, must not come back in.
+  useEffect(() => {
+    if (shownExit === "removed" || shownExit === "ended") onDeparted(shownExit);
+  }, [shownExit, onDeparted]);
   const endView = afterWebinarEnd({
     role: liveRole,
     ended: shownExit === "ended",

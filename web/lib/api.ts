@@ -46,6 +46,7 @@ import type {
   FeatureGrant,
   HostWebinarPage,
   JoinResponse,
+  RejoinCheckResponse,
   LiveRoom,
   MuteAllResponse,
   Person,
@@ -264,11 +265,24 @@ export const api = {
 
   /** Exchanges a join key — or the session cookie — for a LiveKit token. The
    *  server decides the role; a client cannot ask for one. */
-  join: (slug: string, joinKey?: string) =>
+  join: (slug: string, joinKey?: string, opts?: { rejoin?: boolean }) =>
     post<JoinResponse>(
-      `/api/webinars/${seg(slug)}/join`,
+      `/api/webinars/${seg(slug)}/join${opts?.rejoin ? "?rejoin=1" : ""}`,
       joinKey ? { joinKey } : {},
     ),
+
+  /** Whether a browser that was in the room a few minutes ago should go straight back in
+   *  (lib/rejoin.ts). Uses the same credentials as join — the key, the session, or the
+   *  httpOnly rejoin cookie — and never errors for a no. */
+  rejoinCheck: (slug: string, joinKey?: string) =>
+    post<RejoinCheckResponse>(
+      `/api/webinars/${seg(slug)}/rejoin-check`,
+      joinKey ? { joinKey } : {},
+    ),
+
+  /** The Leave button: forget the rejoin cookie, so reopening the link does not put this
+   *  browser back in the room. */
+  leaveRoom: (slug: string) => post<StatusResponse>(`/api/webinars/${seg(slug)}/leave`),
 
   /** Hands one realtime message to the server for delivery.
    *
@@ -657,8 +671,10 @@ export const api = {
       identity,
     }),
 
-  hostJoin: (slug: string) =>
-    post<JoinResponse>(`/api/host/webinars/${seg(slug)}/join`),
+  hostJoin: (slug: string, opts?: { rejoin?: boolean }) =>
+    post<JoinResponse>(
+      `/api/host/webinars/${seg(slug)}/join${opts?.rejoin ? "?rejoin=1" : ""}`,
+    ),
 
   // ------------------------------------------------------- in-session controls
 

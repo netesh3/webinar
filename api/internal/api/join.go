@@ -73,6 +73,10 @@ func (s *Server) handleAttendeeJoin(w http.ResponseWriter, r *http.Request) {
 			"The host hasn't approved your registration yet.")
 		return
 	}
+	// A refresh or a reopened link must not undo the host removing somebody.
+	if isRejoin(r) && s.refuseRemoved(w, r, slug, attendeeIdentity(reg.JoinKey)) {
+		return
+	}
 
 	wb, err := s.store.WebinarBySlug(r.Context(), slug)
 	if err != nil {
@@ -101,6 +105,10 @@ func (s *Server) joinAsAttendee(
 		return
 	}
 	if b := s.audienceBarrier(wb); b != nil {
+		if b.code == "ended" {
+			// Nothing left to rejoin.
+			s.clearRejoinCookie(w, slug)
+		}
 		httpx.Error(w, b.status, b.code, b.message)
 		return
 	}
@@ -194,6 +202,11 @@ func (s *Server) joinAsAttendee(
 			}
 		}
 	}
+
+	// The way back after a refresh (rejoin.go). Set before the token is written,
+	// because a header cannot follow the body. A failed token leaves a cookie that
+	// only works for a registration that already passed every gate above.
+	s.setRejoinCookie(w, wb, reg)
 
 	// canRecord is false down this path without qualification, including for
 	// someone the host promoted. A promotion is a microphone and a camera; it is
@@ -331,6 +344,20 @@ func (s *Server) resolveRegistration(w http.ResponseWriter, r *http.Request, slu
 	if joinKey == "" {
 		user, signedIn := s.optionalUser(r)
 		if !signedIn {
+			// A guest whose browser lost the key but kept the rejoin cookie from an
+			// earlier join of this webinar (rejoin.go). The cookie is only ever an
+			// automatic way back, so a removal refuses it.
+			reg, ok, err := s.rejoinCookieRegistration(r, slug)
+			if err != nil {
+				s.fail(w, r, "join: rejoin cookie", err)
+				return types.Registration{}, false
+			}
+			if ok {
+				if s.refuseRemoved(w, r, slug, attendeeIdentity(reg.JoinKey)) {
+					return types.Registration{}, false
+				}
+				return reg, true
+			}
 			httpx.Error(w, http.StatusUnauthorized, "no_join_key",
 				"You need to register for this webinar first.")
 			return types.Registration{}, false
@@ -442,6 +469,11 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity := hostIdentity(user.ID)
+	// A panelist the host removed does not come back on a refresh. The host cannot
+	// be removed from their own stage, so only a panelist is checked.
+	if role == types.RolePanelist && isRejoin(r) && s.refuseRemoved(w, r, slug, identity) {
+		return
+	}
 
 	// A panelist the host muted comes back muted, and a panelist the host made
 	// co-host comes back co-host — a dropped connection must not be a way to

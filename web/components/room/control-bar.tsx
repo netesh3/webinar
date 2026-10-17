@@ -195,6 +195,7 @@ export function ControlBar() {
     previewChrome,
     prefs,
     updatePrefs,
+    shareAgain,
   } = useRoomUI();
   const raisedHands = useRaisedHandsPanel();
 
@@ -991,6 +992,30 @@ export function ControlBar() {
         ...(compact ? { paddingLeft: leftReservePx } : undefined),
       }}
     >
+      {/* Back after a refresh that interrupted a screen share. One tap, never automatic:
+          the browser needs the click to show its picker anyway. */}
+      {shareAgain && canShare && permissions.canPublish && !isScreenShareEnabled ? (
+        <div className="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-brand py-1 pr-1 pl-3 text-[13px] font-medium text-white shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              shareAgain();
+              onShareClick();
+            }}
+            className="rounded-full px-1 py-0.5 hover:underline"
+          >
+            Share again
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={shareAgain}
+            className="grid size-6 place-items-center rounded-full hover:bg-white/20"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       {/* Mic + camera park on the left, out of flow, so they don't shove the
           centre cluster sideways. Gated per source: somebody the host allowed
           to speak gets a microphone and must NOT get a camera they were never

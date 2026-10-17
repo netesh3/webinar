@@ -5746,6 +5746,21 @@ export interface JoinRequest {
   joinKey?: string;
 }
 /**
+ *  RejoinCheckResponse answers whether a browser that was in the room a few minutes ago
+ *  * should go straight back in rather than see the webinar page.
+ *  *
+ *  * A no is never an error. Reason says why, for telemetry: ended, not_live, removed,
+ *  * not_approved, no_credential, or a join barrier code such as locked.
+ */
+export interface RejoinCheckResponse {
+  rejoin: boolean;
+  reason?: string;
+  /**
+   * Stage is set for the host or a panelist: their room is /host/<slug>/room.
+   */
+  stage?: boolean;
+}
+/**
  * JoinResponse is what the browser hands to the LiveKit client SDK.
  */
 export interface JoinResponse {

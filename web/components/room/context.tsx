@@ -167,6 +167,11 @@ export type RoomUI = {
 
   leave: () => void;
 
+  /** Set when this presenter was sharing their screen before a refresh. The control bar
+   *  offers "Share again" as one tap — a share is never restarted by itself. Calling it
+   *  dismisses the offer. */
+  shareAgain?: () => void;
+
   /** Dev chrome preview (`/preview/room`): no LiveKit media. Share and similar
    *  publish actions are mocked so the control bar still shows host affordances. */
   previewChrome?: boolean;

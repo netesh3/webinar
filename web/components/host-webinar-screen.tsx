@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
 import { HostWebinarTabs } from "./host-webinar-tabs";
+import { HostRejoinBanner } from "./rejoin";
 import { CopyWebinarDialog } from "./copy-webinar";
 import { ConfirmModal, Menu, Spinner } from "./controls";
 import { StepBar } from "./webinar-steps";
@@ -276,6 +277,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         <ArrowLeftIcon className="size-3.5" />
         Your webinars
       </Link>
+
+      {/* Back on stage after closing the room tab by accident. Offered, not forced. */}
+      <HostRejoinBanner slug={slug} live={isLive && !isZoom && !bypass} />
 
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">

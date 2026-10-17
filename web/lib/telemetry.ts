@@ -81,6 +81,23 @@ function flush(beacon = false): void {
   });
 }
 
+/** One event outside a room's sampling — the rejoin path (lib/rejoin.ts) uses it to report
+ *  each automatic return to the room, and each refusal, from pages that have no Room.
+ *  Sent straight away: the page it comes from is usually about to navigate. The caller
+ *  checks the telemetry flag; the server drops it anyway when telemetry is off. */
+export function trackEvent(
+  event: string,
+  ctx: Ctx,
+  payload: Record<string, unknown> = {},
+): void {
+  queue.push({
+    event,
+    timestamp: Date.now(),
+    payload: { userId: ctx.userId, roomName: ctx.roomName, ...payload },
+  });
+  flush(true);
+}
+
 type StatsMap = Map<string, Record<string, unknown>>;
 
 async function readStats(target: RTCRtpSender | RTCRtpReceiver | undefined): Promise<StatsMap> {
