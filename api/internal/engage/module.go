@@ -339,6 +339,11 @@ func (s *Module) Tick(ctx context.Context) {
 	s.AdvanceBots(ctx)
 	s.flushWhatsAppOutbox(ctx)
 	s.sendReplyDigests(ctx)
+}
+
+// Maintain is the CRM's maintenance lane: nothing in it is time-critical, and it runs
+// beside Tick rather than after it. See api.RunTick.
+func (s *Module) Maintain(ctx context.Context) {
 	s.checkWhatsAppTokens(ctx)
 	s.pruneFinishedBotSessions(ctx)
 	s.copyWhatsAppMedia(ctx)

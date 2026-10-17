@@ -42,7 +42,7 @@ func TestWhatsAppImagesAreKeptAfterMetaForgetsThem(t *testing.T) {
 	}
 	kept, lost := messageID("wamid.kept"), messageID("wamid.lost")
 
-	h.engage.Tick(ctx)
+	h.engage.Maintain(ctx)
 	g.holdMedia("9001", nil)
 
 	get := func(id string) (int, string) {
@@ -65,7 +65,7 @@ func TestWhatsAppImagesAreKeptAfterMetaForgetsThem(t *testing.T) {
 	if _, err := h.store.Pool().Exec(ctx, `DELETE FROM sweep_leases WHERE name = 'wa-media-retention'`); err != nil {
 		t.Fatal(err)
 	}
-	h.engage.Tick(ctx)
+	h.engage.Maintain(ctx)
 	if code, body := get(kept); code != http.StatusGone {
 		t.Fatalf("image past retention: %d %s, want 410", code, body)
 	}
