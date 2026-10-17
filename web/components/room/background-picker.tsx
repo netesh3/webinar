@@ -263,7 +263,8 @@ export function BackgroundTiles({
   );
 }
 
-function Tile({
+/** One tile in a background grid. Shared with the camera menu's picker (background-menu.tsx). */
+export function Tile({
   label,
   active,
   busy = false,
