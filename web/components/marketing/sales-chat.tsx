@@ -11,17 +11,19 @@ import "./sales-chat.css";
  * An assistant answers first, from the real price list (internal/sales on the API);
  * a person takes over when it can't answer or the visitor asks. See api/sales.go.
  *
- * - Opens by itself AUTO_OPEN_MS after every page load, refreshes included. Closing it
- *   closes it until the next load; nothing about it is remembered.
+ * - The closed widget is a "Talk to Agent" pill. TEASER_MS after every page load a small
+ *   popup greets the visitor above it; "Start chat" opens the panel, × dismisses it until
+ *   the next load. Nothing about it is remembered.
  * - /#chat opens it: that is the link in the reply email.
  * - The conversation is created on the first message, not on open, so an auto-opened
  *   chat nobody types into costs nothing and never reaches the admin inbox.
  * - Realtime is polling, fast only while a person is involved.
  */
 
-// Opens three seconds after the page loads: long enough for the visitor to see the
-// page first, soon enough to greet them.
-const AUTO_OPEN_MS = 3000;
+// The teaser popup appears eight seconds after the page loads: long enough for the
+// visitor to look at the page first, soon enough to greet them.
+const TEASER_MS = 8000;
+const TEASER_TEXT = "👋 Hi there! Have a question? Our agent is here to help you right now.";
 const TOKEN_KEY = "webcast.salesChat.token";
 
 // Mirrors sales.Greeting on the API; the server's copy replaces it once the chat starts.
@@ -54,6 +56,7 @@ type Local = SalesMessage & { pending?: boolean };
 
 export function SalesChatWidget() {
   const [open, setOpen] = useState(false);
+  const [teaser, setTeaser] = useState(false);
   // Read once on the client. Nothing rendered depends on it, so the server's null
   // and the client's saved token cannot disagree on screen.
   const [token, setToken] = useState<string | null>(() => (typeof window === "undefined" ? null : read(TOKEN_KEY)));
@@ -79,6 +82,7 @@ export function SalesChatWidget() {
 
   const show = useCallback(() => {
     setOpen(true);
+    setTeaser(false);
     setUnread(0);
   }, []);
 
@@ -116,11 +120,14 @@ export function SalesChatWidget() {
       });
   }, [token, apply]);
 
-  // Open by itself on every page load, or straight away for /#chat.
+  // Teaser popup on every page load, or the panel straight away for /#chat.
   useEffect(() => {
     const linked = window.location.hash === "#chat";
-    // Every page load: closing it only closes it for this visit.
-    const t = window.setTimeout(show, linked ? 0 : AUTO_OPEN_MS);
+    const t = linked
+      ? window.setTimeout(show, 0)
+      : window.setTimeout(() => {
+          if (!openRef.current) setTeaser(true);
+        }, TEASER_MS);
     const onHash = () => {
       if (window.location.hash === "#chat") show();
     };
@@ -229,12 +236,40 @@ export function SalesChatWidget() {
 
   if (!open) {
     return (
-      <button type="button" className="sc-bubble" aria-label="Chat with us" onClick={show}>
-        <svg viewBox="0 0 24 24" aria-hidden>
-          <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z" />
-        </svg>
-        {unread > 0 && <span className="sc-unread">{unread}</span>}
-      </button>
+      <>
+        {teaser && (
+          <div className="sc-teaser" role="dialog" aria-label="Talk to Agent">
+            <div className="sc-teaser-head">
+              <span className="sc-teaser-av" aria-hidden>
+                <svg viewBox="0 0 24 24">
+                  <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z" />
+                </svg>
+                <i />
+              </span>
+              <div className="sc-teaser-title">
+                <b>Talk to Agent</b>
+                <small>● Online · replies instantly</small>
+              </div>
+              <button type="button" className="sc-teaser-x" aria-label="Dismiss" onClick={() => setTeaser(false)}>
+                ✕
+              </button>
+            </div>
+            <p className="sc-teaser-msg">{TEASER_TEXT}</p>
+            <button type="button" className="sc-teaser-go" onClick={show}>
+              Start chat
+            </button>
+          </div>
+        )}
+        <button type="button" className="sc-bubble" onClick={show}>
+          <span className="sc-bubble-icon" aria-hidden>
+            <svg viewBox="0 0 24 24">
+              <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12Z" />
+            </svg>
+          </span>
+          Talk to Agent
+          {unread > 0 && <span className="sc-unread">{unread}</span>}
+        </button>
+      </>
     );
   }
 
