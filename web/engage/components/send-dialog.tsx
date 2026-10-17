@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { NeedsDefaultFile, needsDefaultFile } from "./header-media";
 import { engageApi } from "../api";
 import { Alert, Modal, Select, Spinner } from "@/components/controls";
 import { DateTimeField } from "@/components/date-picker";
@@ -162,6 +163,8 @@ function SendDialogBody({
   const { account } = useSession();
   const { active: activeSlot, rowProps } = useActiveSlot();
   const [templates, setTemplates] = useState<CRMTemplate[] | null>(null);
+  // Approved ones held back only for want of a default file; see NeedsDefaultFile.
+  const [waitingFile, setWaitingFile] = useState<CRMTemplate[]>([]);
   const [fields, setFields] = useState<CRMMergeField[]>([]);
   const [audience, setAudience] = useState<CRMAudienceResponse | null>(null);
   const [audienceError, setAudienceError] = useState<string | null>(null);
@@ -211,6 +214,7 @@ function SendDialogBody({
       .then(([t, b]) => {
         if (cancelled) return;
         const sendable = t.templates.filter((x) => x.sendable);
+        setWaitingFile(t.templates.filter(needsDefaultFile));
         // Fields that only mean something on an automatic message are not offered.
         const f = b.fields.filter(
           (x) =>
@@ -490,6 +494,7 @@ function SendDialogBody({
                 onPick={pick}
               />
             )}
+            <NeedsDefaultFile templates={waitingFile} />
           </section>
 
           {template && params.length > 0 && (

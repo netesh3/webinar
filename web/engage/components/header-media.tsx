@@ -31,16 +31,15 @@ export const NO_HEADER: HeaderDraft = { format: "NONE", text: "", file: null };
 /** Why this header cannot be submitted yet, or null. */
 export function headerDraftProblem(h: HeaderDraft): string | null {
   if (h.format === "TEXT") return headerTextProblem(h.text);
-  if (isMediaFormat(h.format) && !h.file) {
-    return `Choose the ${MEDIA_RULES[h.format].label.toLowerCase()} Meta should review it with.`;
-  }
+  // A media header needs no file to be submitted: Meta reviews a sample, and the real
+  // file is chosen when sending or set as the default later.
   return null;
 }
 
 /** The request's header, or undefined for none. */
 export function headerInput(h: HeaderDraft): CRMTemplateHeaderInput | undefined {
   if (h.format === "TEXT") return { format: "TEXT", text: h.text.trim() };
-  if (isMediaFormat(h.format) && h.file) return { format: h.format, fileId: h.file.id };
+  if (isMediaFormat(h.format)) return { format: h.format, fileId: h.file?.id ?? "" };
   return undefined;
 }
 
@@ -235,8 +234,7 @@ export function HeaderPicker({
       )}
       {media && (
         <p className="text-[11px] leading-snug text-ink-3">
-          Meta reviews the template with this file, and it is what gets sent unless a broadcast
-          picks another.
+          Optional — add the file now or choose one when you send. Meta reviews a sample.
           {media === "IMAGE" && " Without one, an image header sends the webinar's cover."}
         </p>
       )}
@@ -287,7 +285,7 @@ export function TemplateHeaderFile({
         </span>
         <HeaderFileButton
           format={format}
-          label={file ? "Replace" : "Choose file"}
+          label={file ? "Replace" : "Choose default file"}
           disabled={busy}
           onUploaded={(f) => save(f.id)}
         />
@@ -374,5 +372,63 @@ export function BroadcastHeaderPicker({
         />
       </div>
     </fieldset>
+  );
+}
+
+/* Approved templates that can't be picked here yet because they have no default file.
+ *
+ * A media-header template can be submitted without one (Meta reviews a sample), so
+ * reminders, drips and rules would otherwise just not list it. This says why and
+ * lets the coach set the file in place. */
+export function NeedsDefaultFile({
+  templates,
+  onSaved,
+}: {
+  templates: CRMTemplate[];
+  onSaved?: () => void;
+}) {
+  const [saved, setSaved] = useState<Set<string>>(new Set());
+  const waiting = templates.filter((t) => needsDefaultFile(t) && !saved.has(t.name + "/" + t.language));
+  if (waiting.length === 0 && saved.size === 0) return null;
+  return (
+    <div className="grid gap-1.5 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-[12px] leading-snug">
+      {waiting.length > 0 && (
+        <p className="text-ink-2">
+          {waiting.length === 1 ? "This template needs" : "These templates need"} a default file
+          before {waiting.length === 1 ? "it" : "they"} can be used here:
+        </p>
+      )}
+      {waiting.map((t) =>
+        t.needsHeaderFile ? (
+          <div key={t.name + "/" + t.language}>
+            <span className="font-medium text-ink">{t.name}</span>
+            <TemplateHeaderFile
+              template={t}
+              onSaved={() => {
+                setSaved((prev) => new Set(prev).add(t.name + "/" + t.language));
+                onSaved?.();
+              }}
+            />
+          </div>
+        ) : (
+          <p key={t.name + "/" + t.language} className="text-ink-2">
+            <span className="font-medium text-ink">{t.name}</span> — choose its card pictures on the
+            WhatsApp templates page.
+          </p>
+        ),
+      )}
+      {saved.size > 0 && !onSaved && (
+        <p className="text-ink-3">Default file set. Close and reopen this to pick it.</p>
+      )}
+    </div>
+  );
+}
+
+/** Approved and otherwise usable, but missing the file it would send. */
+export function needsDefaultFile(t: CRMTemplate): boolean {
+  return (
+    t.status.toUpperCase() === "APPROVED" &&
+    !t.unsupported &&
+    Boolean(t.needsHeaderFile || t.needsCardFiles)
   );
 }

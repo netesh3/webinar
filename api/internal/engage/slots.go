@@ -476,11 +476,7 @@ func (s *Module) checkSlotWording(w http.ResponseWriter, r *http.Request, user s
 		return types.CRMTemplate{}, false
 	}
 	if !tmpl.Sendable {
-		msg := tmpl.Unsupported
-		if msg == "" {
-			msg = "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
-		}
-		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", msg)
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 		return types.CRMTemplate{}, false
 	}
 	if len(params) != tmpl.Variables {

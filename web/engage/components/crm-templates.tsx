@@ -89,7 +89,12 @@ export function BlockedList({ templates }: { templates: CRMTemplate[] }) {
       {templates.map((t) => (
         <li key={templateKey(t)}>
           <span className="font-medium">{t.name}</span> —{" "}
-          {t.unsupported || `${t.status.toLowerCase()} at Meta`}
+          {t.unsupported ||
+            (t.status.toUpperCase() === "APPROVED" && t.needsHeaderFile
+              ? "no default file yet — choose one on the WhatsApp templates page"
+              : t.status.toUpperCase() === "APPROVED" && t.needsCardFiles
+                ? "card pictures missing — choose them on the WhatsApp templates page"
+                : `${t.status.toLowerCase()} at Meta`)}
         </li>
       ))}
     </ul>

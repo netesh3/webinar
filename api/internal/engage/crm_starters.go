@@ -286,6 +286,21 @@ func (s *Module) wordingHeader(w http.ResponseWriter, r *http.Request, user stor
 		}
 		return &wa.NewHeader{Format: "TEXT", Text: text}, nil, true
 	case "IMAGE", "VIDEO", "DOCUMENT":
+		if strings.TrimSpace(in.FileID) == "" {
+			// No file yet: Meta reviews a neutral sample, and the real file is chosen
+			// when sending (or set as the default later). See header_samples.go.
+			sample, _ := headerSampleFor(format)
+			handle, err := s.whatsapp.UploadHeaderSample(r.Context(), user.WhatsAppToken, sample.name, sample.mime, sample.data)
+			if err != nil {
+				if whatsappAPIError(w, err) {
+					return nil, nil, false
+				}
+				httpx.Error(w, http.StatusUnprocessableEntity, "template_refused",
+					"Meta would not take the sample header: "+err.Error())
+				return nil, nil, false
+			}
+			return &wa.NewHeader{Format: format, Handle: handle}, nil, true
+		}
 		file, err := s.store.MediaFileForHost(r.Context(), user.ID, strings.TrimSpace(in.FileID))
 		if errors.Is(err, store.ErrNotFound) {
 			httpx.Error(w, http.StatusUnprocessableEntity, "media_not_found",

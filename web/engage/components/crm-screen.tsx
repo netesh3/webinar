@@ -1,6 +1,7 @@
 "use client";
 
 import { engageApi } from "../api";
+import { NeedsDefaultFile } from "./header-media";
 import { markThreadRead } from "./replies";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -1032,6 +1033,7 @@ export function RemindersSettings({
           send its own words then. Write one in WhatsApp Manager and Meta will
           review it.
         </p>
+        <NeedsDefaultFile templates={templates ?? []} onSaved={onRefreshTemplates} />
         <RefreshTemplates syncing={syncing} onClick={onRefreshTemplates} />
       </div>
     );
@@ -1192,6 +1194,8 @@ export function RemindersSettings({
           </div>
         );
       })}
+
+      <NeedsDefaultFile templates={templates ?? []} onSaved={onRefreshTemplates} />
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
         <RefreshTemplates syncing={syncing} onClick={onRefreshTemplates} />
