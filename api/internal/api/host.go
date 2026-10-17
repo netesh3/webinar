@@ -1953,6 +1953,12 @@ func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request)
 		s.log.Warn("remove participant: could not revoke stage grant",
 			"slug", slug, "identity", identity, "error", err)
 	}
+	// And a refresh, or the link reopened, must not put them straight back in:
+	// the automatic rejoin path reads this (rejoin.go).
+	if err := s.store.RecordRemoval(r.Context(), slug, identity); err != nil {
+		s.log.Warn("remove participant: could not record removal",
+			"slug", slug, "identity", identity, "error", err)
+	}
 
 	s.log.Info("participant removed", "slug", slug, "identity", identity)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})

@@ -390,6 +390,10 @@ func (s *Server) Routes() http.Handler {
 			 * ceiling is what stops the room filling up.
 			 */
 			r.Post("/webinars/{slug}/guest-join", s.handleGuestJoin)
+			// Whether a browser that was just in the room goes straight back in, and
+			// the Leave button saying it should not. See rejoin.go.
+			r.Post("/webinars/{slug}/rejoin-check", s.handleRejoinCheck)
+			r.Post("/webinars/{slug}/leave", s.handleLeave)
 			// A POST only because it carries a list of keys in the body; it reads
 			// nothing else and writes nothing.
 			r.Post("/registrations/lookup", s.handleLookup)

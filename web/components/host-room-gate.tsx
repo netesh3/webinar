@@ -6,8 +6,12 @@ import { useEffect, useState } from "react";
 import { WebinarRoom } from "./room/webinar-room";
 import { Spinner } from "./controls";
 import { Button, ButtonLink, Card } from "./ui";
+import { useAppConfig } from "./providers";
 import { ApiError, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
+import { useHydrated } from "@/lib/clock";
+import { detectArrival, hasRejoinIntent, type Arrival } from "@/lib/rejoin";
+import { trackEvent } from "@/lib/telemetry";
 
 /** Starts the stage for a host or panelist. Requires the session cookie; the API
  *  refuses to mint a publishing token for anyone else. */
@@ -16,14 +20,29 @@ export function HostRoomGate({ slug }: { slug: string }) {
   const [join, setJoin] = useState<JoinResponse | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [openingZoom, setOpeningZoom] = useState(false);
+  const { telemetryEnabled } = useAppConfig();
+  /* A refresh of the stage, or the dashboard's Rejoin, inside the window: straight back on
+   * stage with the microphone and camera as they were, no device check (lib/rejoin.ts). Any
+   * other arrival — including a refresh after pressing Leave — is the ordinary pre-join. */
+  const hydrated = useHydrated();
+  const [arrival] = useState<Arrival>(() => detectArrival(slug));
+  const rejoin = arrival === "rejoin";
 
   useEffect(() => {
+    if (!hydrated) return;
     let active = true;
 
     api
-      .hostJoin(slug)
+      .hostJoin(slug, { rejoin })
       .then((res) => {
         if (!active) return;
+        if (rejoin && telemetryEnabled) {
+          trackEvent("rejoin", { userId: res.identity, roomName: slug }, {
+            door: "stage",
+            via: hasRejoinIntent(slug, Date.now()) ? "link" : "refresh",
+            publisher: res.canPublish,
+          });
+        }
         if (res.zoomStartUrl) {
           setOpeningZoom(true);
           window.location.assign(res.zoomStartUrl);
@@ -40,7 +59,7 @@ export function HostRoomGate({ slug }: { slug: string }) {
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [slug, hydrated, rejoin, telemetryEnabled]);
 
   /* Being on this stage is a fact about the webinar, not something a retry can change —
    * offering "Try again" would just repeat the same 403. */
@@ -70,6 +89,8 @@ export function HostRoomGate({ slug }: { slug: string }) {
         // request before it can render its own header.
         topic={join.topic}
         onLeave={() => router.push(`/host/${slug}`)}
+        door="stage"
+        rejoined={rejoin}
       />
     );
   }
@@ -88,6 +109,8 @@ export function HostRoomGate({ slug }: { slug: string }) {
                   ? "You're not on this stage"
                   : error.code === "runs_in_zoom"
                     ? "This session runs in Zoom"
+                    : error.code === "removed"
+                      ? "You were removed from this session"
                     : "Can't start"}
             </h1>
             <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
@@ -96,7 +119,7 @@ export function HostRoomGate({ slug }: { slug: string }) {
             <div className="mt-5 grid gap-2">
               {signInNeeded ? (
                 <ButtonLink href={`/login?next=/host/${slug}/room`}>Sign in</ButtonLink>
-              ) : notInvited ? null : (
+              ) : notInvited || error.code === "removed" ? null : (
                 <Button onClick={() => location.reload()}>Try again</Button>
               )}
               {/* Not offered when the answer was "you are not on this stage": that person is
