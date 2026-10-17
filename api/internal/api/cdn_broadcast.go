@@ -7,6 +7,7 @@ import (
 
 	"github.com/livekit/protocol/livekit"
 	"github.com/netkumar/webcast/api/internal/lk"
+	"github.com/netkumar/webcast/api/internal/streamdest"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -362,7 +363,7 @@ func (s *Server) linkedInIngestFor(ctx context.Context, wb types.Webinar) string
 	if err != nil || paused {
 		return ""
 	}
-	return ingest
+	return streamdest.FixDoubledKey(ingest)
 }
 
 /* syncStreamDest adds or replaces the host's RTMP destination on a running mix.
