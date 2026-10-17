@@ -108,11 +108,12 @@ export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
  * `contentHint` is the important part, and it depends on the share's mode (lib/share-mode.ts).
  * Encoded as motion, captured screen content is protected for frame rate under any bitrate
  * pressure by blurring — so the text on a slide goes soft exactly when somebody is trying to
- * read it. The default "sharp" mode asks for "detail": hold the pixels, drop frames. Only a
- * presenter who chose "Optimize for video" gets "motion", and with it smoother playback.
+ * read it. Every share starts "sharp", which asks for "detail": hold the pixels, drop frames.
+ * It is switched to "motion" (smoother playback) only while the share is detected playing a
+ * video — lib/auto-share-mode.ts — and back once it settles.
  *
- * Resolution: up to 2560x1440 as an ideal (SHARE_CAPTURE_MAX), so a high-DPI screen is not
- * scaled to 1080p before it is encoded; Safari is left unconstrained; phones get the floor.
+ * Resolution: up to 1920x1080 as an ideal (SHARE_CAPTURE_MAX); Safari is left unconstrained;
+ * phones get the floor.
  *
  * Audio IS captured, and it did not used to be. `audio: false` was defended here on the
  * grounds that presenters share slides and terminals more often than video — true, and
@@ -136,7 +137,7 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
       autoGainControl: false,
     },
     contentHint: shareContentHint(mode),
-    resolution: shareCaptureResolution(mode, {
+    resolution: shareCaptureResolution({
       safari: isSafari(),
       mobile: isMobilePublisher(),
       mobileFloor: SHARE_FLOOR_MOBILE,
@@ -166,9 +167,9 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
  * Primary H264 matches the wire. VP8 stays as backup for subscribers that need it.
  *
  * Encodings: the mode's layers and top preset (shareLayers / shareTop in network.ts — the
- * same functions the share ladder reads, so the two cannot drift). The top encoding is the
- * capture itself, up to 1440p; its bitrate for a >1080p capture is set on the live sender by
- * the ladder (shareTopBitrate), since the capture size is not known until after publish.
+ * same functions the share ladder reads, so the two cannot drift): the 720p floor and the
+ * capture itself, 1080p at most. Priority over the camera is set on the live senders by
+ * prioritiseShare (network.ts), since there is no reliable publish option for it.
  *
  * Degradation: "sharp" is maintain-resolution — slides and terminals must not blur to hold a
  * frame rate, and contentHint "detail" asks the same of the encoder. "video" is
@@ -194,7 +195,7 @@ export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
  * frames; degradationPreference goes through the sender (livekit's
  * setDegradationPreference wraps RTCRtpSender.setParameters); the per-layer fps cap is
  * set on the same sender. Browsers that refuse a part of it keep the old value for that
- * part — the next share starts in the new mode regardless, since the choice is stored. */
+ * part; useAutoShareMode re-applies on the next change, and the ladder reapplies the fps. */
 export async function applyShareMode(track: LocalVideoTrack, mode: ShareMode): Promise<void> {
   const media = track.mediaStreamTrack;
   if (media) media.contentHint = shareContentHint(mode);
