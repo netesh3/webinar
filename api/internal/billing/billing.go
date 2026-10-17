@@ -59,7 +59,7 @@ type Plan struct {
 	// Features after the attendee line, which Attendees() supplies.
 	Features []string
 	Popular  bool
-	// Monthly price per currency, minor units. Yearly is ten times this.
+	// Monthly price per currency, minor units. Yearly is about ten times this; see yearly.
 	Monthly map[string]int64
 	/* ListMonthly is the regular price the early-bird price is shown against,
 	 * struck through. Display only — every charge uses Monthly. */
@@ -160,16 +160,31 @@ func (p Plan) Price(currency, period string) (int64, bool) {
 	case Monthly:
 		return monthly, true
 	case Yearly:
-		return monthly * 10, true
+		return yearly(currency, monthly), true
 	}
 	return 0, false
+}
+
+/* yearly is ten months for the price of twelve: two free.
+ *
+ * The pricing page shows a yearly plan per month, and ten months over twelve is
+ * a fraction of a rupee (₹39,990 / 12 = ₹3,332.50). So INR is priced as twelve
+ * months at a whole per-month figure ending in 9, rounded down from that — the
+ * buyer never pays more than ten months. USD stays ten times monthly. */
+func yearly(currency string, monthly int64) int64 {
+	if currency != INR {
+		return monthly * 10
+	}
+	rupees := monthly * 10 / 12 / 100
+	rupees -= ((rupees-9)%10 + 10) % 10
+	return rupees * 12 * 100
 }
 
 // List is the struck-through regular price for one period, or 0 when there is none.
 func (p Plan) List(currency, period string) int64 {
 	monthly := p.ListMonthly[currency]
-	if period == Yearly {
-		return monthly * 10
+	if period == Yearly && monthly > 0 {
+		return yearly(currency, monthly)
 	}
 	return monthly
 }
