@@ -1324,6 +1324,7 @@ export function Thread({
   const [notes, setNotes] = useState<CRMNote[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   /* Both from the server, and neither derivable here. The window runs from the
    * contact's last inbound message on the server's clock — the message list is
@@ -1399,6 +1400,25 @@ export function Thread({
     } catch (e: unknown) {
       notify(
         e instanceof ApiError ? e.message : "Could not record the opt-out.",
+        "error",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // For a person who asked to be forgotten. Back to the list, which no longer has them.
+  async function deleteContact() {
+    setBusy(true);
+    try {
+      await engageApi.crmDeleteContact(contactId);
+      setConfirmingDelete(false);
+      notify("Contact deleted, with their messages and media.", "ok");
+      onChanged();
+      onBack();
+    } catch (e: unknown) {
+      notify(
+        e instanceof ApiError ? e.message : "Could not delete the contact.",
         "error",
       );
     } finally {
@@ -1499,6 +1519,17 @@ export function Thread({
             Mark opted out
           </Button>
         )}
+        {contact && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() => setConfirmingDelete(true)}
+          >
+            Delete contact
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -1551,6 +1582,16 @@ export function Thread({
         title="Mark as opted out?"
         body="Nothing will be sent to this contact on WhatsApp. You cannot undo this from here — only they can opt in again, by asking to or by registering with the box ticked."
         confirmLabel="Mark opted out"
+      />
+
+      <ConfirmModal
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={deleteContact}
+        busy={busy}
+        title="Delete this contact?"
+        body="Their messages, WhatsApp photos and files, tags, notes and anything still scheduled to them are removed permanently. Their webinar registrations stay. If they register again they come back as a new contact."
+        confirmLabel="Delete contact"
       />
     </Card>
   );

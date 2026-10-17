@@ -165,6 +165,11 @@ export const engageApi = {
   crmOptOut: (id: string) =>
     post<CRMContact>(`/api/host/crm/contacts/${seg(id)}/opt-out`),
 
+  /** Erases a contact: their messages, stored WhatsApp media and anything still
+   *  queued for them. Their webinar registrations stay. */
+  crmDeleteContact: (id: string) =>
+    del<StatusResponse>(`/api/host/crm/contacts/${seg(id)}`),
+
   /** The host's labels with a count of who carries each. Also arrives with the
    *  contacts list, so the picker does not need this — it is the tag manager's
    *  own call, and what a rename or a delete returns to. */
