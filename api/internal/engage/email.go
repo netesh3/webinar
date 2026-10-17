@@ -19,7 +19,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/store"
 )
 
-const inboxSecretHeader = "X-Inbox-Webhook-Secret"
+const inboxSecretHeader = "X-Inbox-Webhook-Secret" // #nosec G101 -- a header name; the secret itself comes from config
 
 type inboxView struct {
 	Address    string         `json:"address"`

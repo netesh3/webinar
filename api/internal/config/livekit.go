@@ -114,7 +114,7 @@ func (p LiveKitProject) Enabled() bool { return !p.Disabled }
 const legacyProjectID = "default"
 
 // devSecret is the development signing key, refused outside development.
-const devSecret = "devsecretdevsecretdevsecretdevsecret"
+const devSecret = "devsecretdevsecretdevsecretdevsecret" // #nosec G101 -- development-only key; validate refuses it outside development
 
 /* projectID bounds what may become a database value and a log field.
  *

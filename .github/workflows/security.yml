@@ -1,0 +1,137 @@
+# Static security scans: Go vulnerabilities (govulncheck), Go source analysis (gosec),
+# and the web app's production npm dependencies (npm audit).
+#
+# Not run on pull requests, to keep PR CI fast, and not a required check. It runs on every
+# push to main, weekly (new advisories appear without any code change), and on demand.
+# Each job uploads the raw scanner output as an artifact; that output is also the
+# evidence used for the Zoom Marketplace security review. See docs/security-scans.md for
+# how findings are triaged and what is accepted.
+name: Security scans
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      # Fails on any vulnerability our code actually reaches. Advisories in modules we
+      # require but never call are listed but do not fail the job.
+      - name: govulncheck
+        run: |
+          set -o pipefail
+          govulncheck -show verbose ./... | tee "$RUNNER_TEMP/govulncheck.txt"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: govulncheck
+          path: ${{ runner.temp }}/govulncheck.txt
+
+  gosec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      # gosec v2.29.0 ships golang.org/x/tools v0.49, which cannot read Go 1.27 export
+      # data: every package fails to type-check and the scan silently covers far less.
+      # Build it against a current x/tools instead. A type error still fails the job.
+      - name: Build gosec
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gosec-build" && cd "$RUNNER_TEMP/gosec-build"
+          go mod init gosecbuild
+          printf '//go:build tools\n\npackage tools\n\nimport _ "github.com/securego/gosec/v2/cmd/gosec"\n' > tools.go
+          go get github.com/securego/gosec/v2/cmd/gosec@v2.29.0 golang.org/x/tools@v0.52.0
+          go build -o "$RUNNER_TEMP/gosec" github.com/securego/gosec/v2/cmd/gosec
+      # Every finding is fixed or carries a `#nosec <rule> -- reason` at the line.
+      - name: gosec
+        working-directory: api
+        run: |
+          "$RUNNER_TEMP/gosec" -fmt sarif -out "$RUNNER_TEMP/gosec.sarif" \
+            -stdout -verbose text ./... | tee "$RUNNER_TEMP/gosec.txt"
+          exit "${PIPESTATUS[0]}"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gosec
+          path: |
+            ${{ runner.temp }}/gosec.sarif
+            ${{ runner.temp }}/gosec.txt
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Reads package-lock.json only; nothing is installed.
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --json > "$RUNNER_TEMP/npm-audit.json" || true
+      # Fails on any critical advisory, and on any high advisory not in the accepted
+      # list. Each accepted id is explained in docs/security-scans.md.
+      - name: Check for new high or critical advisories
+        env:
+          ACCEPTED: >-
+            GHSA-5j98-mcp5-4vw2
+            GHSA-28wg-ghj8-5hjv
+            GHSA-2v37-7h3g-55p8
+            GHSA-xwg4-73v4-xw9w
+        run: |
+          node - "$RUNNER_TEMP/npm-audit.json" <<'EOF'
+          const report = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"));
+          const accepted = new Set(process.env.ACCEPTED.split(/\s+/).filter(Boolean));
+          console.log("npm audit (production):", JSON.stringify(report.metadata?.vulnerabilities));
+          const seen = new Map();
+          for (const v of Object.values(report.vulnerabilities ?? {})) {
+            for (const via of v.via) {
+              if (typeof via !== "object" || !["high", "critical"].includes(via.severity)) continue;
+              const id = via.url.split("/").pop();
+              seen.set(id, `${via.severity} ${via.name}: ${via.title} (${id})`);
+            }
+          }
+          let failed = false;
+          for (const [id, line] of seen) {
+            const ok = accepted.has(id);
+            console.log(`${ok ? "accepted" : "NEW     "}  ${line}`);
+            if (!ok) failed = true;
+          }
+          if (failed) {
+            console.log("::error::New high or critical advisory in production dependencies. Fix it, or document why it is accepted.");
+            process.exit(1);
+          }
+          EOF
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          path: ${{ runner.temp }}/npm-audit.json

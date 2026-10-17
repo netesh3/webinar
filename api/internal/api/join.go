@@ -198,7 +198,7 @@ func (s *Server) joinAsAttendee(
 			cdnStreamURL = live
 			cdnLowLatency = true
 			if isCdnAttendee && wb.Status == types.StatusLive {
-				go s.startBroadcastIfEnabled(context.Background(), wb, sfu)
+				go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 			}
 		}
 	}
@@ -495,7 +495,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 
 	// Same as attendee join / Start: do not block the host token on egress RPC.
 	if wb.Status == types.StatusLive {
-		go s.startBroadcastIfEnabled(context.Background(), wb, sfu)
+		go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 	}
 
 	// Reaching here means stageRole returned host or panelist for a real
@@ -532,7 +532,7 @@ func (s *Server) ensureRoom(
 	if err != nil {
 		return nil, 0, false, err
 	}
-	size := uint32(limit + stageHeadroom)
+	size := uint32(limit + stageHeadroom) // #nosec G115 -- attendee cap plus a small headroom, far below 2^32
 
 	count, known, err := sfu.EnsureRoom(ctx, room, size, emptyTimeoutSec, meta)
 	if err == nil {

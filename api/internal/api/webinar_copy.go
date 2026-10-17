@@ -181,7 +181,7 @@ func (s *Server) copyCover(ctx context.Context, fromSlug, toSlug string) error {
 			return err
 		}
 		data, err = io.ReadAll(io.LimitReader(file, maxWebinarImageBytes+1))
-		file.Close()
+		file.Close() // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 		if err != nil {
 			return err
 		}

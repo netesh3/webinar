@@ -83,7 +83,7 @@ func NewDisk(root string) (*Disk, error) {
 		return nil, fmt.Errorf("create %s: %w", abs, err)
 	}
 	probe := filepath.Join(abs, ".writable")
-	if err := os.WriteFile(probe, []byte("ok"), 0o640); err != nil {
+	if err := os.WriteFile(probe, []byte("ok"), 0o600); err != nil {
 		return nil, fmt.Errorf("%s is not writable: %w", abs, err)
 	}
 	if err := os.Remove(probe); err != nil {
@@ -123,7 +123,8 @@ func (d *Disk) Append(_ context.Context, key string, r io.Reader) (int64, error)
 	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 		return 0, err
 	}
-	f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+	// Only this process reads the objects back, so owner-only is enough.
+	f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304 -- full comes from d.path, which refuses keys that escape the root
 	if err != nil {
 		return 0, err
 	}
@@ -150,7 +151,7 @@ func (d *Disk) Open(_ context.Context, key string) (io.ReadSeekCloser, int64, er
 	if err != nil {
 		return nil, 0, err
 	}
-	f, err := os.Open(full)
+	f, err := os.Open(full) // #nosec G304 -- full comes from d.path, which refuses keys that escape the root
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, 0, ErrNotFound
@@ -159,7 +160,7 @@ func (d *Disk) Open(_ context.Context, key string) (io.ReadSeekCloser, int64, er
 	}
 	info, err := f.Stat()
 	if err != nil {
-		f.Close()
+		f.Close() // #nosec G104 -- close/write error on a read-side handle or stdout; nothing to recover
 		return nil, 0, err
 	}
 	return f, info.Size(), nil

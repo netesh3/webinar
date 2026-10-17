@@ -43,7 +43,7 @@ func (s *Server) writeSummary(w http.ResponseWriter, r *http.Request, payload []
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "private, no-store")
-	_, _ = w.Write(payload)
+	_, _ = w.Write(payload) // #nosec G705 -- server-built JSON sent as application/json
 }
 
 func (s *Server) handleEngagementSummary(w http.ResponseWriter, r *http.Request) {

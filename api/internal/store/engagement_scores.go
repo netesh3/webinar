@@ -109,9 +109,9 @@ func scoreRows(wid uuid.UUID, version int, at time.Time, rows []engagement.Score
 			reg = pgtype.UUID{Bytes: id, Valid: true}
 		}
 		out = append(out, []any{
-			pgtype.UUID{Bytes: wid, Valid: true}, r.Identity, reg, int16(version), r.Name, r.Email,
-			int16(r.Score), string(r.Tier), int32(s.WatchSec), int32(r.FirstJoinMin), int32(r.LastLeaveMin),
-			string(r.JoinTiming), int16(r.Visits), counts, parts,
+			pgtype.UUID{Bytes: wid, Valid: true}, r.Identity, reg, int16(version), r.Name, r.Email, // #nosec G115 -- score version, a small constant
+			int16(r.Score), string(r.Tier), int32(s.WatchSec), int32(r.FirstJoinMin), int32(r.LastLeaveMin), // #nosec G115 -- score 0-100 and minutes/seconds within one webinar
+			string(r.JoinTiming), int16(r.Visits), counts, parts, // #nosec G115 -- visit count within one webinar
 			toInt16(r.Presence), toInt16(r.Intensity), at,
 		})
 	}
@@ -121,7 +121,7 @@ func scoreRows(wid uuid.UUID, version int, at time.Time, rows []engagement.Score
 func toInt16(xs []int) []int16 {
 	out := make([]int16, len(xs))
 	for i, x := range xs {
-		out[i] = int16(min(x, 32767))
+		out[i] = int16(min(x, 32767)) // #nosec G115 -- non-negative counts clamped to 32767
 	}
 	return out
 }

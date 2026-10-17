@@ -54,7 +54,7 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name:     googleStateCookie,
 		Value:    signed,
 		Path:     "/",
@@ -69,7 +69,7 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 	if hint == "" {
 		hint = auth.GoogleLoginHint(r.URL.Query().Get("email"))
 	}
-	http.Redirect(w, r, auth.GoogleAuthCodeURL(s.cfg.GoogleClientID, redirect, signed, nonce, hint), http.StatusFound)
+	http.Redirect(w, r, auth.GoogleAuthCodeURL(s.cfg.GoogleClientID, redirect, signed, nonce, hint), http.StatusFound) // #nosec G710 -- redirect to Google's fixed authorize endpoint
 }
 
 func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +77,7 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	fail := func(detail string) {
 		s.clearGoogleStateCookie(w)
 		dest := s.googleFront(r, "/login", next, detail)
-		http.Redirect(w, r, dest, http.StatusFound)
+		http.Redirect(w, r, dest, http.StatusFound) // #nosec G710 -- googleFront prefixes an allowlisted origin; next passed safeGoogleNext
 	}
 
 	if gerr := r.URL.Query().Get("error"); gerr != "" {
@@ -154,7 +154,7 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("google auth", "user", user.ID, "created", created,
 		"email_domain", domainOf(user.Email))
-	http.Redirect(w, r, s.googleFront(r, landingAfterSignIn(user.CanHost, next), "", ""), http.StatusFound)
+	http.Redirect(w, r, s.googleFront(r, landingAfterSignIn(user.CanHost, next), "", ""), http.StatusFound) // #nosec G710 -- googleFront prefixes an allowlisted origin; next passed safeGoogleNext
 }
 
 /* handleGoogleAuth is POST /api/auth/google.
@@ -226,7 +226,7 @@ func (s *Server) googleSameSite() http.SameSite {
 }
 
 func (s *Server) clearGoogleStateCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name: googleStateCookie, Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.googleSameSite(),
 	})

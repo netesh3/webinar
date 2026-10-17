@@ -1482,7 +1482,7 @@ func randomDigits(n int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		out[i] = byte('0' + v.Int64())
+		out[i] = byte('0' + v.Int64()) // #nosec G115 -- a single digit 0-9
 	}
 	return string(out), nil
 }

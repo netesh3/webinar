@@ -341,7 +341,7 @@ func (s *Module) handleWhatsAppWebhookVerify(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(q.Get("hub.challenge")))
+	_, _ = w.Write([]byte(q.Get("hub.challenge"))) // #nosec G705 -- Meta's challenge echoed as text/plain only after the verify token matched
 }
 
 /* handleWhatsAppWebhook takes what Meta posts and files it under the right host.

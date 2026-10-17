@@ -78,7 +78,7 @@ func (s *Server) handleYouTubeConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name:     youtubeStateCookie,
 		Value:    signed,
 		Path:     "/",
@@ -101,7 +101,7 @@ func (s *Server) youtubeSameSite() http.SameSite {
 func (s *Server) handleYouTubeCallback(w http.ResponseWriter, r *http.Request) {
 	ret := "/settings"
 	fail := func(result, detail string) {
-		http.SetCookie(w, &http.Cookie{
+		http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 			Name: youtubeStateCookie, Value: "", Path: "/", MaxAge: -1,
 			HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
 		})
@@ -157,7 +157,7 @@ func (s *Server) handleYouTubeCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
 		Name: youtubeStateCookie, Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
 	})

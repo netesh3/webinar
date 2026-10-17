@@ -20,7 +20,7 @@ import (
 
 const (
 	DefaultAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
-	DefaultTokenURL = "https://oauth2.googleapis.com/token"
+	DefaultTokenURL = "https://oauth2.googleapis.com/token" // #nosec G101 -- a public endpoint URL, not a credential
 	DefaultRevoke   = "https://oauth2.googleapis.com/revoke"
 	DefaultAPI      = "https://www.googleapis.com/youtube/v3"
 	Scope           = "https://www.googleapis.com/auth/youtube"

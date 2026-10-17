@@ -96,8 +96,8 @@ func WelcomeEmail(w Welcome) (subject, text, html string) {
 		Product:   product,
 		Greeting:  "Hi " + greetingName + ",",
 		Preheader: welcomePreheader,
-		Tel:       template.URL(TelURI(w.ContactPhone)),
-		Mailto:    template.URL("mailto:" + strings.TrimSpace(w.ContactEmail)),
+		Tel:       template.URL(TelURI(w.ContactPhone)),                        // #nosec G203 -- TelURI keeps only digits and a leading +
+		Mailto:    template.URL("mailto:" + strings.TrimSpace(w.ContactEmail)), // #nosec G203 -- operator-set CONTACT_EMAIL behind a fixed mailto: scheme, not user input
 		Initial:   string([]rune(product)[0]),
 		Steps:     welcomeSteps(product),
 		MSO:       msoFonts,

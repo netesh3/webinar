@@ -87,7 +87,7 @@ func VerifyPassword(password, encoded string) error {
 		return ErrInvalidHash
 	}
 
-	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
+	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(want))) // #nosec G115 -- length of a stored argon2 hash (32 bytes)
 	// Constant time so a timing side channel can't leak the hash.
 	if subtle.ConstantTimeCompare(got, want) != 1 {
 		return ErrMismatch
