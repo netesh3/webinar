@@ -11,19 +11,18 @@ import "./sales-chat.css";
  * An assistant answers first, from the real price list (internal/sales on the API);
  * a person takes over when it can't answer or the visitor asks. See api/sales.go.
  *
- * - Opens by itself AUTO_OPEN_MS after a first visit. Closing it is remembered, so a
- *   returning visitor gets the small bubble rather than a chat in their face.
+ * - Opens by itself AUTO_OPEN_MS after every page load, refreshes included. Closing it
+ *   closes it until the next load; nothing about it is remembered.
  * - /#chat opens it: that is the link in the reply email.
  * - The conversation is created on the first message, not on open, so an auto-opened
  *   chat nobody types into costs nothing and never reaches the admin inbox.
  * - Realtime is polling, fast only while a person is involved.
  */
 
-// Opens a second after the page loads: soon enough to greet, late enough not to
-// flash before the page has painted.
-const AUTO_OPEN_MS = 1000;
+// Opens three seconds after the page loads: long enough for the visitor to see the
+// page first, soon enough to greet them.
+const AUTO_OPEN_MS = 3000;
 const TOKEN_KEY = "webcast.salesChat.token";
-const DISMISSED_KEY = "webcast.salesChat.dismissed";
 
 // Mirrors sales.Greeting on the API; the server's copy replaces it once the chat starts.
 const GREETING =
@@ -117,10 +116,11 @@ export function SalesChatWidget() {
       });
   }, [token, apply]);
 
-  // Open by itself on a first visit, or straight away for /#chat.
+  // Open by itself on every page load, or straight away for /#chat.
   useEffect(() => {
     const linked = window.location.hash === "#chat";
-    const t = linked || !read(DISMISSED_KEY) ? window.setTimeout(show, linked ? 0 : AUTO_OPEN_MS) : undefined;
+    // Every page load: closing it only closes it for this visit.
+    const t = window.setTimeout(show, linked ? 0 : AUTO_OPEN_MS);
     const onHash = () => {
       if (window.location.hash === "#chat") show();
     };
@@ -207,7 +207,6 @@ export function SalesChatWidget() {
 
   function close() {
     setOpen(false);
-    write(DISMISSED_KEY, "1");
     if (window.location.hash === "#chat") history.replaceState(null, "", window.location.pathname + window.location.search);
   }
 
