@@ -8,7 +8,6 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Role } from "@/lib/api-types";
-import { useLiveShareMode } from "@/lib/auto-share-mode";
 import {
   ExpandIcon,
   FitIcon,
@@ -639,10 +638,9 @@ const OWN_SHARE_SCALE = {
  */
 function OwnShareNotice({ size }: { size: "sm" | "md" | "lg" }) {
   const s = OWN_SHARE_SCALE[size];
-  /* Sharp (slides, code) unless the share is playing a video, which is detected and
-   * switched automatically (lib/auto-share-mode.ts). Shown, not chosen: there used to be
-   * an "Optimize for video" checkbox here, and presenters did not know when to tick it. */
-  const mode = useLiveShareMode();
+  /* The share still switches between sharp (slides, code) and smooth (a playing video)
+   * on its own — lib/auto-share-mode.ts, untouched. The "Sharp text · auto" line that
+   * reported it here is gone: presenters have nothing to do about it. */
   return (
     <div className="grid size-full place-items-center bg-black/40 p-4 text-center">
       <div>
@@ -658,15 +656,6 @@ function OwnShareNotice({ size }: { size: "sm" | "md" | "lg" }) {
         <p className={`leading-tight tracking-[-0.01em] text-white/95 ${s.title}`}>
           You&apos;re sharing your screen
         </p>
-        {/* Not on a filmstrip thumbnail — there is no room for more than the line. */}
-        {size !== "sm" && (
-          <p
-            className={`mt-3 text-white/60 ${size === "lg" ? "text-[14px]" : "text-[12px]"}`}
-            title="Text stays sharp; a playing video is detected and sent smoothly instead"
-          >
-            {mode === "video" ? "Smooth video · auto" : "Sharp text · auto"}
-          </p>
-        )}
       </div>
     </div>
   );
