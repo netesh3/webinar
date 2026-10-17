@@ -12,7 +12,12 @@ func TestPromptQuotesTheChargedPricesAndEnforcedCaps(t *testing.T) {
 	p := SystemPrompt(18)
 	for _, plan := range billing.Plans {
 		inr, _ := plan.Price(billing.INR, billing.Monthly)
-		if !strings.Contains(p, rupees(inr)+"/month") {
+		switch {
+		case plan.ContactOnly && strings.Contains(p, rupees(inr)+"/month"):
+			t.Errorf("%s is sold by contacting us, but the prompt quotes %s/month", plan.Name, rupees(inr))
+		case plan.ContactOnly && !strings.Contains(p, "priced on request"):
+			t.Errorf("%s: prompt does not say it is priced on request", plan.Name)
+		case !plan.ContactOnly && !strings.Contains(p, rupees(inr)+"/month"):
 			t.Errorf("%s: prompt does not quote %s/month", plan.Name, rupees(inr))
 		}
 		if !strings.Contains(p, plan.Name) || !strings.Contains(p, "up to "+itoa(plan.Attendees())+" live attendees") {
