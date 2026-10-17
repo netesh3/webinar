@@ -92,7 +92,7 @@ import { useYouTubeStream } from "./stream-to-youtube";
 import { useWhiteboard } from "./whiteboard/whiteboard-context";
 import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { sharePublishOptions } from "@/lib/media";
-import { readShareMode } from "@/lib/share-mode";
+import { useAutoShareMode } from "@/lib/auto-share-mode";
 import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
 import { badgeText } from "@/lib/mentions";
 import { MediaToggle } from "./media-toggle";
@@ -354,6 +354,9 @@ export function ControlBar() {
    * the numbers are withheld instead: headcount, raised hands, unread chat and Q&A.
    * A shared video file captures nothing of the page, so it keeps them. */
   const presenting = previewChrome ? previewSharing : isScreenShareEnabled && !fileShare.active;
+  // A live desktop share (not a file share, which is always video) is watched for
+  // motion and audio, and switched between sharp and video by itself.
+  useAutoShareMode(previewChrome ? undefined : localParticipant, presenting);
   const raisedBadge = presenting ? null : raisedHandsBadgeCount(raisedCount);
 
   /* The bar reports itself as a drop zone through state and an effect.
@@ -664,10 +667,10 @@ export function ControlBar() {
         notify("Share screen (preview — not publishing)", "info");
         return;
       }
-      // The presenter's last choice of sharp vs video (lib/share-mode.ts), sharp by default.
-      // The capture and the publish options both follow it: contentHint, fps, layers and
-      // degradation preference. Switched live from the share's own notice (tile.tsx).
-      const mode = readShareMode();
+      // Every share starts sharp (lib/share-mode.ts): contentHint, fps, layers and
+      // degradation preference. useAutoShareMode switches it to video live when the share
+      // starts playing one, and back when it stops.
+      const mode = "sharp" as const;
       void toggle("share", "Screen share", () =>
         // Third argument: publish options for the share's audio and video, so a share is
         // not encoded with the settings tuned for a voice or a face. See sharePublishOptions.
