@@ -61,6 +61,29 @@ type Plan struct {
 	Popular  bool
 	// Monthly price per currency, minor units. Yearly is ten times this.
 	Monthly map[string]int64
+	/* ListMonthly is the regular price the early-bird price is shown against,
+	 * struck through. Display only — every charge uses Monthly. */
+	ListMonthly map[string]int64
+	/* ContactOnly is a plan sold by conversation, not online: the pricing page says
+	 * "Contact us", and orders and trials for it are refused. An admin assigns it. */
+	ContactOnly bool
+}
+
+/* PromoLabel names the offer a list price is shown against. The saving is
+ * computed per price (DiscountPercent), never written into the label. */
+func PromoLabel(currency string) string {
+	if currency == INR {
+		return "Early bird · India special offer"
+	}
+	return "Early bird"
+}
+
+// DiscountPercent is how much below the list price amount is, rounded down; 0 with no list price.
+func DiscountPercent(amount, list int64) int {
+	if list <= 0 || amount >= list {
+		return 0
+	}
+	return int((list - amount) * 100 / list)
 }
 
 // Attendees is the plan's enforced attendee cap.
@@ -86,7 +109,8 @@ var Plans = []Plan{
 			"Polls, quizzes, Q&A and recording",
 			"Engagement Score",
 		},
-		Monthly: map[string]int64{INR: 3_999_00, USD: 49_00},
+		Monthly:     map[string]int64{INR: 3_999_00, USD: 49_00},
+		ListMonthly: map[string]int64{INR: 9_999_00, USD: 99_00},
 	},
 	{
 		ID:      types.PlanBusiness,
@@ -98,7 +122,8 @@ var Plans = []Plan{
 			"Follow-up by engagement group",
 			"Drips, chatbot & shared inbox",
 		},
-		Monthly: map[string]int64{INR: 14_999_00, USD: 199_00},
+		Monthly:     map[string]int64{INR: 14_999_00, USD: 199_00},
+		ListMonthly: map[string]int64{INR: 37_499_00, USD: 399_00},
 	},
 	{
 		ID:   types.PlanEnterprise,
@@ -109,7 +134,9 @@ var Plans = []Plan{
 			"Priority support on WhatsApp",
 			"Personal onboarding session",
 		},
-		Monthly: map[string]int64{INR: 39_999_00, USD: 499_00},
+		// Kept for an admin-assigned plan's records; never charged online.
+		Monthly:     map[string]int64{INR: 39_999_00, USD: 499_00},
+		ContactOnly: true,
 	},
 }
 
@@ -138,6 +165,15 @@ func (p Plan) Price(currency, period string) (int64, bool) {
 	return 0, false
 }
 
+// List is the struck-through regular price for one period, or 0 when there is none.
+func (p Plan) List(currency, period string) int64 {
+	monthly := p.ListMonthly[currency]
+	if period == Yearly {
+		return monthly * 10
+	}
+	return monthly
+}
+
 // Quote is what one checkout will charge.
 type Quote struct {
 	Plan     Plan
@@ -150,6 +186,9 @@ type Quote struct {
 
 var ErrUnknownPlan = errors.New("unknown plan, period or currency")
 
+// ErrContactOnly is a plan that is not sold online (see Plan.ContactOnly).
+var ErrContactOnly = errors.New("plan is sold by contacting us")
+
 /* NewQuote prices a plan.
  *
  * GST applies to INR only: a USD buyer is paying from outside India, which is an
@@ -161,6 +200,9 @@ func NewQuote(planID, period, currency string, gstPercent int) (Quote, error) {
 	plan, ok := FindPlan(planID)
 	if !ok {
 		return Quote{}, ErrUnknownPlan
+	}
+	if plan.ContactOnly {
+		return Quote{}, ErrContactOnly
 	}
 	sub, ok := plan.Price(currency, period)
 	if !ok {
@@ -248,41 +290,58 @@ type Order struct {
 
 // CreateOrder asks Razorpay for an order. Checkout can only be opened against one.
 func (c *Client) CreateOrder(ctx context.Context, req OrderRequest) (Order, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
+	var o Order
+	if err := c.do(ctx, http.MethodPost, "/v1/orders", req, &o, "create order"); err != nil {
 		return Order{}, err
 	}
-	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.API, "/")+"/v1/orders", bytes.NewReader(body))
+	if o.ID == "" {
+		return Order{}, errors.New("razorpay create order: no order id in response")
+	}
+	return o, nil
+}
+
+/* do is one authenticated Razorpay request. body nil sends none; out nil
+ * discards the response. Razorpay's error body names the problem ("Authentication
+ * failed", "The amount must be at least INR 1.00") and never echoes the secret. */
+func (c *Client) do(ctx context.Context, method, path string, body, out any, what string) error {
+	var rd io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		rd = bytes.NewReader(raw)
+	}
+	hr, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.API, "/")+path, rd)
 	if err != nil {
-		return Order{}, err
+		return err
 	}
 	hr.SetBasicAuth(c.KeyID, c.KeySecret)
-	hr.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		hr.Header.Set("Content-Type", "application/json")
+	}
 	res, err := c.HTTP.Do(hr)
 	if err != nil {
-		return Order{}, fmt.Errorf("razorpay create order: %w", err)
+		return fmt.Errorf("razorpay %s: %w", what, err)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if res.StatusCode/100 != 2 {
-		// Razorpay's error body names the problem ("Authentication failed",
-		// "The amount must be at least INR 1.00") and never echoes the secret.
 		var e struct {
 			Error struct {
 				Description string `json:"description"`
 			} `json:"error"`
 		}
 		_ = json.Unmarshal(raw, &e)
-		return Order{}, fmt.Errorf("razorpay create order: status %d: %s", res.StatusCode, e.Error.Description)
+		return fmt.Errorf("razorpay %s: status %d: %s", what, res.StatusCode, e.Error.Description)
 	}
-	var o Order
-	if err := json.Unmarshal(raw, &o); err != nil {
-		return Order{}, fmt.Errorf("razorpay create order: %w", err)
+	if out == nil {
+		return nil
 	}
-	if o.ID == "" {
-		return Order{}, errors.New("razorpay create order: no order id in response")
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("razorpay %s: %w", what, err)
 	}
-	return o, nil
+	return nil
 }
 
 // ------------------------------------------------------------------ webhooks

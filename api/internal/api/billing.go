@@ -41,22 +41,36 @@ func (s *Server) billingCatalogue() types.BillingCatalogue {
 	for _, p := range billing.Plans {
 		bp := types.BillingPlan{
 			ID: string(p.ID), Name: p.Name, Who: p.Who, Attendees: p.Attendees(),
-			Features: p.AllFeatures(), Popular: p.Popular,
+			Features: p.AllFeatures(), Popular: p.Popular, ContactOnly: p.ContactOnly,
+			Prices: []types.BillingPrice{},
 		}
-		for _, cur := range []string{billing.INR, billing.USD} {
-			for _, per := range []string{billing.Monthly, billing.Yearly} {
-				if amt, ok := p.Price(cur, per); ok {
-					bp.Prices = append(bp.Prices, types.BillingPrice{Currency: cur, Period: per, Amount: amt})
+		if !p.ContactOnly {
+			for _, cur := range []string{billing.INR, billing.USD} {
+				for _, per := range []string{billing.Monthly, billing.Yearly} {
+					if amt, ok := p.Price(cur, per); ok {
+						price := types.BillingPrice{Currency: cur, Period: per, Amount: amt}
+						if list := p.List(cur, per); list > amt {
+							price.List = list
+							price.DiscountPercent = billing.DiscountPercent(amt, list)
+							price.Promo = billing.PromoLabel(cur)
+						}
+						bp.Prices = append(bp.Prices, price)
+					}
 				}
 			}
 		}
 		plans = append(plans, bp)
 	}
-	return types.BillingCatalogue{
+	cat := types.BillingCatalogue{
 		Enabled:    s.billing != nil,
 		GSTPercent: s.cfg.BillingGSTPercent,
 		Plans:      plans,
 	}
+	if s.billing != nil && s.cfg.TrialEnabled() {
+		cat.TrialDays = billing.TrialDays
+		cat.TrialCurrency = billing.TrialCurrency
+	}
+	return cat
 }
 
 func (s *Server) handleBillingPlans(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +98,11 @@ func (s *Server) handleCreateBillingOrder(w http.ResponseWriter, r *http.Request
 		req.Currency = billing.INR
 	}
 	quote, err := billing.NewQuote(req.Plan, req.Period, strings.ToUpper(req.Currency), s.cfg.BillingGSTPercent)
+	if errors.Is(err, billing.ErrContactOnly) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "contact_sales",
+			"This plan is set up with our team. Write to us and we'll get you started.")
+		return
+	}
 	if err != nil {
 		httpx.Error(w, http.StatusUnprocessableEntity, "unknown_plan", "That plan isn't available.")
 		return
@@ -194,16 +213,7 @@ func (s *Server) handleVerifyBillingPayment(w http.ResponseWriter, r *http.Reque
 // handleMyBilling is GET /api/me/billing.
 func (s *Server) handleMyBilling(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	order, err := s.store.CurrentBillingOrder(r.Context(), user.ID)
-	if errors.Is(err, store.ErrNotFound) {
-		httpx.JSON(w, http.StatusOK, types.BillingStatus{})
-		return
-	}
-	if err != nil {
-		s.fail(w, r, "billing: current", err)
-		return
-	}
-	httpx.JSON(w, http.StatusOK, billingStatus(order))
+	httpx.JSON(w, http.StatusOK, s.billingStatusFor(r.Context(), user.ID))
 }
 
 /* handleRazorpayWebhook is POST /api/webhooks/razorpay.
@@ -222,6 +232,10 @@ func (s *Server) handleRazorpayWebhook(w http.ResponseWriter, r *http.Request) {
 	if !billing.VerifyWebhook(s.cfg.RazorpayWebhookSecret, body, r.Header.Get("X-Razorpay-Signature")) {
 		s.log.Warn("razorpay webhook rejected")
 		httpx.Error(w, http.StatusUnauthorized, "razorpay_signature", "Webhook signature was not accepted.")
+		return
+	}
+	if ev, ok := billing.ParseSubscriptionWebhook(body); ok {
+		s.handleSubscriptionWebhook(w, r, ev)
 		return
 	}
 	p, ok := billing.ParseWebhook(body)

@@ -212,7 +212,20 @@ const userColumns = `id::text, email, coalesce(password_hash,''), name, title, o
 	whatsapp_coexistence, whatsapp_token_rejected_at,
 	coalesce(google_picture,''), coalesce(avatar_key,''), coalesce(avatar_mime,''),
 	email_verified_at, host_requested_at, password_changed_at,
-	coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = users.id), '')`
+	coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = users.id` + livePlan + `), '')`
+
+/* livePlan is the condition under which a subscriptions row (alias s) is the
+ * account's plan right now.
+ *
+ * Trialing, active and past_due count (past_due is Razorpay still retrying a
+ * charge). Then one of: no period end at all (an admin assigned it); a period that
+ * has not ended (a one-time payment, which lapses on its own); or a Razorpay
+ * subscription, whose webhooks move the status and delete the row when it halts or
+ * is cancelled, so its stored period end is informational. */
+const livePlan = `
+	   AND s.status IN ('trialing', 'active', 'past_due')
+	   AND (s.current_period_end IS NULL OR s.current_period_end > now()
+	        OR s.provider_subscription_id <> '')`
 
 func scanUser(row scanner) (User, error) {
 	var u User

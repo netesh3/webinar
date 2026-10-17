@@ -12,7 +12,22 @@
 export interface BillingPrice {
   currency: string;
   period: string;
+  /**
+   * Amount is what is charged, before tax.
+   */
   amount: number /* int64 */;
+  /**
+   * List is the regular price shown struck through beside Amount; display only.
+   */
+  list?: number /* int64 */;
+  /**
+   * DiscountPercent is Amount below List, rounded down; 0 with no List.
+   */
+  discountPercent?: number /* int */;
+  /**
+   * Promo names the offer List is shown against, e.g. "Early bird"; empty with no List.
+   */
+  promo?: string;
 }
 export interface BillingPlan {
   id: string;
@@ -22,6 +37,10 @@ export interface BillingPlan {
   features: string[];
   popular?: boolean;
   prices: BillingPrice[];
+  /**
+   * ContactOnly is a plan sold by talking to us: no prices, no buy or trial.
+   */
+  contactOnly?: boolean;
 }
 /**
  *  BillingCatalogue is GET /api/billing/plans, public.
@@ -34,6 +53,44 @@ export interface BillingCatalogue {
   enabled: boolean;
   gstPercent: number /* int */;
   plans: BillingPlan[];
+  /**
+   * TrialDays is the free trial on monthly plans in TrialCurrency; 0 when trials
+   * are off, and then every plan is pay-now.
+   */
+  trialDays: number /* int */;
+  trialCurrency?: string;
+}
+/**
+ * StartTrialRequest is POST /api/billing/trial. Monthly, in TrialCurrency, always.
+ */
+export interface StartTrialRequest {
+  plan: string;
+}
+/**
+ *  TrialCheckout is what the browser opens Razorpay Checkout with for a trial: a
+ *  * subscription, not an order. Amount is the monthly charge from TrialEndsAt, tax
+ *  * included; today's payment is only Razorpay's small refunded authorisation.
+ */
+export interface TrialCheckout {
+  subscriptionId: string;
+  keyId: string;
+  plan: string;
+  planName: string;
+  currency: string;
+  amount: number /* int64 */;
+  trialEndsAt: string;
+  description: string;
+  prefillName: string;
+  prefillEmail: string;
+  prefillPhone?: string;
+}
+/**
+ * VerifyTrialRequest is POST /api/billing/trial/verify: Checkout's handler response for a subscription.
+ */
+export interface VerifyTrialRequest {
+  razorpay_payment_id: string;
+  razorpay_subscription_id: string;
+  razorpay_signature: string;
 }
 /**
  * CreateBillingOrderRequest is POST /api/billing/orders. No amount: the server prices it.
@@ -86,6 +143,26 @@ export interface BillingStatus {
    */
   paidUntil?: string;
   active: boolean;
+  /**
+   * Status is the subscription's: trialing, active or past_due. Empty for a
+   * one-time payment.
+   */
+  status?: string;
+  /**
+   * TrialEndsAt is RFC3339, set while trialing: the day of the first charge.
+   */
+  trialEndsAt?: string;
+  /**
+   * Renews is a Razorpay subscription that charges monthly until cancelled.
+   */
+  renews?: boolean;
+}
+/**
+ * VerifyTrialResponse is the account once its trial has started.
+ */
+export interface VerifyTrialResponse {
+  account: Account;
+  billing: BillingStatus;
 }
 /**
  * VerifyBillingPaymentResponse is the upgraded account and the plan it now has.
@@ -4547,6 +4624,15 @@ export interface AdminUser {
    * Plan is the paid tier, empty for the launch default.
    */
   plan?: Plan;
+  /**
+   * TrialFlag is set when this account's free trial matched an earlier trial's
+   * payment method (a UPI id or card): worth a look, not blocked. Empty otherwise.
+   */
+  trialFlag?: string;
+  /**
+   * TrialExemption is an admin's open "allow another trial" for this account.
+   */
+  trialExemption?: boolean;
   /**
    * CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
    */

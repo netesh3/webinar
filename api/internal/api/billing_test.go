@@ -31,13 +31,22 @@ const (
 )
 
 type fakeRazorpay struct {
-	mu     sync.Mutex
-	n      int
-	orders map[string]billing.OrderRequest
+	mu        sync.Mutex
+	n         int
+	orders    map[string]billing.OrderRequest
+	plans     map[string]billing.PlanRequest
+	subs      map[string]billing.SubscriptionRequest
+	subStatus map[string]string
+	payments  map[string]billing.Payment
+	cancelled []string
 }
 
 func newFakeRazorpay(t *testing.T) (*fakeRazorpay, *httptest.Server) {
-	f := &fakeRazorpay{orders: map[string]billing.OrderRequest{}}
+	f := &fakeRazorpay{
+		orders: map[string]billing.OrderRequest{}, plans: map[string]billing.PlanRequest{},
+		subs: map[string]billing.SubscriptionRequest{}, subStatus: map[string]string{},
+		payments: map[string]billing.Payment{},
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, secret, ok := r.BasicAuth()
 		if !ok || id != rzpKeyID || secret != rzpSecret {
@@ -45,18 +54,56 @@ func newFakeRazorpay(t *testing.T) (*fakeRazorpay, *httptest.Server) {
 			_, _ = w.Write([]byte(`{"error":{"description":"Authentication failed"}}`))
 			return
 		}
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/orders" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		var req billing.OrderRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
 		f.mu.Lock()
-		f.n++
-		oid := fmt.Sprintf("order_fake%d", f.n)
-		f.orders[oid] = req
-		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(billing.Order{ID: oid, Amount: req.Amount, Currency: req.Currency, Status: "created"})
+		defer f.mu.Unlock()
+		path := r.URL.Path
+		switch {
+		case r.Method == http.MethodPost && path == "/v1/orders":
+			var req billing.OrderRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			f.n++
+			oid := fmt.Sprintf("order_fake%d", f.n)
+			f.orders[oid] = req
+			_ = json.NewEncoder(w).Encode(billing.Order{ID: oid, Amount: req.Amount, Currency: req.Currency, Status: "created"})
+		case r.Method == http.MethodPost && path == "/v1/plans":
+			var req billing.PlanRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			f.n++
+			pid := fmt.Sprintf("plan_fake%d", f.n)
+			f.plans[pid] = req
+			_ = json.NewEncoder(w).Encode(billing.RazorpayPlan{ID: pid})
+		case r.Method == http.MethodPost && path == "/v1/subscriptions":
+			var req billing.SubscriptionRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			f.n++
+			sid := fmt.Sprintf("sub_fake%d", f.n)
+			f.subs[sid] = req
+			f.subStatus[sid] = "created"
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": sid, "plan_id": req.PlanID, "status": "created",
+				"start_at": req.StartAt, "current_start": nil, "current_end": nil, "notes": req.Notes})
+		case strings.HasPrefix(path, "/v1/subscriptions/") && strings.HasSuffix(path, "/cancel"):
+			sid := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/subscriptions/"), "/cancel")
+			f.subStatus[sid] = "cancelled"
+			f.cancelled = append(f.cancelled, sid)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": sid, "status": "cancelled", "notes": []any{}})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1/subscriptions/"):
+			sid := strings.TrimPrefix(path, "/v1/subscriptions/")
+			st := f.subStatus[sid]
+			if st == "created" {
+				st = "authenticated" // Checkout has run by the time the server fetches it
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": sid, "status": st, "customer_id": "cust_fake", "notes": []any{}})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1/payments/"):
+			p, ok := f.payments[strings.TrimPrefix(path, "/v1/payments/")]
+			if !ok {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":{"description":"The id provided does not exist"}}`))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(p)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
 	}))
 	t.Cleanup(srv.Close)
 	return f, srv
@@ -77,6 +124,7 @@ func billingHarness(t *testing.T) (*harness, *fakeRazorpay) {
 		c.RazorpayWebhookSecret = rzpWebhookSK
 		c.RazorpayAPIURL = srv.URL
 		c.BillingGSTPercent = 18
+		c.TrialHashSalt = "trial-salt-for-tests"
 	})
 	return h, fake
 }
@@ -177,7 +225,7 @@ func TestBuyingAPlanTurnsHostingOn(t *testing.T) {
 func TestForgedPaymentIsRefused(t *testing.T) {
 	h, _ := billingHarness(t)
 	h.signup("Forger", "forger@example.com", false)
-	co := h.buy("enterprise", billing.Yearly, billing.INR)
+	co := h.buy("business", billing.Yearly, billing.INR)
 
 	for name, sig := range map[string]string{
 		"no signature":     "",
@@ -300,6 +348,49 @@ func TestCatalogueAndRefusals(t *testing.T) {
 	if strings.Contains(string(raw), rzpSecret) {
 		t.Fatal("catalogue leaks the key secret")
 	}
+	// Early-bird list prices beside the charged ones; Enterprise is contact-only.
+	list := map[string]int64{}
+	pct := map[string]int{}
+	for _, p := range cat.Plans {
+		for _, pr := range p.Prices {
+			key := p.ID + "/" + pr.Currency + "/" + pr.Period
+			list[key] = pr.List
+			pct[key] = pr.DiscountPercent
+			wantPromo := "Early bird"
+			if pr.Currency == "INR" {
+				wantPromo = "Early bird · India special offer"
+			}
+			if pr.Promo != wantPromo {
+				t.Errorf("%s promo %q, want %q", key, pr.Promo, wantPromo)
+			}
+		}
+		if p.ID == "enterprise" && (!p.ContactOnly || len(p.Prices) != 0) {
+			t.Fatalf("enterprise in catalogue = %+v, want contact-only with no prices", p)
+		}
+	}
+	for key, want := range map[string]int64{
+		"professional/INR/monthly": 9_999_00, "professional/USD/monthly": 99_00,
+		"business/INR/monthly": 37_499_00, "business/USD/monthly": 399_00,
+		"professional/USD/yearly": 990_00, "business/USD/yearly": 3_990_00,
+		"professional/INR/yearly": 99_990_00, "business/INR/yearly": 374_990_00,
+	} {
+		if list[key] != want {
+			t.Errorf("list price %s = %d, want %d", key, list[key], want)
+		}
+	}
+	// The saving, computed from the two prices and rounded down.
+	for key, want := range map[string]int{
+		"professional/USD/monthly": 50, "professional/INR/monthly": 60,
+		"business/USD/monthly": 50, "business/INR/monthly": 60,
+		"business/USD/yearly": 50,
+	} {
+		if pct[key] != want {
+			t.Errorf("saving %s = %d%%, want %d%%", key, pct[key], want)
+		}
+	}
+	if cat.TrialDays != 7 || cat.TrialCurrency != "INR" {
+		t.Fatalf("trial %d %q", cat.TrialDays, cat.TrialCurrency)
+	}
 
 	// No session, no order.
 	if res, _ := h.do(http.MethodPost, "/api/billing/orders", types.CreateBillingOrderRequest{Plan: "business", Period: "monthly"}); res.StatusCode != http.StatusUnauthorized {
@@ -311,6 +402,15 @@ func TestCatalogueAndRefusals(t *testing.T) {
 	}
 	if res, _ := h.do(http.MethodPost, "/api/billing/orders", types.CreateBillingOrderRequest{Plan: "business", Period: "monthly", GSTIN: "nope"}); res.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("bad GSTIN: %d, want 422", res.StatusCode)
+	}
+	// Enterprise is not sold online: no order, no trial.
+	res, raw = h.do(http.MethodPost, "/api/billing/orders", types.CreateBillingOrderRequest{Plan: "enterprise", Period: "yearly"})
+	if res.StatusCode != http.StatusUnprocessableEntity || errorCode(t, raw) != "contact_sales" {
+		t.Fatalf("enterprise order: %d %s, want 422 contact_sales", res.StatusCode, raw)
+	}
+	h.setPhone("+91 98111 00099")
+	if code, _, body := h.startTrial("enterprise"); code != http.StatusUnprocessableEntity || errorCode(t, []byte(body)) != "contact_sales" {
+		t.Fatalf("enterprise trial: %d %s, want 422 contact_sales", code, body)
 	}
 }
 

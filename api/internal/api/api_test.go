@@ -1148,7 +1148,8 @@ func truncateAll(ctx context.Context, dsn string) error {
 	}
 	defer pool.Close()
 	_, err = pool.Exec(ctx,
-		`TRUNCATE recordings, registrations, custom_questions, webinar_panelists, webinars, users, sweep_leases CASCADE`)
+		`TRUNCATE recordings, registrations, custom_questions, webinar_panelists, webinars, users, sweep_leases,
+		          trial_claims, razorpay_plans, billing_subscriptions CASCADE`)
 	return err
 }
 

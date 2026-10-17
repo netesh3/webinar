@@ -252,7 +252,10 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
 		       u.max_duration_min, u.can_cdn_broadcast, u.features,
 		       (u.email_verified_at IS NOT NULL),
-		       coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = u.id), '')
+		       coalesce((SELECT s.plan FROM subscriptions s WHERE s.user_id = u.id`+livePlan+`), ''),
+		       coalesce((SELECT f.reason FROM trial_flags f WHERE f.user_id = u.id
+		                  ORDER BY f.created_at DESC LIMIT 1), ''),
+		       EXISTS (SELECT 1 FROM trial_exemptions e WHERE e.user_id = u.id AND e.used_at IS NULL)
 		  FROM users u
 		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
@@ -270,7 +273,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
-			&u.Features, &u.EmailVerified, &u.Plan); err != nil {
+			&u.Features, &u.EmailVerified, &u.Plan, &u.TrialFlag, &u.TrialExemption); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
@@ -467,7 +470,10 @@ func (s *Store) SetUserPlan(ctx context.Context, userID string, plan types.Plan)
 		_, err = s.pool.Exec(ctx, `
 			INSERT INTO subscriptions (user_id, plan) VALUES ($1::uuid, $2)
 			ON CONFLICT (user_id) DO UPDATE
-			   SET plan = EXCLUDED.plan, status = 'active', updated_at = now()`, userID, string(plan))
+			   SET plan = EXCLUDED.plan, status = 'active', updated_at = now(),
+			       -- An admin's plan has no end and no payment behind it.
+			       trial_ends_at = NULL, current_period_end = NULL, provider = '',
+			       provider_customer_id = '', provider_subscription_id = ''`, userID, string(plan))
 	}
 	if isForeignKeyViolation(err) {
 		return User{}, ErrNotFound
@@ -482,7 +488,7 @@ func (s *Store) SetUserPlan(ctx context.Context, userID string, plan types.Plan)
 func (s *Store) PlanForUser(ctx context.Context, userID string) (types.Plan, error) {
 	var plan string
 	err := s.pool.QueryRow(ctx,
-		`SELECT plan FROM subscriptions WHERE user_id = $1::uuid`, userID).Scan(&plan)
+		`SELECT s.plan FROM subscriptions s WHERE s.user_id = $1::uuid`+livePlan, userID).Scan(&plan)
 	if noRows(err) {
 		return "", nil
 	}
