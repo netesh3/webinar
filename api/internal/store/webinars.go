@@ -925,18 +925,64 @@ type Deleted struct {
  * the wrong one for a host who wants their data gone. "Delete this webinar" now means what it
  * says, and the confirmation dialog is where the warning belongs.
  *
- * Everything happens in one transaction, and the counts are taken inside it. Counting before
- * the delete in a separate query would report what was there a moment ago rather than what was
- * removed, and a registration arriving between the two would be silently uncounted while still
- * being deleted.
+ * Two phases. First the high-volume tables nobody counts (webinarBulkChildren) are emptied for
+ * this webinar in bounded batches, each its own short statement, so one delete never holds a
+ * long lock or runs past the request deadline. Then one transaction counts what is left,
+ * collects the storage keys and deletes the row.
+ *
+ * The counts are taken inside that transaction. Counting before the delete in a separate query
+ * would report what was there a moment ago rather than what was removed, and a registration
+ * arriving between the two would be silently uncounted while still being deleted. That is why
+ * the counted tables are not in the batch list.
  *
  * The child rows are removed by ON DELETE CASCADE (see the migrations), not by DELETE
- * statements here. Naming each table in this function would mean a table added later is a
- * table this function forgets — the schema is the right place for that rule. What this
- * function does add is the counting and the collection of storage keys, because neither is
- * something a cascade can do.
+ * statements here. The batch phase is only an optimisation: whatever it does not reach,
+ * including a table added later, the cascade still removes. If it fails part-way the webinar
+ * is still there, minus some of its event history, and deleting again finishes the job.
  */
 func (s *Store) DeleteWebinar(ctx context.Context, slug string) (Deleted, error) {
+	return s.DeleteWebinarInBatches(ctx, slug, webinarPurgeBatch)
+}
+
+/* webinarBulkChildren are the tables a webinar fills fastest and nobody counts on delete:
+ * the outbox (several rows per registrant), raw engagement events, caption segments and
+ * join/leave visits. Each has an index leading with webinar_id. */
+var webinarBulkChildren = []string{"notifications", "engagement_events", "session_captions", "attendance_visits"}
+
+// webinarPurgeBatch is how many rows one purge statement removes.
+const webinarPurgeBatch = 5000
+
+// DeleteWebinarInBatches is DeleteWebinar with the purge batch size given, for tests.
+func (s *Store) DeleteWebinarInBatches(ctx context.Context, slug string, batch int) (Deleted, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `SELECT id FROM webinars WHERE slug = $1`, slug).Scan(&id)
+	if noRows(err) {
+		return Deleted{}, ErrNotFound
+	}
+	if err != nil {
+		return Deleted{}, err
+	}
+	// Outbox first: a reminder still pending for this webinar stops being sendable now.
+	for _, table := range webinarBulkChildren {
+		for {
+			tag, err := s.pool.Exec(ctx, `
+				DELETE FROM `+table+` WHERE id IN (
+				  SELECT id FROM `+table+` WHERE webinar_id = $1 LIMIT $2)`, id, batch)
+			if err != nil {
+				return Deleted{}, err
+			}
+			if tag.RowsAffected() < int64(batch) {
+				break
+			}
+			if err := ctx.Err(); err != nil {
+				return Deleted{}, err
+			}
+		}
+	}
+	return s.deleteWebinarRow(ctx, slug)
+}
+
+func (s *Store) deleteWebinarRow(ctx context.Context, slug string) (Deleted, error) {
 	var out Deleted
 
 	tx, err := s.pool.Begin(ctx)
