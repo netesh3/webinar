@@ -93,6 +93,7 @@ import { useStageLayout } from "@/lib/layout";
 import { useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
+import { ShareOnlyBanner } from "./share-only";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 
 /* The webinar room.
@@ -1368,6 +1369,9 @@ function ConnectedRoom({
                     endedByLimit={status === "ended" && Boolean(startedAt) && Boolean(maxDurationMin)}
                   />
                   <RecordingBanner />
+                  {/* What the audience sees while the host shows them only the share.
+                      Stage only; renders nothing with the switch off. */}
+                  <ShareOnlyBanner />
                   {/* Chat that arrived while the panel was shut, said once rather than
                       left as a number. Given the same `chatVisible` the badge uses, so
                       the two cannot disagree about whether you are looking at it. */}

@@ -4,7 +4,10 @@ import { VideoTrack, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { useMemo } from "react";
 import { CameraIcon, CameraOffIcon, MicIcon, MicOffIcon } from "../icons";
+import { shareOnlyView, viewerOf } from "@/lib/share-only";
+import { useStageShareActive } from "@/lib/use-share-only";
 import { useActiveSpeaker } from "./active-speaker";
+import { useRoomUI } from "./context";
 
 /* What goes inside the popped-out window.
  *
@@ -61,8 +64,23 @@ export function PipStage({
     return talker ?? tracks[0];
   }, [tracks, speaking]);
 
+  /* Showing only the shared video to the audience: the main tab's stage has already
+   * dropped the cameras (lib/use-share-only.ts), so `shown` is the share. Leaving its
+   * presenter's name over it would undo the point of the switch. */
+  const { controls, isHost, join, permissions } = useRoomUI();
+  const shareActive = useStageShareActive();
+  const bare = shareOnlyView({
+    shareOnly: controls.audienceShareOnly === true,
+    muteStage: controls.audienceMuteStage === true,
+    shareActive,
+    viewer: viewerOf({
+      isHost,
+      canPresent: join.canPublish || permissions.canShareCamera || permissions.canShareScreen,
+    }),
+  });
+
   const isShare = shown?.source === Track.Source.ScreenShare;
-  const label = shown
+  const label = shown && !bare
     ? isShare
       ? `${shown.participant.name || "Someone"} is sharing`
       : shown.participant.name || "Someone"

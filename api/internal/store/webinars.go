@@ -29,6 +29,7 @@ const webinarColumns = `
 	w.chat_destination,
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.captions_enabled, w.locked, w.sfu_project, w.image_key,
+	w.audience_share_only, w.audience_mute_stage,
 	w.simulive_recording_id::text,
 	w.stream_watch, w.stream_on, (w.stream_ingest <> ''),
 	coalesce(w.venue, 'app'), coalesce(w.zoom_id, ''),
@@ -78,6 +79,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.ChatDestination,
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
 		&c.PollsEnabled, &c.CaptionsEnabled, &c.Locked, &w.SFUProject, &imageKey,
+		&c.AudienceShareOnly, &c.AudienceMuteStage,
 		&simuliveID,
 		&streamWatch, &streamOn, &streamSaved,
 		&w.Venue, &w.ZoomID,
@@ -825,10 +827,11 @@ func (s *Store) SetStatus(ctx context.Context, slug string, status types.Webinar
 	switch status {
 	case types.StatusLive:
 		col = `started_at = coalesce(started_at, now()), ended_at = NULL, empty_since = NULL`
+	// The audience-share-only view is live-only: it never outlasts the session.
 	case types.StatusEnded:
-		col = `ended_at = now(), empty_since = NULL`
+		col = `ended_at = now(), empty_since = NULL, audience_share_only = false, audience_mute_stage = false`
 	case types.StatusScheduled, types.StatusDraft:
-		col = `started_at = NULL, ended_at = NULL, empty_since = NULL`
+		col = `started_at = NULL, ended_at = NULL, empty_since = NULL, audience_share_only = false, audience_mute_stage = false`
 	default:
 		return types.Webinar{}, fmt.Errorf("%w: unknown status %q", ErrInvalid, status)
 	}
@@ -873,11 +876,14 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 			chat_destination   = coalesce($10, chat_destination),
 			polls_enabled      = coalesce($11, polls_enabled),
 			captions_enabled   = coalesce($12, captions_enabled),
+			audience_share_only = coalesce($13, audience_share_only),
+			audience_mute_stage = coalesce($14, audience_mute_stage),
 			updated_at         = now()
 		 WHERE slug = $1`,
 		slug, p.HideAttendees, p.MuteOnEntry, p.AllowUnmute, p.ChatEnabled,
 		p.QAEnabled, p.RaiseHandEnabled, p.ReactionsEnabled, p.Locked,
-		chatDestination, p.PollsEnabled, p.CaptionsEnabled)
+		chatDestination, p.PollsEnabled, p.CaptionsEnabled,
+		p.AudienceShareOnly, p.AudienceMuteStage)
 	if err != nil {
 		return types.Webinar{}, err
 	}
