@@ -1,5 +1,6 @@
 import {
   AudienceContacts,
+  AudienceList,
   AudienceSegment,
   AudienceTag,
   AudienceWebinar,
@@ -69,6 +70,7 @@ export type AudienceBits = {
   audience: string;
   name?: string;
   tagName?: string;
+  listName?: string;
   webinarTopic?: string;
   webinarId?: string;
   segmentLabel?: string;
@@ -78,6 +80,9 @@ export type AudienceBits = {
 export function audienceLabel(b: AudienceBits): string {
   if (b.audience === AudienceTag) {
     return `Everybody tagged ${b.tagName || "with one tag"}`;
+  }
+  if (b.audience === AudienceList) {
+    return b.listName ? `List: ${b.listName}` : "A saved list (deleted)";
   }
   if (b.audience === AudienceWebinar) {
     return `Registrants for ${b.webinarTopic || b.webinarId || "a webinar"}`;
@@ -112,18 +117,26 @@ export function peopleFilterForLabel(name: string): string {
 
 export type AudienceDraft = {
   /** locked is a segment or a hand-picked list the composer has no other row for. */
-  kind: "opted_in" | "people" | "webinar" | "tag" | "locked";
+  kind: "opted_in" | "people" | "webinar" | "tag" | "list" | "locked";
   peopleFilter: string;
   webinarId: string;
   tagId: string;
+  /** Set when kind is list. */
+  listId?: string;
 };
 
 /** How the new/edit drawer should open for a broadcast that already exists. */
 export function audienceDraft(
-  b: AudienceBits & { contactIds?: string[]; tagId?: string },
+  b: AudienceBits & { contactIds?: string[]; tagId?: string; listId?: string },
 ): AudienceDraft {
   const webinarId = b.webinarId ?? "";
   const tagId = b.tagId ?? "";
+  if (b.audience === AudienceList) {
+    // A deleted list has nothing to pick again; the copy falls back to opted-in.
+    return b.listId
+      ? { kind: "list", peopleFilter: "", webinarId, tagId: "", listId: b.listId }
+      : { kind: "opted_in", peopleFilter: "", webinarId, tagId: "" };
+  }
   if (b.audience === AudienceWebinar) {
     return { kind: "webinar", peopleFilter: "", webinarId, tagId: "" };
   }
