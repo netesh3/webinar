@@ -116,8 +116,7 @@ export function SavedLists({
         </p>
       ) : lists.length === 0 && !importing ? (
         <p className="text-[12px] leading-relaxed text-ink-3">
-          No saved lists yet. Upload a CSV (a TagMango export works as it is) and it is saved as a
-          list you can send to again.
+          No saved lists yet. Upload a CSV and it is saved as a list you can send to again.
         </p>
       ) : (
         <ul className="grid gap-1" role={mode === "pick" ? "radiogroup" : undefined} aria-label="Saved lists">
