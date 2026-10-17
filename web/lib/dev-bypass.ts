@@ -38,6 +38,7 @@ export const DEV_BYPASS_ACCOUNT: Account = {
   canHost: true,
   isAdmin: true,
   canCdnBroadcast: true,
+  hasPassword: true,
   // The top plan, for the same reason every feature is on below.
   plan: "enterprise",
   attendeeCap: 500,

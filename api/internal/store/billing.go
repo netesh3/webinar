@@ -40,9 +40,13 @@ var (
 	// again by a DIFFERENT payment. The first one stands; the second is logged
 	// for a refund rather than silently extending the plan.
 	ErrPaymentMismatch = errors.New("order already paid by another payment")
+	// ErrAccountGone is a payment for an order whose account was deleted. The
+	// payment is recorded on the order (it is a tax record), nothing is granted,
+	// and it wants a refund.
+	ErrAccountGone = errors.New("order's account was deleted")
 )
 
-const billingColumns = `id::text, user_id::text, plan, period, currency, amount, tax,
+const billingColumns = `id::text, coalesce(user_id::text, ''), plan, period, currency, amount, tax,
 	razorpay_order_id, coalesce(razorpay_payment_id, ''), status, gstin,
 	created_at, paid_at, paid_until`
 
@@ -101,6 +105,20 @@ func (s *Store) FulfilBillingOrder(ctx context.Context, razorpayOrderID, payment
 	}
 	if err != nil {
 		return BillingOrder{}, User{}, err
+	}
+	if o.UserID == "" {
+		if o.Status != "paid" {
+			o, err = scanBillingOrder(tx.QueryRow(ctx, `
+				UPDATE billing_orders SET status = 'paid', razorpay_payment_id = $2, paid_at = now()
+				 WHERE id = $1 RETURNING `+billingColumns, o.ID, paymentID))
+			if err != nil {
+				return BillingOrder{}, User{}, err
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return BillingOrder{}, User{}, err
+			}
+		}
+		return o, User{}, ErrAccountGone
 	}
 	if userID != "" && o.UserID != userID {
 		// Somebody else's order. Not-found rather than forbidden: an order id
