@@ -10,12 +10,22 @@ Minimum viable SFU for ~200 webinar subscribers.
 | Cost | hourly; ~€8.49/mo if left on 24/7 (EU) |
 | Host path | `/opt/livekit` |
 
+The same files also run the **Bangalore** SFU (`blr1`, DigitalOcean BLR1,
+`sfu-in.webinarliv.com`) — see [docs/SFU-BANGALORE.md](../../docs/SFU-BANGALORE.md). Two
+optional install-time settings make that possible without changing this box:
+
+- `NODE_IP` — the public IPv4 to advertise when `DOMAIN` is a real hostname rather than
+  `<ip>.sslip.io` (written to `.env.keys`; this box derives it from its sslip.io domain as before).
+- `LIVE_ORIGIN_HOST` — the proxied attendee origin Caddy serves (written to `.env`; unset keeps
+  `live.webinarliv.com`).
+
 ## CI auto-deploy
 
-GitHub Actions workflow **Deploy LiveKit (Hetzner)** (`.github/workflows/livekit-hetzner-deploy.yml`):
+GitHub Actions workflow **Deploy LiveKit (Hetzner)** (`.github/workflows/livekit-hetzner-deploy.yml`),
+one matrix leg per box (`hetzner`, `blr1`; a box without SSH secrets is skipped):
 
 - **Auto:** push to `main` when `deploy/livekit-hetzner/**` (or the workflow) changes
-- **Manual:** Actions → workflow_dispatch
+- **Manual:** Actions → workflow_dispatch → pick a target; tick **install** once for a fresh box
 
 It rsyncs compose/Caddyfile/template/scripts to `/opt/livekit`, runs `redeploy.sh`
 (regenerates `livekit.yaml` from the template + existing `.env.keys`, preserves

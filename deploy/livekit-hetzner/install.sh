@@ -5,6 +5,11 @@ set -euo pipefail
 DOMAIN="${DOMAIN:?set DOMAIN e.g. 88.198.141.104.sslip.io}"
 ACME_EMAIL="${ACME_EMAIL:?set ACME_EMAIL}"
 TARGET="${TARGET:-/opt/livekit}"
+# Optional. NODE_IP pins the public IPv4 LiveKit advertises; without it a DOMAIN of the
+# form <ip>.sslip.io is used, else STUN discovery. LIVE_ORIGIN_HOST is the proxied
+# attendee origin Caddy serves for this box (default live.webinarliv.com).
+NODE_IP="${NODE_IP:-}"
+LIVE_ORIGIN_HOST="${LIVE_ORIGIN_HOST:-}"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
@@ -30,8 +35,11 @@ ufw --force enable
 mkdir -p "$TARGET"
 cd "$TARGET"
 
-API_KEY="API$(openssl rand -hex 8)"
-API_SECRET="$(openssl rand -hex 32)"
+# Keys may be supplied (the deploy workflow passes the repo's SFU_<TARGET>_LIVEKIT_*
+# secrets over stdin, so the same values can go into the API's LIVEKIT_PROJECTS without
+# anyone reading them off the box). Otherwise generated here, once.
+API_KEY="${API_KEY:-API$(openssl rand -hex 8)}"
+API_SECRET="${API_SECRET:-$(openssl rand -hex 32)}"
 GRAFANA_ADMIN_PASSWORD="$(openssl rand -hex 16)"
 
 # Persist secrets once — never rotate on reinstall/redeploy
@@ -49,6 +57,9 @@ API_SECRET=$API_SECRET
 DOMAIN=$DOMAIN
 GRAFANA_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD
 EOF
+  if [[ -n "$NODE_IP" ]]; then
+    echo "NODE_IP=$NODE_IP" >>"$TARGET/.env.keys"
+  fi
   chmod 600 "$TARGET/.env.keys"
 fi
 # shellcheck disable=SC1091
@@ -60,6 +71,9 @@ if [[ ! -f .env ]]; then
 DOMAIN=${DOMAIN}
 ACME_EMAIL=${ACME_EMAIL}
 EOF
+  if [[ -n "$LIVE_ORIGIN_HOST" ]]; then
+    echo "LIVE_ORIGIN_HOST=${LIVE_ORIGIN_HOST}" >>.env
+  fi
 fi
 
 # Render yaml (preserves node_ip / use_external_ip) and start stack

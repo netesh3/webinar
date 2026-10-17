@@ -76,7 +76,7 @@
 # locally-issued certificate. Un-proxying this record is an outage for this
 # hostname: the local certificate will not validate in a browser. WHEP can
 # also be served on {$DOMAIN} (sslip.io) if you point BROADCAST_HLS_BASE there.
-live.webinarliv.com {
+{$LIVE_ORIGIN_HOST:live.webinarliv.com} {
 	tls internal
 
 	import live_origin

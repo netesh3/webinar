@@ -82,6 +82,16 @@ type LiveKitProject struct {
 	 * that have not started yet can be moved.
 	 */
 	Disabled bool `json:"disabled,omitempty"`
+
+	/* BroadcastHLSBase is where attendees play this project's CDN broadcast, overriding
+	 * BROADCAST_HLS_BASE for rooms on this project.
+	 *
+	 * The broadcast is composited by the Egress that runs beside each SFU and pushed to
+	 * the MediaMTX on that same box (BROADCAST_RTMP_BASE is a loopback address on purpose).
+	 * So a room on a second SFU publishes its stream on THAT box, and a viewer sent to the
+	 * first box's origin would ask for a stream that is not there. Empty uses the global
+	 * BROADCAST_HLS_BASE, which is right while there is one SFU. */
+	BroadcastHLSBase string `json:"broadcastHlsBase,omitempty"`
 }
 
 func (p LiveKitProject) Enabled() bool { return !p.Disabled }
@@ -146,6 +156,7 @@ func normaliseLiveKitProjects(list []LiveKitProject) []LiveKitProject {
 		p.Key = strings.TrimSpace(p.Key)
 		p.Secret = strings.TrimSpace(p.Secret)
 		p.HTTPURL = strings.TrimSpace(p.HTTPURL)
+		p.BroadcastHLSBase = strings.TrimRight(strings.TrimSpace(p.BroadcastHLSBase), "/")
 		if p.HTTPURL == "" {
 			p.HTTPURL = httpFromWS(p.URL)
 		}
@@ -209,6 +220,13 @@ func validateLiveKitProjects(list []LiveKitProject, dev bool) error {
 			errs = append(errs, fmt.Errorf("%s: secret is required", where))
 		case !dev && p.Secret == devSecret:
 			errs = append(errs, fmt.Errorf("%s: secret must not be the development default", where))
+		}
+
+		if b := p.BroadcastHLSBase; b != "" && !strings.HasPrefix(b, "https://") &&
+			!(dev && strings.HasPrefix(b, "http://")) {
+			errs = append(errs, fmt.Errorf(
+				"%s: broadcastHlsBase must begin with https:// (it is the WHEP URL attendees open): %q",
+				where, b))
 		}
 
 		if p.Enabled() {

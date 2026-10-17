@@ -1,21 +1,37 @@
-# Deploy self-hosted LiveKit on Hetzner (webcast-livekit).
+# Deploy self-hosted LiveKit to each SFU box (webcast-livekit).
 # Secrets must be set on the repo (Settings → Secrets → Actions); never commit them.
 #
+# Targets (one matrix leg each, same files from deploy/livekit-hetzner/):
+#   hetzner — the original box, fsn1 (Falkenstein). Required: it fails loudly
+#             without its secrets, exactly as before.
+#   blr1    — the DigitalOcean Bangalore droplet (sfu-in.webinarliv.com). Optional:
+#             skipped cleanly until its secrets exist, so main stays green before
+#             the droplet does. See docs/SFU-BANGALORE.md.
+#
 # Triggers:
-#   - workflow_dispatch — manual deploy from the Actions tab
-#   - push to main — auto-deploy when deploy/livekit-hetzner/** or this workflow change
+#   - workflow_dispatch — pick a target (or "all"); tick "install" ONCE for a new box
+#     to run install.sh there (Docker, ufw, keys, first start). Later deploys never
+#     rotate keys.
+#   - push to main — redeploy every target that has secrets when
+#     deploy/livekit-hetzner/** or this workflow change.
 #
-# Required repository secrets:
-#   HETZNER_SSH_HOST         — e.g. root@88.198.141.104
-#   HETZNER_SSH_PRIVATE_KEY  — SSH private key (mac-sancharees / hetzner_sancharees)
+# Repository secrets:
+#   HETZNER_SSH_HOST          — e.g. root@88.198.141.104
+#   HETZNER_SSH_PRIVATE_KEY   — SSH private key (mac-sancharees / hetzner_sancharees)
+#   SFU_BLR1_SSH_HOST         — e.g. root@<droplet IPv4>
+#   SFU_BLR1_SSH_PRIVATE_KEY  — SSH private key for the droplet
+#   SFU_BLR1_LIVEKIT_KEY      — LiveKit API key for the droplet, chosen by you
+#   SFU_BLR1_LIVEKIT_SECRET     (openssl rand -hex 32); used by "install" and the same
+#                               values go into the API's LIVEKIT_PROJECTS
 #
-# Optional (not required for compose redeploy):
+# Optional:
 #   HCLOUD_TOKEN — Hetzner Cloud API token (future poweron / server ops)
 #   GRAFANA_ADMIN_PASSWORD — Grafana (https://<domain>/grafana/, user "admin")
-#     login. Set this yourself in Settings → Secrets → Actions so you know
-#     the password without ever needing SSH access to the server. If unset,
-#     redeploy.sh generates a random one on the server instead (readable only
-#     via SSH: /opt/livekit/.env.keys).
+#     login, for every box. Set this yourself in Settings → Secrets → Actions so
+#     you know the password without ever needing SSH access to the server. If
+#     unset, redeploy.sh generates a random one on the server instead (readable
+#     only via SSH: /opt/livekit/.env.keys).
+#   ACME_EMAIL (repo variable) — Let's Encrypt contact used by "install" only.
 #
 # On the server: files live in /opt/livekit. .env.keys and .env are never overwritten.
 
@@ -23,15 +39,21 @@ name: Deploy LiveKit (Hetzner)
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Which SFU box"
+        type: choice
+        options: [all, hetzner, blr1]
+        default: all
+      install:
+        description: "First-time install on a fresh box (runs install.sh once; refuses a box that already has keys)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
       - "deploy/livekit-hetzner/**"
       - ".github/workflows/livekit-hetzner-deploy.yml"
-
-concurrency:
-  group: deploy-livekit-hetzner
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -39,49 +61,78 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: hetzner
+            required: true
+            domain: ""
+            live_origin_host: ""
+          - target: blr1
+            required: false
+            domain: sfu-in.webinarliv.com
+            live_origin_host: live-in.webinarliv.com
+    concurrency:
+      group: deploy-livekit-${{ matrix.target }}
+      cancel-in-progress: false
+    env:
+      SSH_HOST: ${{ matrix.target == 'blr1' && secrets.SFU_BLR1_SSH_HOST || secrets.HETZNER_SSH_HOST }}
+      SSH_KEY: ${{ matrix.target == 'blr1' && secrets.SFU_BLR1_SSH_PRIVATE_KEY || secrets.HETZNER_SSH_PRIVATE_KEY }}
+      ALIAS: livekit-${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Require Hetzner SSH secrets
+      # Decide once whether this leg runs, so every later step can be skipped with one
+      # condition instead of each re-deriving it.
+      - name: Choose whether to deploy ${{ matrix.target }}
+        id: gate
         env:
-          HETZNER_SSH_HOST: ${{ secrets.HETZNER_SSH_HOST }}
-          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+          WANT: ${{ github.event.inputs.target || 'all' }}
+          REQUIRED: ${{ matrix.required }}
         run: |
-          if [ -z "${HETZNER_SSH_HOST}" ]; then
-            echo "Set repository secret HETZNER_SSH_HOST (e.g. root@88.198.141.104)." >&2
-            exit 1
+          if [ "$WANT" != "all" ] && [ "$WANT" != "${{ matrix.target }}" ]; then
+            echo "Not selected: ${{ matrix.target }}."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          if [ -z "${HETZNER_SSH_PRIVATE_KEY}" ]; then
-            echo "Set repository secret HETZNER_SSH_PRIVATE_KEY." >&2
-            exit 1
+          if [ -z "${SSH_HOST}" ] || [ -z "${SSH_KEY}" ]; then
+            if [ "$REQUIRED" = "true" ]; then
+              echo "Set repository secrets HETZNER_SSH_HOST (e.g. root@88.198.141.104) and HETZNER_SSH_PRIVATE_KEY." >&2
+              exit 1
+            fi
+            echo "::notice::No SSH secrets for ${{ matrix.target }} yet — skipping (see docs/SFU-BANGALORE.md)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
 
       - name: Configure SSH
-        env:
-          HETZNER_SSH_HOST: ${{ secrets.HETZNER_SSH_HOST }}
-          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        if: steps.gate.outputs.run == 'true'
         run: |
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
           # Write key without printing it
-          printf '%s\n' "$HETZNER_SSH_PRIVATE_KEY" > "$HOME/.ssh/hetzner_deploy"
-          chmod 600 "$HOME/.ssh/hetzner_deploy"
-          host_only="${HETZNER_SSH_HOST#*@}"
-          user_part="${HETZNER_SSH_HOST%%@*}"
-          if [ "$user_part" = "$HETZNER_SSH_HOST" ]; then
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/${{ matrix.target }}_deploy"
+          chmod 600 "$HOME/.ssh/${{ matrix.target }}_deploy"
+          host_only="${SSH_HOST#*@}"
+          user_part="${SSH_HOST%%@*}"
+          if [ "$user_part" = "$SSH_HOST" ]; then
             user_part=root
           fi
           ssh-keyscan -H "$host_only" >> "$HOME/.ssh/known_hosts" 2>/dev/null
           {
-            echo "Host livekit-hetzner"
+            echo "Host ${ALIAS}"
             echo "  HostName ${host_only}"
             echo "  User ${user_part}"
-            echo "  IdentityFile ${HOME}/.ssh/hetzner_deploy"
+            echo "  IdentityFile ${HOME}/.ssh/${{ matrix.target }}_deploy"
             echo "  IdentitiesOnly yes"
             echo "  StrictHostKeyChecking yes"
           } > "$HOME/.ssh/config"
           chmod 600 "$HOME/.ssh/config"
           echo "SSH_CONFIG=$HOME/.ssh/config" >> "$GITHUB_ENV"
+          echo "HOST_ONLY=${host_only}" >> "$GITHUB_ENV"
 
       # A Caddyfile that fails to adapt takes the SFU down with it, because
       # Caddy refuses the whole config and never starts listening — LiveKit's
@@ -89,6 +140,7 @@ jobs:
       # runner rather than on the box. DOMAIN is a placeholder; validation
       # cares about syntax and module setup, not which hostname is served.
       - name: Validate Caddyfile
+        if: steps.gate.outputs.run == 'true'
         run: |
           docker run --rm \
             -v "$PWD/deploy/livekit-hetzner/Caddyfile:/etc/caddy/Caddyfile:ro" \
@@ -97,17 +149,50 @@ jobs:
             caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
 
       - name: Sync deploy files (preserve secrets)
+        if: steps.gate.outputs.run == 'true'
         run: |
           # Do not overwrite .env.keys, .env, or generated livekit.yaml on the server.
+          ssh -F "${SSH_CONFIG}" "${ALIAS}" 'mkdir -p /opt/livekit'
           rsync -az \
             --exclude '.env.keys' \
             --exclude '.env' \
             --exclude 'livekit.yaml' \
             -e "ssh -F ${SSH_CONFIG}" \
             deploy/livekit-hetzner/ \
-            livekit-hetzner:/opt/livekit/
+            "${ALIAS}":/opt/livekit/
+
+      # First start of a fresh box. Refuses one that already has keys, so ticking
+      # "install" on a running server cannot rotate the keys every webinar uses.
+      - name: First-time install
+        if: steps.gate.outputs.run == 'true' && github.event.inputs.install == 'true'
+        env:
+          ACME_EMAIL: ${{ vars.ACME_EMAIL || 'support@webinarliv.com' }}
+          DOMAIN: ${{ matrix.domain }}
+          LIVE_ORIGIN_HOST: ${{ matrix.live_origin_host }}
+          LK_KEY: ${{ matrix.target == 'blr1' && secrets.SFU_BLR1_LIVEKIT_KEY || '' }}
+          LK_SECRET: ${{ matrix.target == 'blr1' && secrets.SFU_BLR1_LIVEKIT_SECRET || '' }}
+        run: |
+          if [ -z "$DOMAIN" ]; then
+            echo "No install domain configured for ${{ matrix.target }}; install it by hand (see deploy/livekit-hetzner/README.md)." >&2
+            exit 1
+          fi
+          if [ -z "$LK_KEY" ] || [ -z "$LK_SECRET" ]; then
+            echo "Set SFU_BLR1_LIVEKIT_KEY and SFU_BLR1_LIVEKIT_SECRET first: the API needs the same values in LIVEKIT_PROJECTS." >&2
+            exit 1
+          fi
+          case "$HOST_ONLY" in
+            *[!0-9.]*) node_ip="" ;;
+            *) node_ip="$HOST_ONLY" ;;
+          esac
+          # Keys over stdin (two lines), never in the remote command string.
+          printf '%s\n%s\n' "$LK_KEY" "$LK_SECRET" | ssh -F "${SSH_CONFIG}" "${ALIAS}" \
+            "test ! -f /opt/livekit/.env.keys || { echo 'This box already has /opt/livekit/.env.keys — refusing to reinstall.' >&2; exit 1; }; \
+             read -r API_KEY; read -r API_SECRET; export API_KEY API_SECRET; \
+             chmod +x /opt/livekit/install.sh /opt/livekit/redeploy.sh && \
+             DOMAIN='${DOMAIN}' ACME_EMAIL='${ACME_EMAIL}' NODE_IP='${node_ip}' LIVE_ORIGIN_HOST='${LIVE_ORIGIN_HOST}' /opt/livekit/install.sh"
 
       - name: Regenerate config and restart compose
+        if: steps.gate.outputs.run == 'true'
         env:
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
@@ -115,5 +200,10 @@ jobs:
           # remote command string — sidesteps shell-quoting entirely (a
           # password with '$', quotes, spaces, etc. would otherwise need
           # escaping that differs by the remote user's default shell).
-          printf '%s' "${GRAFANA_ADMIN_PASSWORD}" | ssh -F "${SSH_CONFIG}" livekit-hetzner \
+          printf '%s' "${GRAFANA_ADMIN_PASSWORD}" | ssh -F "${SSH_CONFIG}" "${ALIAS}" \
             'chmod +x /opt/livekit/redeploy.sh /opt/livekit/install.sh && GRAFANA_ADMIN_PASSWORD="$(cat)" /opt/livekit/redeploy.sh'
+
+      - name: Next step
+        if: steps.gate.outputs.run == 'true' && github.event.inputs.install == 'true'
+        run: |
+          echo "::notice::${{ matrix.target }} installed at wss://${{ matrix.domain }}. Next: update LIVEKIT_PROJECTS with the same key/secret and redeploy the API (docs/SFU-BANGALORE.md)."

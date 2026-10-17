@@ -59,6 +59,10 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+      # The Cloudflare-proxied attendee origin this box serves. Each SFU has its own
+      # (the broadcast lives on the MediaMTX beside the room's SFU); unset keeps the
+      # first box's live.webinarliv.com.
+      LIVE_ORIGIN_HOST: ${LIVE_ORIGIN_HOST:-live.webinarliv.com}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
