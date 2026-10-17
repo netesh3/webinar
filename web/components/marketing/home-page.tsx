@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { HomeLegalFooter, SUPPORT_EMAIL } from "@/components/marketing/legal-page";
 import { Pricing, buyIntentFromSearch } from "@/components/marketing/pricing";
+import { SalesChatWidget } from "@/components/marketing/sales-chat";
 import { useSession } from "@/components/providers";
 import { appHome } from "@/lib/access";
 import "@/app/landing.css";
@@ -54,6 +55,7 @@ export function HomePage() {
         <FinalCta />
       </div>
       <HomeLegalFooter />
+      <SalesChatWidget />
     </div>
   );
 }
@@ -72,6 +74,7 @@ export function PricingPage() {
         <Faq />
       </div>
       <HomeLegalFooter />
+      <SalesChatWidget />
     </div>
   );
 }
