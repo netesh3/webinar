@@ -48,6 +48,11 @@ export type ToolId =
   /** Stream to LinkedIn Live — a host-only dialog with the Stream URL and key,
    *  and a live indicator. Sits beside YouTube. */
   | "linkedin"
+  /** Stream to Instagram Live / Facebook Live — host-only dialogs like
+   *  LinkedIn's. They start in More (NEVER_SURFACED_TOOLS) and reach the bar
+   *  only when dragged there. */
+  | "instagram"
+  | "facebook"
   /** The shared whiteboard (Excalidraw) — host and panelists, behind the host's
    *  `whiteboard` account switch. Starts in More; on the bar only if dragged there. */
   | "whiteboard";
@@ -67,6 +72,8 @@ export const TOOL_IDS: readonly ToolId[] = [
   "sharefile",
   "youtube",
   "linkedin",
+  "instagram",
+  "facebook",
   "whiteboard",
 ];
 
@@ -311,6 +318,8 @@ const DEFAULT_SIZE: Record<ToolId, { w: number; h: number }> = {
   sharefile: { w: 320, h: 200 },
   youtube: { w: 320, h: 200 },
   linkedin: { w: 320, h: 200 },
+  instagram: { w: 320, h: 200 },
+  facebook: { w: 320, h: 200 },
   // Takes the stage, never a window.
   whiteboard: { w: 320, h: 200 },
 };
@@ -406,7 +415,7 @@ export function isHomeTool(id: ToolId): boolean {
  * like Captions — but never recorded as recent, so never surfaced into a vacant
  * slot on their own. A host who turns the whiteboard on keeps exactly the
  * toolbar they had until they choose to move it. */
-export const NEVER_SURFACED_TOOLS: readonly ToolId[] = ["whiteboard"];
+export const NEVER_SURFACED_TOOLS: readonly ToolId[] = ["whiteboard", "instagram", "facebook"];
 
 export function isNeverSurfaced(id: ToolId): boolean {
   return NEVER_SURFACED_TOOLS.includes(id);
@@ -837,6 +846,8 @@ export const MORE_ORDER: readonly string[] = [
   "whiteboard",
   "youtube",
   "linkedin",
+  "instagram",
+  "facebook",
   "chat",
   "qa",
   "polls",

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/livekit/protocol/livekit"
+	"github.com/netkumar/webcast/api/internal/integrations"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/streamdest"
 	"github.com/netkumar/webcast/api/types"
@@ -328,38 +329,45 @@ func (s *Server) stopBroadcastIfActive(ctx context.Context, slug string, sfu Roo
 
 // mixDestinations is the RTMP URLs this room's compositor should push: the
 // attendee origin (when this host is on CDN broadcast) and the host's own
-// destinations — YouTube or another pasted key, and LinkedIn Live when it is
-// saved in Settings and not paused in this room. Either may be empty. Both
-// empty means do not start a compositor at all.
+// destinations — YouTube or another pasted key, and each saved platform
+// (LinkedIn, Instagram, Facebook Live) not paused in this room. Either may be
+// empty. Both empty means do not start a compositor at all.
 func (s *Server) mixDestinations(ctx context.Context, wb types.Webinar) (origin string, extras []string) {
 	if can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID); err == nil && can {
 		origin = s.cfg.BroadcastRTMPURL(wb.ID)
 	}
+	seen := map[string]bool{}
+	add := func(u string) {
+		if u != "" && !seen[u] {
+			seen[u] = true
+			extras = append(extras, u)
+		}
+	}
 	extra, on, err := s.store.WebinarStreamIngest(ctx, wb.ID)
 	if err != nil {
 		s.log.Warn("stream dest: could not load ingest", "slug", wb.ID, "error", err)
-	} else if on && extra != "" {
+	} else if on {
 		// A saved-but-stopped destination is not one to push to.
-		extras = append(extras, extra)
+		add(extra)
 	}
-	if li := s.linkedInIngestFor(ctx, wb); li != "" && li != extra {
-		extras = append(extras, li)
+	for _, p := range integrations.RTMPPlatforms {
+		add(s.platformIngestFor(ctx, wb, p.ID))
 	}
 	return origin, extras
 }
 
-/* linkedInIngestFor is the LinkedIn URL this webinar should push right now:
- * the host's saved destination, unless the host paused it in this room. Empty
- * on any error — a missing LinkedIn push is better than a failed encoder. */
-func (s *Server) linkedInIngestFor(ctx context.Context, wb types.Webinar) string {
+/* platformIngestFor is the URL this webinar should push to one platform right
+ * now: the host's saved destination, unless the host paused it in this room.
+ * Empty on any error — a missing push is better than a failed encoder. */
+func (s *Server) platformIngestFor(ctx context.Context, wb types.Webinar, platform string) string {
 	if wb.Kind == types.KindSimulive {
 		return ""
 	}
-	ingest, _, err := s.store.LinkedInDestination(ctx, wb.Host.ID)
+	ingest, _, err := s.store.StreamDestination(ctx, wb.Host.ID, platform)
 	if err != nil || ingest == "" {
 		return ""
 	}
-	paused, err := s.store.WebinarLinkedInPaused(ctx, wb.ID)
+	paused, err := s.store.WebinarStreamPaused(ctx, wb.ID, platform)
 	if err != nil || paused {
 		return ""
 	}

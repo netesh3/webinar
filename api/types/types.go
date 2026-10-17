@@ -3900,7 +3900,8 @@ const (
 	IntegrationActionInfo     = "info"
 	IntegrationActionSignup   = "signup"
 	// IntegrationActionStreamKey opens a form for a Stream URL and key, sent
-	// to Href with Method as SaveStreamKeyRequest. LinkedIn Live uses it.
+	// to Href with Method as SaveStreamKeyRequest. LinkedIn, Instagram and
+	// Facebook Live use it.
 	IntegrationActionStreamKey = "stream_key"
 )
 
@@ -3910,21 +3911,22 @@ type SaveStreamKeyRequest struct {
 	StreamKey string `json:"streamKey"`
 }
 
-/* WebinarLinkedIn is LinkedIn Live as one room sees it.
+/* WebinarStreamDestination is one RTMP platform (LinkedIn, Instagram,
+ * Facebook) as one room sees it.
  *
- * Configured: the host saved a stream key in Settings. Paused: the host paused
- * it in this room. Streaming: the webinar is live, configured and not paused,
- * so the mix is being pushed to LinkedIn. Hint names the destination without
- * the key. */
-type WebinarLinkedIn struct {
+ * Configured: the host saved a stream key. Paused: the host paused it in this
+ * room. Streaming: the webinar is live, configured and not paused, so the mix
+ * is being pushed there. Hint names the destination without the key. */
+type WebinarStreamDestination struct {
+	Platform   string `json:"platform"`
 	Configured bool   `json:"configured"`
 	Paused     bool   `json:"paused"`
 	Streaming  bool   `json:"streaming"`
 	Hint       string `json:"hint,omitempty"`
 }
 
-// SetWebinarLinkedInRequest pauses or resumes LinkedIn Live for one webinar.
-type SetWebinarLinkedInRequest struct {
+// SetWebinarStreamPausedRequest pauses or resumes one platform for one webinar.
+type SetWebinarStreamPausedRequest struct {
 	Paused bool `json:"paused"`
 }
 

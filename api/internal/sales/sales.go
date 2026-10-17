@@ -46,7 +46,7 @@ var Facts = []string{
 	"Webinar Liv is live video webinars for coaches, teachers, course creators and sales teams, built for India.",
 	"Attendees join from the browser on a phone or laptop. Nothing to download or install.",
 	"Before a webinar: a registration page with your own questions, and email and WhatsApp reminders that fill the room.",
-	"During a webinar: polls, quizzes, upvoted Q&A, chat, reactions, raised hands, bringing attendees on stage, a shared whiteboard, screen share, and recording. You can also stream live to YouTube and LinkedIn Live at the same time.",
+	"During a webinar: polls, quizzes, upvoted Q&A, chat, reactions, raised hands, bringing attendees on stage, a shared whiteboard, screen share, and recording. You can also stream live to YouTube, LinkedIn Live, Instagram Live and Facebook Live at the same time.",
 	"After a webinar: every attendee gets an Engagement Score from 0 to 100 built from watch time (40), polls (15), quiz accuracy (10), chat (10), Q&A (10), reactions (5), raised hand (5) and survey (5). Tools you didn't use don't count against anyone.",
 	"Follow-up by engagement group: send an offer to the most engaged, a replay to the rest, and a note to no-shows. Drips, a chatbot and one shared inbox are included on Business and Enterprise.",
 	"WhatsApp reminders use your own WhatsApp Business number through Meta's official sign-up. Meta bills message fees to your own WhatsApp Business account; Webinar Liv does not mark them up.",

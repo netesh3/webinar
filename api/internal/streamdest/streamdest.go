@@ -108,33 +108,39 @@ func youtubePathID(path string) string {
 	return ""
 }
 
-var (
-	ErrLinkedInNeedURL = errors.New("paste the Stream URL from LinkedIn — it begins with rtmps://")
-	ErrLinkedInNeedKey = errors.New("paste the Stream key from LinkedIn")
-)
+/* FieldError is a pasted Stream URL or key that cannot be used, with the form
+ * field it belongs to ("streamUrl" or "streamKey") and a message to show. */
+type FieldError struct {
+	Field   string
+	Message string
+}
 
-/* LinkedInIngest joins what LinkedIn shows under "Stream URL" and "Stream key"
- * into the address the encoder pushes to.
+func (e *FieldError) Error() string { return e.Message }
+
+/* RTMPIngest joins what a platform (LinkedIn, Instagram, Facebook) shows under
+ * "Stream URL" and "Stream key" into the address the encoder pushes to.
  *
- * Unlike YouTube there is no default server to fall back on: LinkedIn hands out
- * a different stream URL per account, so it is required. So is the key: the
- * URL LinkedIn shows already ends in /live/<id>, so a URL alone cannot be told
- * apart from one with the key pasted onto it. */
-func LinkedInIngest(streamURL, key string) (string, error) {
+ * Unlike YouTube there is no default server to fall back on: each hands out
+ * its own URL, so it is required. So is the key: LinkedIn's URL already ends
+ * in /live/<id>, so a URL alone cannot be told apart from one with the key
+ * pasted onto it. platform is only used in the messages. */
+func RTMPIngest(platform, streamURL, key string) (string, error) {
+	needURL := &FieldError{Field: "streamUrl", Message: "Paste the Stream URL from " + platform + " — it begins with rtmps://"}
+	needKey := &FieldError{Field: "streamKey", Message: "Paste the Stream key from " + platform}
 	u := strings.TrimRight(strings.TrimSpace(streamURL), "/")
 	key = strings.Trim(strings.TrimSpace(key), "/")
 	if u == "" {
-		return "", ErrLinkedInNeedURL
+		return "", needURL
 	}
 	if !strings.HasPrefix(u, "rtmp://") && !strings.HasPrefix(u, "rtmps://") {
-		return "", ErrLinkedInNeedURL
+		return "", needURL
 	}
 	parsed, err := url.Parse(u)
 	if err != nil || parsed.Host == "" || strings.ContainsAny(u, " \t\n") {
-		return "", ErrLinkedInNeedURL
+		return "", needURL
 	}
 	if key == "" || strings.ContainsAny(key, " \t\n") {
-		return "", ErrLinkedInNeedKey
+		return "", needKey
 	}
 	/* LinkedIn's Stream URL can already end with the key (".../live/<key>"),
 	 * with the same key shown again under Stream Key. Appending it a second
@@ -144,6 +150,11 @@ func LinkedInIngest(streamURL, key string) (string, error) {
 		return u, nil
 	}
 	return u + "/" + key, nil
+}
+
+// LinkedInIngest is RTMPIngest for LinkedIn Live.
+func LinkedInIngest(streamURL, key string) (string, error) {
+	return RTMPIngest("LinkedIn", streamURL, key)
 }
 
 /* FixDoubledKey repairs an ingest saved before LinkedInIngest knew LinkedIn's
@@ -169,6 +180,8 @@ func Hint(ingest string) string {
 	if err != nil || parsed.Host == "" {
 		return ""
 	}
+	// Facebook and Instagram keys carry a query string (?s_bl=1&…); the
+	// hint is the key itself.
 	path := strings.Trim(parsed.Path, "/")
 	tail := path
 	if i := strings.LastIndexByte(path, '/'); i >= 0 {

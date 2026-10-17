@@ -78,6 +78,8 @@ const ON_WORD: Partial<Record<ToolId, string>> = {
   sharefile: "Sharing",
   youtube: "On",
   linkedin: "On",
+  instagram: "On",
+  facebook: "On",
   whiteboard: "On",
   hand: "Raised",
 };

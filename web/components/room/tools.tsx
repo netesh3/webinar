@@ -17,6 +17,8 @@ import {
   UsersIcon,
   YouTubeIcon,
   LinkedInIcon,
+  InstagramIcon,
+  FacebookIcon,
 } from "../icons";
 
 /* The registry: one entry per tool, and the only place that knows what a tool is.
@@ -185,6 +187,25 @@ const TOOLS: Record<ToolId, Tool> = {
     icon: LinkedInIcon,
     keepMounted: false,
   },
+  instagram: {
+    id: "instagram",
+    // Opens its own dialog (stream-to-platform.tsx) rather than a tool window.
+    kind: "action",
+    label: "Instagram",
+    menuLabel: "Stream to Instagram",
+    title: "Stream to Instagram Live",
+    icon: InstagramIcon,
+    keepMounted: false,
+  },
+  facebook: {
+    id: "facebook",
+    kind: "action",
+    label: "Facebook",
+    menuLabel: "Stream to Facebook",
+    title: "Stream to Facebook Live",
+    icon: FacebookIcon,
+    keepMounted: false,
+  },
   whiteboard: {
     id: "whiteboard",
     // Takes the stage for everyone (whiteboard/whiteboard-stage.tsx) rather
@@ -293,6 +314,8 @@ export function availableTools(input: {
   // Streaming to YouTube is the host's — the same gate the bar button always had.
   if (input.isHost) allowed.add("youtube");
   if (input.isHost) allowed.add("linkedin");
+  if (input.isHost) allowed.add("instagram");
+  if (input.isHost) allowed.add("facebook");
   /* Share a video file is offered to everyone here and narrowed in the control
    * bar (usableTools), because what it needs — the share permission, a browser
    * that can capture a video element, a real room — is not known at this level,

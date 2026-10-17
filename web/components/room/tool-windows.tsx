@@ -49,6 +49,8 @@ function Content({ id }: { id: ToolId }) {
     case "sharefile":
     case "youtube":
     case "linkedin":
+    case "instagram":
+    case "facebook":
       return null;
   }
 }

@@ -2,39 +2,90 @@
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, api } from "@/lib/api";
-import type { WebinarLinkedIn } from "@/lib/api-types";
+import type { WebinarStreamDestination } from "@/lib/api-types";
 import { Modal, Spinner } from "../controls";
 import { useToast } from "../providers";
 import { Button } from "../ui";
 import { useRoomUI } from "./context";
 
-/* Stream this webinar to LinkedIn Live — its own button, beside YouTube.
+/* Stream this webinar to LinkedIn Live, Instagram Live or Facebook Live — each
+ * its own button, beside YouTube.
  *
- * The host pastes the Stream URL and Stream key from LinkedIn Live Studio. They
- * are saved on the account (the same destination as the Settings card), so a
- * coach who keeps the same key does nothing next time; LinkedIn usually issues
- * a new key per event, and "Use a new key" is right here for that. While the
- * webinar is live the mix is pushed to LinkedIn from the compositor already
- * encoding it; LinkedIn still wants Go live pressed in Live Studio.
+ * The host pastes the Stream URL and Stream key the platform shows. They are
+ * saved on the account (the same destination as the Settings card), so a key
+ * that stays the same — Facebook's persistent key — is pasted once; LinkedIn
+ * and Instagram usually issue a new key per broadcast, and "Use a new key" is
+ * right here for that. While the webinar is live the mix is pushed there from
+ * the compositor already encoding it; each platform still wants Go live pressed
+ * on its own side.
  *
  * A hook rather than a button for the same reason as useYouTubeStream: the
  * button can sit on the bar or in More, and the dialog stays mounted either way. */
 
-const SAVE_HREF = "/api/host/integrations/linkedin";
-const LIVE_STUDIO = "https://www.linkedin.com/video/golive/manage/";
+export type StreamPlatform = "linkedin" | "instagram" | "facebook";
 
-export type LinkedInStream = {
-  /** Pushing to LinkedIn right now — what the live indicator shows. */
+type PlatformInfo = {
+  name: string;
+  /** Where the host finds the key and presses Go live. */
+  studio: { name: string; url: string };
+  saveHref: string;
+  badge: { text: string; className: string };
+  steps: ReactNode[];
+  note: string;
+};
+
+const PLATFORMS: Record<StreamPlatform, PlatformInfo> = {
+  linkedin: {
+    name: "LinkedIn Live",
+    studio: { name: "LinkedIn Live Studio", url: "https://www.linkedin.com/video/golive/manage/" },
+    saveHref: "/api/host/integrations/linkedin",
+    badge: { text: "in", className: "bg-[#0a66c2]" },
+    steps: [
+      <>Open your event in Live Studio and click <b>Prepare to go live</b>, then <b>Get URL</b>.</>,
+      <>Copy the Stream URL and Stream key and paste them below.</>,
+      <>When the preview appears in Live Studio, click <b>Go live</b> there.</>,
+    ],
+    note: "LinkedIn usually gives a new key for each event.",
+  },
+  instagram: {
+    name: "Instagram Live",
+    studio: { name: "Instagram on a computer", url: "https://www.instagram.com/" },
+    saveHref: "/api/host/integrations/instagram-live",
+    badge: { text: "IG", className: "bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af]" },
+    steps: [
+      <>On instagram.com, click <b>Create (+) → Live video</b>, add a title and audience, then <b>Next</b>.</>,
+      <>Copy the Stream URL and Stream key and paste them below.</>,
+      <>When the preview appears on Instagram, click <b>Go live</b> there.</>,
+    ],
+    note: "Needs a Professional account. The key changes for every Instagram Live; lives can run up to 4 hours. Instagram shows landscape video with bars above and below.",
+  },
+  facebook: {
+    name: "Facebook Live",
+    studio: { name: "Facebook Live Producer", url: "https://www.facebook.com/live/producer" },
+    saveHref: "/api/host/integrations/facebook-live",
+    badge: { text: "f", className: "bg-[#1877f2]" },
+    steps: [
+      <>In Live Producer, choose where to post and pick <b>Streaming software</b> as the video source.</>,
+      <>Copy the Server URL and Stream key and paste them below.</>,
+      <>When the preview appears in Live Producer, click <b>Go live</b> there.</>,
+    ],
+    note: "Turn on “Use a persistent stream key” in Facebook and you only paste it once.",
+  },
+};
+
+export type PlatformStream = {
+  /** Pushing to the platform right now — what the live indicator shows. */
   live: boolean;
   open: () => void;
   dialog: ReactNode;
 };
 
-export function useLinkedInStream(): LinkedInStream {
+export function usePlatformStream(platform: StreamPlatform): PlatformStream {
+  const info = PLATFORMS[platform];
   const { slug, isHost } = useRoomUI();
   const { notify } = useToast();
   const [open, setOpen] = useState(false);
-  const [li, setLi] = useState<WebinarLinkedIn | null>(null);
+  const [li, setLi] = useState<WebinarStreamDestination | null>(null);
   const [editing, setEditing] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
   const [streamKey, setStreamKey] = useState("");
@@ -48,7 +99,7 @@ export function useLinkedInStream(): LinkedInStream {
     let stop = false;
     const load = () =>
       api
-        .webinarLinkedIn(slug)
+        .webinarStreamDestination(slug, platform)
         .then((next) => {
           if (!stop) setLi(next);
         })
@@ -61,7 +112,7 @@ export function useLinkedInStream(): LinkedInStream {
       stop = true;
       window.clearInterval(id);
     };
-  }, [isHost, slug]);
+  }, [isHost, slug, platform]);
 
   const configured = Boolean(li?.configured);
   const showForm = !configured || editing;
@@ -77,7 +128,7 @@ export function useLinkedInStream(): LinkedInStream {
 
   async function reload() {
     try {
-      setLi(await api.webinarLinkedIn(slug));
+      setLi(await api.webinarStreamDestination(slug, platform));
     } catch {
       // Keep what is on screen.
     }
@@ -88,15 +139,15 @@ export function useLinkedInStream(): LinkedInStream {
     setBusy(true);
     setFields({});
     try {
-      await api.saveStreamKey(SAVE_HREF, { streamUrl: streamUrl.trim(), streamKey: streamKey.trim() });
+      await api.saveStreamKey(info.saveHref, { streamUrl: streamUrl.trim(), streamKey: streamKey.trim() });
       await reload();
       setEditing(false);
       setStreamUrl("");
       setStreamKey("");
-      notify("Saved. Once the preview shows in LinkedIn Live Studio, press Go live there.", "ok");
+      notify(`Saved. Once the preview shows in ${info.studio.name}, press Go live there.`, "ok");
     } catch (err) {
       if (err instanceof ApiError && err.fields) setFields(err.fields);
-      else notify(err instanceof Error ? err.message : "Could not save the LinkedIn key.", "error");
+      else notify(err instanceof Error ? err.message : `Could not save the ${info.name} key.`, "error");
     } finally {
       setBusy(false);
     }
@@ -106,11 +157,11 @@ export function useLinkedInStream(): LinkedInStream {
     if (!li) return;
     setBusy(true);
     try {
-      const next = await api.setWebinarLinkedIn(slug, !li.paused);
+      const next = await api.setWebinarStreamPaused(slug, platform, !li.paused);
       setLi(next);
-      notify(next.paused ? "LinkedIn paused for this webinar." : "Streaming to LinkedIn again.", "ok");
+      notify(next.paused ? `${info.name} paused for this webinar.` : `Streaming to ${info.name} again.`, "ok");
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Could not change LinkedIn.", "error");
+      notify(err instanceof Error ? err.message : `Could not change ${info.name}.`, "error");
     } finally {
       setBusy(false);
     }
@@ -119,11 +170,11 @@ export function useLinkedInStream(): LinkedInStream {
   async function remove() {
     setBusy(true);
     try {
-      await api.integrationCall(SAVE_HREF, "DELETE");
+      await api.integrationCall(info.saveHref, "DELETE");
       await reload();
-      notify("LinkedIn key removed. Nothing is sent to LinkedIn now.", "ok");
+      notify(`${info.name} key removed. Nothing is sent there now.`, "ok");
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Could not remove the LinkedIn key.", "error");
+      notify(err instanceof Error ? err.message : `Could not remove the ${info.name} key.`, "error");
     } finally {
       setBusy(false);
     }
@@ -137,18 +188,18 @@ export function useLinkedInStream(): LinkedInStream {
     : li.paused
       ? "Paused for this webinar"
       : li.streaming
-        ? "Sending to LinkedIn · press Go live in Live Studio when the preview shows"
+        ? `Sending to ${info.name} · press Go live there when the preview shows`
         : "Starts sending when the webinar is live";
 
   const dialog = !isHost ? null : (
     <Modal
       open={open}
       onClose={close}
-      title="Stream to LinkedIn Live"
+      title={`Stream to ${info.name}`}
       description={
         showForm
-          ? "Paste the Stream URL and Stream key from LinkedIn Live Studio. We send this webinar there while it is live."
-          : "This webinar is sent to LinkedIn while it is live. LinkedIn shows it once you press Go live in Live Studio."
+          ? `Paste the Stream URL and Stream key from ${info.studio.name}. We send this webinar there while it is live.`
+          : `This webinar is sent to ${info.name} while it is live. It shows once you press Go live in ${info.studio.name}.`
       }
       footer={
         showForm ? (
@@ -159,7 +210,7 @@ export function useLinkedInStream(): LinkedInStream {
             <Button
               variant="primary"
               type="submit"
-              form="linkedin-key-form"
+              form={`${platform}-key-form`}
               disabled={busy || !streamUrl.trim() || !streamKey.trim()}
             >
               {busy ? <Spinner className="size-4" /> : "Save and stream"}
@@ -184,10 +235,10 @@ export function useLinkedInStream(): LinkedInStream {
         {configured && li && (
           <div className="flex items-center gap-3 rounded-lg border border-line bg-surface-2 p-3">
             <span
-              className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#0a66c2] text-[13px] font-bold text-white"
+              className={`grid size-8 shrink-0 place-items-center rounded-lg text-[13px] font-bold text-white ${info.badge.className}`}
               aria-hidden
             >
-              in
+              {info.badge.text}
             </span>
             <div className="min-w-0 flex-1">
               <b className="block text-[13px] font-semibold text-ink">{status}</b>
@@ -202,17 +253,18 @@ export function useLinkedInStream(): LinkedInStream {
         )}
 
         {showForm && (
-          <form id="linkedin-key-form" onSubmit={save} className="grid gap-3">
+          <form id={`${platform}-key-form`} onSubmit={save} className="grid gap-3">
+            <p className="text-[12.5px] text-ink-2">
+              Open{" "}
+              <a href={info.studio.url} target="_blank" rel="noreferrer" className="font-medium text-brand underline-offset-2 hover:underline">
+                {info.studio.name}
+              </a>
+              :
+            </p>
             <ol className="list-decimal space-y-1 pl-5 text-[12.5px] leading-relaxed text-ink-2">
-              <li>
-                In{" "}
-                <a href={LIVE_STUDIO} target="_blank" rel="noreferrer" className="font-medium text-brand underline-offset-2 hover:underline">
-                  LinkedIn Live Studio
-                </a>
-                , open your event and click <b>Prepare to go live</b>, then <b>Get URL</b>.
-              </li>
-              <li>Copy the Stream URL and Stream key and paste them below.</li>
-              <li>When the preview appears in Live Studio, click <b>Go live</b> there.</li>
+              {info.steps.map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
             </ol>
             <label className="grid gap-1">
               <span className="text-[12.5px] font-medium text-ink">Stream URL</span>
@@ -244,7 +296,7 @@ export function useLinkedInStream(): LinkedInStream {
               {fields.streamKey && <small className="text-[12px] text-live">{fields.streamKey}</small>}
             </label>
             <p className="text-[12px] leading-relaxed text-ink-3">
-              LinkedIn usually gives a new key for each event. The key is saved to your account and never shown again.
+              {info.note} The key is saved to your account and never shown again.
             </p>
           </form>
         )}

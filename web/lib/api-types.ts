@@ -6521,7 +6521,8 @@ export const IntegrationActionInfo = "info";
 export const IntegrationActionSignup = "signup";
 /**
  * IntegrationActionStreamKey opens a form for a Stream URL and key, sent
- * to Href with Method as SaveStreamKeyRequest. LinkedIn Live uses it.
+ * to Href with Method as SaveStreamKeyRequest. LinkedIn, Instagram and
+ * Facebook Live use it.
  */
 export const IntegrationActionStreamKey = "stream_key";
 /**
@@ -6532,23 +6533,24 @@ export interface SaveStreamKeyRequest {
   streamKey: string;
 }
 /**
- *  WebinarLinkedIn is LinkedIn Live as one room sees it.
+ *  WebinarStreamDestination is one RTMP platform (LinkedIn, Instagram,
+ *  * Facebook) as one room sees it.
  *  *
- *  * Configured: the host saved a stream key in Settings. Paused: the host paused
- *  * it in this room. Streaming: the webinar is live, configured and not paused,
- *  * so the mix is being pushed to LinkedIn. Hint names the destination without
- *  * the key.
+ *  * Configured: the host saved a stream key. Paused: the host paused it in this
+ *  * room. Streaming: the webinar is live, configured and not paused, so the mix
+ *  * is being pushed there. Hint names the destination without the key.
  */
-export interface WebinarLinkedIn {
+export interface WebinarStreamDestination {
+  platform: string;
   configured: boolean;
   paused: boolean;
   streaming: boolean;
   hint?: string;
 }
 /**
- * SetWebinarLinkedInRequest pauses or resumes LinkedIn Live for one webinar.
+ * SetWebinarStreamPausedRequest pauses or resumes one platform for one webinar.
  */
-export interface SetWebinarLinkedInRequest {
+export interface SetWebinarStreamPausedRequest {
   paused: boolean;
 }
 export interface IntegrationStep {

@@ -96,7 +96,7 @@ import { MoreButton, MoreGrid } from "./more-grid";
 import { ReactionPicker } from "./reactions";
 import { RecordButton } from "./recording";
 import { useYouTubeStream } from "./stream-to-youtube";
-import { useLinkedInStream } from "./stream-to-linkedin";
+import { usePlatformStream } from "./stream-to-platform";
 import { useWhiteboard } from "./whiteboard/whiteboard-context";
 import { CaptionsSession, useCaptionsMoreAction } from "./caption-overlay";
 import { sharePublishOptions } from "@/lib/media";
@@ -268,7 +268,14 @@ export function ControlBar() {
   });
   const captionsAction = useCaptionsMoreAction();
   const youtube = useYouTubeStream();
-  const linkedin = useLinkedInStream();
+  const linkedin = usePlatformStream("linkedin");
+  const instagram = usePlatformStream("instagram");
+  const facebook = usePlatformStream("facebook");
+  /* Live-streaming platforms other than YouTube: their dialogs, and the tinted
+   * "streaming" look wherever their button sits. */
+  const platforms = { linkedin, instagram, facebook } as const;
+  const platformFor = (id: ToolId) =>
+    id === "linkedin" || id === "instagram" || id === "facebook" ? platforms[id] : null;
   /* The shared whiteboard. Null outside the live room (preview, CDN audience),
    * and the tool itself is only available behind the host's switch, so with the
    * feature off nothing below sees it. */
@@ -843,6 +850,8 @@ export function ControlBar() {
     if (id === "sharefile") return fileShare.active ? "Sharing a video file" : "Share a video file";
     if (id === "youtube") return youtube.configured ? "YouTube stream is on" : "Stream to YouTube";
     if (id === "linkedin") return linkedin.live ? "LinkedIn Live is on" : "Stream to LinkedIn Live";
+    if (id === "instagram") return instagram.live ? "Instagram Live is on" : "Stream to Instagram Live";
+    if (id === "facebook") return facebook.live ? "Facebook Live is on" : "Stream to Facebook Live";
     if (id === "whiteboard") return whiteboard?.state ? "Stop whiteboard" : "Whiteboard";
     return t.label;
   };
@@ -855,7 +864,7 @@ export function ControlBar() {
     if (id === "captions") return captionsAction?.active ?? false;
     if (id === "sharefile") return fileShare.active;
     if (id === "youtube") return youtube.configured;
-    if (id === "linkedin") return linkedin.live;
+    if (id === "linkedin" || id === "instagram" || id === "facebook") return platforms[id].live;
     if (id === "whiteboard") return !!whiteboard?.state;
     if (tools.panelTab === id) return true;
     if (tools.poppedOut.includes(id)) return true;
@@ -923,8 +932,9 @@ export function ControlBar() {
       youtube.open();
       return;
     }
-    if (id === "linkedin") {
-      linkedin.open();
+    const platform = platformFor(id);
+    if (platform) {
+      platform.open();
       return;
     }
     if (id === "whiteboard") {
@@ -1280,6 +1290,7 @@ export function ControlBar() {
                       id={slot.tool}
                       label={labelFor(slot.tool)}
                       active={activeFor(slot.tool)}
+                      live={platformFor(slot.tool)?.live ?? false}
                       badge={countFor(slot.tool)}
                       mentions={slot.tool === "chat" ? chatMentions : 0}
                       pinned={slot.pinned}
@@ -1414,6 +1425,18 @@ export function ControlBar() {
                   busy: false,
                   title: linkedin.live ? "LinkedIn Live is on — click to change" : "Stream to LinkedIn Live",
                   onClick: linkedin.open,
+                },
+                instagram: {
+                  active: instagram.live,
+                  busy: false,
+                  title: instagram.live ? "Instagram Live is on — click to change" : "Stream to Instagram Live",
+                  onClick: instagram.open,
+                },
+                facebook: {
+                  active: facebook.live,
+                  busy: false,
+                  title: facebook.live ? "Facebook Live is on — click to change" : "Stream to Facebook Live",
+                  onClick: facebook.open,
                 },
                 youtube: {
                   active: youtube.configured,
@@ -1636,6 +1659,8 @@ export function ControlBar() {
           opening it from either place — and More closing behind it — works. */}
       {youtube.dialog}
       {linkedin.dialog}
+      {instagram.dialog}
+      {facebook.dialog}
     </div>
     </PhoneBarMetricsProvider>
   );
@@ -1698,6 +1723,7 @@ function ToolSlotButton({
   id,
   label,
   active,
+  live = false,
   badge,
   mentions = 0,
   pinned,
@@ -1707,6 +1733,8 @@ function ToolSlotButton({
   id: ToolId;
   label: string;
   active: boolean;
+  /** Streaming to Instagram / Facebook / LinkedIn — the tinted look. */
+  live?: boolean;
   badge?: number;
   /** Unseen @mentions, which turn the badge into "@". Chat only. */
   mentions?: number;
@@ -1732,7 +1760,7 @@ function ToolSlotButton({
         dragging ? "opacity-40" : ""
       }`}
     >
-      <BarButtonShell label={t.label} active={active}>
+      <BarButtonShell label={t.label} active={active} live={live}>
         <Icon className="size-5" />
       </BarButtonShell>
       <ToolBadge count={badge} mentions={mentions} />

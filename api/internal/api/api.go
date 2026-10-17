@@ -584,8 +584,8 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/integrations", s.handleListIntegrations)
 				r.Post("/integrations/{id}/interest", s.handleIntegrationInterest)
 				r.Delete("/integrations/{id}", s.handleIntegrationDisconnect)
-				r.Put("/integrations/linkedin", s.handleSaveLinkedIn)
-				r.Delete("/integrations/linkedin", s.handleRemoveLinkedIn)
+				// LinkedIn, Instagram and Facebook Live stream keys.
+				s.mountStreamDestinations(r)
 
 				// The WhatsApp CRM's routes, mounted by the CRM itself. See Engage.Mount.
 				s.engage.Mount(publicAPI, r)
@@ -605,8 +605,7 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/", s.handleHostWebinar)
 					r.Patch("/", s.handleUpdateWebinar)
 					r.Patch("/stream", s.handleSetStream)
-					r.Get("/linkedin", s.handleWebinarLinkedIn)
-					r.Patch("/linkedin", s.handleSetWebinarLinkedIn)
+					s.mountWebinarStreamDestinations(r)
 
 					// Deleting the webinar and handing it to someone else stay with the
 					// account actually listed as its host — see requireTrueOwner. Every
