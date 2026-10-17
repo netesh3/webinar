@@ -27,6 +27,7 @@ import {
   type OptionsDraft,
   type TemplateKind,
 } from "../template-options";
+import { TEMPLATE_NAME_MAX, friendlyTemplateName, normaliseTemplateName } from "../template-name";
 import { HeaderFileButton, HeaderMediaBlock, fileDetail, type HeaderDraft } from "./header-media";
 import { FilledText } from "./template-params";
 
@@ -42,24 +43,72 @@ export function TemplateOptionsFields({
   onChange,
   disabled,
   ownNames,
+  nameTaken,
 }: {
   value: OptionsDraft;
   onChange: (next: OptionsDraft) => void;
   disabled?: boolean;
   /** The host's own templates (name → languages), to add a translation to. */
   ownNames?: Map<string, string[]>;
+  /** The server's 409 for the typed name: the name, and the next free one to offer. */
+  nameTaken?: { name: string; suggestion: string } | null;
 }) {
   const id = useId();
   const category = CATEGORIES.find((c) => c.id === value.category) ?? CATEGORIES[0];
   const kinds = kindsFor(value.category);
   const set = (patch: Partial<OptionsDraft>) => onChange({ ...value, ...patch });
-  const translatable = [...(ownNames ?? new Map<string, string[]>()).entries()].filter(([n]) =>
-    n.startsWith("wl_own_"),
-  );
+  const translatable = [...(ownNames ?? new Map<string, string[]>()).entries()];
   const taken = value.translationOf ? (ownNames?.get(value.translationOf) ?? []) : [];
+  const savedAs = normaliseTemplateName(value.title);
+  const takenNow = nameTaken && nameTaken.name === savedAs ? nameTaken : null;
 
   return (
     <div className="grid gap-2.5">
+      {!value.translationOf && (
+        <div className="grid gap-1">
+          <label className="grid gap-1 text-[12px] text-ink-2" htmlFor={`${id}-name`}>
+            Template name
+            <input
+              id={`${id}-name`}
+              className="field h-8"
+              value={value.title}
+              aria-required
+              maxLength={TEMPLATE_NAME_MAX * 2}
+              disabled={disabled}
+              placeholder="Webinar reminder 1 hour"
+              aria-describedby={`${id}-name-hint`}
+              aria-invalid={takenNow ? true : undefined}
+              onChange={(e) => set({ title: e.target.value })}
+            />
+          </label>
+          <p id={`${id}-name-hint`} className="text-[11.5px] leading-snug text-ink-3">
+            {savedAs ? (
+              <>
+                Saved as <code className="text-ink-2">{savedAs}</code>. You will see it under this name in
+                WhatsApp Manager.
+              </>
+            ) : value.title.trim() ? (
+              "Use at least one letter or number."
+            ) : (
+              "Lowercase letters, numbers and underscores. Spaces become underscores."
+            )}
+          </p>
+          {takenNow && (
+            <p className="flex flex-wrap items-center gap-2 text-[12px] text-warn" role="alert">
+              You already have a template called {takenNow.name}.
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={disabled}
+                onClick={() => set({ title: takenNow.suggestion })}
+              >
+                Use {takenNow.suggestion}
+              </Button>
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-2">
         <label className="grid gap-1 text-[12px] text-ink-2" htmlFor={`${id}-cat`}>
           Category
@@ -107,7 +156,7 @@ export function TemplateOptionsFields({
               <option value="">A new template</option>
               {translatable.map(([name, langs]) => (
                 <option key={name} value={name}>
-                  {name.replace(/^wl_own_/, "")} · {langs.map(languageLabel).join(", ")}
+                  {friendlyTemplateName(name)} · {langs.map(languageLabel).join(", ")}
                 </option>
               ))}
             </select>

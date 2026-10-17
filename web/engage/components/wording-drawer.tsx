@@ -10,6 +10,7 @@ import { MaterialIcon } from "@/components/icons";
 import { useToast } from "@/components/providers";
 import { Button } from "@/components/ui";
 import { ApiError } from "@/lib/api";
+import { nameTakenFrom, templateNameProblem } from "../template-name";
 import {
   SlotConfirmation,
   SlotFollowupEngaged,
@@ -51,7 +52,7 @@ import {
   previewFromDraft,
   previewFromTemplate,
 } from "./template-options";
-import { friendlyTemplateName, CategoryPill } from "./wa-kit";
+import { CategoryPill, templateLabel } from "./wa-kit";
 import {
   resolveStarterTemplate,
   slotFromTemplate,
@@ -233,7 +234,7 @@ export function WordingDrawer({
   const q = query.trim().toLowerCase();
   const visible = list.filter((template) => {
     if (q) {
-      const hay = `${template.name} ${friendlyTemplateName(template.name)} ${template.body ?? ""}`.toLowerCase();
+      const hay = `${template.name} ${templateLabel(template)} ${template.body ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (filter === "All") return true;
@@ -514,7 +515,7 @@ function TemplateRow({
     >
       <div className="flex flex-wrap items-center gap-1.5">
         <b className="mr-auto text-[13px] font-semibold">
-          {friendlyTemplateName(template.name)}
+          {templateLabel(template)}
         </b>
         <span className={`rounded px-1.5 py-px text-[10.5px] font-semibold ${badge.tone}`}>
           {badge.label}
@@ -590,6 +591,7 @@ function WriteOwn({
   const [note, setNote] = useState<string | null>(null);
   const [header, setHeader] = useState<HeaderDraft>(NO_HEADER);
   const ownNames = useMemo(() => languagesByName(templates), [templates]);
+  const [nameTaken, setNameTaken] = useState<{ name: string; suggestion: string } | null>(null);
   const typed = draft.trim();
   const isAuth = options.kind === "AUTH";
   const withHeader = allowsHeader(options.kind);
@@ -612,7 +614,9 @@ function WriteOwn({
     if ((!typed && !isAuth) || busy) return;
     const problem = match
       ? null
-      : (optionsProblem(options, typed) ?? (withHeader ? headerDraftProblem(header) : null));
+      : ((options.translationOf ? null : templateNameProblem(options.title)) ??
+        optionsProblem(options, typed) ??
+        (withHeader ? headerDraftProblem(header) : null));
     if (problem) {
       setNote(problem);
       return;
@@ -668,6 +672,8 @@ function WriteOwn({
           buttons: [],
           defaultParams: params ?? [],
           defaultParamsSaved: Boolean(params),
+          own: true,
+          title: options.translationOf ? undefined : options.title.trim(),
         };
         const ok = await onUse(slotFromTemplate(target.slot, template), target.label);
         if (ok) {
@@ -688,8 +694,10 @@ function WriteOwn({
       notify("Submitted to Meta. Approval usually takes a few minutes.", "ok");
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Could not submit that wording.";
-      setNote(msg);
-      notify(msg, "error");
+      const taken = nameTakenFrom(err);
+      setNameTaken(taken);
+      setNote(taken ? null : msg);
+      if (!taken) notify(msg, "error");
     } finally {
       setBusy(false);
     }
@@ -706,6 +714,7 @@ function WriteOwn({
         onChange={setOptions}
         disabled={busy || !connected}
         ownNames={ownNames}
+        nameTaken={nameTaken}
       />
       {!isAuth && (
         <label className="mt-2 block">

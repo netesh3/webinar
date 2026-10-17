@@ -118,7 +118,7 @@ func TestTemplateOptionsAreSubmittedAsMetaDocuments(t *testing.T) {
 	}
 
 	// Authentication.
-	code, authName, raw := submit(types.CRMWordingRequest{Category: "AUTHENTICATION",
+	code, authName, raw := submit(types.CRMWordingRequest{Title: "Login code", Category: "AUTHENTICATION",
 		Auth: &types.CRMAuthInput{SecurityRecommendation: true, ExpirationMinutes: 5}})
 	if code != http.StatusOK {
 		t.Fatalf("auth: %d %s", code, raw)
@@ -131,7 +131,7 @@ func TestTemplateOptionsAreSubmittedAsMetaDocuments(t *testing.T) {
 	}
 
 	// Standard: footer, phone and coupon, in Hindi.
-	code, stdName, raw := submit(types.CRMWordingRequest{Category: "MARKETING", Language: "hi",
+	code, stdName, raw := submit(types.CRMWordingRequest{Title: "Promo", Category: "MARKETING", Language: "hi",
 		Body: "नमस्ते {{1}}", Footer: ptr("Reply STOP to opt out"),
 		Buttons: []types.CRMButtonInput{
 			{Type: "PHONE_NUMBER", Text: "Call", PhoneNumber: "+91 98765 43210"},
@@ -159,7 +159,7 @@ func TestTemplateOptionsAreSubmittedAsMetaDocuments(t *testing.T) {
 	}
 
 	// Limited-time offer.
-	code, _, raw = submit(types.CRMWordingRequest{Category: "MARKETING", Body: "Last seats.",
+	code, _, raw = submit(types.CRMWordingRequest{Title: "Last seats", Category: "MARKETING", Body: "Last seats.",
 		Offer:   &types.CRMOfferInput{Text: "20% off", HasExpiration: true},
 		Buttons: []types.CRMButtonInput{{Type: "COPY_CODE", Code: "SAVE20"}}})
 	if code != http.StatusOK {
@@ -184,7 +184,7 @@ func TestTemplateOptionsAreSubmittedAsMetaDocuments(t *testing.T) {
 	cardReq := func(body string, id string) types.CRMCardInput {
 		return types.CRMCardInput{FileID: id, Body: body, Buttons: []types.CRMButtonInput{{Type: "QUICK_REPLY", Text: "Tell me more"}}}
 	}
-	code, carName, raw := submit(types.CRMWordingRequest{Category: "MARKETING", Body: "Pick a course", CardAspect: "square",
+	code, carName, raw := submit(types.CRMWordingRequest{Title: "Courses", Category: "MARKETING", Body: "Pick a course", CardAspect: "square",
 		Cards: []types.CRMCardInput{cardReq("Yoga", ids[0]), cardReq("Breath", ids[1])}})
 	if code != http.StatusOK {
 		t.Fatalf("carousel: %d %s", code, raw)
@@ -203,7 +203,7 @@ func TestTemplateOptionsAreSubmittedAsMetaDocuments(t *testing.T) {
 
 	// Refusals come back with the editor's reason before Meta sees anything.
 	n := len(g.createdTemplates())
-	if code, _, raw := submit(types.CRMWordingRequest{Category: "UTILITY", Body: "x",
+	if code, _, raw := submit(types.CRMWordingRequest{Title: "Bad offer", Category: "UTILITY", Body: "x",
 		Offer: &types.CRMOfferInput{Text: "20% off"}, Buttons: []types.CRMButtonInput{{Type: "COPY_CODE", Code: "A"}}}); code != http.StatusUnprocessableEntity ||
 		!strings.Contains(string(raw), "invalid_offer") {
 		t.Errorf("offer on utility: %d %s", code, raw)

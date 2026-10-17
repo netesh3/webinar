@@ -128,7 +128,7 @@ const crmTemplateColumns = `
 	t.unsupported, t.synced_at, t.header_format, t.buttons, t.layout,
 	f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token,
 	coalesce(d.coupon_code, ''), coalesce(d.card_aspect, ''), coalesce(d.card_file_ids::text[], '{}'),
-	d.params`
+	d.params, o.name IS NOT NULL, coalesce(o.title, '')`
 
 const crmTemplateFrom = `
 	  FROM crm_templates t
@@ -136,7 +136,8 @@ const crmTemplateFrom = `
 	    ON tm.host_id = t.host_id AND tm.name = t.name AND tm.language = t.language
 	  LEFT JOIN crm_media_files f ON f.id = tm.file_id
 	  LEFT JOIN crm_template_defaults d
-	    ON d.host_id = t.host_id AND d.name = t.name AND d.language = t.language`
+	    ON d.host_id = t.host_id AND d.name = t.name AND d.language = t.language
+	  LEFT JOIN crm_own_templates o ON o.host_id = t.host_id AND o.name = t.name`
 
 /* TemplateWithFile is a template with the stored file behind its default header, which
  * the send path needs (the wire type only carries a public link). */
@@ -163,7 +164,7 @@ func scanTemplate(row scanner) (TemplateWithFile, time.Time, error) {
 		&t.Body, &t.Footer, &t.Variables, &t.Unsupported, &synced,
 		&t.HeaderFormat, &t.Buttons, &layout,
 		&fileID, &hostID, &key, &mime, &fn, &bytes, &tok,
-		&t.CouponCode, &t.CardAspect, &cardIDs, &params); err != nil {
+		&t.CouponCode, &t.CardAspect, &cardIDs, &params, &t.Own, &t.Title); err != nil {
 		return TemplateWithFile{}, time.Time{}, err
 	}
 	t.Offer, t.Cards, t.Auth = layout.Offer, layout.Cards, layout.Auth
@@ -349,11 +350,33 @@ func (s *Store) TemplateWithFile(ctx context.Context, hostID, name, language str
 	return one[0], nil
 }
 
-// HasTemplateNamed reports whether the host has a template of that name in any language.
-func (s *Store) HasTemplateNamed(ctx context.Context, hostID, name string) bool {
+/* RecordOwnTemplate notes that the host wrote this template here, under the title
+ * they typed. Translations share the name, so a second call keeps the first title. */
+func (s *Store) RecordOwnTemplate(ctx context.Context, hostID, name, title string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO crm_own_templates (host_id, name, title) VALUES ($1::uuid, $2, $3)
+		ON CONFLICT (host_id, name) DO NOTHING`,
+		hostID, strings.TrimSpace(name), strings.TrimSpace(title))
+	return err
+}
+
+/* IsOwnTemplate reports whether the host wrote the template of that name here, which
+ * is what lets them add a translation of it. */
+func (s *Store) IsOwnTemplate(ctx context.Context, hostID, name string) bool {
 	var ok bool
 	_ = s.pool.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM crm_templates WHERE host_id = $1::uuid AND name = $2)`,
+		SELECT EXISTS (SELECT 1 FROM crm_own_templates WHERE host_id = $1::uuid AND name = $2)`,
 		hostID, strings.TrimSpace(name)).Scan(&ok)
 	return ok
+}
+
+/* TemplateNameTaken reports whether the host already has a template of that name, in
+ * any language: one written here, or one of Meta's list as last synced. */
+func (s *Store) TemplateNameTaken(ctx context.Context, hostID, name string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM crm_own_templates WHERE host_id = $1::uuid AND name = $2)
+		    OR EXISTS (SELECT 1 FROM crm_templates WHERE host_id = $1::uuid AND name = $2)`,
+		hostID, strings.TrimSpace(name)).Scan(&ok)
+	return ok, err
 }

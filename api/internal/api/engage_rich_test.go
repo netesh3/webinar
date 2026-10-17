@@ -147,7 +147,7 @@ func TestCreateCustomWording(t *testing.T) {
 	connectWhatsApp(t, h)
 
 	res, raw := h.do(http.MethodPost, "/api/host/crm/templates", map[string]any{
-		"body": "Hi {{1}}, see you at {{2}}.", "category": "UTILITY",
+		"body": "Hi {{1}}, see you at {{2}}.", "category": "UTILITY", "title": "Webinar reminder - 1 hour",
 	})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("custom wording: %d %s", res.StatusCode, raw)
@@ -156,7 +156,7 @@ func TestCreateCustomWording(t *testing.T) {
 		Name, Language, Status, Body string
 	}
 	h.decode(raw, &authored)
-	if authored.Status != "PENDING" || authored.Language != "en" || !strings.HasPrefix(authored.Name, "wl_own_") || authored.Body == "" {
+	if authored.Status != "PENDING" || authored.Language != "en" || authored.Name != "webinar_reminder_1_hour" || authored.Body == "" {
 		t.Fatalf("authored = %+v", authored)
 	}
 	if len(g.created) != 1 {

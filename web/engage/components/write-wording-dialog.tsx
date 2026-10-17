@@ -34,6 +34,7 @@ import {
   type OptionsDraft,
 } from "../template-options";
 import { TemplateOptionsFields, WhatsAppPreview, previewFromDraft } from "./template-options";
+import { nameTakenFrom, templateNameProblem } from "../template-name";
 import { WordingWithFields } from "./template-mapping";
 import { draftValues, mappingForSubmit, type Draft } from "../template-mapping";
 
@@ -151,6 +152,7 @@ export function WriteWordingDialog({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [header, setHeader] = useState<HeaderDraft>(NO_HEADER);
+  const [nameTaken, setNameTaken] = useState<{ name: string; suggestion: string } | null>(null);
 
   const ready = Boolean(
     starters?.length && starters.every((t) => t.status === "APPROVED" && !t.error),
@@ -170,7 +172,10 @@ export function WriteWordingDialog({
   const match = plain
     ? starters?.find((t) => t.status === "APPROVED" && !t.error && sameBody(t.body, typed))
     : undefined;
-  const problem = optionsProblem(options, typed) ?? (withHeader ? headerDraftProblem(header) : null);
+  const problem =
+    (options.translationOf ? null : templateNameProblem(options.title)) ??
+    optionsProblem(options, typed) ??
+    (withHeader ? headerDraftProblem(header) : null);
 
   async function submitOwn() {
     if ((!typed && !isAuth) || busy) return;
@@ -214,8 +219,10 @@ export function WriteWordingDialog({
       notify("Submitted to Meta. Approval usually takes a few minutes.", "ok");
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Could not submit that wording.";
-      setNote(msg);
-      notify(msg, "error");
+      const taken = nameTakenFrom(e);
+      setNameTaken(taken);
+      setNote(taken ? null : msg);
+      if (!taken) notify(msg, "error");
     } finally {
       setBusy(false);
     }
@@ -248,6 +255,7 @@ export function WriteWordingDialog({
             onChange={setOptions}
             disabled={busy || !connected}
             ownNames={ownNames}
+            nameTaken={nameTaken}
           />
           {withHeader && (
             <HeaderPicker value={header} onChange={setHeader} disabled={busy || !connected} />

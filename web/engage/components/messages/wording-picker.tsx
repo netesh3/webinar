@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { MaterialIcon } from "@/components/icons";
 import type { CRMMergeField, CRMTemplate } from "@/lib/api-types";
 import { exampleFor, renderTemplate } from "../crm-templates";
-import { friendlyTemplateName, rupees, templateRate } from "../wa-kit";
+import { rupees, templateLabel, templateRate } from "../wa-kit";
 import { effectiveTokens } from "../wa-messages";
 import { wordingKind } from "./catalog";
 
@@ -118,7 +118,7 @@ export function WordingPicker({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12.5px] font-semibold text-ink">
-                    {friendlyTemplateName(template.name)}
+                    {templateLabel(template)}
                   </span>
                   <span className="block truncate text-[11px] text-ink-3">
                     {snippet(template, filled, fields) || "No preview text"}

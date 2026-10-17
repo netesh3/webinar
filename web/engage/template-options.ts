@@ -116,6 +116,8 @@ export type OptionsDraft = {
   cardAspect: CardAspect;
   /** A template of the host's own to add this language to; "" for a new one. */
   translationOf: string;
+  /** A new template's name as typed; the server makes it Meta's (see template-name.ts). */
+  title: string;
 };
 
 export function newCard(): CardDraft {
@@ -133,6 +135,7 @@ export const DEFAULT_OPTIONS: OptionsDraft = {
   cards: [newCard(), newCard()],
   cardAspect: "square",
   translationOf: "",
+  title: "",
 };
 
 /** The kinds a category allows. Offers and carousels are Marketing; a code is Authentication. */
@@ -307,7 +310,14 @@ export function optionsRequest(
   o: OptionsDraft,
   body: string,
 ): Omit<CRMWordingRequest, "header"> {
-  const base = { language: o.language, ...(o.translationOf ? { name: o.translationOf } : {}) };
+  const base = {
+    language: o.language,
+    ...(o.translationOf
+      ? { name: o.translationOf }
+      : o.title.trim()
+        ? { title: o.title.trim() }
+        : {}),
+  };
   if (o.kind === "AUTH") {
     return {
       ...base,
@@ -349,10 +359,14 @@ export function templateKindLabel(t: Pick<CRMTemplate, "offer" | "cards" | "auth
   return "";
 }
 
-/** The host's own templates by name, with the languages each is in. */
-export function languagesByName(templates: Pick<CRMTemplate, "name" | "language">[]): Map<string, string[]> {
+/** The host's own templates (written here, so they take translations) by name, with the
+ *  languages each is in. */
+export function languagesByName(
+  templates: Pick<CRMTemplate, "name" | "language" | "own">[],
+): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const t of templates) {
+    if (!t.own) continue;
     const list = out.get(t.name) ?? [];
     if (!list.includes(t.language)) list.push(t.language);
     out.set(t.name, list);

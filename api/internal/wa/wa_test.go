@@ -291,3 +291,25 @@ func TestOpenMediaReportsGoneMedia(t *testing.T) {
 		t.Fatalf("err = %v, want ErrMediaGone", err)
 	}
 }
+
+// Meta's refusal of a name it already has, in that language or still being deleted.
+func TestCreateTemplateReportsTakenName(t *testing.T) {
+	for _, e := range []map[string]any{
+		{"message": "Invalid parameter", "code": 100, "error_subcode": 2388024,
+			"error_user_title": "Content in this language already exists"},
+		{"message": "Invalid parameter", "code": 100, "error_subcode": 2388023},
+		{"message": "Invalid parameter", "code": 100,
+			"error_user_title": "Message template already exists"},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, map[string]any{"error": e})
+		}))
+		_, err := newTestClient(srv.URL).CreateTemplate(context.Background(), "host-token", "waba",
+			NewTemplate{Name: "reminder", Language: "en", Category: "UTILITY", Body: "Hi"})
+		srv.Close()
+		if !errors.Is(err, ErrTemplateNameTaken) {
+			t.Errorf("%v: err = %v, want ErrTemplateNameTaken", e, err)
+		}
+	}
+}

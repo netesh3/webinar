@@ -13,7 +13,7 @@ import {
   AvatarStack,
   CategoryPill,
   PhoneFrame,
-  friendlyTemplateName,
+  templateLabel,
 } from "./wa-kit";
 
 /* The send dialog's pieces: who gets it, the template cards, and the phone preview. */
@@ -129,7 +129,7 @@ export function TemplateCards({
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[13px] font-semibold text-ink">
-                  {friendlyTemplateName(t.name)}
+                  {templateLabel(t)}
                 </span>
                 <CategoryPill category={t.category} />
                 {key === best && (
