@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { answerKind, questionAuthor } from "@/lib/qa-view";
 import { Alert } from "../controls";
@@ -17,7 +17,16 @@ export function QAPanel() {
   const [draft, setDraft] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   const [sending, setSending] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
 
+  // Grows with what is typed, up to max-h-28, then scrolls. Collapsed to "auto"
+  // first so it shrinks back after a delete or a send.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  }, [draft]);
   const off = !controls.qaEnabled;
   const visible = realtime.questions.filter((q) => isHost || !q.dismissed);
   const open = visible.filter((q) => !q.answered);
@@ -117,19 +126,8 @@ export function QAPanel() {
             className="space-y-2"
           >
             <div className="flex items-end gap-2">
-              {/* Who this will be asked as — the neutral glyph once "anonymously" is
-                  ticked, so the choice is visible before it is sent. */}
-              {anonymous ? (
-                <GlyphAvatar size="sm" className="mb-1.5" />
-              ) : (
-                <SenderAvatar
-                  name={me.name}
-                  identity={me.identity}
-                  size="sm"
-                  className="mb-1.5"
-                />
-              )}
               <textarea
+                ref={box}
                 className="field max-h-28 min-h-9 flex-1 resize-none py-2 text-[13px]"
                 rows={1}
                 placeholder="Ask a question…"
@@ -272,7 +270,7 @@ function QuestionCard({
       <div className="mt-1.5 flex items-start gap-2.5">
         <div className="min-w-0 flex-1">
           <p
-            className={`text-[13px] leading-relaxed break-words wrap-anywhere ${
+            className={`text-[13px] leading-relaxed break-words whitespace-pre-wrap wrap-anywhere ${
               answered ? "text-ink-2" : "text-ink"
             }`}
           >
