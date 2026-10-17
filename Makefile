@@ -251,6 +251,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The Accounts tab's Hosts / Attendees chips: search and chip combine, and the
 	# chip counts follow the search text.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-accounts-filter.test.mts
+	# The virtual background's presenter lock: a hand the mask cut off from the arm stays,
+	# other people (apart, beside, walking behind) still go.
+	cd web && node --experimental-strip-types --no-warnings lib/presenter-lock.test.mts
 	# And the guest journey: a first-time registrant's just-made registration has no key
 	# until the email is confirmed, and the emailed ?k= link is then the only way in.
 	cd web && node --experimental-strip-types --no-warnings lib/guest-registration.test.mts
