@@ -862,7 +862,7 @@ export function BroadcastExtras({
           <legend className="label">Card pictures</legend>
           <p className="text-[11.5px] text-ink-3">
             {template.needsCardFiles
-              ? `This carousel was written in WhatsApp Manager, so upload a picture for each of its ${cards.length} cards.`
+              ? `This carousel was written in WhatsApp Manager, so choose a picture for each of its ${cards.length} cards.`
               : "Each card sends its template picture unless you choose new ones here — for every card, or none."}
           </p>
           <div className="grid gap-1.5 sm:grid-cols-2">
