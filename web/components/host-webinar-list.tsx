@@ -114,7 +114,7 @@ export function HostWebinarRows({
 
   function card(w: Webinar) {
     return (w.status === "ended" || w.didntGoLive) && !readOnly ? (
-      <CompletedCard key={w.id} webinar={w} />
+      <CompletedCard key={w.id} webinar={w} onCopy={() => setCopying(w)} />
     ) : (
       <HostCard
         key={w.id}
@@ -525,7 +525,7 @@ function HostCard({
  * question itself (did people come, and did they stay?) and has one way in: the card,
  * or See results. Attendees, recording, survey and Delete are all on that page, so the
  * list does not repeat them. */
-function CompletedCard({ webinar: w }: { webinar: Webinar }) {
+function CompletedCard({ webinar: w, onCopy }: { webinar: Webinar; onCopy: () => void }) {
   const href = `/host/${w.id}`;
   const r = w.report;
   const registered = w.registrantCount;
@@ -569,9 +569,21 @@ function CompletedCard({ webinar: w }: { webinar: Webinar }) {
         </dl>
       }
       action={
-        <ButtonLink href={href} size="sm">
-          See results
-        </ButtonLink>
+        <div className="pointer-events-auto flex items-center gap-1.5">
+          <ButtonLink href={href} size="sm">
+            See results
+          </ButtonLink>
+          {/* Running the same session again is the usual reason to copy one. */}
+          <Menu
+            label={`More for ${w.topic}`}
+            trigger={
+              <span className="grid size-8 place-items-center rounded-lg text-[17px] text-ink-2 hover:bg-surface-2">
+                ⋯
+              </span>
+            }
+            items={[{ kind: "action" as const, label: "Copy webinar", onSelect: onCopy }]}
+          />
+        </div>
       }
     />
   );
