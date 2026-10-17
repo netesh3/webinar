@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Modal } from "../controls";
 import { HostRequest } from "../host-request";
+import { BillingCard } from "./billing-card";
 import { useSession } from "../providers";
 import { Badge, Button, Card } from "../ui";
 import { api } from "@/lib/api";
@@ -48,6 +49,7 @@ export function AccountSection({ account }: { account: Account }) {
           </Badge>
         </div>
       </Card>
+      <BillingCard />
       <DeleteAccount account={account} />
     </section>
   );

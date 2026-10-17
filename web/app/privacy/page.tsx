@@ -183,6 +183,14 @@ export default function PrivacyPage() {
         backup and log retention windows. Recordings saved only on a host&apos;s
         device are never stored by us.
       </p>
+      <p>
+        To keep the free trial to one per person, we keep one-way hashes of the
+        phone number, email address and payment method (UPI ID or card) a trial
+        was started with, even after the account is deleted. A hash cannot be
+        turned back into the number or address; it only tells us that a new
+        trial matches an earlier one. Payment records are kept as tax law
+        requires.
+      </p>
 
       <h2>10. Security</h2>
       <p>

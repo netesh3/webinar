@@ -2562,6 +2562,11 @@ type AdminUser struct {
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
 	// Plan is the paid tier, empty for the launch default.
 	Plan Plan `json:"plan,omitempty"`
+	// TrialFlag is set when this account's free trial matched an earlier trial's
+	// payment method (a UPI id or card): worth a look, not blocked. Empty otherwise.
+	TrialFlag string `json:"trialFlag,omitempty"`
+	// TrialExemption is an admin's open "allow another trial" for this account.
+	TrialExemption bool `json:"trialExemption,omitempty"`
 	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 	// Features are the switches in effect: the plan's, with this account's overrides

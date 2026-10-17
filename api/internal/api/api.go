@@ -334,6 +334,8 @@ func (s *Server) Routes() http.Handler {
 			r.Use(s.requireUser)
 			r.Post("/billing/orders", s.handleCreateBillingOrder)
 			r.Post("/billing/verify", s.handleVerifyBillingPayment)
+			r.Post("/billing/trial", s.handleStartTrial)
+			r.Post("/billing/trial/verify", s.handleVerifyTrial)
 		})
 		/* The background job, run on request, for a deployment that scales to zero. Not
 		 * mounted without a secret. See tick.go. */
@@ -478,6 +480,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/registrations", s.handleMyRegistrations)
 			r.Post("/host-request", s.handleHostRequest)
 			r.Get("/billing", s.handleMyBilling)
+			r.Post("/billing/cancel", s.handleCancelSubscription)
 		})
 
 		// ---------------- host and stage ----------------
@@ -495,6 +498,8 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)
 			r.Patch("/users/{id}/plan", s.handleSetUserPlan)
+			r.Post("/users/{id}/trial-exemption", s.handleGrantTrialExemption)
+			r.Delete("/users/{id}/trial-flags", s.handleClearTrialFlags)
 			r.Get("/plan-features", s.handlePlanFeatures)
 			r.Put("/plan-features", s.handleSetPlanFeatures)
 			r.Patch("/users/{id}/cdn-broadcast", s.handleSetCdnBroadcastCapability)

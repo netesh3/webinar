@@ -10,7 +10,14 @@ package types
 type BillingPrice struct {
 	Currency string `json:"currency"`
 	Period   string `json:"period"`
-	Amount   int64  `json:"amount"`
+	// Amount is what is charged, before tax.
+	Amount int64 `json:"amount"`
+	// List is the regular price shown struck through beside Amount; display only.
+	List int64 `json:"list,omitempty"`
+	// DiscountPercent is Amount below List, rounded down; 0 with no List.
+	DiscountPercent int `json:"discountPercent,omitempty"`
+	// Promo names the offer List is shown against, e.g. "Early bird"; empty with no List.
+	Promo string `json:"promo,omitempty"`
 }
 
 type BillingPlan struct {
@@ -21,6 +28,8 @@ type BillingPlan struct {
 	Features  []string       `json:"features"`
 	Popular   bool           `json:"popular,omitempty"`
 	Prices    []BillingPrice `json:"prices"`
+	// ContactOnly is a plan sold by talking to us: no prices, no buy or trial.
+	ContactOnly bool `json:"contactOnly,omitempty"`
 }
 
 /* BillingCatalogue is GET /api/billing/plans, public.
@@ -33,6 +42,39 @@ type BillingCatalogue struct {
 	Enabled    bool          `json:"enabled"`
 	GSTPercent int           `json:"gstPercent"`
 	Plans      []BillingPlan `json:"plans"`
+	// TrialDays is the free trial on monthly plans in TrialCurrency; 0 when trials
+	// are off, and then every plan is pay-now.
+	TrialDays     int    `json:"trialDays"`
+	TrialCurrency string `json:"trialCurrency,omitempty"`
+}
+
+// StartTrialRequest is POST /api/billing/trial. Monthly, in TrialCurrency, always.
+type StartTrialRequest struct {
+	Plan string `json:"plan"`
+}
+
+/* TrialCheckout is what the browser opens Razorpay Checkout with for a trial: a
+ * subscription, not an order. Amount is the monthly charge from TrialEndsAt, tax
+ * included; today's payment is only Razorpay's small refunded authorisation. */
+type TrialCheckout struct {
+	SubscriptionID string `json:"subscriptionId"`
+	KeyID          string `json:"keyId"`
+	Plan           string `json:"plan"`
+	PlanName       string `json:"planName"`
+	Currency       string `json:"currency"`
+	Amount         int64  `json:"amount"`
+	TrialEndsAt    string `json:"trialEndsAt"`
+	Description    string `json:"description"`
+	PrefillName    string `json:"prefillName"`
+	PrefillEmail   string `json:"prefillEmail"`
+	PrefillPhone   string `json:"prefillPhone,omitempty"`
+}
+
+// VerifyTrialRequest is POST /api/billing/trial/verify: Checkout's handler response for a subscription.
+type VerifyTrialRequest struct {
+	PaymentID      string `json:"razorpay_payment_id"`
+	SubscriptionID string `json:"razorpay_subscription_id"`
+	Signature      string `json:"razorpay_signature"`
 }
 
 // CreateBillingOrderRequest is POST /api/billing/orders. No amount: the server prices it.
@@ -80,6 +122,19 @@ type BillingStatus struct {
 	// PaidUntil is RFC3339: the end of the latest period paid for.
 	PaidUntil string `json:"paidUntil,omitempty"`
 	Active    bool   `json:"active"`
+	// Status is the subscription's: trialing, active or past_due. Empty for a
+	// one-time payment.
+	Status string `json:"status,omitempty"`
+	// TrialEndsAt is RFC3339, set while trialing: the day of the first charge.
+	TrialEndsAt string `json:"trialEndsAt,omitempty"`
+	// Renews is a Razorpay subscription that charges monthly until cancelled.
+	Renews bool `json:"renews,omitempty"`
+}
+
+// VerifyTrialResponse is the account once its trial has started.
+type VerifyTrialResponse struct {
+	Account Account       `json:"account"`
+	Billing BillingStatus `json:"billing"`
 }
 
 // VerifyBillingPaymentResponse is the upgraded account and the plan it now has.

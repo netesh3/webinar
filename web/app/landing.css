@@ -1861,6 +1861,35 @@
   color: var(--ink-3);
 }
 
+/* The early-bird line above the price: the regular price struck through, and the
+ * offer with its computed saving. Quiet, so the real price stays the headline. */
+.lp .price-was {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: -10px;
+  font-size: 15px;
+  color: var(--ink-3);
+}
+
+.lp .price-was s {
+  text-decoration-thickness: 1.5px;
+}
+
+.lp .promo {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lp .price b.price-contact {
+  font-size: 40px;
+}
+
 .lp .plan .ticks li {
   font-size: 15px;
 }

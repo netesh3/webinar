@@ -179,9 +179,15 @@ func TestSalesChatAnswersFromTheRealPriceList(t *testing.T) {
 		t.Fatalf("answer: %+v status %s", lastOf(chat), chat.Status)
 	}
 	// The model was told the prices checkout charges and the caps the API enforces.
-	for _, want := range []string{"₹14,999/month", "up to 300 live attendees", "18% GST", "[HANDOFF]"} {
+	for _, want := range []string{"₹9,999/month", "up to 300 live attendees", "18% GST", "[HANDOFF]", "priced on request", "Free trial: 7 days"} {
 		if !strings.Contains(model.system, want) {
 			t.Errorf("system prompt lacks %q", want)
+		}
+	}
+	// Enterprise is sold by conversation: its line must carry no price to quote.
+	for _, line := range strings.Split(model.system, "\n") {
+		if strings.HasPrefix(line, "- Enterprise") && strings.Contains(line, "/month") {
+			t.Errorf("enterprise is quoted a price: %q", line)
 		}
 	}
 	// An auto-opened chat nobody typed into stays out of the inbox; this one is in it.

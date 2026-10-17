@@ -336,7 +336,10 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		       u.max_duration_min, u.can_cdn_broadcast,
 		       effective_features(effective_plan(u.id), u.features, u.features_off),
 		       (u.email_verified_at IS NOT NULL),
-		       effective_plan(u.id), u.features, u.features_off
+		       effective_plan(u.id), u.features, u.features_off,
+		       coalesce((SELECT f.reason FROM trial_flags f WHERE f.user_id = u.id
+		                  ORDER BY f.created_at DESC LIMIT 1), ''),
+		       EXISTS (SELECT 1 FROM trial_exemptions e WHERE e.user_id = u.id AND e.used_at IS NULL)
 		  FROM users u
 		 WHERE lower(u.email) LIKE $1 OR lower(u.name) LIKE $1
 		 ORDER BY u.is_admin DESC, u.can_host DESC, u.created_at DESC
@@ -355,7 +358,8 @@ func (s *Store) AdminUsers(ctx context.Context, search string, limit int) ([]typ
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
 			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
-			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff); err != nil {
+			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff,
+			&u.TrialFlag, &u.TrialExemption); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
@@ -559,7 +563,10 @@ func (s *Store) SetUserPlan(ctx context.Context, userID string, plan types.Plan)
 		_, err = s.pool.Exec(ctx, `
 			INSERT INTO subscriptions (user_id, plan) VALUES ($1::uuid, $2)
 			ON CONFLICT (user_id) DO UPDATE
-			   SET plan = EXCLUDED.plan, status = 'active', updated_at = now()`, userID, string(plan))
+			   SET plan = EXCLUDED.plan, status = 'active', updated_at = now(),
+			       -- An admin's plan has no end and no payment behind it.
+			       trial_ends_at = NULL, current_period_end = NULL, provider = '',
+			       provider_customer_id = '', provider_subscription_id = ''`, userID, string(plan))
 	}
 	if isForeignKeyViolation(err) {
 		return User{}, ErrNotFound

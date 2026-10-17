@@ -274,6 +274,11 @@ type Config struct {
 	RazorpayWebhookSecret string
 	RazorpayAPIURL        string
 	BillingGSTPercent     int
+	/* TrialHashSalt salts the hashes that make the free trial once per person
+	 * (store.TrialDigest). The monthly trial is offered only when billing is on and
+	 * this is set; without it the pricing page offers pay-now only. Never change it
+	 * once trials have started: every earlier claim would stop matching. */
+	TrialHashSalt string
 
 	/* Meta WhatsApp Cloud API — Connect WhatsApp, via Meta Embedded Signup.
 	 *
@@ -435,6 +440,7 @@ func Load() (Config, error) {
 		RazorpayWebhookSecret:   strings.TrimSpace(env("RAZORPAY_WEBHOOK_SECRET", "")),
 		RazorpayAPIURL:          strings.TrimRight(env("RAZORPAY_API_URL", ""), "/"),
 		BillingGSTPercent:       envInt("BILLING_GST_PERCENT", 18),
+		TrialHashSalt:           strings.TrimSpace(env("TRIAL_HASH_SALT", "")),
 		MetaAppID:               env("META_APP_ID", ""),
 		MetaAppSecret:           env("META_APP_SECRET", ""),
 		MetaWhatsAppConfigID:    env("META_WHATSAPP_CONFIG_ID", ""),
@@ -542,6 +548,11 @@ func (c Config) ZoomEnabled() bool {
 // BillingEnabled is self-serve checkout: both Razorpay keys are set.
 func (c Config) BillingEnabled() bool {
 	return c.RazorpayKeyID != "" && c.RazorpayKeySecret != ""
+}
+
+// TrialEnabled is the monthly free trial: billing is on and claims can be hashed.
+func (c Config) TrialEnabled() bool {
+	return c.BillingEnabled() && c.TrialHashSalt != ""
 }
 
 /* WhatsAppConnectEnabled is the Connect WhatsApp path: Embedded Signup, and the

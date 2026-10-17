@@ -20,6 +20,10 @@ import type {
   BillingCatalogue,
   BillingCheckout,
   BillingStatus,
+  StartTrialRequest,
+  TrialCheckout,
+  VerifyTrialRequest,
+  VerifyTrialResponse,
   CreateBillingOrderRequest,
   VerifyBillingPaymentRequest,
   VerifyBillingPaymentResponse,
@@ -435,6 +439,25 @@ export const api = {
   },
 
   myBilling: () => request<BillingStatus>("/api/me/billing", fresh),
+
+  /** Starts the 7-day free trial on a monthly plan: a Razorpay subscription
+   *  whose first charge is in seven days. Checkout then authorises it. */
+  startTrial: (plan: string) =>
+    post<TrialCheckout>("/api/billing/trial", { plan } satisfies StartTrialRequest),
+
+  /** Checkout's signed response for the trial's authorisation. Starts the trial. */
+  verifyTrial: async (body: VerifyTrialRequest) => {
+    const res = await post<VerifyTrialResponse>("/api/billing/trial/verify", body);
+    dropCache(ME_KEY);
+    return res;
+  },
+
+  /** Stops the running subscription now, trial or paid; the plan ends with it. */
+  cancelSubscription: async () => {
+    const res = await post<VerifyTrialResponse>("/api/me/billing/cancel", {});
+    dropCache(ME_KEY);
+    return res;
+  },
 
   /** Asks to host. Phone is sent only when the account does not already have one.
    *  Does not grant hosting. A second call is refused once a request is open. */
@@ -974,6 +997,13 @@ export const api = {
     patch<Account>(`/api/admin/users/${seg(userId)}/plan`, {
       plan,
     } satisfies SetUserPlanRequest),
+
+  /** Lets an account take one more free trial past the once-per-person check. */
+  allowAnotherTrial: (userId: string) =>
+    post<StatusResponse>(`/api/admin/users/${seg(userId)}/trial-exemption`, {}),
+
+  /** Clears an account's payment-method review flags. */
+  clearTrialFlags: (userId: string) => del<StatusResponse>(`/api/admin/users/${seg(userId)}/trial-flags`),
 
   /** Configure whether an account's webinars stream to audience attendees via CDN HLS. */
   setCdnBroadcastCapability: (userId: string, canCdnBroadcast: boolean) =>

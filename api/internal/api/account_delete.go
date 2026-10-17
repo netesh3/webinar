@@ -62,6 +62,15 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 			"One of your webinars is live. End it, then delete your account.")
 		return
 	}
+	/* A running Razorpay subscription is stopped first: once the account is gone
+	 * nothing would stop it charging. If Razorpay can't be reached, nothing is
+	 * deleted yet and the person can try again. */
+	if err := s.cancelRunningSubscription(r.Context(), user.ID); err != nil {
+		s.log.Error("delete account: cancel subscription", "user", user.ID, "err", err)
+		httpx.Error(w, http.StatusBadGateway, "subscription_cancel_failed",
+			"We couldn't stop your subscription just now, so nothing was deleted. Please try again in a minute.")
+		return
+	}
 	for _, slug := range slugs {
 		cancellations := s.panelistCancellations(r.Context(), slug)
 		deleted, err := s.deleteWebinarBySlug(r.Context(), slug)

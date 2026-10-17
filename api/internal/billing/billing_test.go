@@ -7,7 +7,7 @@ func TestQuoteAddsGSTToINROnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q.Subtotal != 14_999_00 || q.Tax != 2_699_82 || q.Total != 17_698_82 {
+	if q.Subtotal != 9_999_00 || q.Tax != 1_799_82 || q.Total != 11_798_82 {
 		t.Fatalf("INR monthly business: %+v", q)
 	}
 	q, _ = NewQuote("business", Yearly, USD, 18)

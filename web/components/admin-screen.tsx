@@ -269,6 +269,34 @@ function AdminAccounts() {
     }
   }
 
+  // One more free trial past the once-per-person check; spent when it starts.
+  async function allowTrial(u: AdminUser) {
+    setBusy(u.id);
+    try {
+      await api.allowAnotherTrial(u.id);
+      setUsers((prev) => (prev ?? []).map((row) => (row.id === u.id ? { ...row, trialExemption: true } : row)));
+      notify(`${u.name || u.email} can take one more free trial.`, "ok");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // The payment-method match has been looked at.
+  async function clearTrialFlag(u: AdminUser) {
+    setBusy(u.id);
+    try {
+      await api.clearTrialFlags(u.id);
+      setUsers((prev) => (prev ?? []).map((row) => (row.id === u.id ? { ...row, trialFlag: undefined } : row)));
+      notify(`Trial review cleared for ${u.name || u.email}.`, "ok");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /* Refused server-side too — for the caller's own account, and for one that
    * still owns webinars — this only saves the round trip and gives the error
    * a place to land next to the button that caused it. */
@@ -427,6 +455,33 @@ function AdminAccounts() {
                             </option>
                           ))}
                         </select>
+                      )}
+
+                      {u.trialFlag && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full border border-warn/40 bg-warn-soft px-2 py-0.5 text-[11.5px] text-warn"
+                          title={u.trialFlag}
+                        >
+                          Trial review
+                          <button
+                            type="button"
+                            className="font-medium underline-offset-2 hover:underline"
+                            onClick={() => void clearTrialFlag(u)}
+                          >
+                            Clear flag
+                          </button>
+                        </span>
+                      )}
+                      {u.trialExemption ? (
+                        <span className="text-[11.5px] text-ink-3">Another trial allowed</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-[11.5px] text-ink-2 underline-offset-2 hover:text-ink hover:underline"
+                          onClick={() => void allowTrial(u)}
+                        >
+                          Allow another trial
+                        </button>
                       )}
                     </div>
                   )}
