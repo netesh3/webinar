@@ -54,15 +54,15 @@ func TestGoogleAuthCodeURL(t *testing.T) {
 	if q.Get("client_id") != "cid" || q.Get("state") != "state-1" || q.Get("nonce") != "nonce-1" {
 		t.Fatalf("query %s", raw)
 	}
-	if q.Get("prompt") != "select_account consent" {
+	if q.Get("prompt") != "select_account" {
 		t.Fatalf("prompt %q", q.Get("prompt"))
 	}
 	if q.Get("login_hint") != "" {
 		t.Fatalf("empty hint must omit login_hint: %s", raw)
 	}
 	scope := q.Get("scope")
-	if !strings.Contains(scope, "openid") || !strings.Contains(scope, "user.phonenumbers.read") {
-		t.Fatalf("login must request People phone: %s", scope)
+	if !strings.Contains(scope, "openid") || strings.Contains(scope, "phonenumbers") {
+		t.Fatalf("login must request sign-in scopes and no People phone: %s", scope)
 	}
 	if strings.Contains(scope, "youtube") {
 		t.Fatalf("login must not request YouTube Connect: %s", scope)
@@ -83,8 +83,8 @@ func TestGoogleAuthCodeURL(t *testing.T) {
 	if q.Get("login_hint") != "user@gmail.com" {
 		t.Fatalf("login_hint %q", q.Get("login_hint"))
 	}
-	if q.Get("prompt") != "consent" {
-		t.Fatalf("hinted prompt %q, want consent without select_account", q.Get("prompt"))
+	if q.Has("prompt") {
+		t.Fatalf("hinted prompt %q, want none", q.Get("prompt"))
 	}
 
 	junk := GoogleAuthCodeURL("cid", "http://localhost/cb", "state-1", "nonce-1", "https://evil.example/phish")
@@ -95,7 +95,7 @@ func TestGoogleAuthCodeURL(t *testing.T) {
 	if jq.Query().Get("login_hint") != "" {
 		t.Fatalf("junk must not become login_hint: %s", junk)
 	}
-	if jq.Query().Get("prompt") != "select_account consent" {
+	if jq.Query().Get("prompt") != "select_account" {
 		t.Fatalf("junk prompt %q", jq.Query().Get("prompt"))
 	}
 }

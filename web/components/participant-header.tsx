@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useAppConfig } from "./providers";
+import { AccountAvatar } from "./account-avatar";
+import { GoogleOneTap } from "./google-one-tap";
+import { useAppConfig, useSession } from "./providers";
 
 /* The participant experience's only chrome.
  *
@@ -23,8 +25,18 @@ import { useAppConfig } from "./providers";
  * the host dashboard by middleware.ts and by the API, both of which refuse the URL. This only
  * decides that the page they are allowed to see does not advertise the pages they are not.
  */
-export function ParticipantHeader({ wide = false }: { wide?: boolean }) {
+export function ParticipantHeader({
+  wide = false,
+  signIn = false,
+}: {
+  wide?: boolean;
+  /** The register page: Google One Tap when signed out (Google draws its prompt
+   *  top-right), the signed-in person when not. Staying on the page lets the
+   *  register form switch to the signed-in path. */
+  signIn?: boolean;
+}) {
   const { appName } = useAppConfig();
+  const { account, status } = useSession();
 
   return (
     <header className="border-b border-line bg-surface">
@@ -41,6 +53,24 @@ export function ParticipantHeader({ wide = false }: { wide?: boolean }) {
           <img src="/brand/mark.png" alt="" width={28} height={28} className="size-7 rounded-lg" />
           <span className="text-[14.5px] font-semibold tracking-[-0.01em]">{appName}</span>
         </Link>
+        {signIn && (
+          <div className="ml-auto flex items-center gap-2">
+            {status === "anonymous" && <GoogleOneTap stay />}
+            {status === "signed-in" && account && (
+              <span className="flex items-center gap-2">
+                <span className="hidden max-w-40 truncate text-[12.5px] text-ink-2 sm:block">
+                  {account.name}
+                </span>
+                <AccountAvatar
+                  initials={account.initials}
+                  hue={account.hue}
+                  photo={account.avatarUrl}
+                  size={28}
+                />
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

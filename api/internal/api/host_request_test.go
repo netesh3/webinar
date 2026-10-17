@@ -16,6 +16,12 @@ func TestHostRequest(t *testing.T) {
 	h.server.UseMail(mail)
 
 	ada := h.signup("Ada Lovelace", "ada.hostreq@test.dev", false)
+	// Password signup needs a phone now; a Google account starts without one,
+	// which is the case the request has to handle.
+	if _, err := h.store.Pool().Exec(t.Context(), `UPDATE users SET phone = '' WHERE id = $1`, ada.ID); err != nil {
+		t.Fatal(err)
+	}
+	ada.Phone = ""
 	if ada.CanHost || ada.Phone != "" || ada.HostRequestedAt != "" {
 		t.Fatalf("new account = canHost %v phone %q requested %q", ada.CanHost, ada.Phone, ada.HostRequestedAt)
 	}
@@ -122,7 +128,8 @@ func TestHostRequest(t *testing.T) {
 	if n := len(hostRequestMail(mail)); n != 2 {
 		t.Fatalf("a host's request sent email: count %d", n)
 	}
-	assertHostRequestRow(t, h, host.ID, "", false)
+	// The phone is the one signup took; no request was opened.
+	assertHostRequestRow(t, h, host.ID, testPhone, false)
 }
 
 func hostRequestMail(mail *fakeMail) []notify.Message {

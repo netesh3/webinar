@@ -110,6 +110,7 @@ func TestVerifyReturnsWhileSMTPBlocks(t *testing.T) {
 
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: "Bea Latency", Email: "bea.latency@test.dev", Password: "webcast-dev",
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("signup: %d %s", res.StatusCode, raw)

@@ -6,6 +6,7 @@ import type {
   PlanFeatures,
   PlanFeaturesBody,
   SetUserPlanRequest,
+  WhatsAppConsent,
   AdminStats,
   AdminUser,
   AlertsResponse,
@@ -190,6 +191,11 @@ export const api = {
    *  to work for somebody who has no account yet. */
   getWebinar: (slug: string) =>
     request<Webinar>(`/api/webinars/${seg(slug)}`, fresh),
+
+  /** For a signed-in person about to register: the phone to prefill, and whether
+   *  this webinar's coach may already message them on WhatsApp. */
+  whatsappConsent: (slug: string) =>
+    request<WhatsAppConsent>(`/api/webinars/${seg(slug)}/whatsapp-consent`, fresh),
 
   register: async (slug: string, body: RegisterRequest) => {
     const reg = await post<Registration>(`/api/webinars/${seg(slug)}/register`, body);

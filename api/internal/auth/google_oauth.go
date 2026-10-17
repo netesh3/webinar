@@ -21,23 +21,20 @@ var GoogleTokenURL = "https://oauth2.googleapis.com/token"
 // ErrGoogleOAuth is a failed code exchange (bad code, redirect mismatch, Google down).
 var ErrGoogleOAuth = errors.New("google oauth")
 
+// GoogleOAuthScopes is what Continue with Google asks for: sign-in only, which
+// Google shows without checkboxes. The phone is asked for in the app instead
+// (see the phone prompt), so no People scope. YouTube Connect uses a different
+// grant and must not be added here.
+const GoogleOAuthScopes = "openid email profile"
+
 // GoogleAuthCodeURL is the consent page for first-party login. Unlike Connect
-// YouTube it does not ask for offline access: we only need an ID token and a
-// short-lived access token to read People phone numbers.
+// YouTube it does not ask for offline access: only the ID token is used.
 //
-// prompt is consent every time so a user who left the People phone box empty
-// sees that scope again. Without a login_hint, select_account is added so the
-// chooser is explicit. With a login_hint, select_account is omitted: Google
-// otherwise shows a blank picker and ignores the address they already typed.
-// Google still draws extra scopes as unchecked boxes; there is no authorize
-// query that pre-checks them. Do not set enable_granular_consent=false —
-// Google ignores it once granular permissions are on for the client.
+// Without a login_hint, prompt=select_account makes the chooser explicit. With
+// a login_hint no prompt is sent: Google otherwise shows a blank picker and
+// ignores the address they already typed.
 func GoogleAuthCodeURL(clientID, redirect, state, nonce, loginHint string) string {
 	hint := GoogleLoginHint(loginHint)
-	prompt := "select_account consent"
-	if hint != "" {
-		prompt = "consent"
-	}
 	q := url.Values{
 		"client_id":     {clientID},
 		"redirect_uri":  {redirect},
@@ -45,10 +42,11 @@ func GoogleAuthCodeURL(clientID, redirect, state, nonce, loginHint string) strin
 		"scope":         {GoogleOAuthScopes},
 		"state":         {state},
 		"nonce":         {nonce},
-		"prompt":        {prompt},
 	}
 	if hint != "" {
 		q.Set("login_hint", hint)
+	} else {
+		q.Set("prompt", "select_account")
 	}
 	return GoogleAuthURL + "?" + q.Encode()
 }
