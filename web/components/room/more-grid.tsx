@@ -549,6 +549,8 @@ export function MoreGrid({
                 <button
                   type="button"
                   aria-pressed={false}
+                  aria-label="Customize toolbar"
+                  title="Customize toolbar"
                   onClick={() => {
                     setShowReactions(false);
                     setShowLayout(false);
@@ -557,8 +559,9 @@ export function MoreGrid({
                   }}
                   className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[12px] font-medium text-ink-2 outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/40"
                 >
+                  {/* Icon only: the drag tip above says what it is for; the label stays for
+                      screen readers and the tooltip. */}
                   <PlusIcon className="size-3.5" />
-                  Customize toolbar
                 </button>
               )}
               {onReset && (
