@@ -13,7 +13,7 @@ import {
   wantsPresenterView,
   type OwnShare,
 } from "@/lib/own-share";
-import { EyeIcon, EyeOffIcon, PopOutIcon, ScreenShareIcon, StopIcon } from "../icons";
+import { EyeIcon, EyeOffIcon, PopOutIcon, ScreenShareIcon } from "../icons";
 
 /* What a presenter sees of their own window or screen share.
  *
@@ -94,63 +94,69 @@ export function OwnShareView({
 
   const showLive = isWindow && !hidden && !!publication?.track;
 
+  /* Header, picture, buttons — stacked, not layered. The picture gets every pixel between
+   * the two rows and nothing is drawn over it: a header or button row on top of a shared
+   * window covers its title bar and dock, which is exactly what a presenter checks. Only
+   * the frozen warning overlays, because it must be seen. */
   return (
-    <div className="relative size-full bg-black">
-      {showLive ? (
-        <VideoTrack
-          trackRef={{ participant, source: Track.Source.ScreenShare, publication: publication! }}
-          className="absolute inset-0 size-full object-contain"
-        />
-      ) : (
-        <div className="absolute inset-0 grid place-items-center p-6 text-center">
-          <div className="max-w-xl">
-            {isWindow ? (
-              <>
-                <p className="text-[18px] font-semibold text-white/90">Preview hidden</p>
-                <p className="mt-1.5 text-[13px] text-white/60">
-                  Everyone still sees your window. Turn the preview back on to check what they see.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-[20px] font-semibold text-white/95">
-                  Everyone can see your entire screen
-                </p>
-                <p className="mt-1.5 text-[13px] text-white/65">
-                  Including this page. Go to what you want to present.
-                </p>
-                {snapshot && (
-                  <figure className="mx-auto mt-4 w-[min(360px,80%)]">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- a data URL, nothing for next/image to optimise */}
-                    <img
-                      src={snapshot}
-                      alt="Your screen when sharing started"
-                      className="w-full rounded-md border border-white/15"
-                    />
-                    <figcaption className="mt-1.5 text-[11px] text-white/45">
-                      When you started. No live preview here, or everyone would see an endless
-                      mirror of this page.
-                    </figcaption>
-                  </figure>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* What this is, over the picture rather than beside it: the stage is the space. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 bg-black/55 px-3 py-2">
+    <div className="flex size-full flex-col bg-black">
+      <div className="flex shrink-0 items-center gap-2 px-3 py-2">
         <LiveBadge small />
         <span className="truncate text-[12.5px] font-medium text-white/90">
-          {isWindow ? "This is what everyone sees · a window" : "Sharing your entire screen"}
+          {isWindow ? (
+            "This is what everyone sees · a window"
+          ) : (
+            <>
+              <span className="font-semibold text-white">Everyone can see your entire screen</span>
+              <span className="text-white/65">, including this page</span>
+            </>
+          )}
         </span>
         <Elapsed share={share} />
       </div>
 
-      {share.frozen && <FrozenWarning isWindow={isWindow} />}
+      <div className="relative min-h-0 flex-1 px-3">
+        {showLive ? (
+          <VideoTrack
+            trackRef={{ participant, source: Track.Source.ScreenShare, publication: publication! }}
+            className="size-full object-contain"
+          />
+        ) : !isWindow && snapshot ? (
+          /* The entire screen, as large as the stage allows. Still a snapshot, never live:
+           * this tab is on the screen being shared, so a live picture would mirror itself
+           * for everyone. Dimmed and labelled so it is not mistaken for the live picture. */
+          <div className="relative size-full">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a data URL, nothing for next/image to optimise */}
+            <img
+              src={snapshot}
+              alt="Your screen when sharing started"
+              className="absolute inset-0 size-full object-contain brightness-[0.8] saturate-[0.8]"
+            />
+            <span className="pointer-events-none absolute bottom-3 left-1/2 max-w-[92%] -translate-x-1/2 truncate rounded-full bg-black/75 px-3 py-1 text-[12px] text-white/90">
+              Snapshot from when you started · not live, so this page doesn&apos;t mirror itself
+            </span>
+          </div>
+        ) : (
+          <div className="grid size-full place-items-center p-6 text-center">
+            <div className="max-w-xl">
+              {isWindow ? (
+                <>
+                  <p className="text-[18px] font-semibold text-white/90">Preview hidden</p>
+                  <p className="mt-1.5 text-[13px] text-white/60">
+                    Everyone still sees your window. Turn the preview back on to check what they see.
+                  </p>
+                </>
+              ) : (
+                <p className="text-[13px] text-white/65">Go to what you want to present.</p>
+              )}
+            </div>
+          </div>
+        )}
 
-      <div className="absolute inset-x-0 bottom-9 flex flex-wrap justify-center gap-2 px-3">
+        {share.frozen && <FrozenWarning isWindow={isWindow} />}
+      </div>
+
+      <div className="flex shrink-0 flex-wrap justify-center gap-2 px-3 py-2.5">
         <StageButton onClick={() => requestPresenter("switch")} icon={<ScreenShareIcon className="size-4" />}>
           {isWindow ? "Share something else" : "Share a window instead"}
         </StageButton>
@@ -167,9 +173,8 @@ export function OwnShareView({
             Floating controls
           </StageButton>
         )}
-        <StageButton danger onClick={() => requestPresenter("stop")} icon={<StopIcon className="size-4" />}>
-          Stop sharing
-        </StageButton>
+        {/* No Stop button here: the Share button in the control bar stops the share.
+            requestPresenter("stop") and the bar's handler for it are still in place. */}
       </div>
     </div>
   );
@@ -180,12 +185,12 @@ export function PresenterPip({
   share,
   participant,
   publication,
-  onStop,
   onBack,
 }: {
   share: OwnShare;
   participant: Participant;
   publication: TrackPublication | undefined;
+  /** Kept for the caller; the window shows no Stop button (see the stage's note). */
   onStop: () => void;
   onBack: () => void;
 }) {
@@ -225,13 +230,6 @@ export function PresenterPip({
         >
           Back to webinar
         </button>
-        <button
-          type="button"
-          onClick={onStop}
-          className="h-7 rounded-md bg-live px-2.5 text-[12px] font-semibold text-on-live transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-        >
-          Stop
-        </button>
       </div>
     </div>
   );
@@ -264,7 +262,7 @@ function FrozenWarning({ isWindow, compact }: { isWindow: boolean; compact?: boo
     <div
       role="status"
       className={`absolute inset-x-0 mx-auto w-fit max-w-[92%] rounded-lg bg-live-soft text-center font-medium text-live ${
-        compact ? "top-1.5 px-2 py-1 text-[11px]" : "top-12 px-3 py-2 text-[13px]"
+        compact ? "top-1.5 px-2 py-1 text-[11px]" : "top-3 px-3 py-2 text-[13px]"
       }`}
     >
       {isWindow
