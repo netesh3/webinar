@@ -10,6 +10,7 @@ import {
   describeChange,
   gridItems,
   isCustomised,
+  isHomeTool,
   isPinnable,
   moreOrder,
   morePanelTools,
@@ -313,22 +314,19 @@ const HOST_YT = [...HOST, "youtube"] as ToolId[];
 }
 
 {
-  // LinkedIn is a home tool too: on the bar by default, draggable into More and
-  // back, and only ever offered to someone who may stream (the host).
+  // LinkedIn starts in More like Instagram and Facebook: not on the bar until
+  // the host drags it there, and back again; only ever offered to the host.
   const H = [...HOST_YT, "linkedin"] as ToolId[];
-  const fresh = parseStoredToolbar(null);
-  ok(isPinnable("linkedin"), "LinkedIn can move");
-  ok(!tuckedTools(fresh).includes("linkedin"), "LinkedIn starts on the bar");
-  const out = removeFromBar(fresh, "linkedin");
-  ok(out.change?.kind === "removed" && tuckedTools(out.layout).includes("linkedin"), "dragging LinkedIn into More tucks it");
-  ok(gridItems(out.layout, barSlots(out.layout, 6, H), H).includes("linkedin"), "and lists it in More");
-  const back = placeOnBar(out.layout, "linkedin", 6, H);
-  ok(back.change !== null && !tuckedTools(back.layout).includes("linkedin"), "and it can come back to the bar");
+  const fresh = reconcile(parseStoredToolbar(null), H);
+  ok(!isHomeTool("linkedin"), "LinkedIn is not a home tool");
+  ok(!barSlots(fresh, 6, H).some((s) => s.tool === "linkedin"), "LinkedIn is not on the bar at first");
+  ok(gridItems(fresh, barSlots(fresh, 6, H), H).includes("linkedin"), "LinkedIn starts in More");
+  const placed = placeOnBar(fresh, "linkedin", 6, H);
+  ok(placed.change !== null && barSlots(placed.layout, 6, H).some((s) => s.tool === "linkedin"), "LinkedIn can be dragged onto the bar");
+  const back = removeFromBar(placed.layout, "linkedin");
+  ok(gridItems(back.layout, barSlots(back.layout, 6, H), H).includes("linkedin"), "and back into More");
   const attendee: ToolId[] = ["chat", "qa", "participants", "invite", "settings"];
-  ok(
-    !gridItems(out.layout, barSlots(out.layout, 6, attendee), attendee).includes("linkedin"),
-    "someone who may not stream never sees LinkedIn",
-  );
+  ok(!gridItems(fresh, barSlots(fresh, 6, attendee), attendee).includes("linkedin"), "someone who may not stream never sees LinkedIn");
 }
 
 {

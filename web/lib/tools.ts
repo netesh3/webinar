@@ -46,11 +46,12 @@ export type ToolId =
   /** Stream to YouTube — a host-only dialog with a live indicator. */
   | "youtube"
   /** Stream to LinkedIn Live — a host-only dialog with the Stream URL and key,
-   *  and a live indicator. Sits beside YouTube. */
+   *  and a live indicator. Starts in More (NEVER_SURFACED_TOOLS); the host can
+   *  drag it onto the bar. */
   | "linkedin"
   /** Stream to Instagram Live / Facebook Live — host-only dialogs like
-   *  LinkedIn's. They start in More (NEVER_SURFACED_TOOLS) and reach the bar
-   *  only when dragged there. */
+   *  LinkedIn's. Like LinkedIn they start in More (NEVER_SURFACED_TOOLS) and
+   *  reach the bar only when dragged there. */
   | "instagram"
   | "facebook"
   /** The shared whiteboard (Excalidraw) — host and panelists, behind the host's
@@ -403,7 +404,7 @@ export const FIXED_BAR_TOOLS: readonly ToolId[] = [];
  * could move (no home tool in `overflow`, because Settings was stripped from
  * it and YouTube was not a tool) loads with both on the bar, exactly as a
  * first-time user gets them, and no storage version bump is needed. */
-export const HOME_BAR_TOOLS: readonly ToolId[] = ["youtube", "linkedin", "settings"];
+export const HOME_BAR_TOOLS: readonly ToolId[] = ["youtube", "settings"];
 
 export function isHomeTool(id: ToolId): boolean {
   return HOME_BAR_TOOLS.includes(id);
@@ -415,7 +416,7 @@ export function isHomeTool(id: ToolId): boolean {
  * like Captions — but never recorded as recent, so never surfaced into a vacant
  * slot on their own. A host who turns the whiteboard on keeps exactly the
  * toolbar they had until they choose to move it. */
-export const NEVER_SURFACED_TOOLS: readonly ToolId[] = ["whiteboard", "instagram", "facebook"];
+export const NEVER_SURFACED_TOOLS: readonly ToolId[] = ["whiteboard", "linkedin", "instagram", "facebook"];
 
 export function isNeverSurfaced(id: ToolId): boolean {
   return NEVER_SURFACED_TOOLS.includes(id);
