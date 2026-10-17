@@ -259,12 +259,19 @@ export function ControlBar() {
       "info",
     );
   });
+  /* The presenter's floating window is for a WINDOW share only. Sharing the entire screen
+   * gets no floating window at all: it would sit on the screen being shared, so everyone
+   * would see it, and the stage already says plainly what is happening. */
+  const sharingEntireScreen = !fileShare.active && ownShare.surface === "monitor";
   const presentingSurface =
-    !fileShare.active && wantsPresenterView(ownShare.surface) ? ownShare.surface : null;
+    !fileShare.active && wantsPresenterView(ownShare.surface) && ownShare.surface === "window"
+      ? ownShare.surface
+      : null;
   const pip = usePictureInPicture({
     enabled: !connecting,
     shareActive: screenShares.length > 0,
     keepOpen: presentingSurface !== null,
+    autoEnter: !sharingEntireScreen,
   });
   const captionsAction = useCaptionsMoreAction();
   const youtube = useYouTubeStream();
@@ -807,6 +814,13 @@ export function ControlBar() {
       closePip();
     }
   }, [presentingSurface, ownShare.startedAt, openPresenterPip, closePip]);
+
+  // A floating window already open when an entire-screen share starts would be on the shared
+  // screen for everyone to see, so it goes.
+  const pipActive = pip.active;
+  useEffect(() => {
+    if (sharingEntireScreen && pipActive) closePip();
+  }, [sharingEntireScreen, pipActive, closePip]);
 
   /* The stage's buttons (components/room/own-share-view.tsx) ask for these by event. */
   const presenterActions = useRef({ stop: () => {}, switch: () => {}, float: () => {} });
@@ -1499,7 +1513,7 @@ export function ControlBar() {
             Desktop only, and hidden when unsupported rather than disabled: no mobile browser
             implements either kind of PiP, and a dead button that never explains itself is
             worse than one that was never offered. */}
-        {pip.supported && (
+        {pip.supported && !sharingEntireScreen && (
           <button
             type="button"
             onClick={() => (pip.active ? pip.close({ dismiss: true }) : pip.open())}
