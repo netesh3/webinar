@@ -34,6 +34,8 @@ type Engage interface {
 
 	// OnRegistered follows a committed registration, pending or approved.
 	OnRegistered(ctx context.Context, wb types.Webinar, reg types.Registration, whatsappOptIn bool)
+	// WhatsAppOptedIn is whether this host may already message the person on WhatsApp.
+	WhatsAppOptedIn(ctx context.Context, hostID, email, phone string) bool
 	// OnRegistrationsDecided follows a batch of approve/decline decisions on one webinar.
 	OnRegistrationsDecided(ctx context.Context, slug string, declinedRegistrationIDs []string)
 	// OnRescheduled follows a saved change to a webinar: its start time, its reminder
@@ -72,6 +74,7 @@ func (NoEngage) Mount(chi.Router, chi.Router) {}
 func (NoEngage) ConnectEnabled() bool         { return false }
 func (NoEngage) OnRegistered(context.Context, types.Webinar, types.Registration, bool) {
 }
+func (NoEngage) WhatsAppOptedIn(context.Context, string, string, string) bool            { return false }
 func (NoEngage) OnRegistrationsDecided(context.Context, string, []string)                {}
 func (NoEngage) OnRescheduled(context.Context, types.Webinar)                            {}
 func (NoEngage) OnEnded(context.Context, types.Webinar)                                  {}

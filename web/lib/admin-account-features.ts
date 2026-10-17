@@ -1,4 +1,4 @@
-import type { Feature } from "./api-types.ts";
+import type { Feature, PlanFeatures } from "./api-types.ts";
 
 /* Which switches an admin sees under Features on an account row.
  *
@@ -70,4 +70,39 @@ export function accountFeaturesOnCount(
     }
   }
   return n;
+}
+
+/* Plan, then overrides (migrations/0107). The admin row shows each catalogue
+ * feature as Inherit / On / Off; Inherit is labelled with what the plan gives. */
+export type OverrideState = "inherit" | "on" | "off";
+
+export function overrideState(
+  overrides: Record<string, boolean> | null | undefined,
+  key: string,
+): OverrideState {
+  if (!overrides || !(key in overrides)) return "inherit";
+  return overrides[key] ? "on" : "off";
+}
+
+// Whether the account's plan includes this feature; null while the matrix loads.
+export function planIncludes(
+  tiers: readonly PlanFeatures[] | null,
+  plan: string | null | undefined,
+  key: string,
+): boolean | null {
+  if (!tiers) return null;
+  const tier = tiers.find((t) => t.plan === (plan ?? ""));
+  return tier ? tier.features.includes(key) : false;
+}
+
+// The override map after one change, matching what the server now stores.
+export function withOverride(
+  overrides: Record<string, boolean> | null | undefined,
+  key: string,
+  state: OverrideState,
+): Record<string, boolean> {
+  const next = { ...(overrides ?? {}) };
+  if (state === "inherit") delete next[key];
+  else next[key] = state === "on";
+  return next;
 }

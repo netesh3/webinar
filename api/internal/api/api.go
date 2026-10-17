@@ -370,6 +370,7 @@ func (s *Server) Routes() http.Handler {
 
 		r.With(registerLimit.Middleware).
 			Post("/webinars/{slug}/register", s.handleRegister)
+		r.Get("/webinars/{slug}/whatsapp-consent", s.handleWhatsAppConsent)
 
 		r.Group(func(r chi.Router) {
 			r.Use(joinLimit.Middleware)
@@ -493,6 +494,8 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)
 			r.Patch("/users/{id}/plan", s.handleSetUserPlan)
+			r.Get("/plan-features", s.handlePlanFeatures)
+			r.Put("/plan-features", s.handleSetPlanFeatures)
 			r.Patch("/users/{id}/cdn-broadcast", s.handleSetCdnBroadcastCapability)
 			r.Patch("/users/{id}/features", s.handleSetFeature)
 			r.Delete("/users/{id}", s.handleAdminDeleteUser)

@@ -51,7 +51,7 @@ func TestGoogleStartRedirectsToGoogle(t *testing.T) {
 	if q.Get("client_id") != testGoogleClientID {
 		t.Fatalf("client_id %q", q.Get("client_id"))
 	}
-	if q.Get("prompt") != "select_account consent" {
+	if q.Get("prompt") != "select_account" {
 		t.Fatalf("prompt %q", q.Get("prompt"))
 	}
 	if q.Get("login_hint") != "" {
@@ -67,8 +67,8 @@ func TestGoogleStartRedirectsToGoogle(t *testing.T) {
 		t.Fatalf("missing state/nonce: %s", loc)
 	}
 	scope := q.Get("scope")
-	if !strings.Contains(scope, "openid") || !strings.Contains(scope, "user.phonenumbers.read") {
-		t.Fatalf("scope %q", scope)
+	if !strings.Contains(scope, "openid") || strings.Contains(scope, "phonenumbers") {
+		t.Fatalf("scope %q, want sign-in only and no People phone", scope)
 	}
 	if strings.Contains(scope, "youtube") {
 		t.Fatalf("login must not request YouTube: %s", scope)
@@ -109,8 +109,8 @@ func TestGoogleStartLoginHint(t *testing.T) {
 	if q.Get("login_hint") != "user@gmail.com" {
 		t.Fatalf("login_hint %q", q.Get("login_hint"))
 	}
-	if q.Get("prompt") != "consent" {
-		t.Fatalf("hinted prompt %q, want consent", q.Get("prompt"))
+	if q.Has("prompt") {
+		t.Fatalf("hinted prompt %q, want none", q.Get("prompt"))
 	}
 
 	q = startQuery("next=/webinars/demo&email=" + url.QueryEscape("alt@gmail.com"))
@@ -122,7 +122,7 @@ func TestGoogleStartLoginHint(t *testing.T) {
 	if q.Get("login_hint") != "" {
 		t.Fatalf("junk login_hint %q", q.Get("login_hint"))
 	}
-	if q.Get("prompt") != "select_account consent" {
+	if q.Get("prompt") != "select_account" {
 		t.Fatalf("junk prompt %q", q.Get("prompt"))
 	}
 
@@ -130,7 +130,7 @@ func TestGoogleStartLoginHint(t *testing.T) {
 	if q.Get("login_hint") != "" {
 		t.Fatalf("empty login_hint %q", q.Get("login_hint"))
 	}
-	if q.Get("prompt") != "select_account consent" {
+	if q.Get("prompt") != "select_account" {
 		t.Fatalf("empty prompt %q", q.Get("prompt"))
 	}
 }
@@ -302,13 +302,12 @@ func TestGoogleAuthOneTap(t *testing.T) {
 	}
 }
 
-/* Continue with Google stores People on google_phone. A later registration
- * with a different typed number fills phone and leaves google_phone alone. */
-func TestGooglePhoneKeptBesideTypedRegistration(t *testing.T) {
+/* Continue with Google stores no phone at all. A later registration with a
+ * typed number fills the account's phone, and a profile patch can change it. */
+func TestGoogleSignInThenTypedRegistrationPhone(t *testing.T) {
 	const (
-		googleNum = "+14155552671"
-		typedNum  = "+919876543210"
-		email     = "bothphones@test.dev"
+		typedNum = "+919876543210"
+		email    = "bothphones@test.dev"
 	)
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -350,14 +349,6 @@ func TestGooglePhoneKeptBesideTypedRegistration(t *testing.T) {
 	auth.GoogleTokenURL = google.URL + "/token"
 	auth.GoogleCertsURL = google.URL + "/certs"
 	auth.GoogleHTTP = google.Client()
-
-	usePeopleAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != "ya29.both-phones" {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		_, _ = io.WriteString(w, `{"phoneNumbers":[{"canonicalForm":"`+googleNum+`","metadata":{"primary":true}}]}`)
-	})
 
 	h := newHarness(t, withGoogleOAuth)
 	h.signup("Host Both", "host-bothphones@test.dev", true)
@@ -418,8 +409,8 @@ func TestGooglePhoneKeptBesideTypedRegistration(t *testing.T) {
 	if acct.Phone != "" {
 		t.Fatalf("typed phone after google %q, want empty", acct.Phone)
 	}
-	if acct.GooglePhone != googleNum {
-		t.Fatalf("google phone %q, want %s", acct.GooglePhone, googleNum)
+	if acct.GooglePhone != "" {
+		t.Fatalf("google phone %q, want none: the phone scope is gone", acct.GooglePhone)
 	}
 
 	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/register", types.RegisterRequest{
@@ -442,9 +433,6 @@ func TestGooglePhoneKeptBesideTypedRegistration(t *testing.T) {
 	if acct.Phone != typedNum {
 		t.Fatalf("typed phone after register %q", acct.Phone)
 	}
-	if acct.GooglePhone != googleNum {
-		t.Fatalf("google phone after register %q", acct.GooglePhone)
-	}
 
 	patched := "+12025550143"
 	res, raw = h.do(http.MethodPatch, "/api/auth/me", types.ProfilePatch{Phone: &patched})
@@ -454,9 +442,6 @@ func TestGooglePhoneKeptBesideTypedRegistration(t *testing.T) {
 	h.decode(raw, &acct)
 	if acct.Phone != patched {
 		t.Fatalf("patched phone %q", acct.Phone)
-	}
-	if acct.GooglePhone != googleNum {
-		t.Fatalf("google phone after patch %q", acct.GooglePhone)
 	}
 }
 

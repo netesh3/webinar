@@ -12,6 +12,7 @@
  */
 // @ts-expect-error `.open-next/worker.js` is generated at build time
 import { default as handler } from "./.open-next/worker.js";
+import { noindexHost, wwwRedirect } from "./lib/edge-hosts";
 
 interface ApiEnv {
   API_INTERNAL_URL?: string;
@@ -36,11 +37,15 @@ const worker = {
       url.protocol = "https:";
       return Response.redirect(url.toString(), 301);
     }
+    const apex = wwwRedirect(url, request.method);
+    if (apex) {
+      return Response.redirect(apex, 301);
+    }
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
       return proxyApi(request, env);
     }
     const res = await handler.fetch(request, env, ctx);
-    return withFedcmPermission(res);
+    return withFedcmPermission(res, noindexHost(url.hostname));
   },
 };
 
@@ -57,11 +62,13 @@ export {
 const FEDCM_PERMISSION =
   'identity-credentials-get=(self "https://accounts.google.com")';
 
-/** Chrome One Tap (FedCM) is a no-op unless this permission is granted. */
-function withFedcmPermission(res: Response): Response {
-  if (res.headers.has("Permissions-Policy")) return res;
+/** Chrome One Tap (FedCM) is a no-op unless this permission is granted. The
+ *  workers.dev copy of the site is also marked noindex here (see edge-hosts). */
+function withFedcmPermission(res: Response, noindex = false): Response {
+  if (res.headers.has("Permissions-Policy") && !noindex) return res;
   const headers = new Headers(res.headers);
-  headers.set("Permissions-Policy", FEDCM_PERMISSION);
+  if (!headers.has("Permissions-Policy")) headers.set("Permissions-Policy", FEDCM_PERMISSION);
+  if (noindex) headers.set("X-Robots-Tag", "noindex, nofollow");
   return new Response(res.body, {
     status: res.status,
     statusText: res.statusText,

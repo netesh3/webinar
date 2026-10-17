@@ -7,7 +7,10 @@ import type {
   Account,
   DeleteAccountRequest,
   Plan,
+  PlanFeatures,
+  PlanFeaturesBody,
   SetUserPlanRequest,
+  WhatsAppConsent,
   AdminStats,
   AdminUser,
   AlertsResponse,
@@ -214,6 +217,11 @@ export const api = {
    *  to work for somebody who has no account yet. */
   getWebinar: (slug: string) =>
     request<Webinar>(`/api/webinars/${seg(slug)}`, fresh),
+
+  /** For a signed-in person about to register: the phone to prefill, and whether
+   *  this webinar's coach may already message them on WhatsApp. */
+  whatsappConsent: (slug: string) =>
+    request<WhatsAppConsent>(`/api/webinars/${seg(slug)}/whatsapp-consent`, fresh),
 
   register: async (slug: string, body: RegisterRequest) => {
     const reg = await post<Registration>(`/api/webinars/${seg(slug)}/register`, body);
@@ -934,6 +942,22 @@ export const api = {
       feature,
       enabled,
     } satisfies FeatureGrant),
+
+  /** Sets this account's override for one feature: true forces it on, false off,
+   *  null clears it so the account's plan decides. */
+  setUserFeatureOverride: (userId: string, feature: string, state: boolean | null) =>
+    patch<Account>(`/api/admin/users/${seg(userId)}/features`, {
+      feature,
+      enabled: state === true,
+      inherit: state === null,
+    } satisfies FeatureGrant),
+
+  /** The tier matrix: which features each plan includes. */
+  planFeatures: () => request<PlanFeaturesBody>("/api/admin/plan-features", fresh),
+
+  /** Replaces the tier matrix whole. */
+  setPlanFeatures: (tiers: PlanFeatures[]) =>
+    put<PlanFeaturesBody>("/api/admin/plan-features", { tiers } satisfies PlanFeaturesBody),
 
   /** Set a custom max meeting duration for a user in minutes. Pass null to reset to system default. */
   setUserMaxDuration: (userId: string, maxDurationMin: number | null) =>

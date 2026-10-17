@@ -837,6 +837,8 @@ func (h *harness) signup(name, email string, wantsHost bool) types.Account {
 	// Same password as the seeded accounts so h.login works for either.
 	res, raw := h.do(http.MethodPost, "/api/auth/signup", types.SignupRequest{
 		Name: name, Email: email, Password: "webcast-dev", WantsHost: wantsHost,
+		// Password signup requires a mobile number.
+		Phone: testPhone,
 	})
 	if res.StatusCode != http.StatusCreated {
 		h.t.Fatalf("signup %s: status %d body %s", email, res.StatusCode, raw)

@@ -501,7 +501,11 @@ func validateSignup(req types.SignupRequest) map[string]string {
 		fields["password"] = msg
 	}
 
-	if msg := phoneFieldError(req.Phone); msg != "" {
+	// Required for a password signup. Google sign-in creates the account without one
+	// and the app asks for it straight after (the phone prompt).
+	if strings.TrimSpace(req.Phone) == "" {
+		fields["phone"] = "Add a mobile number."
+	} else if msg := phoneFieldError(req.Phone); msg != "" {
 		fields["phone"] = msg
 	}
 
@@ -614,29 +618,6 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "signed out"})
 }
 
-/* optionalGooglePhone reads a number from the People API.
- *
- * Empty when the browser did not send a Google access token, when Google
- * returns no number, or when the call fails. The failure is logged without
- * the token or the number. Signup never depends on this.
- */
-func (s *Server) optionalGooglePhone(ctx context.Context, accessToken string) string {
-	accessToken = strings.TrimSpace(accessToken)
-	if accessToken == "" {
-		return ""
-	}
-	got, err := auth.GooglePhoneNumber(ctx, accessToken)
-	if err != nil {
-		s.log.Warn("supabase auth: people phone", "error", err)
-		return ""
-	}
-	got = store.NormalisePhone(got)
-	if got == "" || phoneFieldError(got) != "" {
-		return ""
-	}
-	return got
-}
-
 /* handleSupabaseAuth is POST /api/auth/supabase.
  *
  * Verifies a Supabase Auth access token (Google OAuth via Supabase JS), then
@@ -671,7 +652,7 @@ func (s *Server) handleSupabaseAuth(w http.ResponseWriter, r *http.Request) {
 		Name:          identity.Name,
 		Picture:       identity.Picture,
 		EmailVerified: identity.EmailVerified,
-	}, req.GoogleAccessToken, "supabase auth")
+	}, "supabase auth")
 	if errors.Is(err, errOAuthSignupClosed) {
 		httpx.Error(w, http.StatusForbidden, "signup_closed",
 			"New accounts are closed on this instance.")

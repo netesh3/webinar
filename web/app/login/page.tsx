@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { LoginForm } from "@/components/auth-form";
+import { LoginGoogleOneTap } from "@/components/login-google-one-tap";
 import { Card } from "@/components/ui";
 import { LoginSessionGate } from "./session-gate";
 
@@ -23,6 +24,9 @@ export default function LoginPage() {
           }
         >
           <LoginForm />
+        </Suspense>
+        <Suspense fallback={null}>
+          <LoginGoogleOneTap />
         </Suspense>
       </main>
     </LoginSessionGate>

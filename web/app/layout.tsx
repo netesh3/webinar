@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Geist, Outfit } from "next/font/google";
 import Script from "next/script";
 import { AppProviders } from "@/components/providers";
+import { PhonePrompt } from "@/components/phone-prompt";
 import { api } from "@/lib/api";
 import { siteOrigin } from "@/lib/site-origin";
 import type { AppConfig } from "@/lib/api-types";
@@ -120,7 +121,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             title="Google Tag Manager"
           />
         </noscript>
-        <AppProviders initialConfig={config}>{children}</AppProviders>
+        <AppProviders initialConfig={config}>
+          {children}
+          <PhonePrompt />
+        </AppProviders>
       </body>
     </html>
   );

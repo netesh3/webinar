@@ -4661,7 +4661,28 @@ export interface FeatureGrant {
    * * One of the Feature keys. Anything else is refused rather than stored.
    */
   feature: string;
+  /**
+   * Enabled forces the feature on or off for this account, whatever its plan says.
+   */
   enabled: boolean;
+  /**
+   * Inherit clears this account's override, so its plan decides. Enabled is ignored.
+   */
+  inherit?: boolean;
+}
+/**
+ *  PlanFeatures is one column of the tier matrix: the features a plan includes. Plan ""
+ *  * is no plan. GET and PUT /api/admin/plan-features carry all four tiers.
+ */
+export interface PlanFeatures {
+  plan: Plan;
+  features: string[];
+}
+/**
+ * PlanFeaturesBody is the tier matrix, read and replaced whole.
+ */
+export interface PlanFeaturesBody {
+  tiers: PlanFeatures[];
 }
 /**
  *  AdminUser is one row of the admin panel.
@@ -4711,10 +4732,15 @@ export interface AdminUser {
    */
   canCdnBroadcast: boolean;
   /**
-   * Features are the per-account switches that are on — see Features and
-   * FeatureGrant. Always present, empty for an account with none.
+   * Features are the switches in effect: the plan's, with this account's overrides
+   * applied. Always present, empty for an account with none.
    */
   features: string[];
+  /**
+   * FeatureOverrides are this account's own decisions: true forced on, false forced
+   * off. A feature absent here inherits from the plan.
+   */
+  featureOverrides: { [key: string]: boolean};
 }
 /**
  *  AdminStats is the admin dashboard's first read.
@@ -5070,6 +5096,21 @@ export const PlanEnterprise: Plan = "enterprise";
  * PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
  */
 export const PlanLaunchAttendees = 200;
+/**
+ *  WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
+ *  * page needs to decide whether to ask a signed-in person for their phone and for
+ *  * WhatsApp consent with this webinar's host.
+ */
+export interface WhatsAppConsent {
+  /**
+   * Phone prefills the prompt: the account's typed number, else Google's.
+   */
+  phone: string;
+  /**
+   * OptedIn is true when this host may already message them on WhatsApp.
+   */
+  optedIn: boolean;
+}
 /**
  * SetUserPlanRequest is PATCH /api/admin/users/{id}/plan. An empty plan removes
  * the subscription, back to the launch default.

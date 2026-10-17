@@ -40,9 +40,12 @@ export { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, audienceHref, messagesHref };
 export function WhatsAppOptInCheckbox({
   checked,
   onChange,
+  coach,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
+  /** Names who would message them: consent is given to one coach at a time. */
+  coach?: string;
 }) {
   const { whatsappConnect } = useAppConfig();
   if (!whatsappConnect) return null;
@@ -55,7 +58,7 @@ export function WhatsAppOptInCheckbox({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        Send me updates on{" "}
+        Send me updates{coach ? ` from ${coach}` : ""} on{" "}
         <span className="font-medium text-ink">WhatsApp</span>: a confirmation,
         a reminder before it starts with a one-tap Join, and the replay if I
         miss it. Reply <span className="font-medium text-ink">STOP</span> at any

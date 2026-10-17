@@ -1,3 +1,4 @@
+import { GoogleOneTap } from "@/components/google-one-tap";
 import { ContinueAsPreviewHost } from "@/components/continue-as-preview-host";
 import {
   HomePage,
@@ -25,6 +26,7 @@ export default async function HomeRoute() {
       />
       <SignedInHomeRedirect />
       <TopNav />
+      <GoogleOneTap next="/browse" />
       <main className="flex-1">
         <ContinueAsPreviewHost className="mx-auto max-w-6xl px-4 pt-4 sm:px-5" />
         <HomePage />
