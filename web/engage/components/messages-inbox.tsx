@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NeedsDefaultFile } from "./header-media";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { engageApi } from "../api";
@@ -787,6 +788,7 @@ function ReplyBox({
         </div>
       ) : (
         <div className="px-3 pt-2.5 pb-3">
+          {templates && <NeedsDefaultFile templates={templates} />}
           {templates === null ? (
             <div className="flex items-center gap-2 py-2 text-[12px] text-ink-2">
               <Spinner className="size-4 text-ink-3" />

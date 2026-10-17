@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NeedsDefaultFile } from "./header-media";
 import { engageApi } from "../api";
 import { Alert, Modal, Select, Spinner } from "@/components/controls";
 import { useToast } from "@/components/providers";
@@ -389,6 +390,7 @@ export function RuleBuilder({
             </i>
             Then…
           </b>
+          <NeedsDefaultFile templates={templates} />
           <ol className="grid gap-2">
             {steps.map((s, i) => (
               <li

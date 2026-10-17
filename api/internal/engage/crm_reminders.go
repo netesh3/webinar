@@ -205,11 +205,7 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !tmpl.Sendable {
-			msg := tmpl.Unsupported
-			if msg == "" {
-				msg = "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
-			}
-			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", msg)
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 			return
 		}
 		if len(want.Params) != tmpl.Variables {

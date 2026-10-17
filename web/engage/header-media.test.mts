@@ -72,7 +72,7 @@ eq(
 );
 eq(
   headerSummary({ headerFormat: "VIDEO", needsHeaderFile: true }),
-  "Video header · needs a file before it can be sent",
+  "Video header · No default file",
   "video without file",
 );
 
@@ -86,6 +86,11 @@ eq(headerChoiceProblem({ headerFormat: "DOCUMENT" }, { mode: "default" }) !== nu
 eq(headerChoiceProblem({ headerFormat: "DOCUMENT", headerFile: {} }, { mode: "default" }), null, "doc default file");
 eq(headerChoiceProblem({ headerFormat: "VIDEO" }, { mode: "file", fileId: "x" }), null, "video own file");
 eq(headerChoiceProblem({ headerFormat: "IMAGE" }, { mode: "default" }), null, "image falls back to cover");
+eq(
+  headerChoiceProblem({ headerFormat: "VIDEO" }, { mode: "default" }),
+  "Choose the video to send with this template.",
+  "blocker names the kind",
+);
 
 console.log(`${checks - failures}/${checks} header media checks pass`);
 if (failures > 0) process.exit(1);

@@ -111,7 +111,7 @@ export function headerSummary(t: {
   const label = MEDIA_RULES[f].label;
   if (t.headerFile) return `${label} header · ${t.headerFile.filename || "your file"}`;
   if (f === "IMAGE") return "Image header · the webinar's cover";
-  return `${label} header · needs a file before it can be sent`;
+  return `${label} header · No default file`;
 }
 
 /** A broadcast's header choice, as the request's fields. */
@@ -140,5 +140,5 @@ export function headerChoiceProblem(
   const f = (t.headerFormat ?? "").toUpperCase();
   if (f !== "VIDEO" && f !== "DOCUMENT") return null;
   if (choice.mode === "file" || (choice.mode === "default" && t.headerFile)) return null;
-  return `This template opens with ${MEDIA_RULES[f].noun}. Choose the file to send.`;
+  return `Choose the ${MEDIA_RULES[f].kind} to send with this template.`;
 }

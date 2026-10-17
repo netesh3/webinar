@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NeedsDefaultFile } from "./header-media";
 import { Alert, Modal, Spinner } from "@/components/controls";
 import { Button } from "@/components/ui";
 import {
@@ -102,6 +103,7 @@ export function SlotEditor({
     >
       <div className="grid gap-3">
         {error && <Alert tone="error">{error}</Alert>}
+        <NeedsDefaultFile templates={templates} />
         {usable.length === 0 ? (
           <p className="text-[13px] text-ink-2">
             No approved wording yet. Write your own and Meta reviews it, usually in minutes.

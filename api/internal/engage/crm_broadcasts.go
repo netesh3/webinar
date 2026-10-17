@@ -652,8 +652,10 @@ func unusableMessage(tmpl types.CRMTemplate) string {
 	case tmpl.Unsupported != "":
 		return tmpl.Unsupported
 	case tmpl.NeedsHeaderFile:
-		return "That template's header is a " + strings.ToLower(tmpl.HeaderFormat) +
-			" — add the file on the WhatsApp templates page first."
+		return "That template has no default " + strings.ToLower(tmpl.HeaderFormat) +
+			" yet — choose one with \"Choose default file\" on the WhatsApp templates page."
+	case tmpl.NeedsCardFiles:
+		return "That carousel's cards have no default pictures yet — choose them on the WhatsApp templates page."
 	default:
 		return "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
 	}

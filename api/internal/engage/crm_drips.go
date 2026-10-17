@@ -380,11 +380,7 @@ func (s *Module) stepsAllowed(
 			return nil, false
 		}
 		if !tmpl.Sendable {
-			msg := tmpl.Unsupported
-			if msg == "" {
-				msg = "Meta has not approved that template yet — it is " + strings.ToLower(tmpl.Status) + "."
-			}
-			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", at+msg)
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", at+unusableMessage(tmpl))
 			return nil, false
 		}
 		if len(step.Params) != tmpl.Variables {
