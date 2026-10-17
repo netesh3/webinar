@@ -32,8 +32,12 @@ export type ShareMode = "sharp" | "video";
 /** The fps ceiling each mode publishes at. */
 export const SHARE_MODE_FPS: Record<ShareMode, number> = { sharp: 15, video: 30 };
 
-/** Largest desktop capture asked for: a 1440p screen is not downscaled to 1080p. */
-export const SHARE_CAPTURE_MAX = { width: 2560, height: 1440 } as const;
+/* Largest desktop capture asked for: 1080p.
+ *
+ * It was briefly 1440p (with a 7.5 Mbps top layer), and production showed why not: on an
+ * India→EU path the browser could not hold that bitrate, so the top layer was paused far
+ * more than it was sent. A 1080p capture at 4 Mbps is sharp and sustainable. */
+export const SHARE_CAPTURE_MAX = { width: 1920, height: 1080 } as const;
 
 export function shareContentHint(mode: ShareMode): "detail" | "motion" {
   return mode === "video" ? "motion" : "detail";
@@ -56,9 +60,9 @@ export function shareModeOfHint(hint: string | undefined): ShareMode {
  * can switch mid-share without a new capture, and sharp's 15 fps ceiling is applied
  * by the encoder (the layers' maxFramerate), not by the capture.
  *
- * Desktop: up to 2560x1440 as an IDEAL (livekit-client turns `resolution` into
- * ideal constraints outside Safari), so a 1080p screen captures at 1080p and a
- * high-DPI one at 1440p rather than being scaled down before encoding.
+ * Desktop: up to 1920x1080 as an IDEAL (livekit-client turns `resolution` into
+ * ideal constraints outside Safari), so a smaller screen or window is not upscaled
+ * and a larger one is captured at 1080p.
  * Safari: unconstrained — Safari 17 treats a resolution as a hard max and picked a
  * tiny one; see isSafari in media.ts.
  * Mobile: the 360p floor, phones rarely share. */

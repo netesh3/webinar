@@ -293,21 +293,30 @@ export const LADDER: Record<
  *   desktop  never scale share content below 1280×720
  *   mobile   never below 640×360 (capture floor; getDisplayMedia is rare on phones)
  *
- * The 360p simulcast layer stays published for tiny mobile *subscriber* tiles via
- * adaptiveStream. It is not the presenter's fallback and must never become the only live
- * layer a desktop viewer of a fullscreen share can land on when the ladder panics.
+ * Two layers, both readable: 720p (the desktop floor) and the 1080p capture. There used
+ * to be a 360p@5fps layer under them for phone tiles, and production showed what it cost:
+ * a presenter with 33 Mbps of upload but ~200 ms to the EU SFU spent 64 of 111 samples
+ * bandwidth-limited, and every time the browser's estimate dipped the top layer paused and
+ * EVERY viewer fell to 360p@5 at once — the "goes blurry in between". Now the worst a
+ * viewer can land on is 720p.
  *
- * The rungs, per layer (desktop floor = 720p always active at a text-readable bitrate):
+ * The rungs, per layer (fps is the share mode's: 15 sharp, 30 video):
  *
- *            360p@3    720p         1080p@15   total
- *   full     700       3000@15       5000      8700 kbps
- *   reduced  700       3000@15       off       3700 kbps
- *   minimal  700       3000@8        off       3700 kbps   ← fps down, not bitrate/resolution
+ *            720p        1080p     total
+ *   full     1500        4000      5500 kbps
+ *   reduced  1500        off       1500 kbps
+ *   minimal  1500@8      off       1500 kbps   ← fps down, not bitrate/resolution
  *
- * WHY ~3 Mbps / ~5 Mbps (not 2 / 3.5). Desktop content needs bitrate more than faces —
- * H.264 spends a thin budget on motion and leaves text muddy. Zoom content share is
- * typically several Mbps at high resolution and low fps; we close that encode gap while
- * accepting we cannot erase India→EU path RTT vs Zoom's nearby PoPs.
+ * Under bandwidth pressure the share is also given priority over the camera
+ * (prioritiseShare): share encodings "high", camera "very-low", so the browser's pacer
+ * and bandwidth estimator starve the face before the slides. The structural fix for the
+ * India→EU round trip is an SFU nearer India; this keeps the share readable until then.
+ *
+ * WHY 1.5 / 4 Mbps. Desktop content needs bitrate more than faces — H.264 spends a thin
+ * budget on motion and leaves text muddy — but a top layer the uplink cannot sustain is
+ * worse than a slightly softer one it can: at ~200 ms RTT the estimator backs off hard and
+ * often, and a 5–7.5 Mbps top layer (the old 1080p/1440p values) was paused more than it
+ * was sent. 4 Mbps 1080p at 15 fps keeps text crisp; 1.5 Mbps holds 720p readable.
  *
  * WHAT CHANGED (mid-session blur / false Reduced). Camera and share used to share ONE tier
  * decision driven partly by availableOutgoingBitrate. On EU SFU + IN that estimate is often
@@ -327,36 +336,26 @@ export const SHARE_FLOOR_DESKTOP = { width: 1280, height: 720 } as const;
 /** Mobile publisher capture/encode floor (360p equivalent). */
 export const SHARE_FLOOR_MOBILE = { width: 640, height: 360 } as const;
 
-/** Bitrate floor for the 720p share layer — text needs ~3 Mbps, not a camera-like 800k. */
-export const SHARE_720_MIN_BITRATE = 3_000_000;
+/** The 720p share layer: the lowest any viewer gets, still readable. */
+export const SHARE_720_BITRATE = 1_500_000;
 
-/** Low share simulcast rung: enough that 360p→720p stays under a 5× SFU cliff. */
-const SHARE_LOW_BITRATE = 700_000;
+/** The 1080p top layer (the capture itself) for fullscreen desktop viewers. */
+export const SHARE_1080_BITRATE = 4_000_000;
 
-/** Sharp 1080p ceiling for fullscreen desktop viewers (Zoom-like content bitrate). */
-export const SHARE_1080_BITRATE = 5_000_000;
-
-/** Top-layer ceiling when the screen is captured above 1080p (a 1440p or retina display). */
-export const SHARE_1440_BITRATE = 7_500_000;
-
-/* Three encodings, not four.
+/* Two encodings.
  *
- * livekit-client publishes at most [low, mid, original] (computeVideoEncodings), and the SFU
- * has three qualities to map them to. So the TOP encoding is the capture itself — 1080p on a
- * 1080p screen, up to 1440p on a bigger one (SHARE_CAPTURE_MAX) — and the two below are
- * fixed: 360p for phone tiles and the 720p desktop floor. A 1440p capture gets the bigger
- * bitrate via shareTopBitrate, applied on the live sender, and like any top layer it is the
- * first thing the ladder turns off under pressure (reduced/minimal).
+ * livekit-client publishes the simulcast layers plus the original (computeVideoEncodings:
+ * [low, original] for one layer), and the SFU maps its LOW/MEDIUM/HIGH qualities onto
+ * whatever exists. So the share goes out as the 720p floor and the 1080p capture — no
+ * layer below 720p for a congested moment to drop everybody onto. Capture is 1080p at most
+ * (SHARE_CAPTURE_MAX); the top layer is the first thing the ladder turns off.
  */
 export function shareLayers(mode: ShareMode): VideoPreset[] {
   return [
-    // Subscriber convenience for small phone tiles — not a desktop content floor.
-    new VideoPreset(640, 360, SHARE_LOW_BITRATE, 5),
-    // The desktop floor: 720p at a text-readable bitrate, at the mode's fps.
     new VideoPreset(
       SHARE_FLOOR_DESKTOP.width,
       SHARE_FLOOR_DESKTOP.height,
-      SHARE_720_MIN_BITRATE,
+      SHARE_720_BITRATE,
       SHARE_MODE_FPS[mode],
     ),
   ];
@@ -364,11 +363,6 @@ export function shareLayers(mode: ShareMode): VideoPreset[] {
 
 export function shareTop(mode: ShareMode): VideoPreset {
   return new VideoPreset(1920, 1080, SHARE_1080_BITRATE, SHARE_MODE_FPS[mode]);
-}
-
-/** The top layer's ceiling for a capture of this height. */
-export function shareTopBitrate(sourceHeight: number): number {
-  return sourceHeight > 1100 ? SHARE_1440_BITRATE : SHARE_1080_BITRATE;
 }
 
 /** The publish defaults (roomOptions): the sharp mode. */
@@ -385,21 +379,12 @@ export type ShareRung = {
 export const SHARE_LADDER: Record<PublishTier, ShareRung[]> = {
   full: [
     { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
-    { maxBitrate: SHARE_LAYERS[1].encoding.maxBitrate },
     { maxBitrate: SHARE_TOP.encoding.maxBitrate },
   ],
-  reduced: [
-    { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
-    { maxBitrate: SHARE_LAYERS[1].encoding.maxBitrate },
-    { maxBitrate: 0 },
-  ],
-  // Hold 720p bitrate; cut fps. Never drop the desktop floor layer or starve it below 2 Mbps.
+  reduced: [{ maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate }, { maxBitrate: 0 }],
+  // Hold 720p and its bitrate; cut fps. The floor layer is never dropped or starved.
   minimal: [
-    { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
-    {
-      maxBitrate: SHARE_720_MIN_BITRATE,
-      maxFramerate: 8,
-    },
+    { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate, maxFramerate: 8 },
     { maxBitrate: 0 },
   ],
 };
@@ -562,6 +547,43 @@ export async function prioritiseAudio(room: Room | null): Promise<void> {
   }
 }
 
+/* While a screen is shared, the share outranks the camera on the wire.
+ *
+ * RTCRtpEncodingParameters.priority / networkPriority decide how the browser's pacer and
+ * bandwidth estimator split a congested uplink between its own streams. By default every
+ * video stream is "low" (the spec default), so when the estimate dips the share and the
+ * face lose bits equally — and a presenter's slides, which five hundred people are reading,
+ * matter more than their thumbnail. So: share "high", camera "very-low" while sharing,
+ * camera back to "low" afterwards. Every encoding of a track gets the same value, which is
+ * what Chrome requires.
+ *
+ * Idempotent and cheap: setParameters is called only when a value has to change. */
+export async function prioritiseShare(
+  camera: LocalVideoTrack | undefined,
+  share: LocalVideoTrack | undefined,
+): Promise<void> {
+  await setPriority(share?.sender, "high");
+  await setPriority(camera?.sender, share ? "very-low" : "low");
+}
+
+async function setPriority(sender: RTCRtpSender | undefined, priority: RTCPriorityType) {
+  if (!sender) return;
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings?.length) return;
+    if (params.encodings.every((e) => e.priority === priority && e.networkPriority === priority)) {
+      return;
+    }
+    for (const encoding of params.encodings) {
+      encoding.priority = priority;
+      encoding.networkPriority = priority;
+    }
+    await sender.setParameters(params);
+  } catch {
+    // Unsupported field or a sender mid-renegotiation; the next sample tries again.
+  }
+}
+
 /**
  * Samples the connection and holds the publish ladder where it belongs.
  *
@@ -639,9 +661,8 @@ export function useNetworkHealth(
         const mode = shareModeOfHint(track.mediaStreamTrack?.contentHint);
         const layers = shareLayers(mode);
         const top = shareTop(mode);
-        /* Capture is 1080p or more (up to 1440p); mid (720p) and the top layer must not keep
-         * a congestion-era scaleResolutionDownBy that left text soft. Low (360p) may stay
-         * scaled for tiny subscriber tiles. The top layer IS the capture: designed scale 1. */
+        /* Neither layer may keep a congestion-era scaleResolutionDownBy that left text soft:
+         * the low layer is the 720p floor, and the top layer IS the capture (scale 1). */
         const sourceH =
           track.mediaStreamTrack?.getSettings?.().height ||
           SHARE_TOP.height;
@@ -650,7 +671,7 @@ export function useNetworkHealth(
           encoding.active = rung.maxBitrate > 0;
           if (rung.maxBitrate > 0) {
             const isTop = i >= layers.length;
-            encoding.maxBitrate = isTop ? shareTopBitrate(sourceH) : rung.maxBitrate;
+            encoding.maxBitrate = rung.maxBitrate;
             if (rung.maxFramerate != null) {
               encoding.maxFramerate = rung.maxFramerate;
             } else {
@@ -658,14 +679,12 @@ export function useNetworkHealth(
               const layer = isTop ? top : layers[i];
               encoding.maxFramerate = layer.encoding.maxFramerate;
             }
-            if (i >= 1) {
-              const targetH = isTop ? sourceH : layers[i].height;
-              const designed = Math.max(1, sourceH / targetH);
-              const current = encoding.scaleResolutionDownBy ?? designed;
-              // Clamp upscales-of-downscale only — never soft-blur past the designed rung.
-              if (current > designed + 0.05) {
-                encoding.scaleResolutionDownBy = designed;
-              }
+            const targetH = isTop ? sourceH : layers[i].height;
+            const designed = Math.max(1, sourceH / targetH);
+            const current = encoding.scaleResolutionDownBy ?? designed;
+            // Clamp upscales-of-downscale only — never soft-blur past the designed rung.
+            if (current > designed + 0.05) {
+              encoding.scaleResolutionDownBy = designed;
             }
           }
         });
@@ -701,8 +720,8 @@ export function useNetworkHealth(
       if (camera && tier.current !== "full") {
         await applyCameraTier(tier.current, camera);
       }
-      // Always, not only below full: the top layer's bitrate depends on the capture size
-      // (shareTopBitrate) and the fps on the share's mode, neither known at publish time.
+      // Always, not only below full: the fps follows the share's mode, which can change
+      // mid-share, and the scale clamp needs the capture size, known only after publish.
       if (share) {
         await applyShareTier(shareTier.current, share);
       }
@@ -723,6 +742,7 @@ export function useNetworkHealth(
        * see judgeShare. */
       const share = local?.getTrackPublication(Track.Source.ScreenShare)
         ?.videoTrack as LocalVideoTrack | undefined;
+      if (publishing) void prioritiseShare(camera, share);
 
       // A subscriber has no outbound video to measure, so the inbound side is read
       // instead: their experience is decided by what is arriving.

@@ -19,7 +19,7 @@ import {
   CAMERA_720_BITRATE,
   CAMERA_TOP,
   LADDER,
-  SHARE_720_MIN_BITRATE,
+  SHARE_720_BITRATE,
   SHARE_FLOOR_DESKTOP,
   SHARE_FLOOR_MOBILE,
   SHARE_LADDER,
@@ -480,7 +480,7 @@ console.log("\nladder shape");
   // screenShareEncoding. applyLadder indexes the ladder by encoding position, so a mismatch
   // means a real layer silently inherits some other rung's budget.
   const shareEncodings = SHARE_LAYERS.length + 1;
-  eq(shareEncodings, 3, "the share publishes three encodings");
+  eq(shareEncodings, 2, "the share publishes two encodings (720p floor + 1080p capture)");
 
   for (const tier of tiers) {
     // Camera: rungs are the ladder's own, so this only checks the gaps.
@@ -533,41 +533,31 @@ console.log("\nshare layer gaps");
     }
   }
 
-  // The specific regression, named: a tiny low rung must not jump straight to the 1080p ceiling.
+  /* Two layers, both readable. Production showed the old 360p@5fps layer was where every
+   * viewer landed whenever the top layer paused under bandwidth pressure. */
   const full = SHARE_LADDER.full.map((r) => r.maxBitrate);
+  eq(full.length, 2, "the share publishes two layers: the 720p floor and the 1080p capture");
+  const low = SHARE_LAYERS[0];
+  eq(low.height, SHARE_FLOOR_DESKTOP.height, "the lowest share layer is the 720p floor");
+  eq(low.width, SHARE_FLOOR_DESKTOP.width, "…at desktop floor width");
   ok(
-    full.length >= 3,
-    "the share has a middle layer at all",
-    `rungs: ${full.join(", ")}`,
+    (low.encoding.maxFramerate ?? 0) >= 10,
+    "the 720p layer is not frame-rate capped into a slideshow",
+    `${low.encoding.maxFramerate}fps`,
   );
   ok(
-    full[1] >= 2_500_000 && full[1] <= 3_500_000,
-    "the middle share rung is ~3 Mbps so 720p text stays sharp",
-    `${full[1]} bps`,
-  );
-
-  // And the middle layer is 720p at a watchable frame rate — the point of building it by hand
-  // rather than taking h720fps5, whose 5fps cap would pin a subscriber there.
-  const middle = SHARE_LAYERS[1];
-  eq(middle.height, SHARE_FLOOR_DESKTOP.height, "the middle share layer is 720p");
-  eq(middle.width, SHARE_FLOOR_DESKTOP.width, "…at desktop floor width");
-  ok(
-    (middle.encoding.maxFramerate ?? 0) >= 10,
-    "the middle share layer is not frame-rate capped into a slideshow",
-    `${middle.encoding.maxFramerate}fps`,
+    full[0] >= 1_200_000 && full[0] <= 2_000_000,
+    "the 720p floor is ~1.5 Mbps: readable, and sustainable on a congested uplink",
+    `${full[0]} bps`,
   );
 
-  // Desktop content floor: every tier keeps a ≥720p layer live at the bitrate floor.
+  // Every tier keeps the 720p floor live at its bitrate; nothing lands a viewer below it.
   for (const tier of tiers) {
-    const rung720 = SHARE_LADDER[tier][1];
-    ok(
-      rung720.maxBitrate >= SHARE_720_MIN_BITRATE,
-      `share ${tier}: 720p rung stays at or above the bitrate floor`,
-      `${rung720.maxBitrate}`,
-    );
+    const rung720 = SHARE_LADDER[tier][0];
+    eq(rung720.maxBitrate, SHARE_720_BITRATE, `share ${tier}: the 720p floor keeps its bitrate`);
   }
   eq(
-    SHARE_LADDER.minimal[1].maxFramerate,
+    SHARE_LADDER.minimal[0].maxFramerate,
     8,
     "minimal holds 720p pixels and cuts fps instead of bitrate",
   );
@@ -576,13 +566,10 @@ console.log("\nshare layer gaps");
     360,
     "mobile capture/encode floor is 360p",
   );
+  eq(SHARE_TOP.height, 1080, "top share layer is 1080p");
   ok(
-    SHARE_TOP.height >= SHARE_FLOOR_DESKTOP.height,
-    "top share layer is above the desktop floor",
-  );
-  ok(
-    SHARE_TOP.encoding.maxBitrate >= 4_000_000,
-    "1080p share ceiling has Zoom-like headroom for fine text",
+    SHARE_TOP.encoding.maxBitrate >= 3_500_000 && SHARE_TOP.encoding.maxBitrate <= 4_500_000,
+    "1080p share ceiling is ~4 Mbps: sharp text the uplink can actually hold",
     `${SHARE_TOP.encoding.maxBitrate}`,
   );
 }
@@ -714,10 +701,11 @@ console.log("\njudgeShare vs camera while sharing");
 
   // Even after stepping to reduced, the 720p rung stays at the readable floor.
   eq(
-    SHARE_LADDER.reduced[1].maxBitrate,
-    SHARE_720_MIN_BITRATE,
+    SHARE_LADDER.reduced[0].maxBitrate,
+    SHARE_720_BITRATE,
     "reduced still publishes 720p at the bitrate floor (turns off 1080p only)",
   );
+  eq(SHARE_LADDER.reduced[1].maxBitrate, 0, "…and turns the 1080p layer off");
 
   eq(
     worseTier("full", "minimal"),
@@ -761,8 +749,8 @@ console.log("\nfloorFrom");
   const cameraOnly = needKbps("full");
   const withShare = needKbps("full", true);
   ok(
-    withShare > cameraOnly * 2,
-    `sharing at least doubles the documented budget (${cameraOnly} -> ${withShare})`,
+    withShare - cameraOnly >= 5_000 && withShare - cameraOnly <= 6_000,
+    `sharing adds the share's ~5.5 Mbps to the budget (${cameraOnly} -> ${withShare})`,
   );
   ok(
     needKbps("full", true) > needKbps("reduced", true) &&
