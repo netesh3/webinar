@@ -141,6 +141,9 @@ export function useElapsed(startedAt: number | null): number {
  * audience receives too. A single frame has no loop. It answers "which screen is this"
  * without turning into a hall of mirrors.
  */
+/** Widest a snapshot is taken at, in pixels. Enough for a retina laptop or 1440p stage. */
+const SNAPSHOT_MAX_WIDTH = 2560;
+
 export function useSnapshot(track: MediaStreamTrack | null, enabled: boolean): string | null {
   const [snap, setSnap] = useState<{ track: MediaStreamTrack; url: string } | null>(null);
 
@@ -153,14 +156,27 @@ export function useSnapshot(track: MediaStreamTrack | null, enabled: boolean): s
     video.srcObject = new MediaStream([track]);
     const grab = () => {
       if (cancelled || !video.videoWidth) return;
-      // A thumbnail is all this is for; a full 4K frame as a data URL is megabytes.
-      const scale = Math.min(1, 640 / video.videoWidth);
+      /* Sized for the stage it now fills, not a thumbnail: the stage's width in device
+       * pixels (a retina laptop stage is ~2200), never above the capture itself, capped so a
+       * 5K display does not become a ~10 MB data URL. Taken once per share. */
+      const target = Math.min(
+        SNAPSHOT_MAX_WIDTH,
+        Math.round(window.innerWidth * (window.devicePixelRatio || 1)),
+      );
+      const scale = Math.min(1, target / video.videoWidth);
       const canvas = document.createElement("canvas");
       canvas.width = Math.round(video.videoWidth * scale);
       canvas.height = Math.round(video.videoHeight * scale);
-      canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
       try {
-        setSnap({ track, url: canvas.toDataURL("image/jpeg", 0.8) });
+        /* WebP keeps text edges that JPEG smears at the same size. Browsers without a WebP
+         * encoder (older Safari) return PNG instead — larger, still sharp. */
+        setSnap({ track, url: canvas.toDataURL("image/webp", 0.92) });
       } catch {
         // A tainted canvas cannot happen with a local capture, but a snapshot is optional.
       }
