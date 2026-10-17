@@ -5952,6 +5952,20 @@ export interface LiveParticipant {
    */
   coHost: boolean;
 }
+/**
+ * LiveScreenShare is what the one-share-at-a-time rule needs to know about a share.
+ */
+export interface LiveScreenShare {
+  /**
+   * StartedAtMicro is the SFU's publish stamp (TrackInfo.Version.UnixMicro): set once,
+   * when the track's media first arrives, by the server's clock. Zero when unknown.
+   */
+  StartedAtMicro: number /* int64 */;
+  /**
+   * Muted is true once the share was muted, which is what the rule does to a loser.
+   */
+  Muted: boolean;
+}
 export interface LiveRoom {
   room: string;
   status: WebinarStatus;
