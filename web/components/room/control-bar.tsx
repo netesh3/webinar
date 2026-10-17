@@ -141,11 +141,12 @@ const readCanShare = () =>
   typeof navigator.mediaDevices?.getDisplayMedia === "function";
 const readCanShareOnServer = () => false;
 
-/** The presenter's floating window, per surface: room for a live picture of a window; a
- *  short bar for the entire screen, which has no picture (see own-share-view.tsx). */
+/** The presenter's floating window, per surface. One size for a window and the entire
+ *  screen: both show a picture now (live, or the entire screen's snapshot) above the same
+ *  bar, so the two look alike and only the picture's label differs (own-share-view.tsx). */
 const PRESENTER_PIP_SIZE: Record<ShareSurface, { width: number; height: number }> = {
   window: { width: 400, height: 260 },
-  monitor: { width: 420, height: 110 },
+  monitor: { width: 400, height: 260 },
   browser: { width: 400, height: 260 },
 };
 

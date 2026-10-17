@@ -1,7 +1,7 @@
 "use client";
 
 import { Track, type LocalParticipant, type LocalTrackPublication } from "livekit-client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type ShareSurface } from "./own-share-surface";
 
 export {
@@ -144,11 +144,16 @@ export function useElapsed(startedAt: number | null): number {
 /** Widest a snapshot is taken at, in pixels. Enough for a retina laptop or 1440p stage. */
 const SNAPSHOT_MAX_WIDTH = 2560;
 
+/* One snapshot per capture, shared. The stage and the floating window both show it, and
+ * two grabs a few hundred ms apart could be two different pictures of the same share. */
+const snapshotByTrack = new WeakMap<MediaStreamTrack, string>();
+
 export function useSnapshot(track: MediaStreamTrack | null, enabled: boolean): string | null {
   const [snap, setSnap] = useState<{ track: MediaStreamTrack; url: string } | null>(null);
 
   useEffect(() => {
     if (!track || !enabled) return;
+    if (snapshotByTrack.has(track)) return;
     let cancelled = false;
     const video = document.createElement("video");
     video.muted = true;
@@ -156,6 +161,11 @@ export function useSnapshot(track: MediaStreamTrack | null, enabled: boolean): s
     video.srcObject = new MediaStream([track]);
     const grab = () => {
       if (cancelled || !video.videoWidth) return;
+      const cached = snapshotByTrack.get(track);
+      if (cached) {
+        setSnap({ track, url: cached });
+        return;
+      }
       /* Sized for the stage it now fills, not a thumbnail: the stage's width in device
        * pixels (a retina laptop stage is ~2200), never above the capture itself, capped so a
        * 5K display does not become a ~10 MB data URL. Taken once per share. */
@@ -176,7 +186,9 @@ export function useSnapshot(track: MediaStreamTrack | null, enabled: boolean): s
       try {
         /* WebP keeps text edges that JPEG smears at the same size. Browsers without a WebP
          * encoder (older Safari) return PNG instead — larger, still sharp. */
-        setSnap({ track, url: canvas.toDataURL("image/webp", 0.92) });
+        const url = canvas.toDataURL("image/webp", 0.92);
+        snapshotByTrack.set(track, url);
+        setSnap({ track, url });
       } catch {
         // A tainted canvas cannot happen with a local capture, but a snapshot is optional.
       }
@@ -194,7 +206,69 @@ export function useSnapshot(track: MediaStreamTrack | null, enabled: boolean): s
     };
   }, [track, enabled]);
 
+  if (!track || !enabled) return null;
+  const cached = snapshotByTrack.get(track);
+  if (cached) return cached;
   return snap && snap.track === track ? snap.url : null;
+}
+
+/* Live preview of the ENTIRE screen, opt-in.
+ *
+ * Off by default, because the usual setup (one laptop screen) puts this tab on the screen
+ * being shared, and a live picture of it is the endless mirror described above. It is
+ * right for one setup: two screens, the shared one and another with the webinar on it.
+ * The browser cannot tell us which screen was picked, so the presenter says so once.
+ *
+ * A module-level store rather than component state: the stage and the floating window are
+ * separate trees (the window is a portal into another document) and must always show the
+ * same kind of picture — both live or both snapshot. Remembered across sessions, since a
+ * two-screen desk stays a two-screen desk. `confirmed` records that the "is this window on
+ * another screen?" question was answered yes, so it is asked once, not every time. */
+const LIVE_KEY = "webinar.screenLivePreview";
+const CONFIRMED_KEY = "webinar.screenLivePreviewConfirmed";
+const liveListeners = new Set<() => void>();
+
+function readFlag(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeFlag(key: string, on: boolean): void {
+  try {
+    window.localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    // Private mode: lasts for this page only, via the in-memory fallback below.
+  }
+}
+let liveFallback = false;
+let confirmedFallback = false;
+
+export function screenLivePreview(): boolean {
+  return readFlag(LIVE_KEY) || liveFallback;
+}
+export function screenLivePreviewConfirmed(): boolean {
+  return readFlag(CONFIRMED_KEY) || confirmedFallback;
+}
+export function setScreenLivePreview(on: boolean, confirm = false): void {
+  liveFallback = on;
+  writeFlag(LIVE_KEY, on);
+  if (confirm) {
+    confirmedFallback = true;
+    writeFlag(CONFIRMED_KEY, true);
+  }
+  for (const l of liveListeners) l();
+}
+function subscribeLive(listener: () => void): () => void {
+  liveListeners.add(listener);
+  return () => liveListeners.delete(listener);
+}
+const notLive = () => false;
+
+/** Whether the presenter chose a live picture of their entire screen. */
+export function useScreenLivePreview(): boolean {
+  return useSyncExternalStore(subscribeLive, screenLivePreview, notLive);
 }
 
 /* Asking the control bar to do something from elsewhere in the room.
