@@ -1,6 +1,10 @@
 package streamdest
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestIngestURL(t *testing.T) {
 	got, err := IngestURL("abcd-efgh-ijkl-mnop", "")
@@ -68,23 +72,30 @@ func TestLinkedInIngest(t *testing.T) {
 	const base = "rtmps://1a2b3c.channel.media.azure.net:2935/live/abc123"
 	cases := []struct {
 		url, key, want string
-		err            error
+		field          string
 	}{
-		{base, "LIVEKEY99", base + "/LIVEKEY99", nil},
-		{base + "/", " LIVEKEY99 ", base + "/LIVEKEY99", nil},
-		{base, "", "", ErrLinkedInNeedKey},
+		{base, "LIVEKEY99", base + "/LIVEKEY99", ""},
+		{base + "/", " LIVEKEY99 ", base + "/LIVEKEY99", ""},
+		{base, "", "", "streamKey"},
 		// LinkedIn shows the key on the end of the Stream URL and again as the key.
-		{"rtmps://ip-1-2-3-4.live-input-li.bitcod.in/live/081c7950-aaaa", "081c7950-aaaa", "rtmps://ip-1-2-3-4.live-input-li.bitcod.in/live/081c7950-aaaa", nil},
-		{"rtmp://live.example.com/app", "k", "rtmp://live.example.com/app/k", nil},
-		{"", "k", "", ErrLinkedInNeedURL},
-		{"https://linkedin.com/live", "k", "", ErrLinkedInNeedURL},
-		{"rtmps://host.example", "", "", ErrLinkedInNeedKey},
-		{base, "has space", "", ErrLinkedInNeedKey},
+		{"rtmps://ip-1-2-3-4.live-input-li.bitcod.in/live/081c7950-aaaa", "081c7950-aaaa", "rtmps://ip-1-2-3-4.live-input-li.bitcod.in/live/081c7950-aaaa", ""},
+		{"rtmp://live.example.com/app", "k", "rtmp://live.example.com/app/k", ""},
+		{"", "k", "", "streamUrl"},
+		{"https://linkedin.com/live", "k", "", "streamUrl"},
+		{"rtmps://host.example", "", "", "streamKey"},
+		{base, "has space", "", "streamKey"},
 	}
 	for _, c := range cases {
 		got, err := LinkedInIngest(c.url, c.key)
-		if err != c.err || got != c.want {
-			t.Errorf("LinkedInIngest(%q, %q) = %q, %v; want %q, %v", c.url, c.key, got, err, c.want, c.err)
+		field := ""
+		var fe *FieldError
+		if errors.As(err, &fe) {
+			field = fe.Field
+		} else if err != nil {
+			field = "?" + err.Error()
+		}
+		if field != c.field || got != c.want {
+			t.Errorf("LinkedInIngest(%q, %q) = %q, %q; want %q, %q", c.url, c.key, got, field, c.want, c.field)
 		}
 	}
 }
@@ -105,5 +116,21 @@ func TestFixDoubledKey(t *testing.T) {
 		if got := FixDoubledKey(in); got != want {
 			t.Errorf("FixDoubledKey(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestRTMPIngestFacebookAndInstagram(t *testing.T) {
+	// Facebook and Instagram give a server ending in /rtmp/ and a key with a
+	// query string; both have to survive the join untouched.
+	got, err := RTMPIngest("Facebook", "rtmps://live-api-s.facebook.com:443/rtmp/", "FB-123-0-AbCd?s_bl=1&s_sc=9&a=Xy")
+	if err != nil || got != "rtmps://live-api-s.facebook.com:443/rtmp/FB-123-0-AbCd?s_bl=1&s_sc=9&a=Xy" {
+		t.Fatalf("facebook = %q, %v", got, err)
+	}
+	_, err = RTMPIngest("Instagram", "", "k")
+	if err == nil || !strings.Contains(err.Error(), "Instagram") {
+		t.Fatalf("instagram message = %v", err)
+	}
+	if h := Hint(got); h != "live-api-s.facebook.com · key ending AbCd" {
+		t.Errorf("hint = %q", h)
 	}
 }

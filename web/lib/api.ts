@@ -1,7 +1,7 @@
 import type {
   SaveStreamKeyRequest,
-  SetWebinarLinkedInRequest,
-  WebinarLinkedIn,
+  SetWebinarStreamPausedRequest,
+  WebinarStreamDestination,
   AIStatus,
   SalesChat,
   SalesConversationDetail,
@@ -616,10 +616,15 @@ export const api = {
     return res;
   },
 
-  /** LinkedIn Live as this room sees it: saved in Settings, paused here, streaming now. */
-  webinarLinkedIn: (slug: string) => request<WebinarLinkedIn>(`/api/host/webinars/${seg(slug)}/linkedin`, fresh),
-  setWebinarLinkedIn: (slug: string, paused: boolean) =>
-    patch<WebinarLinkedIn>(`/api/host/webinars/${seg(slug)}/linkedin`, { paused } satisfies SetWebinarLinkedInRequest),
+  /** A live-stream platform (linkedin, instagram, facebook) as this room sees
+   *  it: key saved, paused here, streaming now. */
+  webinarStreamDestination: (slug: string, platform: string) =>
+    request<WebinarStreamDestination>(`/api/host/webinars/${seg(slug)}/${seg(platform)}`, fresh),
+  setWebinarStreamPaused: (slug: string, platform: string, paused: boolean) =>
+    patch<WebinarStreamDestination>(
+      `/api/host/webinars/${seg(slug)}/${seg(platform)}`,
+      { paused } satisfies SetWebinarStreamPausedRequest,
+    ),
 
   /** Follow a card action the registry described (disconnect). href is an /api path. */
   integrationCall: async (href: string, method: "DELETE" | "POST") => {

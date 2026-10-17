@@ -133,6 +133,8 @@ const EMPTY_UNREAD: Record<ToolId, number> = {
   sharefile: 0,
   youtube: 0,
   linkedin: 0,
+  instagram: 0,
+  facebook: 0,
   whiteboard: 0,
 };
 

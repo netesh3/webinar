@@ -86,7 +86,7 @@ func TestLinkedInStreamsWithYouTubeAndPausesPerRoom(t *testing.T) {
 	}
 
 	// Not live yet: configured, not streaming.
-	var li types.WebinarLinkedIn
+	var li types.WebinarStreamDestination
 	res, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/linkedin", nil)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("get: %d %s", res.StatusCode, raw)
@@ -111,7 +111,7 @@ func TestLinkedInStreamsWithYouTubeAndPausesPerRoom(t *testing.T) {
 	}
 
 	res, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/linkedin", nil)
-	li = types.WebinarLinkedIn{}
+	li = types.WebinarStreamDestination{}
 	h.decode(raw, &li)
 	if res.StatusCode != http.StatusOK || !li.Streaming {
 		t.Fatalf("live: %d %+v", res.StatusCode, li)
@@ -126,8 +126,8 @@ func TestLinkedInStreamsWithYouTubeAndPausesPerRoom(t *testing.T) {
 	h.rooms.egressCalls = nil
 	h.rooms.mu.Unlock()
 
-	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/linkedin", types.SetWebinarLinkedInRequest{Paused: true})
-	li = types.WebinarLinkedIn{}
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/linkedin", types.SetWebinarStreamPausedRequest{Paused: true})
+	li = types.WebinarStreamDestination{}
 	h.decode(raw, &li)
 	if res.StatusCode != http.StatusOK || !li.Paused || li.Streaming {
 		t.Fatalf("pause: %d %s", res.StatusCode, raw)
@@ -137,7 +137,7 @@ func TestLinkedInStreamsWithYouTubeAndPausesPerRoom(t *testing.T) {
 	}
 
 	// The mix the sweeper or a recording would start now leaves LinkedIn out.
-	paused, err := h.store.WebinarLinkedInPaused(context.Background(), wb.ID)
+	paused, err := h.store.WebinarStreamPaused(context.Background(), wb.ID, "linkedin")
 	if err != nil || !paused {
 		t.Fatalf("paused flag: %v %v", paused, err)
 	}
@@ -145,8 +145,8 @@ func TestLinkedInStreamsWithYouTubeAndPausesPerRoom(t *testing.T) {
 	h.rooms.mu.Lock()
 	h.rooms.egressCalls = nil
 	h.rooms.mu.Unlock()
-	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/linkedin", types.SetWebinarLinkedInRequest{Paused: false})
-	li = types.WebinarLinkedIn{}
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/linkedin", types.SetWebinarStreamPausedRequest{Paused: false})
+	li = types.WebinarStreamDestination{}
 	h.decode(raw, &li)
 	if res.StatusCode != http.StatusOK || li.Paused || !li.Streaming {
 		t.Fatalf("resume: %d %s", res.StatusCode, raw)
@@ -162,8 +162,94 @@ func TestLinkedInIsHostOnlyPerWebinar(t *testing.T) {
 	wb := h.newWebinar("Someone else's room", nil)
 	h.signup("Other", "other-li@test.dev", true)
 
-	res, _ := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/linkedin", types.SetWebinarLinkedInRequest{Paused: true})
+	res, _ := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/linkedin", types.SetWebinarStreamPausedRequest{Paused: true})
 	if res.StatusCode == http.StatusOK {
 		t.Fatal("another host paused LinkedIn on a webinar they do not own")
+	}
+}
+
+func cardByID(t *testing.T, h *harness, raw []byte, id string) types.IntegrationCard {
+	t.Helper()
+	var list types.IntegrationsResponse
+	h.decode(raw, &list)
+	for _, c := range list.Integrations {
+		if c.ID == id {
+			return c
+		}
+	}
+	t.Fatalf("no %s card in %s", id, raw)
+	return types.IntegrationCard{}
+}
+
+/* Instagram and Facebook work exactly like LinkedIn: saved on the account, all
+ * pushed by the one compositor, and paused per room independently. */
+func TestInstagramAndFacebookStreamBesideLinkedIn(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Coach", "coach-ig-fb@test.dev", true)
+	wb := h.newWebinar("Everywhere at once", nil)
+
+	const (
+		igURL = "rtmps://edgetee-upload-bom1-1.xx.fbcdn.net:443/rtmp/"
+		igKey = "17999?s_bl=1&s_sc=1&a=IGKEY"
+		fbURL = "rtmps://live-api-s.facebook.com:443/rtmp/"
+		fbKey = "FB-1234-0-AbCdEf?s_bl=1&a=FBKEY"
+	)
+	res, raw := h.do(http.MethodPut, "/api/host/integrations/instagram-live", types.SaveStreamKeyRequest{StreamURL: "", StreamKey: igKey})
+	if res.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(raw), "Instagram") {
+		t.Fatalf("instagram missing url: %d %s", res.StatusCode, raw)
+	}
+	for _, c := range []struct{ href, url, key, card string }{
+		{"/api/host/integrations/linkedin", liStreamURL, liKey, "linkedin"},
+		{"/api/host/integrations/instagram-live", igURL, igKey, "instagram-live"},
+		{"/api/host/integrations/facebook-live", fbURL, fbKey, "facebook-live"},
+	} {
+		res, raw = h.do(http.MethodPut, c.href, types.SaveStreamKeyRequest{StreamURL: c.url, StreamKey: c.key})
+		if res.StatusCode != http.StatusOK || strings.Contains(string(raw), "KEY") {
+			t.Fatalf("save %s: %d %s", c.card, res.StatusCode, raw)
+		}
+		if card := cardByID(t, h, raw, c.card); card.Status != types.IntegrationStatusConnected {
+			t.Fatalf("%s card: %+v", c.card, card)
+		}
+	}
+	// The coming-soon Instagram messaging card is a different card.
+	if card := cardByID(t, h, raw, "instagram"); card.Status != types.IntegrationStatusSoon {
+		t.Fatalf("instagram messaging card changed: %+v", card)
+	}
+
+	h.goLive(wb.ID)
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/stream", types.SetStreamRequest{
+		StreamKey: "abcd-efgh-ijkl-mnop", WatchURL: "https://youtu.be/dQw4w9WgXcQ",
+	})
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("youtube: %d %s", res.StatusCode, raw)
+	}
+	calls := strings.Join(h.rooms.egressCalls, "\n")
+	for _, want := range []string{"abcd-efgh-ijkl-mnop", liIngest, igURL + igKey, fbURL + fbKey} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("want %q pushed by the one compositor, got:\n%s", want, calls)
+		}
+	}
+
+	for _, id := range []string{"instagram", "facebook"} {
+		var d types.WebinarStreamDestination
+		res, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/"+id, nil)
+		h.decode(raw, &d)
+		if res.StatusCode != http.StatusOK || !d.Streaming || d.Platform != id {
+			t.Fatalf("%s status: %d %s", id, res.StatusCode, raw)
+		}
+	}
+
+	// Pausing Instagram leaves Facebook and LinkedIn streaming.
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/instagram", types.SetWebinarStreamPausedRequest{Paused: true})
+	var ig types.WebinarStreamDestination
+	h.decode(raw, &ig)
+	if res.StatusCode != http.StatusOK || !ig.Paused || ig.Streaming {
+		t.Fatalf("pause instagram: %d %s", res.StatusCode, raw)
+	}
+	var fb types.WebinarStreamDestination
+	_, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/facebook", nil)
+	h.decode(raw, &fb)
+	if !fb.Streaming || fb.Paused {
+		t.Fatalf("facebook should still stream: %s", raw)
 	}
 }

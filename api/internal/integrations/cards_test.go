@@ -18,7 +18,7 @@ func TestCatalogue(t *testing.T) {
 	}
 	/* Zoom is a per-account switch. An account with none of the switches on
 	 * does not get the card. The rest of the catalogue is unchanged. */
-	want := []string{"whatsapp", "email", "telegram", "youtube", "linkedin", "google-calendar", "instagram", "mailchimp", "zapier"}
+	want := []string{"whatsapp", "email", "telegram", "youtube", "linkedin", "instagram-live", "facebook-live", "google-calendar", "instagram", "mailchimp", "zapier"}
 	if len(cards) != len(want) {
 		t.Fatalf("got %d cards, want %d", len(cards), len(want))
 	}

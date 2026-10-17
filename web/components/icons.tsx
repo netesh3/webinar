@@ -663,6 +663,27 @@ export function LinkedInIcon(props: IconProps) {
   );
 }
 
+/** Instagram's camera outline — stroke style, takes the bar's colour. */
+export function InstagramIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.25" cy="6.75" r="0.6" fill="currentColor" />
+    </Icon>
+  );
+}
+
+/** Facebook's "f" in a rounded square — stroke style, takes the bar's colour. */
+export function FacebookIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="3" />
+      <path d="M15 7.5h-1.5A2 2 0 0 0 11.5 9.5V21M9 12.5h5" />
+    </Icon>
+  );
+}
+
 /** WhatsApp's filled mark, in the brand green. The colour is fixed so a chip,
  *  a badge and a heading all show the same logo rather than inheriting the
  *  text colour beside them. */

@@ -332,6 +332,23 @@ const HOST_YT = [...HOST, "youtube"] as ToolId[];
 }
 
 {
+  // Instagram and Facebook start in More, can be dragged onto the bar and
+  // back, and are only for the host.
+  const H = [...HOST_YT, "linkedin", "instagram", "facebook"] as ToolId[];
+  const fresh = reconcile(parseStoredToolbar(null), H);
+  for (const id of ["instagram", "facebook"] as ToolId[]) {
+    ok(!barSlots(fresh, 6, H).some((s) => s.tool === id), `${id} is not on the bar at first`);
+    ok(gridItems(fresh, barSlots(fresh, 6, H), H).includes(id), `${id} starts in More`);
+    const placed = placeOnBar(fresh, id, 6, H);
+    ok(placed.change !== null && barSlots(placed.layout, 6, H).some((s) => s.tool === id), `${id} can be dragged onto the bar`);
+    const back = removeFromBar(placed.layout, id);
+    ok(gridItems(back.layout, barSlots(back.layout, 6, H), H).includes(id), `and back into More`);
+    const attendee: ToolId[] = ["chat", "qa", "participants", "invite", "settings"];
+    ok(!gridItems(fresh, barSlots(fresh, 6, attendee), attendee).includes(id), `${id} is host-only`);
+  }
+}
+
+{
   // Availability: YouTube is the host's.
   const attendee: ToolId[] = ["chat", "qa", "participants", "invite", "settings"];
   const tucked = removeFromBar(layout(), "youtube").layout;

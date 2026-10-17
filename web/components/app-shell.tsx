@@ -200,6 +200,7 @@ const MARK_COLOR: Record<string, string> = {
   wa: "text-[#25D366]",
   yt: "text-[#FF0000]",
   li: "text-[#0A66C2]",
+  fb: "text-[#1877F2]",
   tg: "text-[#2AA3DF]",
   gc: "text-[#1A73E8]",
   ig: "text-[#DD2A7B]",

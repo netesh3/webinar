@@ -21,7 +21,9 @@ func New(st *store.Store, oauth bool, revoke YouTubeRevoke, zoom ZoomHooks) *Reg
 		emailInboxProvider(st),
 		telegramProvider(),
 		youtubeProvider{oauth: oauth, revoke: revoke, store: st},
-		linkedinProvider(st),
+	}
+	for _, p := range RTMPPlatforms {
+		list = append(list, rtmpProvider(st, p))
 	}
 	list = append(list, comingSoon()...)
 	by := make(map[string]Provider, len(list))

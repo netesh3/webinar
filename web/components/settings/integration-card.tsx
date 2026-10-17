@@ -12,6 +12,7 @@ const TONE: Record<string, string> = {
   wa: "bg-[#1fa855]",
   yt: "bg-[#e62117]",
   li: "bg-[#0a66c2]",
+  fb: "bg-[#1877f2]",
   tg: "bg-[#2aa3df]",
   gc: "bg-[#1a73e8]",
   ig: "bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af]",
@@ -326,7 +327,7 @@ function StreamKeyDialog({
       onClose={() => !busy && onClose()}
       size="lg"
       title={replacing ? `Change your ${card.name} key` : `Set up ${card.name}`}
-      description="Paste the two values LinkedIn shows for a custom stream. Every webinar you take live then streams there too."
+      description={`Paste the Stream URL and Stream key ${card.name} shows. Every webinar you take live then streams there too.`}
       footer={
         <div className="flex w-full items-center justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
@@ -383,8 +384,8 @@ function StreamKeyDialog({
           {fields.streamKey && <small className="text-[12px] text-live">{fields.streamKey}</small>}
         </label>
         <p className="text-[12px] leading-relaxed text-ink-3">
-          Keep the key private — anyone with it can stream to your LinkedIn. We store it securely and never show it again.
-          You can pause LinkedIn in any room.
+          Keep the key private — anyone with it can stream to your account. We store it securely and never show it
+          again. You can pause it in any room.
         </p>
         {error && <small className="text-[12px] text-live">{error}</small>}
       </form>
