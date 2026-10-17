@@ -3,6 +3,11 @@
 # The deploy workflows also run on push to main and do not wait for this one;
 # make "api" and "web" required checks in branch protection so a red PR cannot
 # merge. Mirrors `make lint test types-check` so a local run means the same thing.
+#
+# Speed. internal/api is most of the test time (~150s of ~220s run serially), so it
+# runs as four parallel shards, each on its own runner with its own Postgres. The
+# `api` job at the bottom is only a summary of the api-* jobs, so the required-check
+# name does not change.
 name: CI
 
 on:
@@ -17,15 +22,19 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # The migrations target Supabase, which runs as postgres and has the
+  # anon/authenticated roles that 0014 revokes from; see the role step.
+  TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/webcast_test?sslmode=disable
+
 jobs:
-  api:
+  # Formatting, vet, generated types, and every package except internal/api.
+  api-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
         image: postgres:18
-        # The migrations target Supabase, which runs as postgres and has the
-        # anon/authenticated roles that 0014 revokes from; see the step below.
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -54,15 +63,107 @@ jobs:
         run: |
           psql -h localhost -U postgres -d webcast_test -v ON_ERROR_STOP=1 \
             -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;"
-      - name: Tests (integration tests use the Postgres service)
-        env:
-          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/webcast_test?sslmode=disable
-        run: go test ./... -count=1
+      - name: Tests (all packages but internal/api)
+        run: go test $(go list ./... | grep -vx 'github.com/netkumar/webcast/api/internal/api') -count=1
       - name: Generated web types are up to date
         run: |
           go run github.com/gzuidhof/tygo@v0.2.21 generate
           git diff --exit-code -- ../web/lib/api-types.ts \
             || { echo "web/lib/api-types.ts is stale. Run 'make types' and commit."; exit 1; }
+
+  # internal/api in four shards. Every top-level test is assigned to exactly one
+  # shard by its position in the sorted `go test -list` output, and each shard
+  # checks that the tests it ran are exactly the ones it was given.
+  api-tests:
+    name: api-tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: webcast_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - name: Supabase roles the migrations expect
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d webcast_test -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;"
+      - name: Pick this shard's tests
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: 4
+        run: |
+          set -euo pipefail
+          go test -list '.*' ./internal/api | grep -E '^Test[A-Za-z0-9_]*$' | LC_ALL=C sort -u > "$RUNNER_TEMP/all.txt"
+          total=$(wc -l < "$RUNNER_TEMP/all.txt")
+          [ "$total" -gt 0 ] || { echo "::error::go test -list found no tests"; exit 1; }
+          # Line i (1-based) goes to shard ((i-1) % SHARDS) + 1.
+          for s in $(seq 1 "$SHARDS"); do
+            awk -v s="$s" -v n="$SHARDS" '(NR-1) % n == s-1' "$RUNNER_TEMP/all.txt" > "$RUNNER_TEMP/shard-$s.txt"
+          done
+          assigned=$(cat "$RUNNER_TEMP"/shard-*.txt | LC_ALL=C sort -u | wc -l)
+          if [ "$assigned" -ne "$total" ] || ! cat "$RUNNER_TEMP"/shard-*.txt | LC_ALL=C sort | cmp -s - "$RUNNER_TEMP/all.txt"; then
+            echo "::error::shards do not cover every test exactly once ($assigned of $total)"; exit 1
+          fi
+          mine="$RUNNER_TEMP/shard-$SHARD.txt"
+          echo "shard $SHARD/$SHARDS: $(wc -l < "$mine") of $total tests"
+          cp "$mine" "$RUNNER_TEMP/mine.txt"
+      - name: Tests (internal/api shard)
+        run: |
+          set -euo pipefail
+          # Test names are Go identifiers, so they need no regex escaping. Anchored
+          # top-level names; subtests run under their parent.
+          pattern="^($(paste -sd'|' "$RUNNER_TEMP/mine.txt"))\$"
+          set +e
+          go test ./internal/api -count=1 -v -run "$pattern" > "$RUNNER_TEMP/out.txt" 2>&1
+          status=$?
+          set -e
+          grep -E '^(--- FAIL|FAIL|ok|panic)' "$RUNNER_TEMP/out.txt" || true
+          if [ "$status" -ne 0 ]; then
+            echo "::group::full test output"; cat "$RUNNER_TEMP/out.txt"; echo "::endgroup::"
+            exit "$status"
+          fi
+          # Top-level results are unindented; subtests are indented.
+          grep -oE '^--- (PASS|SKIP|FAIL): Test[A-Za-z0-9_]+' "$RUNNER_TEMP/out.txt" | awk '{print $3}' | LC_ALL=C sort -u > "$RUNNER_TEMP/ran.txt"
+          if ! cmp -s "$RUNNER_TEMP/ran.txt" "$RUNNER_TEMP/mine.txt"; then
+            echo "::error::the tests that ran are not the tests this shard was given"
+            diff "$RUNNER_TEMP/mine.txt" "$RUNNER_TEMP/ran.txt" || true
+            exit 1
+          fi
+          echo "ran $(wc -l < "$RUNNER_TEMP/ran.txt") tests"
+
+  # The required check. Passes only when every api-* job passed.
+  api:
+    runs-on: ubuntu-latest
+    needs: [api-checks, api-tests]
+    if: always()
+    steps:
+      - name: All api jobs passed
+        run: |
+          if [ "${{ needs.api-checks.result }}" != "success" ] || [ "${{ needs.api-tests.result }}" != "success" ]; then
+            echo "api-checks: ${{ needs.api-checks.result }}, api-tests: ${{ needs.api-tests.result }}"
+            exit 1
+          fi
 
   web:
     runs-on: ubuntu-latest
@@ -77,12 +178,27 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      # node_modules itself, keyed on the lockfile: a hit skips npm ci entirely.
+      - id: modules
+        uses: actions/cache@v4
+        with:
+          path: web/node_modules
+          key: web-modules-${{ runner.os }}-node22-${{ hashFiles('web/package-lock.json') }}
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: npm ci
       # PageProps / LayoutProps are generated into .next/types, which a clean
       # checkout does not have.
       - run: npx next typegen
       - run: npx tsc --noEmit
-      - run: npx eslint .
+      # ESLint's own cache: unchanged files are not linted again. Restored from the
+      # newest previous run; saved under this commit.
+      - uses: actions/cache@v4
+        with:
+          path: web/.eslintcache
+          key: web-eslint-${{ runner.os }}-${{ hashFiles('web/package-lock.json', 'web/eslint.config.*') }}-${{ github.sha }}
+          restore-keys: |
+            web-eslint-${{ runner.os }}-${{ hashFiles('web/package-lock.json', 'web/eslint.config.*') }}-
+      - run: npx eslint . --cache --cache-location .eslintcache
       - name: Unit tests
         run: |
           set -e
