@@ -838,7 +838,7 @@ export function ControlBar() {
     if (id === "layout") return `Layout · ${LAYOUT_LABEL[stage.mode]}`;
     if (id === "captions") return captionsAction?.active ? "Captions on" : "Captions off";
     if (id === "sharefile") return fileShare.active ? "Sharing a video file" : "Share a video file";
-    if (id === "youtube") return youtube.configured ? "YouTube stream is on" : "Stream to YouTube";
+    if (id === "youtube") return youtube.liveLabel;
     if (id === "whiteboard") return whiteboard?.state ? "Stop whiteboard" : "Whiteboard";
     return t.label;
   };
@@ -850,7 +850,7 @@ export function ControlBar() {
     if (id === "layout") return layoutOpen;
     if (id === "captions") return captionsAction?.active ?? false;
     if (id === "sharefile") return fileShare.active;
-    if (id === "youtube") return youtube.configured;
+    if (id === "youtube") return youtube.live;
     if (id === "whiteboard") return !!whiteboard?.state;
     if (tools.panelTab === id) return true;
     if (tools.poppedOut.includes(id)) return true;
@@ -1124,7 +1124,8 @@ export function ControlBar() {
               id="youtube"
               label={labelFor("youtube")}
               active={activeFor("youtube")}
-              live={youtube.configured}
+              live={youtube.live}
+              liveCaption={youtube.liveCaption}
               movable={capacity > 0}
               editing={editingNow}
               landed={landed === "youtube"}
@@ -1387,11 +1388,9 @@ export function ControlBar() {
                     }
                   : {}),
                 youtube: {
-                  active: youtube.configured,
+                  active: youtube.live,
                   busy: false,
-                  title: youtube.configured
-                    ? "YouTube stream is on — click to change"
-                    : "Stream to YouTube",
+                  title: youtube.live ? `${youtube.liveLabel} — click to change` : "Stream to YouTube",
                   onClick: youtube.open,
                 },
                 ...(whiteboard?.canDraw
@@ -1730,6 +1729,7 @@ function HomeToolSlot({
   label,
   active,
   live = false,
+  liveCaption = "On YT",
   movable,
   editing,
   landed,
@@ -1741,6 +1741,7 @@ function HomeToolSlot({
   label: string;
   active: boolean;
   live?: boolean;
+  liveCaption?: string;
   movable: boolean;
   editing: boolean;
   landed: boolean;
@@ -1751,7 +1752,7 @@ function HomeToolSlot({
   const t = tool(id);
   const Icon = t.icon;
   const drag = useToolDrag();
-  const caption = id === "youtube" && live ? "On YT" : t.label;
+  const caption = id === "youtube" && live ? liveCaption : t.label;
   const title = live ? `${label} — click to change` : label;
 
   return (

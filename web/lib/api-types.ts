@@ -6519,6 +6519,38 @@ export const IntegrationActionInfo = "info";
  *  * this type is only what the browser is allowed to see.
  */
 export const IntegrationActionSignup = "signup";
+/**
+ * IntegrationActionStreamKey opens a form for a Stream URL and key, sent
+ * to Href with Method as SaveStreamKeyRequest. LinkedIn Live uses it.
+ */
+export const IntegrationActionStreamKey = "stream_key";
+/**
+ * SaveStreamKeyRequest is a Stream URL and key pasted on an integration card.
+ */
+export interface SaveStreamKeyRequest {
+  streamUrl: string;
+  streamKey: string;
+}
+/**
+ *  WebinarLinkedIn is LinkedIn Live as one room sees it.
+ *  *
+ *  * Configured: the host saved a stream key in Settings. Paused: the host paused
+ *  * it in this room. Streaming: the webinar is live, configured and not paused,
+ *  * so the mix is being pushed to LinkedIn. Hint names the destination without
+ *  * the key.
+ */
+export interface WebinarLinkedIn {
+  configured: boolean;
+  paused: boolean;
+  streaming: boolean;
+  hint?: string;
+}
+/**
+ * SetWebinarLinkedInRequest pauses or resumes LinkedIn Live for one webinar.
+ */
+export interface SetWebinarLinkedInRequest {
+  paused: boolean;
+}
 export interface IntegrationStep {
   title: string;
   body: string;

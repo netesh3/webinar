@@ -21,7 +21,7 @@ func New(st *store.Store, oauth bool, revoke YouTubeRevoke, zoom ZoomHooks) *Reg
 		emailInboxProvider(st),
 		telegramProvider(),
 		youtubeProvider{oauth: oauth, revoke: revoke, store: st},
-		linkedinProvider(),
+		linkedinProvider(st),
 	}
 	list = append(list, comingSoon()...)
 	by := make(map[string]Provider, len(list))

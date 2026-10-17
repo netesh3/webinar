@@ -107,3 +107,52 @@ func youtubePathID(path string) string {
 	}
 	return ""
 }
+
+var (
+	ErrLinkedInNeedURL = errors.New("paste the Stream URL from LinkedIn — it begins with rtmps://")
+	ErrLinkedInNeedKey = errors.New("paste the Stream key from LinkedIn")
+)
+
+/* LinkedInIngest joins what LinkedIn shows under "Stream URL" and "Stream key"
+ * into the address the encoder pushes to.
+ *
+ * Unlike YouTube there is no default server to fall back on: LinkedIn hands out
+ * a different stream URL per account, so it is required. So is the key: the
+ * URL LinkedIn shows already ends in /live/<id>, so a URL alone cannot be told
+ * apart from one with the key pasted onto it. */
+func LinkedInIngest(streamURL, key string) (string, error) {
+	u := strings.TrimRight(strings.TrimSpace(streamURL), "/")
+	key = strings.Trim(strings.TrimSpace(key), "/")
+	if u == "" {
+		return "", ErrLinkedInNeedURL
+	}
+	if !strings.HasPrefix(u, "rtmp://") && !strings.HasPrefix(u, "rtmps://") {
+		return "", ErrLinkedInNeedURL
+	}
+	parsed, err := url.Parse(u)
+	if err != nil || parsed.Host == "" || strings.ContainsAny(u, " \t\n") {
+		return "", ErrLinkedInNeedURL
+	}
+	if key == "" || strings.ContainsAny(key, " \t\n") {
+		return "", ErrLinkedInNeedKey
+	}
+	return u + "/" + key, nil
+}
+
+/* Hint is what the Settings card shows for a saved ingest without echoing the
+ * key: the server, and the last four characters of the key. */
+func Hint(ingest string) string {
+	parsed, err := url.Parse(ingest)
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	path := strings.Trim(parsed.Path, "/")
+	tail := path
+	if i := strings.LastIndexByte(path, '/'); i >= 0 {
+		tail = path[i+1:]
+	}
+	if r := []rune(tail); len(r) > 4 {
+		tail = string(r[len(r)-4:])
+	}
+	return parsed.Hostname() + " · key ending " + tail
+}

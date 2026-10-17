@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { MaterialIcon } from "../icons";
 import { Menu, Modal, Spinner } from "../controls";
 import { Button, ButtonLink } from "../ui";
@@ -74,11 +74,16 @@ export function IntegrationCard({
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<IntegrationAction | null>(null);
   const [confirm, setConfirm] = useState<IntegrationAction | null>(null);
+  const [keyForm, setKeyForm] = useState<IntegrationAction | null>(null);
   const actions = card.actions ?? [];
   const primary = actions.find((a) => !a.menu);
   const menu = actions.filter((a) => a.menu);
 
   async function run(action: IntegrationAction) {
+    if (action.kind === "stream_key") {
+      setKeyForm(action);
+      return;
+    }
     if (action.kind === "info" || action.kind === "signup") {
       setDialog(action);
       return;
@@ -181,7 +186,10 @@ export function IntegrationCard({
               kind: "action" as const,
               label: action.label,
               danger: action.kind === "delete",
-              onSelect: () => void run(action),
+              onSelect: () => {
+                if (action.confirm) setConfirm(action);
+                else void run(action);
+              },
             }))}
             trigger={
               <span className="grid size-8 place-items-center rounded-lg border border-line-2 bg-surface text-ink-2">
@@ -195,7 +203,7 @@ export function IntegrationCard({
       <Modal
         open={confirm !== null}
         onClose={() => setConfirm(null)}
-        title={`Disconnect ${card.name}?`}
+        title={confirm?.label && confirm.label !== "Disconnect" ? `${confirm.label} ${card.name}?` : `Disconnect ${card.name}?`}
         description={confirm?.confirm}
         footer={
           <div className="flex w-full items-center justify-end gap-2">
@@ -212,13 +220,25 @@ export function IntegrationCard({
                 if (action) void run(action);
               }}
             >
-              Disconnect
+              {confirm?.label || "Disconnect"}
             </Button>
           </div>
         }
       >
         <p className="text-[13px] leading-relaxed text-ink-2">{confirm?.confirm}</p>
       </Modal>
+
+      {keyForm && (
+        <StreamKeyDialog
+          card={card}
+          action={keyForm}
+          onClose={() => setKeyForm(null)}
+          onSaved={async () => {
+            setKeyForm(null);
+            await onChange();
+          }}
+        />
+      )}
 
       <Modal
         open={dialog !== null}
@@ -256,6 +276,119 @@ export function IntegrationCard({
         )}
       </Modal>
     </article>
+  );
+}
+
+/* A Stream URL and key, saved once (LinkedIn Live). The key is a password field
+ * and is never shown again: the card names the server and the key's last four
+ * characters instead. */
+function StreamKeyDialog({
+  card,
+  action,
+  onClose,
+  onSaved,
+}: {
+  card: IntegrationCard;
+  action: IntegrationAction;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [streamUrl, setStreamUrl] = useState("");
+  const [streamKey, setStreamKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const replacing = card.status === "connected";
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (!action.href) return;
+    setBusy(true);
+    setError(null);
+    setFields({});
+    try {
+      await api.saveStreamKey(action.href, { streamUrl: streamUrl.trim(), streamKey: streamKey.trim() });
+      await onSaved();
+    } catch (err) {
+      if (err instanceof ApiError && err.fields) setFields(err.fields);
+      else setError(err instanceof ApiError ? err.message : "Could not save that. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const input =
+    "h-10 w-full rounded-lg border bg-surface px-3 text-[13px] outline-none focus:ring-2 focus:ring-brand/40";
+
+  return (
+    <Modal
+      open
+      onClose={() => !busy && onClose()}
+      size="lg"
+      title={replacing ? `Change your ${card.name} key` : `Set up ${card.name}`}
+      description="Paste the two values LinkedIn shows for a custom stream. Every webinar you take live then streams there too."
+      footer={
+        <div className="flex w-full items-center justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" form={`stream-key-${card.id}`} disabled={busy || !streamUrl.trim() || !streamKey.trim()}>
+            {busy ? <Spinner className="size-3.5" /> : null}
+            Save
+          </Button>
+        </div>
+      }
+    >
+      {action.steps && action.steps.length > 0 && (
+        <ol className="grid gap-3 sm:grid-cols-3">
+          {action.steps.map((step, i) => (
+            <li key={step.title} className="rounded-lg bg-surface-2 px-3 py-2.5">
+              <span className="grid size-[22px] place-items-center rounded-full bg-brand text-[11.5px] font-semibold text-white">
+                {i + 1}
+              </span>
+              <b className="mt-2 block text-[13px]">{step.title}</b>
+              <p className="mt-1 text-[12px] leading-snug text-ink-2">{step.body}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+      <form id={`stream-key-${card.id}`} onSubmit={save} className="mt-4 grid gap-3">
+        <label className="grid gap-1">
+          <span className="text-[12.5px] font-medium text-ink">Stream URL</span>
+          <input
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            spellCheck={false}
+            value={streamUrl}
+            onChange={(e) => setStreamUrl(e.target.value)}
+            placeholder="rtmps://…"
+            aria-invalid={Boolean(fields.streamUrl)}
+            className={`${input} font-mono ${fields.streamUrl ? "border-live" : "border-line"}`}
+          />
+          {fields.streamUrl && <small className="text-[12px] text-live">{fields.streamUrl}</small>}
+        </label>
+        <label className="grid gap-1">
+          <span className="text-[12.5px] font-medium text-ink">Stream key</span>
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={streamKey}
+            onChange={(e) => setStreamKey(e.target.value)}
+            placeholder={replacing ? "Paste the new key to replace the saved one" : "Paste the stream key"}
+            aria-invalid={Boolean(fields.streamKey)}
+            className={`${input} font-mono ${fields.streamKey ? "border-live" : "border-line"}`}
+          />
+          {fields.streamKey && <small className="text-[12px] text-live">{fields.streamKey}</small>}
+        </label>
+        <p className="text-[12px] leading-relaxed text-ink-3">
+          Keep the key private — anyone with it can stream to your LinkedIn. We store it securely and never show it again.
+          You can pause LinkedIn in any room.
+        </p>
+        {error && <small className="text-[12px] text-live">{error}</small>}
+      </form>
+    </Modal>
   );
 }
 

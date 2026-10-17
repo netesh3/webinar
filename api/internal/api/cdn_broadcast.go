@@ -34,8 +34,8 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	if sfu == nil {
 		return
 	}
-	origin, extra := s.mixDestinations(ctx, wb)
-	if origin == "" && extra == "" {
+	origin, extras := s.mixDestinations(ctx, wb)
+	if origin == "" && len(extras) == 0 {
 		return
 	}
 
@@ -67,7 +67,7 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	 * NIC as the SFU. 1080p × a few hundred viewers does not fit a CX33. */
 	preset := livekit.EncodingOptionsPreset_H264_720P_30
 
-	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL, preset, origin, extraSlice(extra))
+	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL, preset, origin, extras)
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", err)
 		broadcastMu.Lock()
@@ -167,16 +167,16 @@ func (s *Server) startEgressRecording(
 	storageKey string,
 	s3Opts lk.EgressS3Options,
 ) (info *livekit.EgressInfo, carriesMix bool, err error) {
-	origin, extra := s.mixDestinations(ctx, wb)
+	origin, extras := s.mixDestinations(ctx, wb)
 
 	running, listErr := s.broadcastEgressIDs(ctx, wb.ID, sfu)
 	if listErr != nil || len(running) == 0 {
 		/* No mix to fold into, but a destination is already on file — the host
 		 * set up YouTube before pressing Record. Carry it from the start rather
 		 * than leaving it for a second compositor that will be refused. */
-		if origin != "" || extra != "" {
+		if origin != "" || len(extras) > 0 {
 			info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
-				livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extraSlice(extra))
+				livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extras)
 			if err != nil {
 				return nil, false, err
 			}
@@ -212,7 +212,7 @@ func (s *Server) startEgressRecording(
 	}
 
 	info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
-		livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extraSlice(extra))
+		livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extras)
 	if err != nil {
 		// The room now has no mix and no recording. Releasing the slot is what
 		// lets the sweeper notice and put the mix back.
@@ -282,8 +282,8 @@ func (s *Server) sweepBroadcasts(ctx context.Context) {
 		if err != nil || wb.Kind == types.KindSimulive {
 			continue
 		}
-		origin, extra := s.mixDestinations(ctx, wb)
-		if origin == "" && extra == "" {
+		origin, extras := s.mixDestinations(ctx, wb)
+		if origin == "" && len(extras) == 0 {
 			continue
 		}
 		sfu, err := s.sfuFor(ctx, wb)
@@ -327,29 +327,42 @@ func (s *Server) stopBroadcastIfActive(ctx context.Context, slug string, sfu Roo
 
 // mixDestinations is the RTMP URLs this room's compositor should push: the
 // attendee origin (when this host is on CDN broadcast) and the host's own
-// destination (YouTube, …). Either may be empty. Both empty means do not start
-// a compositor.
-func (s *Server) mixDestinations(ctx context.Context, wb types.Webinar) (origin, extra string) {
+// destinations — YouTube or another pasted key, and LinkedIn Live when it is
+// saved in Settings and not paused in this room. Either may be empty. Both
+// empty means do not start a compositor at all.
+func (s *Server) mixDestinations(ctx context.Context, wb types.Webinar) (origin string, extras []string) {
 	if can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID); err == nil && can {
 		origin = s.cfg.BroadcastRTMPURL(wb.ID)
 	}
 	extra, on, err := s.store.WebinarStreamIngest(ctx, wb.ID)
 	if err != nil {
 		s.log.Warn("stream dest: could not load ingest", "slug", wb.ID, "error", err)
-		return origin, ""
+	} else if on && extra != "" {
+		// A saved-but-stopped destination is not one to push to.
+		extras = append(extras, extra)
 	}
-	// A saved-but-stopped destination is not one to push to.
-	if !on {
-		return origin, ""
+	if li := s.linkedInIngestFor(ctx, wb); li != "" && li != extra {
+		extras = append(extras, li)
 	}
-	return origin, extra
+	return origin, extras
 }
 
-func extraSlice(u string) []string {
-	if u == "" {
-		return nil
+/* linkedInIngestFor is the LinkedIn URL this webinar should push right now:
+ * the host's saved destination, unless the host paused it in this room. Empty
+ * on any error — a missing LinkedIn push is better than a failed encoder. */
+func (s *Server) linkedInIngestFor(ctx context.Context, wb types.Webinar) string {
+	if wb.Kind == types.KindSimulive {
+		return ""
 	}
-	return []string{u}
+	ingest, _, err := s.store.LinkedInDestination(ctx, wb.Host.ID)
+	if err != nil || ingest == "" {
+		return ""
+	}
+	paused, err := s.store.WebinarLinkedInPaused(ctx, wb.ID)
+	if err != nil || paused {
+		return ""
+	}
+	return ingest
 }
 
 /* syncStreamDest adds or replaces the host's RTMP destination on a running mix.
