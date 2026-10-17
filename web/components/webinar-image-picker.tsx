@@ -1,6 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { CoverGallery, useMediaLibrary } from "@/engage";
+import type { CRMMediaFile } from "@/lib/api-types";
 import { Spinner } from "./controls";
 import { ImageIcon, TrashIcon } from "./icons";
 import { Badge, Button } from "./ui";
@@ -26,6 +28,7 @@ import {
 export function WebinarImagePicker({
   previewUrl,
   onChange,
+  onPickMedia,
   onRemove,
 }: {
   /** What to show right now: the persisted image, a local preview of a pending
@@ -35,12 +38,18 @@ export function WebinarImagePicker({
    *  send — not on pick itself, so the parent never holds a file that still
    *  needs work done to it. */
   onChange: (prepared: PreparedWebinarImage, previewUrl: string) => void;
+  /** An image chosen from the media library; copied into the cover on save. Without
+   *  a library (no CRM for this account) the box uploads directly, as before. */
+  onPickMedia?: (file: CRMMediaFile, previewUrl: string) => void;
   onRemove: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const library = useMediaLibrary() && onPickMedia !== undefined;
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const closeGallery = useCallback(() => setGalleryOpen(false), []);
 
   async function handleFile(file: File | undefined | null) {
     if (!file) return;
@@ -61,7 +70,8 @@ export function WebinarImagePicker({
   }
 
   function openPicker() {
-    inputRef.current?.click();
+    if (library) setGalleryOpen(true);
+    else inputRef.current?.click();
   }
 
   return (
@@ -121,7 +131,9 @@ export function WebinarImagePicker({
               {busy ? "Processing…" : "Drag & drop an image here"}
             </span>
             {!busy && (
-              <span className="text-[12px] text-ink-3">or click to upload</span>
+              <span className="text-[12px] text-ink-3">
+                {library ? "or click to choose from your media" : "or click to upload"}
+              </span>
             )}
           </>
         )}
@@ -146,6 +158,16 @@ export function WebinarImagePicker({
       </p>
       {error && (
         <p className="mt-1.5 text-[11.5px] font-medium text-live">{error}</p>
+      )}
+      {library && onPickMedia && (
+        <CoverGallery
+          open={galleryOpen}
+          onClose={closeGallery}
+          onSelect={(file) => {
+            setError(null);
+            onPickMedia(file, file.viewUrl || file.url);
+          }}
+        />
       )}
 
       {previewUrl && (

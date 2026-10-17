@@ -21,6 +21,10 @@ type MediaFile struct {
 	Bytes      int64
 	// Token is the unguessable path segment of its public link.
 	Token string
+	// ThumbKey, Width and Height are set for images (migration 0113); zero otherwise.
+	ThumbKey string
+	Width    int
+	Height   int
 }
 
 const mediaFileColumns = `f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token`
@@ -34,10 +38,12 @@ func scanMediaFile(row scanner) (MediaFile, error) {
 // CreateMediaFile records a file already written to the media store.
 func (s *Store) CreateMediaFile(ctx context.Context, m MediaFile) (MediaFile, error) {
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO crm_media_files (id, host_id, storage_key, mime, filename, bytes, public_token)
-		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
+		INSERT INTO crm_media_files (id, host_id, storage_key, mime, filename, bytes, public_token,
+		                             thumb_key, width, height)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id::text`,
-		m.ID, m.HostID, m.StorageKey, m.Mime, m.Filename, m.Bytes, m.Token).Scan(&m.ID)
+		m.ID, m.HostID, m.StorageKey, m.Mime, m.Filename, m.Bytes, m.Token,
+		m.ThumbKey, m.Width, m.Height).Scan(&m.ID)
 	return m, err
 }
 

@@ -12,7 +12,7 @@ import {
   timeZoneNames,
   zonedToInstant,
 } from "@/lib/format";
-import type { Webinar } from "@/lib/api-types";
+import type { CRMMediaFile, Webinar } from "@/lib/api-types";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
 import { BasicsSection } from "./basics";
 import { FormGroup, FormSection } from "./chrome";
@@ -38,6 +38,7 @@ export function WebinarTab({
   webinar,
   imagePreview,
   onImage,
+  onImageFromMedia,
   onImageRemove,
   survey,
   polls,
@@ -50,6 +51,7 @@ export function WebinarTab({
   webinar: Webinar | null;
   imagePreview: string | null;
   onImage: (prepared: PreparedWebinarImage, preview: string) => void;
+  onImageFromMedia?: (file: CRMMediaFile, preview: string) => void;
   onImageRemove: () => void;
   /** The feedback survey builder, owned by the form so it can save it. */
   survey: ReactNode;
@@ -84,6 +86,7 @@ export function WebinarTab({
           fields={fields}
           imagePreview={imagePreview}
           onImage={onImage}
+          onImageFromMedia={onImageFromMedia}
           onImageRemove={onImageRemove}
         />
         <WhenSection

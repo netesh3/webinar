@@ -487,14 +487,9 @@ function CardsEditor({
           <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-3">
             <HeaderFileButton
               format="IMAGE"
+              formats={["IMAGE", "VIDEO"]}
               aspect={value.cardAspect}
-              label={c.file?.kind === "image" ? "Replace image" : "Upload image"}
-              disabled={disabled}
-              onUploaded={(file) => update(i, { file })}
-            />
-            <HeaderFileButton
-              format="VIDEO"
-              label={c.file?.kind === "video" ? "Replace video" : "Video"}
+              label={c.file ? "Replace media" : "Choose media"}
               disabled={disabled}
               onUploaded={(file) => update(i, { file })}
             />
@@ -865,7 +860,7 @@ export function BroadcastExtras({
                   <HeaderFileButton
                     format={format}
                     aspect={format === "IMAGE" ? aspect : undefined}
-                    label={own ? "Replace" : "Upload"}
+                    label={own ? "Replace" : "Choose"}
                     onUploaded={(f) =>
                       onChange({
                         ...value,

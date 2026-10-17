@@ -470,7 +470,56 @@ func (s *Server) handleUploadWebinarImage(w http.ResponseWriter, r *http.Request
 		httpx.Error(w, http.StatusBadRequest, "empty", "That upload was empty.")
 		return
 	}
+	s.setWebinarCover(w, r, slug, body)
+}
 
+// maxLibraryCoverBytes caps a cover copied from the media library: its images are
+// already converted for WhatsApp (JPEG or PNG under 5 MB), not compressed to 1MB.
+const maxLibraryCoverBytes = 5 << 20
+
+/* handleWebinarImageFromMedia is POST /api/host/webinars/{slug}/image/from-media: the
+ * cover becomes a copy of one of the host's media library images. A copy, so deleting
+ * the library file later leaves the cover alone; the copy is a cover like any other
+ * and does not count against the library's space. Same path as an upload from here on:
+ * the same checks, the same key and ?v= link, the old cover deleted. */
+func (s *Server) handleWebinarImageFromMedia(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	user := userFromContext(r.Context())
+	if !user.HasFeature(types.FeatureWhatsAppCRM) {
+		httpx.Error(w, http.StatusForbidden, "feature_off",
+			"The media library isn't switched on for this account. Upload the image instead.")
+		return
+	}
+	var req types.WebinarImageFromMediaRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	rc, _, err := s.engage.OpenMediaForHost(r.Context(), user.ID, strings.TrimSpace(req.MediaID))
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "media_not_found", "That file is not in your media library.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "webinar image from media: open", err)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(rc, maxLibraryCoverBytes+1))
+	rc.Close()
+	if err != nil {
+		s.fail(w, r, "webinar image from media: read", err)
+		return
+	}
+	if len(body) == 0 || len(body) > maxLibraryCoverBytes {
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_image", "That file can't be a cover image.")
+		return
+	}
+	s.setWebinarCover(w, r, slug, body)
+}
+
+/* setWebinarCover checks an image, stores it as the webinar's cover, points the row at
+ * it and deletes the one it replaced, then answers with the webinar. */
+func (s *Server) setWebinarCover(w http.ResponseWriter, r *http.Request, slug string, body []byte) {
 	// Sniffed rather than trusted from Content-Type: this is stored and served
 	// back to every visitor of a public page, so a mislabelled upload is refused
 	// here rather than becoming something a browser decides to treat as markup.

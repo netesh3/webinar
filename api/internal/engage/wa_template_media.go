@@ -96,15 +96,6 @@ func (s *Module) fileURL(m crmstore.MediaFile) string {
 	return s.publicBase() + "/api/wa/files/" + m.Token
 }
 
-// fileJSONSized is fileJSON with what the upload did to an image.
-func (s *Module) fileJSONSized(m *crmstore.MediaFile, w, h int, original int64) *types.CRMMediaFile {
-	out := s.fileJSON(m)
-	if out != nil {
-		out.Width, out.Height, out.OriginalBytes = w, h, original
-	}
-	return out
-}
-
 func (s *Module) fileJSON(m *crmstore.MediaFile) *types.CRMMediaFile {
 	if m == nil {
 		return nil
@@ -171,6 +162,24 @@ func (s *Module) handleUploadCRMMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Meta's limit for the kind first — it is the one the coach has to export for —
+	// then the library's space. A declared size that does not fit is refused before
+	// anything is written, and the stream is cut off where it would pass either.
+	if r.ContentLength > kind.limit {
+		tooLarge(w, kind)
+		return
+	}
+	space, err := s.store.MediaSpace(r.Context(), user.ID, s.mediaQuota())
+	if err != nil {
+		s.fail(w, r, "crm media: space", err)
+		return
+	}
+	if r.ContentLength > space.Remaining() {
+		refuseQuota(w, space, r.ContentLength)
+		return
+	}
+	readLimit := min(kind.limit, space.Remaining())
+
 	token, err := mediaToken()
 	if err != nil {
 		s.fail(w, r, "crm media: token", err)
@@ -178,7 +187,7 @@ func (s *Module) handleUploadCRMMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	id := uuid.NewString()
 	key := "wa/" + user.ID + "/files/" + id
-	body := io.LimitReader(io.MultiReader(bytes.NewReader(head), r.Body), kind.limit+1)
+	body := io.LimitReader(io.MultiReader(bytes.NewReader(head), r.Body), readLimit+1)
 	size, err := s.blobs.Append(r.Context(), key, body)
 	if err != nil {
 		_ = s.blobs.Delete(context.Background(), key)
@@ -187,11 +196,12 @@ func (s *Module) handleUploadCRMMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	if size > kind.limit {
 		_ = s.blobs.Delete(context.Background(), key)
-		msg := "WhatsApp takes " + kind.kind + "s up to " + formatMB(kind.limit) + "."
-		if kind.kind == "video" {
-			msg = "Video must be MP4 (H.264 video, AAC audio) under 16 MB. Export it again at a lower resolution or shorter."
-		}
-		httpx.Error(w, http.StatusRequestEntityTooLarge, "media_too_large", msg)
+		tooLarge(w, kind)
+		return
+	}
+	if size > space.Remaining() {
+		_ = s.blobs.Delete(context.Background(), key)
+		refuseQuota(w, space, size)
 		return
 	}
 	if err := s.blobs.Finalize(r.Context(), key); err != nil {
@@ -199,18 +209,33 @@ func (s *Module) handleUploadCRMMedia(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "crm media: finalize", err)
 		return
 	}
-	file, err := s.store.CreateMediaFile(r.Context(), crmstore.MediaFile{
+	file, err := s.store.CreateMediaFileWithinQuota(r.Context(), crmstore.MediaFile{
 		ID: id, HostID: user.ID, StorageKey: key, Mime: mime, Filename: filename, Bytes: size, Token: token,
-	})
+	}, s.mediaQuota())
 	if err != nil {
 		_ = s.blobs.Delete(context.Background(), key)
+		var full *crmstore.QuotaError
+		if errors.As(err, &full) {
+			// Another upload took the space while this one was being written.
+			refuseQuota(w, full.MediaSpace, full.File)
+			return
+		}
 		s.fail(w, r, "crm media: record", err)
 		return
 	}
-	httpx.JSON(w, http.StatusCreated, s.fileJSON(&file))
+	httpx.JSON(w, http.StatusCreated, s.libraryJSON(r.Context(), crmstore.LibraryFile{MediaFile: file, CreatedAt: time.Now()}, nil))
 }
 
 func formatMB(n int64) string { return fmt.Sprintf("%d MB", n>>20) }
+
+// tooLarge refuses a file over Meta's limit for its kind.
+func tooLarge(w http.ResponseWriter, kind mediaKind) {
+	msg := "WhatsApp takes " + kind.kind + "s up to " + formatMB(kind.limit) + "."
+	if kind.kind == "video" {
+		msg = "Video must be MP4 (H.264 video, AAC audio) under 16 MB. Export it again at a lower resolution or shorter."
+	}
+	httpx.Error(w, http.StatusRequestEntityTooLarge, "media_too_large", msg)
+}
 
 /* uploadImage is POST /crm/media for an image: read whole (it is bounded), made right
  * for WhatsApp by processImage, then stored. The response says what came out — size
@@ -240,6 +265,16 @@ func (s *Module) uploadImage(w http.ResponseWriter, r *http.Request, user store.
 		httpx.Error(w, http.StatusUnprocessableEntity, "media_image", err.Error())
 		return
 	}
+	// Counted as stored — after conversion — so a big camera original that shrinks fits.
+	space, err := s.store.MediaSpace(r.Context(), user.ID, s.mediaQuota())
+	if err != nil {
+		s.fail(w, r, "crm media: space", err)
+		return
+	}
+	if int64(len(img.Data)) > space.Remaining() {
+		refuseQuota(w, space, int64(len(img.Data)))
+		return
+	}
 	filename := imageFilename(r.URL.Query().Get("filename"), img.Mime)
 	token, err := mediaToken()
 	if err != nil {
@@ -257,15 +292,28 @@ func (s *Module) uploadImage(w http.ResponseWriter, r *http.Request, user store.
 		s.fail(w, r, "crm media: store image", err)
 		return
 	}
-	file, err := s.store.CreateMediaFile(r.Context(), crmstore.MediaFile{
+	// The gallery's thumbnail. Best effort: without it the grid shows the full image.
+	thumbKey, _, _ := s.storeThumb(r.Context(), key, img.Data)
+	file, err := s.store.CreateMediaFileWithinQuota(r.Context(), crmstore.MediaFile{
 		ID: id, HostID: user.ID, StorageKey: key, Mime: img.Mime, Filename: filename, Bytes: size, Token: token,
-	})
+		ThumbKey: thumbKey, Width: img.Width, Height: img.Height,
+	}, s.mediaQuota())
 	if err != nil {
 		_ = s.blobs.Delete(context.Background(), key)
+		if thumbKey != "" {
+			_ = s.blobs.Delete(context.Background(), thumbKey)
+		}
+		var full *crmstore.QuotaError
+		if errors.As(err, &full) {
+			refuseQuota(w, full.MediaSpace, full.File)
+			return
+		}
 		s.fail(w, r, "crm media: record", err)
 		return
 	}
-	httpx.JSON(w, http.StatusCreated, s.fileJSONSized(&file, img.Width, img.Height, int64(len(data))))
+	out := s.libraryJSON(r.Context(), crmstore.LibraryFile{MediaFile: file, CreatedAt: time.Now()}, nil)
+	out.OriginalBytes = int64(len(data))
+	httpx.JSON(w, http.StatusCreated, out)
 }
 
 // imageFilename keeps the coach's name for the file with the extension it now has.

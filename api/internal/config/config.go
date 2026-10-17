@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/netkumar/webcast/api/types"
 )
 
 // Config is read once at startup. Everything has a development default except
@@ -106,6 +108,10 @@ type Config struct {
 	// storage. After that the sweeper deletes the row and the bytes. 0 disables
 	// automatic deletion. The UI uses the same number so hosts know to download.
 	RecordingsRetentionDays int
+	// MediaQuotaDefaultMB is how much a host may keep in the WhatsApp media library
+	// (template headers and cards), counted after images are converted. An admin can
+	// set a different limit per account. 0 or less is the built-in default (10).
+	MediaQuotaDefaultMB int
 
 	// RecordingsS3* configure the "s3" backend. Required only when
 	// RecordingsBackend is "s3" — left empty and unused for "disk", so a
@@ -455,6 +461,7 @@ func Load() (Config, error) {
 		RecordingsDir:           env("RECORDINGS_DIR", "./.data/recordings"),
 		MaxRecordingMB:          envInt("MAX_RECORDING_MB", 4096),
 		RecordingsRetentionDays: envInt("RECORDINGS_RETENTION_DAYS", 30),
+		MediaQuotaDefaultMB:     envInt("MEDIA_QUOTA_DEFAULT_MB", types.DefaultMediaQuotaMB),
 		RecordingsS3Bucket:      env("RECORDINGS_S3_BUCKET", ""),
 		RecordingsS3Endpoint:    env("RECORDINGS_S3_ENDPOINT", ""),
 		// us-east-1 as the fallback rather than empty: an S3-compatible
@@ -562,6 +569,14 @@ func (c Config) TrialEnabled() bool {
  * three is not a degraded mode, it is a Connect button that cannot finish — so
  * the frontend is told the feature is off, and validate() has already refused to
  * boot on a partial set. */
+// MediaQuotaDefaultBytes is the media library limit for an account without its own.
+func (c Config) MediaQuotaDefaultBytes() int64 {
+	if c.MediaQuotaDefaultMB > 0 {
+		return int64(c.MediaQuotaDefaultMB) << 20
+	}
+	return int64(types.DefaultMediaQuotaMB) << 20
+}
+
 func (c Config) WhatsAppConnectEnabled() bool {
 	return strings.TrimSpace(c.MetaAppID) != "" &&
 		strings.TrimSpace(c.MetaAppSecret) != "" &&
