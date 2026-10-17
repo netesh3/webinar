@@ -4792,6 +4792,68 @@ export interface AdminStats {
   recent: AdminWebinarGlance[];
 }
 /**
+ *  AdminWhatsAppUsage is GET /api/admin/stats/whatsapp: which parts of the WhatsApp
+ *  * CRM each host actually used over the last Days days.
+ *  *
+ *  * It answers one pricing question: do hosts on WhatsApp use the CRM, or only the
+ *  * automatic reminders? Hosts are those with WhatsApp connected or on a plan that
+ *  * includes it (business, enterprise), newest activity first, capped at 200.
+ */
+export interface AdminWhatsAppUsage {
+  days: number /* int */;
+  since: string;
+  hosts: AdminWhatsAppHostUsage[];
+  summary: AdminWhatsAppUsageSummary;
+}
+/**
+ * AdminWhatsAppHostUsage is one host's WhatsApp activity in the window.
+ */
+export interface AdminWhatsAppHostUsage {
+  userId: string;
+  name: string;
+  email: string;
+  plan?: Plan;
+  connected: boolean;
+  /**
+   * Reminders is automatic webinar messages sent: confirmation, reminders, replay.
+   */
+  reminders: number /* int */;
+  broadcasts: number /* int */;
+  drips: number /* int */;
+  /**
+   * BotSessions is chatbot conversations started; BotMessages what the bot sent.
+   */
+  botSessions: number /* int */;
+  botMessages: number /* int */;
+  /**
+   * ManualReplies is what the host typed in the inbox; InboundReplies is what
+   * contacts wrote, which arrives whether or not the host uses the inbox.
+   */
+  manualReplies: number /* int */;
+  inboundReplies: number /* int */;
+  /**
+   * LastActiveAt is the newest WhatsApp message in the window, empty with none.
+   */
+  lastActiveAt?: string;
+}
+/**
+ *  AdminWhatsAppUsageSummary counts hosts, not messages.
+ *  *
+ *  * UsedCRM is any broadcast, drip, chatbot session or manual inbox reply.
+ *  * RemindersOnly sent reminders and nothing else; Inactive sent nothing at all.
+ *  * The per-feature counts are hosts that used that feature at least once.
+ */
+export interface AdminWhatsAppUsageSummary {
+  hosts: number /* int */;
+  remindersOnly: number /* int */;
+  usedCrm: number /* int */;
+  inactive: number /* int */;
+  broadcasts: number /* int */;
+  drips: number /* int */;
+  chatbot: number /* int */;
+  inbox: number /* int */;
+}
+/**
  *  AdminDayCount is one bar of the dashboard's start-day chart.
  *  *
  *  * Day is YYYY-MM-DD in UTC. Webinars carry their own zone for the wall clock

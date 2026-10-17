@@ -65,6 +65,9 @@ type Engage interface {
 	 * ok is false when they cannot be read; the caller keeps reading WebinarOptions.
 	 * Old rows with no settings row are already folded in by ResolveSlots. */
 	MessageSlots(ctx context.Context, webinarID string) ([]types.MessageSlot, bool, error)
+
+	// WhatsAppUsage is the admin dashboard's per-host WhatsApp activity for the last days days.
+	WhatsAppUsage(ctx context.Context, days int) (types.AdminWhatsAppUsage, error)
 }
 
 // NoEngage is a deployment without the CRM: no routes, no messages, no columns.
@@ -87,6 +90,9 @@ func (NoEngage) Tick(context.Context)     {}
 func (NoEngage) Maintain(context.Context) {}
 func (NoEngage) MessageSlots(context.Context, string) ([]types.MessageSlot, bool, error) {
 	return nil, false, nil
+}
+func (NoEngage) WhatsAppUsage(_ context.Context, days int) (types.AdminWhatsAppUsage, error) {
+	return types.AdminWhatsAppUsage{Days: days, Hosts: []types.AdminWhatsAppHostUsage{}}, nil
 }
 
 /* UseEngage plugs the CRM in. Called once, by main (and the test harness), before Routes.
