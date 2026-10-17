@@ -35,6 +35,16 @@ type TemplateInput struct {
 	// HeaderFormat is IMAGE for a template whose header is the webinar's cover.
 	HeaderFormat string
 	Buttons      []types.CRMTemplateButton
+	// Layout is the offer, cards and auth options, for the templates that have them.
+	Layout TemplateLayout
+}
+
+/* TemplateLayout is crm_templates.layout (migration 0112): the parts of a template
+ * beyond header, body, footer and buttons. */
+type TemplateLayout struct {
+	Offer *types.CRMTemplateOffer `json:"offer,omitempty"`
+	Cards []types.CRMTemplateCard `json:"cards,omitempty"`
+	Auth  *types.CRMTemplateAuth  `json:"auth,omitempty"`
 }
 
 /* ReplaceTemplates makes the cache equal to what Meta just returned.
@@ -73,8 +83,8 @@ func (s *Store) ReplaceTemplates(ctx context.Context, hostID string, in []Templa
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO crm_templates
 				(host_id, name, language, status, category, header, body, footer,
-				 variables, unsupported, synced_at, header_format, buttons)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+				 variables, unsupported, synced_at, header_format, buttons, layout)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 			ON CONFLICT (host_id, name, language) DO UPDATE SET
 				status = excluded.status,
 				category = excluded.category,
@@ -85,11 +95,12 @@ func (s *Store) ReplaceTemplates(ctx context.Context, hostID string, in []Templa
 				unsupported = excluded.unsupported,
 				header_format = excluded.header_format,
 				buttons = excluded.buttons,
+				layout = excluded.layout,
 				synced_at = excluded.synced_at,
 				updated_at = now()`,
 			hostID, name, lang, strings.TrimSpace(t.Status), strings.TrimSpace(t.Category),
 			t.Header, t.Body, t.Footer, t.Variables, t.Unsupported, batch,
-			strings.ToUpper(strings.TrimSpace(t.HeaderFormat)), buttonsOrEmpty(t.Buttons),
+			strings.ToUpper(strings.TrimSpace(t.HeaderFormat)), buttonsOrEmpty(t.Buttons), t.Layout,
 		); err != nil {
 			return err
 		}
@@ -114,20 +125,27 @@ func buttonsOrEmpty(b []types.CRMTemplateButton) []types.CRMTemplateButton {
  * which lives beside the cache rather than in it. Use with crmTemplateFrom. */
 const crmTemplateColumns = `
 	t.name, t.language, t.status, t.category, t.header, t.body, t.footer, t.variables,
-	t.unsupported, t.synced_at, t.header_format, t.buttons,
-	f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token`
+	t.unsupported, t.synced_at, t.header_format, t.buttons, t.layout,
+	f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token,
+	coalesce(d.coupon_code, ''), coalesce(d.card_aspect, ''), coalesce(d.card_file_ids::text[], '{}')`
 
 const crmTemplateFrom = `
 	  FROM crm_templates t
 	  LEFT JOIN crm_template_media tm
 	    ON tm.host_id = t.host_id AND tm.name = t.name AND tm.language = t.language
-	  LEFT JOIN crm_media_files f ON f.id = tm.file_id`
+	  LEFT JOIN crm_media_files f ON f.id = tm.file_id
+	  LEFT JOIN crm_template_defaults d
+	    ON d.host_id = t.host_id AND d.name = t.name AND d.language = t.language`
 
 /* TemplateWithFile is a template with the stored file behind its default header, which
  * the send path needs (the wire type only carries a public link). */
 type TemplateWithFile struct {
 	types.CRMTemplate
 	File *MediaFile
+	// CardFiles is a carousel's card pictures, in card order, as stored here.
+	CardFiles []MediaFile
+	// cardFileIDs is read with the row; loadCardFiles turns it into CardFiles.
+	cardFileIDs []string
 }
 
 func scanTemplate(row scanner) (TemplateWithFile, time.Time, error) {
@@ -136,17 +154,21 @@ func scanTemplate(row scanner) (TemplateWithFile, time.Time, error) {
 		synced                             time.Time
 		fileID, hostID, key, mime, fn, tok *string
 		bytes                              *int64
+		layout                             TemplateLayout
+		cardIDs                            []string
 	)
 	if err := row.Scan(&t.Name, &t.Language, &t.Status, &t.Category, &t.Header,
 		&t.Body, &t.Footer, &t.Variables, &t.Unsupported, &synced,
-		&t.HeaderFormat, &t.Buttons,
-		&fileID, &hostID, &key, &mime, &fn, &bytes, &tok); err != nil {
+		&t.HeaderFormat, &t.Buttons, &layout,
+		&fileID, &hostID, &key, &mime, &fn, &bytes, &tok,
+		&t.CouponCode, &t.CardAspect, &cardIDs); err != nil {
 		return TemplateWithFile{}, time.Time{}, err
 	}
+	t.Offer, t.Cards, t.Auth = layout.Offer, layout.Cards, layout.Auth
 	if t.Buttons == nil {
 		t.Buttons = []types.CRMTemplateButton{}
 	}
-	out := TemplateWithFile{CRMTemplate: t}
+	out := TemplateWithFile{CRMTemplate: t, cardFileIDs: cardIDs}
 	if fileID != nil {
 		out.File = &MediaFile{ID: *fileID, HostID: *hostID, StorageKey: *key, Mime: *mime,
 			Filename: *fn, Bytes: *bytes, Token: *tok}
@@ -159,6 +181,70 @@ func scanTemplate(row scanner) (TemplateWithFile, time.Time, error) {
 	 * in, and a media header has its file. */
 	out.Sendable = t.Status == "APPROVED" && t.Unsupported == "" && !out.NeedsHeaderFile
 	return out, synced, nil
+}
+
+/* loadCardFiles reads a carousel's card pictures for each template that has cards, in
+ * one query, and settles NeedsCardFiles and Sendable: a carousel goes out with exactly
+ * as many cards as Meta approved, so a missing picture makes it unsendable. */
+func (s *Store) loadCardFiles(ctx context.Context, hostID string, ts []TemplateWithFile) error {
+	ids := []string{}
+	for _, t := range ts {
+		ids = append(ids, t.cardFileIDs...)
+	}
+	files := map[string]MediaFile{}
+	if len(ids) > 0 {
+		rows, err := s.pool.Query(ctx, `
+			SELECT `+mediaFileColumns+` FROM crm_media_files f
+			 WHERE f.host_id = $1::uuid AND f.id = ANY($2::uuid[])`, hostID, ids)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			m, err := scanMediaFile(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			files[m.ID] = m
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+	for i := range ts {
+		t := &ts[i]
+		if len(t.Cards) == 0 {
+			continue
+		}
+		t.CardFiles = nil
+		for _, id := range t.cardFileIDs {
+			if m, ok := files[id]; ok {
+				t.CardFiles = append(t.CardFiles, m)
+			}
+		}
+		t.NeedsCardFiles = len(t.CardFiles) != len(t.Cards)
+		if t.NeedsCardFiles {
+			t.Sendable = false
+		}
+	}
+	return nil
+}
+
+/* SetTemplateDefaults stores what the host chose for one of their templates beyond its
+ * header file: the coupon a copy-code button sends, and a carousel's card pictures. */
+func (s *Store) SetTemplateDefaults(ctx context.Context, hostID, name, language, coupon, aspect string, cardFileIDs []string) error {
+	if cardFileIDs == nil {
+		cardFileIDs = []string{}
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO crm_template_defaults (host_id, name, language, coupon_code, card_aspect, card_file_ids)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid[])
+		ON CONFLICT (host_id, name, language) DO UPDATE
+		   SET coupon_code = EXCLUDED.coupon_code, card_aspect = EXCLUDED.card_aspect,
+		       card_file_ids = EXCLUDED.card_file_ids, updated_at = now()`,
+		hostID, strings.TrimSpace(name), strings.TrimSpace(language), strings.TrimSpace(coupon), aspect, cardFileIDs)
+	return err
 }
 
 /* Templates lists a host's cached templates alphabetically, with the last time
@@ -204,7 +290,14 @@ func (s *Store) TemplatesWithFiles(ctx context.Context, hostID string) ([]Templa
 		}
 		out = append(out, t)
 	}
-	return out, newest, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, time.Time{}, err
+	}
+	rows.Close()
+	if err := s.loadCardFiles(ctx, hostID, out); err != nil {
+		return nil, time.Time{}, err
+	}
+	return out, newest, nil
 }
 
 // Template reads one by its full identity, which is what a send has to check
@@ -223,5 +316,21 @@ func (s *Store) TemplateWithFile(ctx context.Context, hostID, name, language str
 	if noRows(err) {
 		return TemplateWithFile{}, store.ErrNotFound
 	}
-	return t, err
+	if err != nil {
+		return TemplateWithFile{}, err
+	}
+	one := []TemplateWithFile{t}
+	if err := s.loadCardFiles(ctx, hostID, one); err != nil {
+		return TemplateWithFile{}, err
+	}
+	return one[0], nil
+}
+
+// HasTemplateNamed reports whether the host has a template of that name in any language.
+func (s *Store) HasTemplateNamed(ctx context.Context, hostID, name string) bool {
+	var ok bool
+	_ = s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM crm_templates WHERE host_id = $1::uuid AND name = $2)`,
+		hostID, strings.TrimSpace(name)).Scan(&ok)
+	return ok
 }

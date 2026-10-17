@@ -93,17 +93,51 @@ type Template struct {
 	// comes back in the webhook) and links (a fixed URL, or one ending in a variable that
 	// is filled with the person's own link).
 	Buttons []TemplateButton
+	// Offer is set on a limited-time offer template (MARKETING only).
+	Offer *TemplateOffer
+	// Cards is a carousel template's cards, in order. Empty for every other kind.
+	Cards []TemplateCard
+	// Auth is set on an AUTHENTICATION template: Meta writes its body itself.
+	Auth *TemplateAuth
+}
+
+// TemplateOffer is the limited-time offer part of a template.
+type TemplateOffer struct {
+	Text          string
+	HasExpiration bool
+}
+
+// TemplateCard is one card of a carousel template.
+type TemplateCard struct {
+	// HeaderFormat is IMAGE or VIDEO.
+	HeaderFormat string
+	Body         string
+	Variables    int
+	Buttons      []TemplateButton
+}
+
+// TemplateAuth is what an authentication template adds around Meta's fixed text.
+type TemplateAuth struct {
+	SecurityRecommendation bool
+	ExpirationMinutes      int
 }
 
 // TemplateButton is one button on a template.
 type TemplateButton struct {
-	// Type is QUICK_REPLY, URL or PHONE_NUMBER (upper-case, as Meta sends it).
+	// Type is QUICK_REPLY, URL, PHONE_NUMBER, COPY_CODE or OTP (upper-case, as Meta
+	// sends it).
 	Type string
 	Text string
 	// URL is the approved link, with `{{1}}` left in for a dynamic one.
 	URL string
 	// Dynamic is a URL button whose last part is a variable.
 	Dynamic bool
+	// PhoneNumber is the number a PHONE_NUMBER button calls.
+	PhoneNumber string
+	// Example is a COPY_CODE button's sample code, as approved.
+	Example string
+	// OTPType is an OTP button's kind: COPY_CODE, ONE_TAP or ZERO_TAP.
+	OTPType string
 }
 
 // placeholder matches Meta's {{1}} / {{name}} variable syntax.
@@ -202,22 +236,57 @@ func (g *graphLanguage) UnmarshalJSON(data []byte) error {
 }
 
 type graphTemplate struct {
-	Name       string        `json:"name"`
-	Language   graphLanguage `json:"language"`
-	Status     string        `json:"status"`
-	Category   string        `json:"category"`
-	Components []struct {
-		Type   string `json:"type"`
-		Format string `json:"format"`
-		Text   string `json:"text"`
-		// Buttons carry their own text and, for URL buttons, their own variable —
-		// which is why a template with buttons is not blindly sendable.
-		Buttons []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-			URL  string `json:"url"`
-		} `json:"buttons"`
-	} `json:"components"`
+	Name       string           `json:"name"`
+	Language   graphLanguage    `json:"language"`
+	Status     string           `json:"status"`
+	Category   string           `json:"category"`
+	Components []graphComponent `json:"components"`
+}
+
+type graphComponent struct {
+	Type   string `json:"type"`
+	Format string `json:"format"`
+	Text   string `json:"text"`
+	// Buttons carry their own text and, for URL buttons, their own variable —
+	// which is why a template with buttons is not blindly sendable.
+	Buttons []graphButton `json:"buttons"`
+	// Authentication templates: the options around Meta's fixed text.
+	AddSecurityRecommendation bool `json:"add_security_recommendation"`
+	CodeExpirationMinutes     int  `json:"code_expiration_minutes"`
+	// LIMITED_TIME_OFFER.
+	LimitedTimeOffer *struct {
+		Text          string `json:"text"`
+		HasExpiration bool   `json:"has_expiration"`
+	} `json:"limited_time_offer"`
+	// CAROUSEL.
+	Cards []struct {
+		Components []graphComponent `json:"components"`
+	} `json:"cards"`
+}
+
+type graphButton struct {
+	Type        string          `json:"type"`
+	Text        string          `json:"text"`
+	URL         string          `json:"url"`
+	PhoneNumber string          `json:"phone_number"`
+	OTPType     string          `json:"otp_type"`
+	Example     json.RawMessage `json:"example"`
+}
+
+// exampleText is a button's example, which Graph returns as a string or a list.
+func (b graphButton) exampleText() string {
+	if len(b.Example) == 0 {
+		return ""
+	}
+	var one string
+	if json.Unmarshal(b.Example, &one) == nil {
+		return one
+	}
+	var many []string
+	if json.Unmarshal(b.Example, &many) == nil && len(many) > 0 {
+		return many[0]
+	}
+	return ""
 }
 
 /* readTemplate flattens Meta's component list into the shape a picker needs.
@@ -240,8 +309,17 @@ func readTemplate(t graphTemplate) Template {
 		case "BODY":
 			out.Body = comp.Text
 			out.Variables = len(placeholder.FindAllString(comp.Text, -1))
+			if out.Category == "AUTHENTICATION" {
+				out.Auth = &TemplateAuth{SecurityRecommendation: comp.AddSecurityRecommendation}
+			}
 		case "FOOTER":
 			out.Footer = comp.Text
+			if comp.CodeExpirationMinutes > 0 {
+				if out.Auth == nil {
+					out.Auth = &TemplateAuth{}
+				}
+				out.Auth.ExpirationMinutes = comp.CodeExpirationMinutes
+			}
 		case "HEADER":
 			format := strings.ToUpper(strings.TrimSpace(comp.Format))
 			out.HeaderFormat = format
@@ -261,36 +339,90 @@ func readTemplate(t graphTemplate) Template {
 				reasons = append(reasons, "its header has a variable in it")
 			}
 		case "BUTTONS":
-			dynamic := 0
-			for _, b := range comp.Buttons {
-				bt := TemplateButton{
-					Type: strings.ToUpper(strings.TrimSpace(b.Type)),
-					Text: b.Text,
-					URL:  b.URL,
-				}
-				if bt.Type == "URL" && placeholder.MatchString(b.URL) {
-					bt.Dynamic = true
-					dynamic++
-					// Only a variable at the very end can be filled: it is the part of
-					// the link Meta lets a send supply.
-					if !strings.HasSuffix(strings.TrimSpace(b.URL), "}}") {
-						reasons = append(reasons, "one of its link buttons has a variable in the middle")
+			buttons, why := readButtons(comp.Buttons)
+			out.Buttons = append(out.Buttons, buttons...)
+			reasons = append(reasons, why...)
+		case "LIMITED_TIME_OFFER":
+			if comp.LimitedTimeOffer != nil {
+				out.Offer = &TemplateOffer{Text: comp.LimitedTimeOffer.Text, HasExpiration: comp.LimitedTimeOffer.HasExpiration}
+			}
+		case "CAROUSEL":
+			for _, card := range comp.Cards {
+				var c TemplateCard
+				for _, cc := range card.Components {
+					switch strings.ToUpper(cc.Type) {
+					case "HEADER":
+						c.HeaderFormat = strings.ToUpper(strings.TrimSpace(cc.Format))
+					case "BODY":
+						c.Body = cc.Text
+						c.Variables = len(placeholder.FindAllString(cc.Text, -1))
+					case "BUTTONS":
+						buttons, why := readButtons(cc.Buttons)
+						c.Buttons = buttons
+						reasons = append(reasons, why...)
 					}
 				}
-				if bt.Type != "QUICK_REPLY" && bt.Type != "URL" && bt.Type != "PHONE_NUMBER" {
-					reasons = append(reasons, "it has a "+strings.ToLower(bt.Type)+" button")
+				if c.HeaderFormat != "IMAGE" && c.HeaderFormat != "VIDEO" {
+					reasons = append(reasons, "a carousel card's header is "+strings.ToLower(c.HeaderFormat))
 				}
-				out.Buttons = append(out.Buttons, bt)
+				if c.Variables > 0 {
+					reasons = append(reasons, "a carousel card's text has a variable in it")
+				}
+				out.Cards = append(out.Cards, c)
 			}
 		}
 	}
-	if out.Body == "" {
+	if out.Category == "AUTHENTICATION" && out.Auth == nil {
+		out.Auth = &TemplateAuth{}
+	}
+	if out.Body == "" && out.Auth == nil {
 		reasons = append(reasons, "it has no body text")
 	}
 	if len(reasons) > 0 {
 		out.Unsupported = "Can't be sent from here yet because " + strings.Join(reasons, ", ") + "."
 	}
 	return out
+}
+
+/* readButtons reads one BUTTONS component, and says why any of them cannot be sent
+ * from here. Quick replies, links, phone numbers, copy-code coupons and copy-code OTPs
+ * can; one-tap and zero-tap OTPs need an Android app this product does not have, and
+ * flows, catalogs and anything newer need a builder it does not have either. */
+func readButtons(in []graphButton) ([]TemplateButton, []string) {
+	var out []TemplateButton
+	var why []string
+	for _, b := range in {
+		bt := TemplateButton{
+			Type:        strings.ToUpper(strings.TrimSpace(b.Type)),
+			Text:        b.Text,
+			URL:         b.URL,
+			PhoneNumber: b.PhoneNumber,
+			OTPType:     strings.ToUpper(strings.TrimSpace(b.OTPType)),
+		}
+		if bt.Type == "COPY_CODE" {
+			bt.Example = b.exampleText()
+		}
+		if bt.Type == "URL" && placeholder.MatchString(b.URL) {
+			bt.Dynamic = true
+			// Only a variable at the very end can be filled: it is the part of the link
+			// Meta lets a send supply.
+			if !strings.HasSuffix(strings.TrimSpace(b.URL), "}}") {
+				why = append(why, "one of its link buttons has a variable in the middle")
+			}
+		}
+		switch bt.Type {
+		case "QUICK_REPLY", "URL", "PHONE_NUMBER", "COPY_CODE":
+		case "OTP":
+			if bt.OTPType != "" && bt.OTPType != "COPY_CODE" {
+				why = append(why, "its code button is "+strings.ToLower(strings.ReplaceAll(bt.OTPType, "_", "-"))+
+					", which needs an Android app")
+			}
+		default:
+			why = append(why, "it has a "+strings.ToLower(bt.Type)+" button")
+		}
+		out = append(out, bt)
+	}
+	return out, why
 }
 
 /* Render fills a template body in with the values a send supplied.
@@ -332,6 +464,44 @@ type OutgoingTemplate struct {
 	// URLButtons fills dynamic link buttons: the button's index on the template, and
 	// the text that replaces its `{{1}}`.
 	URLButtons []URLButtonParam
+	// Coupon fills a COPY_CODE button: its index and the code the person copies.
+	Coupon *CouponParam
+	// OfferExpiresAt fills a limited-time offer that has an expiry. Zero for none.
+	OfferExpiresAt time.Time
+	// Cards fills a carousel template's cards, one per approved card and in order.
+	Cards []OutgoingCard
+}
+
+// CouponParam is the code a COPY_CODE button copies.
+type CouponParam struct {
+	Index int
+	Code  string
+}
+
+// OutgoingCard is one carousel card's values for one send.
+type OutgoingCard struct {
+	HeaderMedia *HeaderMedia
+	BodyParams  []string
+	URLButtons  []URLButtonParam
+	// QuickReplies is the payload for each quick-reply button on the card, by index.
+	QuickReplies []QuickReplyParam
+}
+
+// QuickReplyParam is the payload a quick-reply button returns when tapped.
+type QuickReplyParam struct {
+	Index   int
+	Payload string
+}
+
+/* AuthCodeTemplate is a send of an AUTHENTICATION template carrying one code. Meta
+ * wants the code twice: as the body's one variable, and as the copy-code button's
+ * parameter (sub_type url, index 0) — see copy-code-button-authentication-templates. */
+func AuthCodeTemplate(to, name, language, code string) OutgoingTemplate {
+	return OutgoingTemplate{
+		To: to, Name: name, Language: language,
+		BodyParams: []string{code},
+		URLButtons: []URLButtonParam{{Index: 0, Suffix: code}},
+	}
 }
 
 // HeaderMedia is the file in a template's media header for one send.
@@ -388,28 +558,89 @@ func (c *Client) SendTemplate(ctx context.Context, token, phoneNumberID string, 
 }
 
 /* templateComponents is the parameters a send supplies: the header file, the body's
- * values, and the dynamic part of each link button — in the shape Graph expects. */
+ * values, a limited-time offer's expiry, the dynamic part of each link button, a
+ * coupon, and a carousel's cards — in the shape Graph expects. */
 func templateComponents(msg OutgoingTemplate) []map[string]any {
 	var out []map[string]any
-	if h := msg.HeaderMedia; h != nil && strings.TrimSpace(h.Link) != "" {
-		kind := strings.ToLower(strings.TrimSpace(h.Type))
-		media := map[string]string{"link": strings.TrimSpace(h.Link)}
-		if kind == "document" && strings.TrimSpace(h.Filename) != "" {
-			media["filename"] = strings.TrimSpace(h.Filename)
-		}
+	if h := headerParam(msg.HeaderMedia); h != nil {
+		out = append(out, h)
+	}
+	if b := bodyParam(msg.BodyParams); b != nil {
+		out = append(out, b)
+	}
+	if !msg.OfferExpiresAt.IsZero() {
 		out = append(out, map[string]any{
-			"type":       "header",
-			"parameters": []map[string]any{{"type": kind, kind: media}},
+			"type": "limited_time_offer",
+			"parameters": []map[string]any{{
+				"type":               "limited_time_offer",
+				"limited_time_offer": map[string]any{"expiration_time_ms": msg.OfferExpiresAt.UnixMilli()},
+			}},
 		})
 	}
-	if len(msg.BodyParams) > 0 {
-		params := make([]map[string]any, 0, len(msg.BodyParams))
-		for _, v := range msg.BodyParams {
-			params = append(params, map[string]any{"type": "text", "text": v})
-		}
-		out = append(out, map[string]any{"type": "body", "parameters": params})
+	out = append(out, urlButtonParams(msg.URLButtons)...)
+	if c := msg.Coupon; c != nil && strings.TrimSpace(c.Code) != "" {
+		out = append(out, map[string]any{
+			"type":     "button",
+			"sub_type": "copy_code",
+			"index":    c.Index,
+			"parameters": []map[string]any{{
+				"type": "coupon_code", "coupon_code": strings.TrimSpace(c.Code),
+			}},
+		})
 	}
-	for _, b := range msg.URLButtons {
+	if len(msg.Cards) > 0 {
+		cards := make([]map[string]any, 0, len(msg.Cards))
+		for i, card := range msg.Cards {
+			comps := []map[string]any{}
+			if h := headerParam(card.HeaderMedia); h != nil {
+				comps = append(comps, h)
+			}
+			if b := bodyParam(card.BodyParams); b != nil {
+				comps = append(comps, b)
+			}
+			for _, q := range card.QuickReplies {
+				comps = append(comps, map[string]any{
+					"type": "button", "sub_type": "quick_reply", "index": q.Index,
+					"parameters": []map[string]any{{"type": "payload", "payload": q.Payload}},
+				})
+			}
+			comps = append(comps, urlButtonParams(card.URLButtons)...)
+			cards = append(cards, map[string]any{"card_index": i, "components": comps})
+		}
+		out = append(out, map[string]any{"type": "carousel", "cards": cards})
+	}
+	return out
+}
+
+func headerParam(h *HeaderMedia) map[string]any {
+	if h == nil || strings.TrimSpace(h.Link) == "" {
+		return nil
+	}
+	kind := strings.ToLower(strings.TrimSpace(h.Type))
+	media := map[string]string{"link": strings.TrimSpace(h.Link)}
+	if kind == "document" && strings.TrimSpace(h.Filename) != "" {
+		media["filename"] = strings.TrimSpace(h.Filename)
+	}
+	return map[string]any{
+		"type":       "header",
+		"parameters": []map[string]any{{"type": kind, kind: media}},
+	}
+}
+
+func bodyParam(values []string) map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	params := make([]map[string]any, 0, len(values))
+	for _, v := range values {
+		params = append(params, map[string]any{"type": "text", "text": v})
+	}
+	return map[string]any{"type": "body", "parameters": params}
+}
+
+func urlButtonParams(buttons []URLButtonParam) []map[string]any {
+	out := make([]map[string]any, 0, len(buttons))
+	for _, b := range buttons {
 		out = append(out, map[string]any{
 			"type":     "button",
 			"sub_type": "url",
@@ -610,20 +841,33 @@ func recipient(s string) string {
 }
 
 /* NewTemplate is one message template to submit to Meta for approval: the starter set
- * a host can create from here instead of writing each one in WhatsApp Manager. */
+ * a host can create from here instead of writing each one in WhatsApp Manager, and the
+ * host's own wording.
+ *
+ * Four shapes, all from developers.facebook.com/docs/whatsapp/business-management-api/
+ * message-templates: a standard template (header, body, footer, buttons); a limited-time
+ * offer (Offer set, MARKETING, no footer); a media card carousel (Cards set,
+ * MARKETING, body above the cards); and an authentication template (Auth set,
+ * AUTHENTICATION, no body text — Meta writes it). */
 type NewTemplate struct {
 	Name     string
 	Language string
-	// Category is UTILITY or MARKETING.
+	// Category is UTILITY, MARKETING or AUTHENTICATION.
 	Category string
 	// Body with `{{1}}`-style variables, and one example value for each — Meta requires
-	// them to review the template.
+	// them to review the template. Ignored for an authentication template.
 	Body     string
 	Examples []string
 	Footer   string
 	Buttons  []NewButton
 	// Header is optional: fixed text, or a media header with a sample file's handle.
 	Header *NewHeader
+	// Offer makes this a limited-time offer template.
+	Offer *NewOffer
+	// Cards makes this a carousel: 2 to 10 cards of the same shape.
+	Cards []NewCard
+	// Auth makes this an authentication template.
+	Auth *NewAuth
 }
 
 // NewHeader is a template header to submit.
@@ -638,12 +882,136 @@ type NewHeader struct {
 
 // NewButton is one button on a template to submit.
 type NewButton struct {
-	// QUICK_REPLY or URL.
+	// QUICK_REPLY, URL, PHONE_NUMBER or COPY_CODE.
 	Type string
 	Text string
-	// For URL: the fixed address ending in `{{1}}`, and an example of the full link.
+	// For URL: the address (ending in `{{1}}` for a dynamic one), and an example of the
+	// full link. For COPY_CODE: an example code, up to 15 characters.
 	URL     string
 	Example string
+	// For PHONE_NUMBER: the number to call, with its country code.
+	PhoneNumber string
+}
+
+// NewOffer is the limited-time offer part of a template.
+type NewOffer struct {
+	// Text is up to 16 characters, shown with the countdown.
+	Text          string
+	HasExpiration bool
+}
+
+// NewCard is one carousel card to submit.
+type NewCard struct {
+	// HeaderFormat is IMAGE or VIDEO, with a sample file's handle.
+	HeaderFormat string
+	Handle       string
+	Body         string
+	Buttons      []NewButton
+}
+
+// NewAuth is what an authentication template adds to Meta's fixed text.
+type NewAuth struct {
+	// SecurityRecommendation adds "For your security, do not share this code."
+	SecurityRecommendation bool
+	// ExpirationMinutes adds an expiry footer, 1 to 90. Zero for none.
+	ExpirationMinutes int
+	// ButtonText labels the copy-code button; Meta's own default when empty.
+	ButtonText string
+}
+
+/* components is the template's components in the shape message_templates takes. */
+func (t NewTemplate) components() ([]map[string]any, error) {
+	if a := t.Auth; a != nil {
+		body := map[string]any{"type": "BODY"}
+		if a.SecurityRecommendation {
+			body["add_security_recommendation"] = true
+		}
+		comps := []map[string]any{body}
+		if a.ExpirationMinutes > 0 {
+			comps = append(comps, map[string]any{"type": "FOOTER", "code_expiration_minutes": a.ExpirationMinutes})
+		}
+		btn := map[string]any{"type": "OTP", "otp_type": "COPY_CODE"}
+		if strings.TrimSpace(a.ButtonText) != "" {
+			btn["text"] = strings.TrimSpace(a.ButtonText)
+		}
+		return append(comps, map[string]any{"type": "BUTTONS", "buttons": []map[string]any{btn}}), nil
+	}
+	comps := []map[string]any{}
+	if h := t.Header; h != nil {
+		switch format := strings.ToUpper(strings.TrimSpace(h.Format)); format {
+		case "TEXT":
+			comps = append(comps, map[string]any{"type": "HEADER", "format": "TEXT", "text": h.Text})
+		case "IMAGE", "VIDEO", "DOCUMENT":
+			if h.Handle == "" {
+				return nil, errors.New("a media header needs a sample file")
+			}
+			comps = append(comps, map[string]any{
+				"type": "HEADER", "format": format,
+				"example": map[string]any{"header_handle": []string{h.Handle}},
+			})
+		}
+	}
+	if o := t.Offer; o != nil {
+		comps = append(comps, map[string]any{
+			"type":               "LIMITED_TIME_OFFER",
+			"limited_time_offer": map[string]any{"text": o.Text, "has_expiration": o.HasExpiration},
+		})
+	}
+	body := map[string]any{"type": "BODY", "text": t.Body}
+	if len(t.Examples) > 0 {
+		body["example"] = map[string]any{"body_text": [][]string{t.Examples}}
+	}
+	comps = append(comps, body)
+	if t.Footer != "" && t.Offer == nil && len(t.Cards) == 0 {
+		comps = append(comps, map[string]any{"type": "FOOTER", "text": t.Footer})
+	}
+	if len(t.Buttons) > 0 {
+		comps = append(comps, map[string]any{"type": "BUTTONS", "buttons": buttonsJSON(t.Buttons)})
+	}
+	if len(t.Cards) > 0 {
+		cards := make([]map[string]any, 0, len(t.Cards))
+		for _, c := range t.Cards {
+			if c.Handle == "" {
+				return nil, errors.New("every carousel card needs its image or video")
+			}
+			cc := []map[string]any{
+				{"type": "HEADER", "format": strings.ToUpper(c.HeaderFormat),
+					"example": map[string]any{"header_handle": []string{c.Handle}}},
+				{"type": "BODY", "text": c.Body},
+			}
+			if len(c.Buttons) > 0 {
+				cc = append(cc, map[string]any{"type": "BUTTONS", "buttons": buttonsJSON(c.Buttons)})
+			}
+			cards = append(cards, map[string]any{"components": cc})
+		}
+		comps = append(comps, map[string]any{"type": "CAROUSEL", "cards": cards})
+	}
+	return comps, nil
+}
+
+func buttonsJSON(in []NewButton) []map[string]any {
+	btns := make([]map[string]any, 0, len(in))
+	for _, b := range in {
+		m := map[string]any{"type": b.Type}
+		switch b.Type {
+		case "URL":
+			m["text"] = b.Text
+			m["url"] = b.URL
+			if b.Example != "" {
+				m["example"] = []string{b.Example}
+			}
+		case "PHONE_NUMBER":
+			m["text"] = b.Text
+			m["phone_number"] = b.PhoneNumber
+		case "COPY_CODE":
+			// No text: WhatsApp labels it "Copy offer code" itself.
+			m["example"] = b.Example
+		default:
+			m["text"] = b.Text
+		}
+		btns = append(btns, m)
+	}
+	return btns
 }
 
 /* CreateTemplate submits a template for approval on the host's WhatsApp Business
@@ -657,42 +1025,9 @@ func (c *Client) CreateTemplate(ctx context.Context, token, wabaID string, t New
 	if id == "" {
 		return "", errors.New("no WhatsApp Business Account id to create the template on")
 	}
-	body := map[string]any{"type": "BODY", "text": t.Body}
-	if len(t.Examples) > 0 {
-		body["example"] = map[string]any{"body_text": [][]string{t.Examples}}
-	}
-	comps := []map[string]any{}
-	if h := t.Header; h != nil {
-		switch format := strings.ToUpper(strings.TrimSpace(h.Format)); format {
-		case "TEXT":
-			comps = append(comps, map[string]any{"type": "HEADER", "format": "TEXT", "text": h.Text})
-		case "IMAGE", "VIDEO", "DOCUMENT":
-			if h.Handle == "" {
-				return "", errors.New("a media header needs a sample file")
-			}
-			comps = append(comps, map[string]any{
-				"type": "HEADER", "format": format,
-				"example": map[string]any{"header_handle": []string{h.Handle}},
-			})
-		}
-	}
-	comps = append(comps, body)
-	if t.Footer != "" {
-		comps = append(comps, map[string]any{"type": "FOOTER", "text": t.Footer})
-	}
-	if len(t.Buttons) > 0 {
-		btns := make([]map[string]any, 0, len(t.Buttons))
-		for _, b := range t.Buttons {
-			m := map[string]any{"type": b.Type, "text": b.Text}
-			if b.Type == "URL" {
-				m["url"] = b.URL
-				if b.Example != "" {
-					m["example"] = []string{b.Example}
-				}
-			}
-			btns = append(btns, m)
-		}
-		comps = append(comps, map[string]any{"type": "BUTTONS", "buttons": btns})
+	comps, err := t.components()
+	if err != nil {
+		return "", err
 	}
 	var res struct {
 		ID     string `json:"id"`

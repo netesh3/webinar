@@ -3752,6 +3752,55 @@ export interface CRMTemplate {
    * * Buttons, in order, as Meta approved them.
    */
   buttons: CRMTemplateButton[];
+  /**
+   * * A limited-time offer template's offer line.
+   */
+  offer?: CRMTemplateOffer;
+  /**
+   * * A carousel template's cards, in order.
+   */
+  cards?: CRMTemplateCard[];
+  /**
+   * * An authentication template's options. Meta writes its body.
+   */
+  auth?: CRMTemplateAuth;
+  /**
+   * * The code a copy-code button sends unless a broadcast gives another.
+   */
+  couponCode?: string;
+  /**
+   * * square or wide: the shape a carousel's card images were made in.
+   */
+  cardAspect?: string;
+  /**
+   * * A carousel without a file for every card: not sendable until it has them.
+   */
+  needsCardFiles?: boolean;
+}
+/**
+ *  CRMTemplateOffer is a limited-time offer's line above the body. With an expiry, each
+ *  * send names when the offer ends (a broadcast asks for it).
+ */
+export interface CRMTemplateOffer {
+  text: string;
+  hasExpiration: boolean;
+}
+/**
+ *  CRMTemplateCard is one card of a carousel: an image or video, a short text, up to two
+ *  * buttons. File is the card's picture as stored here, when there is one.
+ */
+export interface CRMTemplateCard {
+  headerFormat: string;
+  body: string;
+  buttons: CRMTemplateButton[];
+  file?: CRMMediaFile;
+}
+/**
+ * CRMTemplateAuth is what an authentication template adds to Meta's fixed text.
+ */
+export interface CRMTemplateAuth {
+  securityRecommendation: boolean;
+  expirationMinutes?: number /* int */;
 }
 /**
  *  CRMMediaFile is a file a host uploaded for a WhatsApp template's header.
@@ -3769,6 +3818,13 @@ export interface CRMMediaFile {
   filename?: string;
   bytes: number /* int64 */;
   url: string;
+  /**
+   * * For an image just uploaded: its size after processing, and the upload's size
+   * 	 *  before. Absent on files read back later.
+   */
+  width?: number /* int */;
+  height?: number /* int */;
+  originalBytes?: number /* int64 */;
 }
 /**
  *  CRMWordingRequest is wording the host typed, submitted to Meta for approval.
@@ -3777,9 +3833,97 @@ export interface CRMMediaFile {
  *  * /crm/media); it becomes the template's default header file once submitted.
  */
 export interface CRMWordingRequest {
+  /**
+   * * Empty for an AUTHENTICATION template, whose text Meta writes.
+   */
   body: string;
+  /**
+   * * UTILITY, MARKETING or AUTHENTICATION.
+   */
   category: string;
   header?: CRMTemplateHeaderInput;
+  /**
+   * * Meta's language code, e.g. en, hi, ta. Empty is en.
+   */
+  language?: string;
+  /**
+   * * To add a translation of one of your own templates: its name. Empty for a new one.
+   */
+  name?: string;
+  /**
+   * * The line under the message, up to 60 characters. Absent keeps the default opt-out
+   * 	 *  line; an empty string removes it.
+   */
+  footer?: string;
+  /**
+   * * Up to 10, quick replies kept together.
+   */
+  buttons?: CRMButtonInput[];
+  /**
+   * * Makes it an authentication (one-time code) template.
+   */
+  auth?: CRMAuthInput;
+  /**
+   * * Makes it a limited-time offer (MARKETING).
+   */
+  offer?: CRMOfferInput;
+  /**
+   * * Makes it a carousel (MARKETING): 2–10 cards of the same shape.
+   */
+  cards?: CRMCardInput[];
+  /**
+   * * square or wide: the shape the card images were uploaded in.
+   */
+  cardAspect?: string;
+}
+/**
+ *  CRMButtonInput is one button of a template being written here.
+ *  *
+ *  * QUICK_REPLY and URL take Text; URL takes URL too (ending in {{1}} for the person's own
+ *  * link); PHONE_NUMBER takes Text and PhoneNumber; COPY_CODE takes Code, the coupon an
+ *  * example is reviewed with and that is sent by default.
+ */
+export interface CRMButtonInput {
+  type: string;
+  text?: string;
+  url?: string;
+  phoneNumber?: string;
+  code?: string;
+}
+/**
+ * CRMAuthInput is an authentication template's options.
+ */
+export interface CRMAuthInput {
+  securityRecommendation: boolean;
+  /**
+   * * 1–90, or 0 for no expiry line.
+   */
+  expirationMinutes?: number /* int */;
+  buttonText?: string;
+}
+/**
+ * CRMOfferInput is a limited-time offer's line.
+ */
+export interface CRMOfferInput {
+  /**
+   * * Up to 16 characters.
+   */
+  text: string;
+  hasExpiration: boolean;
+}
+/**
+ * CRMCardInput is one carousel card being written here.
+ */
+export interface CRMCardInput {
+  /**
+   * * An image or video from POST /crm/media (images with ?aspect= the carousel's shape).
+   */
+  fileId: string;
+  /**
+   * * Up to 160 characters.
+   */
+  body: string;
+  buttons?: CRMButtonInput[];
 }
 /**
  * CRMTemplateHeaderInput is the header of a template being written here.
@@ -3812,12 +3956,24 @@ export interface CRMTemplateMediaRequest {
  */
 export interface CRMTemplateButton {
   /**
-   * * QUICK_REPLY, URL or PHONE_NUMBER.
+   * * QUICK_REPLY, URL, PHONE_NUMBER, COPY_CODE or OTP.
    */
   type: string;
   text: string;
   url?: string;
   dynamic?: boolean;
+  /**
+   * * The number a PHONE_NUMBER button calls.
+   */
+  phoneNumber?: string;
+  /**
+   * * A COPY_CODE button's example code, as Meta approved it.
+   */
+  example?: string;
+  /**
+   * * An OTP button's kind: COPY_CODE, ONE_TAP or ZERO_TAP.
+   */
+  otpType?: string;
 }
 /**
  * CRMTemplatesResponse is the host's cached template list, alphabetical.
@@ -4160,6 +4316,12 @@ export interface CRMBroadcast {
    * * An image header sent with the webinar cover instead of a file.
    */
   headerUseCover?: boolean;
+  /**
+   * * The broadcast's own coupon, offer end (RFC3339) and card pictures, when it set them.
+   */
+  couponCode?: string;
+  offerExpiresAt?: string;
+  cardFiles?: CRMMediaFile[];
 }
 /**
  *  CRMBroadcastStats is one broadcast's progress.
@@ -4263,6 +4425,20 @@ export interface CRMBroadcastRequest {
    * * For an IMAGE header: send the webinar cover, ignoring any default file.
    */
   headerUseCover?: boolean;
+  /**
+   * * For a template with a copy-code button: the code for this broadcast, instead of the
+   * 	 *  template's own. Up to 15 characters.
+   */
+  couponCode?: string;
+  /**
+   * * For a limited-time offer with an expiry: when it ends, RFC3339. Required then.
+   */
+  offerExpiresAt?: string;
+  /**
+   * * For a carousel: a file per card, in order, for this broadcast only. Empty keeps
+   * 	 *  the template's own.
+   */
+  cardFileIds?: string[];
 }
 /**
  *  CRMAudienceResponse is how many people an audience would reach, before anybody

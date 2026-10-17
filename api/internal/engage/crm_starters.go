@@ -155,37 +155,43 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	body := strings.TrimSpace(req.Body)
-	if body == "" || utf8.RuneCountInString(body) > 1024 {
-		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_body", "Write the message, up to 1024 characters.")
-		return
-	}
-	category := strings.ToUpper(strings.TrimSpace(req.Category))
-	if category == "" {
-		category = "UTILITY"
-	}
-	if category != "UTILITY" && category != "MARKETING" {
-		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_category", "Choose Utility or Marketing.")
-		return
-	}
-	examples, err := bodyExamples(body)
+	plan, err := planWording(req, s.publicBase())
 	if err != nil {
-		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_body", err.Error())
+		var we wordingError
+		if errors.As(err, &we) {
+			httpx.Error(w, http.StatusUnprocessableEntity, we.code, we.msg)
+			return
+		}
+		s.fail(w, r, "crm wording plan", err)
 		return
 	}
-	header, file, ok := s.wordingHeader(w, r, user, req.Header)
-	if !ok {
+	nt := plan.tmpl
+	var file *crmstore.MediaFile
+	if nt.Auth == nil && len(nt.Cards) == 0 {
+		header, f, ok := s.wordingHeader(w, r, user, req.Header)
+		if !ok {
+			return
+		}
+		nt.Header, file = header, f
+	}
+	if len(nt.Cards) > 0 && !s.cardSamples(w, r, user, &nt, plan.cardFileIDs) {
 		return
 	}
-	name, err := customTemplateName()
-	if err != nil {
+
+	name := strings.TrimSpace(req.Name)
+	if name != "" {
+		// A translation of one of the host's own templates: same name, another language.
+		if !strings.HasPrefix(name, "wl_own_") || !s.store.HasTemplateNamed(r.Context(), user.ID, name) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_name",
+				"Translations can be added to templates written here. Choose one of yours.")
+			return
+		}
+	} else if name, err = customTemplateName(); err != nil {
 		s.fail(w, r, "crm wording name", err)
 		return
 	}
-	status, err := s.whatsapp.CreateTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppWABAID, wa.NewTemplate{
-		Name: name, Language: "en", Category: category, Body: body,
-		Examples: examples, Footer: "Reply STOP to opt out", Header: header,
-	})
+	nt.Name = name
+	status, err := s.whatsapp.CreateTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppWABAID, nt)
 	if err != nil {
 		httpx.Error(w, http.StatusUnprocessableEntity, "template_refused", err.Error())
 		return
@@ -195,8 +201,14 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 	}
 	if file != nil {
 		// The file Meta reviewed becomes what is sent until the host picks another.
-		if err := s.store.SetTemplateMedia(r.Context(), user.ID, name, "en", file.ID); err != nil {
+		if err := s.store.SetTemplateMedia(r.Context(), user.ID, name, nt.Language, file.ID); err != nil {
 			s.log.Error("crm wording: remember header file", "host", user.ID, "error", err)
+		}
+	}
+	if plan.coupon != "" || len(plan.cardFileIDs) > 0 {
+		if err := s.store.SetTemplateDefaults(r.Context(), user.ID, name, nt.Language,
+			plan.coupon, plan.cardAspect, plan.cardFileIDs); err != nil {
+			s.log.Error("crm wording: remember defaults", "host", user.ID, "error", err)
 		}
 	}
 	if err := s.syncTemplates(r.Context(), user); err != nil {
@@ -208,7 +220,50 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 		Status   string `json:"status"`
 		Category string `json:"category"`
 		Body     string `json:"body"`
-	}{Name: name, Language: "en", Status: status, Category: category, Body: body})
+	}{Name: name, Language: nt.Language, Status: status, Category: nt.Category, Body: nt.Body})
+}
+
+/* cardSamples uploads each carousel card's picture to Meta as its review sample. Every
+ * card has to be the same kind of media; images were already cut to the carousel's
+ * shape on upload. Writes the refusal itself; false after it has. */
+func (s *Module) cardSamples(w http.ResponseWriter, r *http.Request, user store.User, nt *wa.NewTemplate, ids []string) bool {
+	kind := ""
+	for i, id := range ids {
+		f, err := s.store.MediaFileForHost(r.Context(), user.ID, id)
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "media_not_found", fmt.Sprintf("Upload card %d's picture again.", i+1))
+			return false
+		}
+		if err != nil {
+			s.fail(w, r, "crm wording: card file", err)
+			return false
+		}
+		k := headerMediaTypes[f.Mime].kind
+		if k != "image" && k != "video" {
+			httpx.Error(w, http.StatusUnprocessableEntity, "media_wrong_kind",
+				fmt.Sprintf("Card %d needs an image or a video.", i+1))
+			return false
+		}
+		if kind == "" {
+			kind = k
+		} else if k != kind {
+			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_cards",
+				"Every card needs the same kind of media — all images or all videos.")
+			return false
+		}
+		handle, err := s.headerSample(r.Context(), user, f)
+		if err != nil {
+			if whatsappAPIError(w, err) {
+				return false
+			}
+			httpx.Error(w, http.StatusUnprocessableEntity, "template_refused",
+				fmt.Sprintf("Meta would not take card %d's picture: %s", i+1, err.Error()))
+			return false
+		}
+		nt.Cards[i].HeaderFormat = strings.ToUpper(k)
+		nt.Cards[i].Handle = handle
+	}
+	return true
 }
 
 /* wordingHeader checks the header of wording being written here and, for a media

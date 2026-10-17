@@ -28,11 +28,27 @@ import {
   HeaderPicker,
   NO_HEADER,
   TemplateHeaderFile,
-  WordingPreview,
   headerDraftProblem,
   headerInput,
   type HeaderDraft,
 } from "./header-media";
+import {
+  DEFAULT_OPTIONS,
+  LIMITS,
+  allowsHeader,
+  languageLabel,
+  languagesByName,
+  optionsProblem,
+  optionsRequest,
+  templateKindLabel,
+  type OptionsDraft,
+} from "../template-options";
+import {
+  TemplateOptionsFields,
+  WhatsAppPreview,
+  previewFromDraft,
+  previewFromTemplate,
+} from "./template-options";
 import { friendlyTemplateName, CategoryPill } from "./wa-kit";
 import {
   resolveStarterTemplate,
@@ -80,7 +96,6 @@ const HINTS: Record<WordingKind, string[]> = {
   "Follow up": ["offer", "thank", "missed", "sorry", "follow"],
 };
 
-const MAX_BODY = 1024;
 
 export function filterForSlot(kind: string): WordingKind | null {
   if (kind === SlotConfirmation) return "Confirmation";
@@ -141,6 +156,7 @@ export function WordingDrawer({
   const [starters, setStarters] = useState<CRMStarterTemplate[] | null>(null);
   const [usingKey, setUsingKey] = useState<string | null>(null);
   const list = templates ?? [];
+  const languages = useMemo(() => languagesByName(templates ?? []), [templates]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -393,6 +409,9 @@ export function WordingDrawer({
                     <TemplateRow
                       key={templateKey(template)}
                       template={template}
+                      otherLanguages={(languages.get(template.name) ?? []).filter(
+                        (l) => l !== template.language,
+                      )}
                       target={rowTarget(template)}
                       busy={busy || usingKey !== null}
                       using={usingKey === templateKey(template)}
@@ -438,8 +457,11 @@ function TemplateRow({
   using,
   onUse,
   onChanged,
+  otherLanguages,
 }: {
   template: CRMTemplate;
+  /** The other languages this template's name is in. */
+  otherLanguages: string[];
   target: { slot: MessageSlot; label: string } | null;
   busy: boolean;
   using: boolean;
@@ -448,6 +470,15 @@ function TemplateRow({
   onChanged: () => void;
 }) {
   const status = template.status.toUpperCase();
+  // Anything beyond text is easier to judge as the bubble WhatsApp will show.
+  const rich = Boolean(
+    template.offer ||
+      template.cards?.length ||
+      template.auth ||
+      template.footer ||
+      template.buttons.length ||
+      (template.headerFormat && template.headerFormat !== "TEXT"),
+  );
   const inUse = Boolean(
     target &&
       target.slot.template === template.name &&
@@ -487,12 +518,19 @@ function TemplateRow({
           {badge.label}
         </span>
       </div>
-      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-ink-3">
+      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-ink-3">
         <CategoryPill category={template.category} />
-        {template.language}
+        {languageLabel(template.language)}
+        {otherLanguages.length > 0 && <span>· also {otherLanguages.map(languageLabel).join(", ")}</span>}
+        {templateKindLabel(template) && <span>· {templateKindLabel(template)}</span>}
       </div>
-      {template.body && (
+      {template.body && !rich && (
         <p className="mt-1 text-[12px] leading-snug text-ink-2">{template.body}</p>
+      )}
+      {rich && (
+        <div className="mt-1">
+          <WhatsAppPreview model={previewFromTemplate(template)} />
+        </div>
       )}
       {why && <p className="mt-1 text-[11.5px] text-live">{why}</p>}
       {status === "APPROVED" && <TemplateHeaderFile template={template} onSaved={onChanged} />}
@@ -544,25 +582,36 @@ function WriteOwn({
 }) {
   const { notify } = useToast();
   const [draft, setDraft] = useState("");
-  const [category, setCategory] = useState<"UTILITY" | "MARKETING">("UTILITY");
+  const [options, setOptions] = useState<OptionsDraft>(DEFAULT_OPTIONS);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [header, setHeader] = useState<HeaderDraft>(NO_HEADER);
+  const ownNames = useMemo(() => languagesByName(templates), [templates]);
   const typed = draft.trim();
-  // A starter has no header, so wording with one is always the host's own.
-  const match =
-    header.format === "NONE"
-      ? starters?.find(
-          (item) => item.status === "APPROVED" && !item.error && sameBody(item.body, typed),
-        )
-      : undefined;
+  const isAuth = options.kind === "AUTH";
+  const withHeader = allowsHeader(options.kind);
+  // A starter is plain English text, so wording with anything more is the host's own.
+  const plain =
+    header.format === "NONE" &&
+    options.kind === "STANDARD" &&
+    options.language === "en" &&
+    !options.translationOf &&
+    options.buttons.length === 0 &&
+    options.footer === null;
+  const match = plain
+    ? starters?.find(
+        (item) => item.status === "APPROVED" && !item.error && sameBody(item.body, typed),
+      )
+    : undefined;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!typed || busy) return;
-    const headerProblem = match ? null : headerDraftProblem(header);
-    if (headerProblem) {
-      setNote(headerProblem);
+    if ((!typed && !isAuth) || busy) return;
+    const problem = match
+      ? null
+      : (optionsProblem(options, typed) ?? (withHeader ? headerDraftProblem(header) : null));
+    if (problem) {
+      setNote(problem);
       return;
     }
     setBusy(true);
@@ -596,12 +645,13 @@ function WriteOwn({
         return;
       }
       const saved = await engageApi.createCrmWording({
-        body: typed,
-        category,
-        header: headerInput(header),
+        ...optionsRequest(options, typed),
+        header: withHeader ? headerInput(header) : undefined,
       });
       onCreated();
-      if (saved.status === "APPROVED" && target) {
+      // A rich template is picked from the list once synced, with its buttons and cards.
+      const simple = options.kind === "STANDARD" && options.buttons.length === 0;
+      if (saved.status === "APPROVED" && target && simple) {
         const template: CRMTemplate = {
           name: saved.name,
           language: saved.language || "en",
@@ -616,11 +666,13 @@ function WriteOwn({
         if (ok) {
           setDraft("");
           setHeader(NO_HEADER);
+          setOptions(DEFAULT_OPTIONS);
         }
         return;
       }
       setDraft("");
       setHeader(NO_HEADER);
+      setOptions(DEFAULT_OPTIONS);
       setNote(
         "Submitted to Meta. You can use it on this message once it is approved, usually in a few minutes.",
       );
@@ -640,49 +692,46 @@ function WriteOwn({
         <b className="text-[13px]">Write your own</b>
         <span className="text-[11.5px] text-ink-3">For {filterLabel}</span>
       </div>
-      <label className="block">
-        <span className="mb-1 block text-[12px] text-ink-2">Message</span>
-        <textarea
-          className="field min-h-[52px] w-full resize-y py-2"
-          rows={2}
-          value={draft}
-          maxLength={MAX_BODY}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Hi {{1}}, {{2}} starts {{3}}."
-          aria-label="Your wording"
-          disabled={!connected}
-        />
-      </label>
-      <div className="mt-2">
-        <HeaderPicker value={header} onChange={setHeader} disabled={busy || !connected} />
-      </div>
-      {(header.format !== "NONE" || typed) && (
-        <div className="mt-2">
-          <WordingPreview header={header} body={typed} />
-        </div>
-      )}
-      {!match && (
-        <label className="mt-2 flex items-center gap-2 text-[12px] text-ink-2">
-          Category
-          <select
-            className="field h-8 w-auto"
-            value={category}
-            onChange={(e) =>
-              setCategory(e.target.value === "MARKETING" ? "MARKETING" : "UTILITY")
-            }
-            aria-label="Wording category"
-          >
-            <option value="UTILITY">Utility</option>
-            <option value="MARKETING">Marketing</option>
-          </select>
+      <TemplateOptionsFields
+        value={options}
+        onChange={setOptions}
+        disabled={busy || !connected}
+        ownNames={ownNames}
+      />
+      {!isAuth && (
+        <label className="mt-2 block">
+          <span className="mb-1 block text-[12px] text-ink-2">Message</span>
+          <textarea
+            className="field min-h-[52px] w-full resize-y py-2"
+            rows={2}
+            value={draft}
+            maxLength={options.kind === "OFFER" ? LIMITS.offerBody : LIMITS.body}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Hi {{1}}, {{2}} starts {{3}}."
+            aria-label="Your wording"
+            disabled={!connected}
+          />
         </label>
       )}
+      {withHeader && (
+        <div className="mt-2">
+          <HeaderPicker value={header} onChange={setHeader} disabled={busy || !connected} />
+        </div>
+      )}
+      <div className="mt-2">
+        <WhatsAppPreview model={previewFromDraft(header, typed, options)} />
+      </div>
       {note && <p className="mt-2 text-[12px] text-ink-2">{note}</p>}
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="text-[11.5px] text-ink-3">
           Meta checks it first, usually in minutes.
         </span>
-        <Button type="submit" size="sm" className="h-7 shrink-0 px-2.5 text-[12px]" disabled={busy || !typed || !connected}>
+        <Button
+          type="submit"
+          size="sm"
+          className="h-7 shrink-0 px-2.5 text-[12px]"
+          disabled={busy || (!typed && !isAuth) || !connected}
+        >
           {busy && <Spinner className="size-3.5" />}
           {match ? "Use for this message" : "Submit to Meta"}
         </Button>

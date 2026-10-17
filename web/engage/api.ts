@@ -539,9 +539,9 @@ export const engageApi = {
 
   /** Store a header file (image, video or document). The raw bytes are the body, so a
    *  100 MB document is not base64'd. Checked against Meta's limits by the server. */
-  uploadCrmMedia: (file: File) =>
+  uploadCrmMedia: (file: File, aspect?: "square" | "wide") =>
     request<CRMMediaFile>(
-      `/api/host/crm/media?filename=${encodeURIComponent(file.name)}`,
+      `/api/host/crm/media?filename=${encodeURIComponent(file.name)}${aspect ? `&aspect=${aspect}` : ""}`,
       {
         method: "POST",
         body: file,

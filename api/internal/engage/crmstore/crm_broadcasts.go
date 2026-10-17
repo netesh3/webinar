@@ -46,6 +46,11 @@ type BroadcastInput struct {
 	// crm_broadcast_header by the caller (SetBroadcastHeader) after the row exists.
 	HeaderFileID   string
 	HeaderUseCover bool
+	// Coupon, OfferExpiresAt and CardFileIDs are the broadcast's own copy-code coupon,
+	// limited-time offer end, and carousel pictures, kept beside the header choice.
+	Coupon         string
+	OfferExpiresAt *time.Time
+	CardFileIDs    []string
 }
 
 /* BroadcastRecipient is one person's copy: their contact id and the values their
@@ -548,7 +553,10 @@ func (s *Store) queueRecipients(ctx context.Context, q store.Querier, id string,
 	/* The header choice goes in with the rows, in the same transaction: a broadcast
 	 * sent now is due the moment this commits, and the outbox must not see its rows
 	 * before it can see which file they carry. */
-	if err := setBroadcastHeader(ctx, q, id, in.HeaderFileID, in.HeaderUseCover); err != nil {
+	if err := setBroadcastHeader(ctx, q, id, BroadcastHeaderInput{
+		FileID: in.HeaderFileID, UseCover: in.HeaderUseCover,
+		Coupon: in.Coupon, OfferExpiresAt: in.OfferExpiresAt, CardFileIDs: in.CardFileIDs,
+	}); err != nil {
 		return err
 	}
 	due := in.ScheduledAt

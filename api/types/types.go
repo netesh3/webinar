@@ -1741,6 +1741,40 @@ type CRMTemplate struct {
 	NeedsHeaderFile bool `json:"needsHeaderFile,omitempty"`
 	/** Buttons, in order, as Meta approved them. */
 	Buttons []CRMTemplateButton `json:"buttons"`
+	/** A limited-time offer template's offer line. */
+	Offer *CRMTemplateOffer `json:"offer,omitempty"`
+	/** A carousel template's cards, in order. */
+	Cards []CRMTemplateCard `json:"cards,omitempty"`
+	/** An authentication template's options. Meta writes its body. */
+	Auth *CRMTemplateAuth `json:"auth,omitempty"`
+	/** The code a copy-code button sends unless a broadcast gives another. */
+	CouponCode string `json:"couponCode,omitempty"`
+	/** square or wide: the shape a carousel's card images were made in. */
+	CardAspect string `json:"cardAspect,omitempty"`
+	/** A carousel without a file for every card: not sendable until it has them. */
+	NeedsCardFiles bool `json:"needsCardFiles,omitempty"`
+}
+
+/* CRMTemplateOffer is a limited-time offer's line above the body. With an expiry, each
+ * send names when the offer ends (a broadcast asks for it). */
+type CRMTemplateOffer struct {
+	Text          string `json:"text"`
+	HasExpiration bool   `json:"hasExpiration"`
+}
+
+/* CRMTemplateCard is one card of a carousel: an image or video, a short text, up to two
+ * buttons. File is the card's picture as stored here, when there is one. */
+type CRMTemplateCard struct {
+	HeaderFormat string              `json:"headerFormat"`
+	Body         string              `json:"body"`
+	Buttons      []CRMTemplateButton `json:"buttons"`
+	File         *CRMMediaFile       `json:"file,omitempty"`
+}
+
+// CRMTemplateAuth is what an authentication template adds to Meta's fixed text.
+type CRMTemplateAuth struct {
+	SecurityRecommendation bool `json:"securityRecommendation"`
+	ExpirationMinutes      int  `json:"expirationMinutes,omitempty"`
 }
 
 /* CRMMediaFile is a file a host uploaded for a WhatsApp template's header.
@@ -1755,6 +1789,11 @@ type CRMMediaFile struct {
 	Filename string `json:"filename,omitempty"`
 	Bytes    int64  `json:"bytes"`
 	URL      string `json:"url"`
+	/** For an image just uploaded: its size after processing, and the upload's size
+	 *  before. Absent on files read back later. */
+	Width         int   `json:"width,omitempty"`
+	Height        int   `json:"height,omitempty"`
+	OriginalBytes int64 `json:"originalBytes,omitempty"`
 }
 
 /* CRMWordingRequest is wording the host typed, submitted to Meta for approval.
@@ -1762,9 +1801,65 @@ type CRMMediaFile struct {
  * Header is optional. A media header names a file uploaded first (POST
  * /crm/media); it becomes the template's default header file once submitted. */
 type CRMWordingRequest struct {
-	Body     string                  `json:"body"`
+	/** Empty for an AUTHENTICATION template, whose text Meta writes. */
+	Body string `json:"body"`
+	/** UTILITY, MARKETING or AUTHENTICATION. */
 	Category string                  `json:"category"`
 	Header   *CRMTemplateHeaderInput `json:"header,omitempty"`
+	/** Meta's language code, e.g. en, hi, ta. Empty is en. */
+	Language string `json:"language,omitempty"`
+	/** To add a translation of one of your own templates: its name. Empty for a new one. */
+	Name string `json:"name,omitempty"`
+	/** The line under the message, up to 60 characters. Absent keeps the default opt-out
+	 *  line; an empty string removes it. */
+	Footer *string `json:"footer,omitempty"`
+	/** Up to 10, quick replies kept together. */
+	Buttons []CRMButtonInput `json:"buttons,omitempty"`
+	/** Makes it an authentication (one-time code) template. */
+	Auth *CRMAuthInput `json:"auth,omitempty"`
+	/** Makes it a limited-time offer (MARKETING). */
+	Offer *CRMOfferInput `json:"offer,omitempty"`
+	/** Makes it a carousel (MARKETING): 2–10 cards of the same shape. */
+	Cards []CRMCardInput `json:"cards,omitempty"`
+	/** square or wide: the shape the card images were uploaded in. */
+	CardAspect string `json:"cardAspect,omitempty"`
+}
+
+/* CRMButtonInput is one button of a template being written here.
+ *
+ * QUICK_REPLY and URL take Text; URL takes URL too (ending in {{1}} for the person's own
+ * link); PHONE_NUMBER takes Text and PhoneNumber; COPY_CODE takes Code, the coupon an
+ * example is reviewed with and that is sent by default. */
+type CRMButtonInput struct {
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	URL         string `json:"url,omitempty"`
+	PhoneNumber string `json:"phoneNumber,omitempty"`
+	Code        string `json:"code,omitempty"`
+}
+
+// CRMAuthInput is an authentication template's options.
+type CRMAuthInput struct {
+	SecurityRecommendation bool `json:"securityRecommendation"`
+	/** 1–90, or 0 for no expiry line. */
+	ExpirationMinutes int    `json:"expirationMinutes,omitempty"`
+	ButtonText        string `json:"buttonText,omitempty"`
+}
+
+// CRMOfferInput is a limited-time offer's line.
+type CRMOfferInput struct {
+	/** Up to 16 characters. */
+	Text          string `json:"text"`
+	HasExpiration bool   `json:"hasExpiration"`
+}
+
+// CRMCardInput is one carousel card being written here.
+type CRMCardInput struct {
+	/** An image or video from POST /crm/media (images with ?aspect= the carousel's shape). */
+	FileID string `json:"fileId"`
+	/** Up to 160 characters. */
+	Body    string           `json:"body"`
+	Buttons []CRMButtonInput `json:"buttons,omitempty"`
 }
 
 // CRMTemplateHeaderInput is the header of a template being written here.
@@ -1787,11 +1882,17 @@ type CRMTemplateMediaRequest struct {
  * message with its text; a link opens the URL — for a dynamic one, the person's own join
  * or replay link, filled in at send time. */
 type CRMTemplateButton struct {
-	/** QUICK_REPLY, URL or PHONE_NUMBER. */
+	/** QUICK_REPLY, URL, PHONE_NUMBER, COPY_CODE or OTP. */
 	Type    string `json:"type"`
 	Text    string `json:"text"`
 	URL     string `json:"url,omitempty"`
 	Dynamic bool   `json:"dynamic,omitempty"`
+	/** The number a PHONE_NUMBER button calls. */
+	PhoneNumber string `json:"phoneNumber,omitempty"`
+	/** A COPY_CODE button's example code, as Meta approved it. */
+	Example string `json:"example,omitempty"`
+	/** An OTP button's kind: COPY_CODE, ONE_TAP or ZERO_TAP. */
+	OTPType string `json:"otpType,omitempty"`
 }
 
 // CRMTemplatesResponse is the host's cached template list, alphabetical.
@@ -2045,6 +2146,10 @@ type CRMBroadcast struct {
 	HeaderFile *CRMMediaFile `json:"headerFile,omitempty"`
 	/** An image header sent with the webinar cover instead of a file. */
 	HeaderUseCover bool `json:"headerUseCover,omitempty"`
+	/** The broadcast's own coupon, offer end (RFC3339) and card pictures, when it set them. */
+	CouponCode     string         `json:"couponCode,omitempty"`
+	OfferExpiresAt string         `json:"offerExpiresAt,omitempty"`
+	CardFiles      []CRMMediaFile `json:"cardFiles,omitempty"`
 }
 
 /* CRMBroadcastStats is one broadcast's progress.
@@ -2117,6 +2222,14 @@ type CRMBroadcastRequest struct {
 	HeaderFileID string `json:"headerFileId,omitempty"`
 	/** For an IMAGE header: send the webinar cover, ignoring any default file. */
 	HeaderUseCover bool `json:"headerUseCover,omitempty"`
+	/** For a template with a copy-code button: the code for this broadcast, instead of the
+	 *  template's own. Up to 15 characters. */
+	CouponCode string `json:"couponCode,omitempty"`
+	/** For a limited-time offer with an expiry: when it ends, RFC3339. Required then. */
+	OfferExpiresAt string `json:"offerExpiresAt,omitempty"`
+	/** For a carousel: a file per card, in order, for this broadcast only. Empty keeps
+	 *  the template's own. */
+	CardFileIDs []string `json:"cardFileIds,omitempty"`
 }
 
 /* CRMAudienceResponse is how many people an audience would reach, before anybody

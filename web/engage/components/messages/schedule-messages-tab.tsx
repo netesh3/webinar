@@ -421,6 +421,7 @@ export const ScheduleMessagesTab = forwardRef<
         createPortal(
           <WriteWordingDialog
             connected={connected}
+            templates={templates}
             onClose={() => setWriting(false)}
           onCreated={() => setTick((n) => n + 1)}
           onUse={applyWording}

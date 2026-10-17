@@ -17,9 +17,11 @@ export const MEDIA_RULES: Record<
     kind: "image",
     label: "Image",
     noun: "an image",
-    types: ["image/jpeg", "image/png"],
-    limit: 5 * MB,
-    hint: "JPEG or PNG, up to 5 MB",
+    // Converted on upload (api/internal/engage/wa_image.go): turned upright, resized
+    // and saved as the JPEG or PNG under 5 MB that Meta takes.
+    types: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    limit: 25 * MB,
+    hint: "JPG, PNG, WebP or GIF — resized for WhatsApp",
   },
   VIDEO: {
     kind: "video",
@@ -27,7 +29,7 @@ export const MEDIA_RULES: Record<
     noun: "a video",
     types: ["video/mp4", "video/3gpp"],
     limit: 16 * MB,
-    hint: "MP4 or 3GP, up to 16 MB",
+    hint: "MP4 (H.264/AAC), up to 16 MB",
   },
   DOCUMENT: {
     kind: "document",
@@ -46,6 +48,9 @@ export const MEDIA_RULES: Record<
 };
 
 export const MAX_HEADER_TEXT = 60;
+
+/** Meta plays only these; there is no transcoder here, so the coach exports it right. */
+export const VIDEO_RULE = "Video must be MP4 (H.264 video, AAC audio) under 16 MB.";
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -69,11 +74,18 @@ export function headerFileProblem(
   file: { type: string; size: number },
 ): string | null {
   const rule = MEDIA_RULES[format];
+  if (format === "IMAGE" && /^image\/hei[cf]/i.test(file.type)) {
+    return "HEIC photos can't be read here. Upload a JPG or PNG (on iPhone: Settings → Camera → Formats → Most Compatible).";
+  }
   if (!rule.types.includes(file.type)) {
+    if (format === "VIDEO") return VIDEO_RULE;
+    if (format === "IMAGE") return "An image header takes JPG, PNG, WebP or GIF.";
     return `${cap(rule.noun)} header takes ${rule.hint.split(",")[0]}.`;
   }
   if (file.size === 0) return "That file is empty.";
   if (file.size > rule.limit) {
+    if (format === "VIDEO") return VIDEO_RULE;
+    if (format === "IMAGE") return `That image is over ${rule.limit / MB} MB. Use a smaller one.`;
     return `WhatsApp takes ${rule.noun} of up to ${rule.limit / MB} MB.`;
   }
   return null;

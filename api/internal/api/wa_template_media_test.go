@@ -72,9 +72,15 @@ func TestTemplateHeaderUploadIsCheckedAndServed(t *testing.T) {
 	if code, _, raw := uploadMedia(t, h, "image/png", "fake.png", []byte("<html><script>alert(1)</script></html>")); code != http.StatusUnprocessableEntity {
 		t.Errorf("html posing as png: %d %s, want 422", code, raw)
 	}
-	big := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 5<<20)...)
+	// Images over 5 MB are shrunk on upload (wa_template_options_test.go); past 25 MB
+	// there is nothing worth reading.
+	big := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 25<<20)...)
 	if code, _, raw := uploadMedia(t, h, "image/png", "big.png", big); code != http.StatusRequestEntityTooLarge {
-		t.Errorf("6 MB image: %d %s, want 413", code, raw)
+		t.Errorf("26 MB image: %d %s, want 413", code, raw)
+	}
+	broken := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 1<<10)...)
+	if code, _, raw := uploadMedia(t, h, "image/png", "broken.png", broken); code != http.StatusUnprocessableEntity {
+		t.Errorf("undecodable png: %d %s, want 422", code, raw)
 	}
 
 	code, file, raw := uploadMedia(t, h, "application/pdf", "Course deck.pdf", fakePDF)
