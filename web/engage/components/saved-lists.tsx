@@ -40,7 +40,40 @@ export function SavedLists({
   const { notify } = useToast();
   const [lists, setLists] = useState<CRMList[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
+  /* A picked file goes straight to the preview: the button opens the system picker
+   * itself, with nothing in between, and cancelling it leaves this as it was. */
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [upload, setUpload] = useState<CRMImportPreview | null>(null);
+  const [reading, setReading] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const importing = upload !== null || reading !== null;
+
+  function chooseFile() {
+    fileRef.current?.click();
+  }
+
+  async function readFile(file: File) {
+    setUploadError(null);
+    if (file.size > CRMImportMaxBytes) {
+      setUploadError("That file is over 5 MB. Split it into smaller files.");
+      return;
+    }
+    setReading(file.name);
+    try {
+      setUpload(await engageApi.previewCrmImport(file));
+    } catch (e: unknown) {
+      setUpload(null);
+      setUploadError(e instanceof ApiError ? e.message : "Could not read that file.");
+    } finally {
+      setReading(null);
+    }
+  }
+
+  function droppedFile(e: React.DragEvent): File | null {
+    const f = e.dataTransfer.files?.[0];
+    return f && /\.(csv|tsv|txt)$/i.test(f.name) ? f : null;
+  }
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState<CRMList | null>(null);
   const [busy, setBusy] = useState(false);
@@ -107,8 +140,39 @@ export function SavedLists({
   }
 
   return (
-    <div className="grid gap-2">
+    <div
+      className={`grid gap-2 rounded-xl transition-shadow ${dragging ? "ring-2 ring-brand ring-offset-2 ring-offset-surface" : ""}`}
+      onDragOver={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        const f = droppedFile(e);
+        if (f) void readFile(f);
+        else if (e.dataTransfer.files?.length) setUploadError("Drop a .csv file (or a .tsv).");
+      }}
+    >
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv,.tsv,text/tab-separated-values"
+        className="hidden"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void readFile(f);
+        }}
+      />
       {error && <Alert tone="warn">{error}</Alert>}
+      {uploadError && <Alert tone="error">{uploadError}</Alert>}
       {lists === null ? (
         <p className="flex items-center gap-2 text-[12px] text-ink-3">
           <Spinner className="size-3.5" />
@@ -198,21 +262,32 @@ export function SavedLists({
         </ul>
       )}
 
-      {importing ? (
+      {reading !== null ? (
+        <p className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[12.5px] text-ink-2">
+          <Spinner className="size-4 text-ink-3" />
+          Reading {reading}…
+        </p>
+      ) : upload ? (
         <CsvImport
+          key={upload.id}
+          preview={upload}
           lists={lists ?? []}
-          onCancel={() => setImporting(false)}
+          onChooseAnother={chooseFile}
+          onCancel={() => setUpload(null)}
           onDone={async (list) => {
-            setImporting(false);
+            setUpload(null);
             const fresh = await load();
             onPick?.(fresh.find((l) => l.id === list.id) ?? list);
           }}
         />
       ) : (
-        <div>
-          <Button size="sm" variant="secondary" type="button" onClick={() => setImporting(true)}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="secondary" type="button" onClick={chooseFile}>
             Upload a CSV
           </Button>
+          <span className="text-[11.5px] text-ink-3">
+            or drop one here · a phone number per person, up to 10,000 rows
+          </span>
         </div>
       )}
 
@@ -236,48 +311,31 @@ export function SavedLists({
 /* The upload: pick a file, check the column mapping against a preview, confirm consent,
  * and import into a new list or an existing one. */
 function CsvImport({
+  preview,
   lists,
+  onChooseAnother,
   onCancel,
   onDone,
 }: {
+  preview: CRMImportPreview;
   lists: CRMList[];
+  onChooseAnother: () => void;
   onCancel: () => void;
   onDone: (list: CRMList) => void | Promise<void>;
 }) {
   const { notify } = useToast();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<CRMImportPreview | null>(null);
-  const [mapping, setMapping] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<string[]>(preview.mapping);
   const [target, setTarget] = useState<string>("new");
-  const [listName, setListName] = useState("");
+  const [listName, setListName] = useState(() => defaultListName(preview.fileName, new Date()));
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function read(file: File) {
-    setError(null);
-    if (file.size > CRMImportMaxBytes) {
-      setError("That file is over 5 MB. Split it into smaller files.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const p = await engageApi.previewCrmImport(file);
-      setPreview(p);
-      setMapping(p.mapping);
-      setListName(defaultListName(p.fileName || file.name, new Date()));
-    } catch (e: unknown) {
-      setError(e instanceof ApiError ? e.message : "Could not read that file.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const problem = preview ? mappingProblem(mapping) : null;
-  const mappingChanged = preview ? mapping.some((f, i) => f !== preview.mapping[i]) : false;
+  const problem = mappingProblem(mapping);
+  const mappingChanged = mapping.some((f, i) => f !== preview.mapping[i]);
 
   async function commit() {
-    if (!preview || problem) return;
+    if (problem) return;
     setBusy(true);
     setError(null);
     try {
@@ -305,33 +363,7 @@ function CsvImport({
   return (
     <div className="grid gap-3 rounded-xl border border-line bg-surface-2 p-3">
       {error && <Alert tone="error">{error}</Alert>}
-      {!preview ? (
-        <div className="grid gap-2">
-          <p className="text-[12.5px] leading-relaxed text-ink-2">
-            A CSV with a phone number per person. Name, email and TagMango&apos;s Service, payment and
-            expiry columns are picked up too. Up to 10,000 rows.
-          </p>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"
-            className="text-[12.5px]"
-            aria-label="CSV file"
-            disabled={busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void read(f);
-            }}
-          />
-          <div className="flex items-center gap-2">
-            {busy && <Spinner className="size-4 text-ink-3" />}
-            <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <>
+      <>
           <div className="text-[12.5px]">
             <p className="font-medium">{preview.fileName}</p>
             <p className="text-ink-3">
@@ -493,10 +525,7 @@ function CsvImport({
               variant="ghost"
               type="button"
               disabled={busy}
-              onClick={() => {
-                setPreview(null);
-                if (fileRef.current) fileRef.current.value = "";
-              }}
+              onClick={onChooseAnother}
             >
               Choose another file
             </Button>
@@ -504,8 +533,7 @@ function CsvImport({
               Cancel
             </Button>
           </div>
-        </>
-      )}
+      </>
     </div>
   );
 }

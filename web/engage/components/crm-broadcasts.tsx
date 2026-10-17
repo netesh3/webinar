@@ -2,26 +2,33 @@
 
 import { engageApi } from "../api";
 import Link from "next/link";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Alert, ConfirmModal, Menu, Select, Spinner, type MenuItem } from "@/components/controls";
+import { Alert, ConfirmModal, Menu, Modal, Select, Spinner, type MenuItem } from "@/components/controls";
 import { DateTimeField } from "@/components/date-picker";
 import {
   BlockedList,
   RefreshTemplates,
   defaultTokens,
   exampleFor,
-  renderTemplate,
   templateKey,
 } from "./crm-templates";
 import { MaterialIcon } from "@/components/icons";
-import { useToast } from "@/components/providers";
+import { useSession, useToast } from "@/components/providers";
 import { Badge, Button, Card } from "@/components/ui";
 import { API_BASE, ApiError, api } from "@/lib/api";
-import { BroadcastHeaderPicker, HeaderMediaBlock } from "./header-media";
+import { BroadcastHeaderPicker } from "./header-media";
 import { headerChoiceProblem, headerRequest, type HeaderChoice } from "../header-media";
 import { broadcastExtrasProblem, broadcastExtrasRequest } from "../template-options";
-import { BroadcastExtras, NO_EXTRAS, seedExtras, type BroadcastExtrasDraft } from "./template-options";
+import {
+  BroadcastExtras,
+  NO_EXTRAS,
+  WhatsAppPreview,
+  previewFromTemplate,
+  seedExtras,
+  type BroadcastExtrasDraft,
+} from "./template-options";
+import { ParamRow, TemplateTextBlock, paramView, slotControlId, useActiveSlot } from "./template-params";
 import {
   AudienceContacts,
   AudienceList,
@@ -46,7 +53,7 @@ import type {
 } from "@/lib/api-types";
 import { formatRelative, instantToZoned, localTimeZone, zonedToInstant } from "@/lib/format";
 import { useNow } from "@/lib/clock";
-import { rupees, templateRate } from "./wa-kit";
+import { PhoneFrame, rupees, templateRate } from "./wa-kit";
 import { SavedLists } from "./saved-lists";
 import {
   audienceDraft,
@@ -82,7 +89,7 @@ import {
  *
  * None of that is enforced here. The server re-checks all of it. A broadcast is
  * created by sending it. Until it starts, Edit rewrites that send; Duplicate
- * opens this same drawer filled in again; Delete takes the card off the list
+ * opens this same composer filled in again; Delete takes the card off the list
  * and, if anything is still waiting, cancels it. Cancel leaves the card up.
  */
 
@@ -121,7 +128,7 @@ const LITERAL = "\u0000text";
 const INTRO =
   "Send a one-off WhatsApp message to a group, like a replay link to no-shows or an invite to your next webinar. Automations send on their own; broadcasts go when you choose.";
 
-/** Audiences the People page already messages, in the order the drawer shows them.
+/** Audiences the People page already messages, in the order the composer shows them.
  *  Highly engaged and hot leads stay hidden until somebody is actually in them —
  *  the same rule as that page, so an empty "Hot leads" is not offered as a group. */
 const PEOPLE_ROWS: {
@@ -685,7 +692,8 @@ function Composer({
   onCreated: (b: CRMBroadcast) => void;
 }) {
   const { notify } = useToast();
-  const titleId = useId();
+  const { account } = useSession();
+  const from = account?.whatsapp?.verifiedName || account?.name || "Your business";
   const draft = seed ? audienceDraft(seed) : null;
   const seeded = presetFilter(preset);
   const openedAt = editing ? futureSchedule(seed) : { timing: "now" as Timing, at: "" };
@@ -712,25 +720,41 @@ function Composer({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /* A People-page group that cannot be read is not a segment. The chip that
-   * asked for it has already opened the drawer; the selection falls back here
+   * asked for it has already opened the composer; the selection falls back here
    * without a second render committed from an effect. */
   const resolvedKind: Kind = peopleFailed && kind === "people" ? "opted_in" : kind;
   const resolvedFilter = resolvedKind === "people" ? peopleFilter : "";
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || saving) return;
-      e.preventDefault();
-      onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [onClose, saving]);
+  const { active: activeSlot, rowProps } = useActiveSlot();
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  /* Unsaved changes: everything the host can choose, as it was when the popup opened.
+   * Closing with anything different asks first — Esc and a click outside included,
+   * because a broadcast half set up is several minutes of choices. */
+  const snapshot = JSON.stringify([
+    kind,
+    peopleFilter,
+    webinarId,
+    tagId,
+    listId,
+    chosen,
+    params,
+    headerChoice,
+    ownFile?.id ?? "",
+    extras,
+    timing,
+    when.at,
+  ]);
+  const [openedWith] = useState(snapshot);
+  const dirty = snapshot !== openedWith;
+
+  function requestClose() {
+    if (saving) return;
+    if (dirty && !window.confirm("Discard this broadcast? What you have set up here will be lost.")) {
+      return;
+    }
+    onClose();
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1087,38 +1111,61 @@ function Composer({
       ? formatBroadcastStamp(scheduledAt.toISOString())
       : "";
 
-  const node = (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div
-        className="absolute inset-0 bg-scrim/35"
-        onClick={() => {
-          if (!saving) onClose();
-        }}
-        aria-hidden
-      />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="relative flex h-full w-full max-w-[440px] flex-col bg-surface shadow-[-12px_0_32px_rgba(16,24,40,0.1)] outline-none"
-      >
-        <div className="flex items-center justify-between border-b border-line px-5 py-4">
-          <h2 id={titleId} className="text-[16px] font-semibold">
-            {editing ? "Edit broadcast" : "New broadcast"}
-          </h2>
-          <button
-            type="button"
-            onClick={() => {
-              if (!saving) onClose();
-            }}
-            aria-label="Close"
-            className="grid size-8 place-items-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
-          >
-            <MaterialIcon name="close" className="!text-[18px]" />
-          </button>
-        </div>
+  const previewModel = template
+    ? (() => {
+        const m = previewFromTemplate(template);
+        m.headerFile =
+          headerChoice.mode === "file"
+            ? ownFile
+            : headerChoice.mode === "default"
+              ? template.headerFile
+              : null;
+        if (m.cards && extras.cardFiles.some(Boolean)) {
+          m.cards = m.cards.map((c, i) => {
+            const own = extras.cardFiles[i];
+            return own ? { ...c, file: own } : c;
+          });
+        }
+        if (m.offer && extras.coupon.trim()) m.offer = { ...m.offer, code: extras.coupon.trim() };
+        return m;
+      })()
+    : null;
+  const coverId = mergeWebinarId || webinarId;
+  const cover = coverId
+    ? `${API_BASE}/api/webinars/${encodeURIComponent(coverId)}/image`
+    : undefined;
 
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
+  const node = (
+    <Modal
+      open
+      onClose={requestClose}
+      size="xl"
+      trapFocus
+      title={editing ? "Edit broadcast" : "New broadcast"}
+      description={`One approved template to many people, sent from ${from} and billed to your Meta account.`}
+      footer={
+        <div className="flex w-full flex-wrap items-center gap-2">
+          <p className="mr-auto min-w-0 text-[12px] text-ink-3">
+            {showCost && preview
+              ? `≈ ${rupees(rate * preview.recipients)} · ${countText(preview.recipients, "recipient")}`
+              : ""}
+          </p>
+          <Button type="button" variant="ghost" onClick={requestClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={send} disabled={saving || blocker !== null}>
+            {saving && <Spinner className="size-3.5" />}
+            {editing
+              ? "Save changes"
+              : timing === "later"
+                ? "Schedule broadcast"
+                : "Send broadcast"}
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_17.5rem]">
+        <div className="grid min-w-0 content-start gap-5">
           {error && <Alert tone="error">{error}</Alert>}
 
           <section className="grid gap-2">
@@ -1300,11 +1347,24 @@ function Composer({
                     <BroadcastExtras template={template} value={extras} onChange={setExtras} />
                     {params.length > 0 && (
                       <div className="grid gap-2">
+                        <TemplateTextBlock
+                          body={template.body ?? ""}
+                          header={template.header}
+                          views={params.map((p) => paramView(p, fields))}
+                          active={activeSlot}
+                          controlPrefix="broadcast-param"
+                        />
                         {params.map((p, i) => (
-                          <div key={i} className="grid gap-2">
+                          <ParamRow
+                            key={i}
+                            slot={i + 1}
+                            text={template.body ?? ""}
+                            active={activeSlot === i + 1}
+                            rowProps={rowProps(i + 1)}
+                          >
                             <Select
                               label={`Fill {{${i + 1}}} with`}
-                              id={`broadcast-param-${i}`}
+                              id={slotControlId("broadcast-param", i + 1)}
                               value={p.field || LITERAL}
                               onChange={(next) =>
                                 setParam(
@@ -1333,49 +1393,10 @@ function Composer({
                                 />
                               </div>
                             )}
-                          </div>
+                          </ParamRow>
                         ))}
                       </div>
                     )}
-                    <div
-                      className="rounded-xl px-3 py-3"
-                      style={{ background: "#e7f6e9" }}
-                    >
-                      <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-sm bg-[#d9fdd3] text-[13px] leading-relaxed text-[#111] shadow-sm">
-                        <HeaderMediaBlock
-                          format={template.headerFormat}
-                          file={
-                            headerChoice.mode === "file"
-                              ? ownFile
-                              : headerChoice.mode === "default"
-                                ? template.headerFile
-                                : null
-                          }
-                          cover={
-                            mergeWebinarId || webinarId
-                              ? `${API_BASE}/api/webinars/${encodeURIComponent(mergeWebinarId || webinarId)}/image`
-                              : undefined
-                          }
-                        />
-                        <div className="px-3 py-2">
-                        {template.header && (
-                          <p className="font-semibold">{template.header}</p>
-                        )}
-                        <p className="whitespace-pre-wrap">
-                          {renderTemplate(template.body ?? "", filled)}
-                        </p>
-                        {template.footer && (
-                          <p className="mt-1 text-[11px] text-[#667781]">{template.footer}</p>
-                        )}
-                        <p className="mt-0.5 text-right text-[10px] text-[#667781]">
-                          {new Date().toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                        </div>
-                      </div>
-                    </div>
                   </>
                 )}
               </>
@@ -1422,6 +1443,27 @@ function Composer({
             )}
           </section>
 
+          <section className="grid gap-2">
+            <SectionHead n={4} title="Review" />
+            <dl className="grid gap-1.5 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[12.5px]">
+              <ReviewLine label="To">
+                {audienceName()}
+                {preview ? ` · ${countText(preview.recipients, "person", "people")}` : ""}
+              </ReviewLine>
+              <ReviewLine label="Message">
+                {template ? `${template.name} · ${languageLabel(template.language)}` : "No template yet"}
+              </ReviewLine>
+              <ReviewLine label="When">
+                {timing === "later" ? scheduleStamp || "Pick a time" : "Now"}
+              </ReviewLine>
+              {showCost && preview && (
+                <ReviewLine label="Cost">
+                  ≈ {rupees(rate * preview.recipients)} on your Meta account ({rupees(rate)} per message)
+                </ReviewLine>
+              )}
+            </dl>
+          </section>
+
           {!whatsappConnected && (
             <Alert tone="warn">
               Connect your own WhatsApp Business account in{" "}
@@ -1437,40 +1479,55 @@ function Composer({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
-          {showCost && preview ? (
-            <p className="text-[12px] text-ink-3">
-              ≈ {rupees(rate)} per message · {preview.recipients}{" "}
-              {preview.recipients === 1 ? "recipient" : "recipients"}
-            </p>
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                if (!saving) onClose();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="button" onClick={send} disabled={saving || blocker !== null}>
-              {saving && <Spinner className="size-3.5" />}
-              {editing
-                ? "Save changes"
-                : timing === "later"
-                  ? "Schedule broadcast"
-                  : "Send broadcast"}
-            </Button>
+        <aside className="order-first grid content-start gap-2 self-start md:sticky md:top-0 md:order-none">
+          <button
+            type="button"
+            className="flex items-center justify-between rounded-lg border border-line px-3 py-2 text-[12.5px] font-medium text-ink-2 md:hidden"
+            aria-expanded={previewOpen}
+            onClick={() => setPreviewOpen((v) => !v)}
+          >
+            {previewOpen ? "Hide preview" : "Show preview"}
+            <MaterialIcon name={previewOpen ? "expand_less" : "expand_more"} className="!text-[18px]" />
+          </button>
+          <div className={previewOpen ? "grid gap-2" : "hidden gap-2 md:grid"}>
+            {template && previewModel ? (
+              <>
+                <span className="text-[12px] text-ink-2">Preview</span>
+                <PhoneFrame title={from} subtitle="Business account">
+                  <WhatsAppPreview
+                    compact
+                    model={previewModel}
+                    cover={cover}
+                    fill={{ values: filled, active: activeSlot }}
+                  />
+                </PhoneFrame>
+                {params.length > 0 && (
+                  <p className="text-[11.5px] leading-relaxed text-ink-3">
+                    Coloured words come from the blanks on the left; each person gets their own.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-line px-4 text-center text-[12.5px] text-ink-3">
+                Pick a template to see it the way they will.
+              </div>
+            )}
           </div>
-        </div>
-      </aside>
-    </div>
+        </aside>
+      </div>
+    </Modal>
   );
 
   return createPortal(node, document.body);
+}
+
+function ReviewLine({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="w-16 shrink-0 text-ink-3">{label}</dt>
+      <dd className="min-w-0 flex-1 text-ink">{children}</dd>
+    </div>
+  );
 }
 
 function SectionHead({ n, title }: { n: number; title: string }) {
