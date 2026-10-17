@@ -176,8 +176,8 @@ func TestBuyingAPlanTurnsHostingOn(t *testing.T) {
 	}
 
 	co := h.buy("business", billing.Monthly, billing.INR)
-	// The SERVER priced it: ₹14,999 + 18% GST, and that is what Razorpay was asked for.
-	if co.Subtotal != 14_999_00 || co.Tax != 2_699_82 || co.Amount != 17_698_82 || co.KeyID != rzpKeyID {
+	// The SERVER priced it: ₹9,999 + 18% GST, and that is what Razorpay was asked for.
+	if co.Subtotal != 9_999_00 || co.Tax != 1_799_82 || co.Amount != 11_798_82 || co.KeyID != rzpKeyID {
 		t.Fatalf("checkout: %+v", co)
 	}
 	if got := fake.order(co.OrderID); got.Amount != co.Amount || got.Currency != "INR" || got.Notes["plan"] != "business" {
@@ -370,9 +370,9 @@ func TestCatalogueAndRefusals(t *testing.T) {
 	}
 	for key, want := range map[string]int64{
 		"professional/INR/monthly": 9_999_00, "professional/USD/monthly": 99_00,
-		"business/INR/monthly": 37_499_00, "business/USD/monthly": 399_00,
+		"business/INR/monthly": 24_999_00, "business/USD/monthly": 399_00,
 		"professional/USD/yearly": 990_00, "business/USD/yearly": 3_990_00,
-		"professional/INR/yearly": 99_990_00, "business/INR/yearly": 374_990_00,
+		"professional/INR/yearly": 99_990_00, "business/INR/yearly": 249_990_00,
 	} {
 		if list[key] != want {
 			t.Errorf("list price %s = %d, want %d", key, list[key], want)

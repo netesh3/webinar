@@ -151,7 +151,7 @@ async function openCheckout(
   });
 }
 
-/** Minor units → "₹17,698.82" / "$49". Whole amounts drop the decimals. */
+/** Minor units → "₹11,798.82" / "$49". Whole amounts drop the decimals. */
 export function formatMoney(minor: number, currency: string, opts?: { exact?: boolean }): string {
   const major = minor / 100;
   const whole = Number.isInteger(major) && !opts?.exact;

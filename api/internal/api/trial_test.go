@@ -94,6 +94,11 @@ func TestTrialStartsChargesAndHalts(t *testing.T) {
 		t.Fatalf("trial without a phone: %d %s, want 422 phone_required", code, raw)
 	}
 	h.setPhone("+91 98111 00001")
+	// A Razorpay plan cached at an old price (₹14,999 + GST) must not be reused: the
+	// cache is keyed by amount, so the new price gets a plan of its own.
+	if _, err := h.store.SaveRazorpayPlanID(t.Context(), "business", "INR", 17_698_82, "plan_stale"); err != nil {
+		t.Fatal(err)
+	}
 
 	code, co, raw := h.startTrial("business")
 	if code != http.StatusCreated {
@@ -103,17 +108,20 @@ func TestTrialStartsChargesAndHalts(t *testing.T) {
 	req := fake.subs[co.SubscriptionID]
 	plan := fake.plans[req.PlanID]
 	fake.mu.Unlock()
-	// Monthly, ₹14,999 + 18% GST, first charge seven days out, notifying the buyer.
-	if plan.Period != "monthly" || plan.Interval != 1 || plan.Item.Amount != 17_698_82 || plan.Item.Currency != "INR" {
+	// Monthly, ₹9,999 + 18% GST, first charge seven days out, notifying the buyer.
+	if plan.Period != "monthly" || plan.Interval != 1 || plan.Item.Amount != 11_798_82 || plan.Item.Currency != "INR" {
 		t.Fatalf("razorpay plan = %+v", plan)
 	}
 	if d := time.Until(time.Unix(req.StartAt, 0)); d < 7*24*time.Hour-time.Minute || d > 7*24*time.Hour+time.Minute {
 		t.Fatalf("start_at %v away, want 7 days", d)
 	}
+	if req.PlanID == "plan_stale" {
+		t.Fatal("the trial reused a Razorpay plan created for the old price")
+	}
 	if req.TotalCount != billing.TrialTotalCount || !req.CustomerNotify || req.Notes["plan"] != "business" || req.Notes["user_id"] == "" {
 		t.Fatalf("subscription request = %+v", req)
 	}
-	if co.Amount != 17_698_82 || co.KeyID != rzpKeyID || co.TrialEndsAt == "" {
+	if co.Amount != 11_798_82 || co.KeyID != rzpKeyID || co.TrialEndsAt == "" {
 		t.Fatalf("trial checkout = %+v", co)
 	}
 
@@ -144,7 +152,7 @@ func TestTrialStartsChargesAndHalts(t *testing.T) {
 	// Day 8: Razorpay charges, and the plan is active for the month it paid for.
 	periodEnd := time.Now().Add(37 * 24 * time.Hour).Unix()
 	h.subWebhook("subscription.charged", co.SubscriptionID, "active", periodEnd,
-		`{"id":"pay_first","amount":1769882,"currency":"INR","status":"captured","method":"upi","vpa":"coach@okaxis"}`)
+		`{"id":"pay_first","amount":1179882,"currency":"INR","status":"captured","method":"upi","vpa":"coach@okaxis"}`)
 	res, raw2 := h.do(http.MethodGet, "/api/me/billing", nil)
 	var st types.BillingStatus
 	h.decode(raw2, &st)

@@ -122,8 +122,8 @@ var Plans = []Plan{
 			"Follow-up by engagement group",
 			"Drips, chatbot & shared inbox",
 		},
-		Monthly:     map[string]int64{INR: 14_999_00, USD: 199_00},
-		ListMonthly: map[string]int64{INR: 37_499_00, USD: 399_00},
+		Monthly:     map[string]int64{INR: 9_999_00, USD: 199_00},
+		ListMonthly: map[string]int64{INR: 24_999_00, USD: 399_00},
 	},
 	{
 		ID:   types.PlanEnterprise,
