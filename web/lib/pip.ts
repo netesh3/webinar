@@ -119,7 +119,9 @@ export type PipApi = {
   /** Where to portal the popped-out UI. Null whenever the window is closed. */
   container: HTMLElement | null;
   active: boolean;
-  open: () => void;
+  /** Opens (or brings forward) the floating window. `size` is a first guess; Chrome clamps it
+   *  and remembers whatever the user resizes it to. */
+  open: (size?: { width: number; height: number }) => void;
   close: (opts?: PipCloseOptions) => void;
 };
 
@@ -145,10 +147,15 @@ export function usePictureInPicture({
   /** True while any screen share is live in the room. A dismiss sticks only for this session
    *  and clears when it ends, so the next share can auto-open again. */
   shareActive = false,
+  /** Presenting a window or the entire screen: the window is the presenter's controls, like
+   *  Zoom's floating bar, so coming back to the tab must not close it. It closes when the
+   *  share ends instead (the caller does that). */
+  keepOpen = false,
 }: {
   fallbackVideo?: () => HTMLVideoElement | null;
   enabled?: boolean;
   shareActive?: boolean;
+  keepOpen?: boolean;
 } = {}): PipApi {
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const composed = useSyncExternalStore(subscribeNothing, documentPipSupported, notOnServer);
@@ -194,7 +201,7 @@ export function usePictureInPicture({
     }
   }, []);
 
-  const open = useCallback(() => {
+  const open = useCallback((size?: { width: number; height: number }) => {
     if (!enabled) return;
 
     // Explicit reopen always wins — the Pop out button is how you take the window back after
@@ -220,7 +227,7 @@ export function usePictureInPicture({
     }
 
     void window.documentPictureInPicture!
-      .requestWindow({ width: PIP_WIDTH, height: PIP_HEIGHT })
+      .requestWindow({ width: size?.width ?? PIP_WIDTH, height: size?.height ?? PIP_HEIGHT })
       .then((pip: Window) => {
         win.current = pip;
         copyStyles(pip);
@@ -272,13 +279,13 @@ export function usePictureInPicture({
    * share", it is the designed return path.
    */
   useEffect(() => {
-    if (!container) return;
+    if (!container || keepOpen) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") close();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [container, close]);
+  }, [container, close, keepOpen]);
 
   /* The one route to popping out WITHOUT a click, and it is the browser's to offer.
    *

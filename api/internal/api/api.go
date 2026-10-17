@@ -607,6 +607,8 @@ func (s *Server) Routes() http.Handler {
 						r.Use(s.requireTrueOwner)
 						r.Delete("/", s.handleDeleteWebinar)
 						r.Post("/transfer-host", s.handleTransferHost)
+						// The copy is a new webinar owned by the caller, so only the host.
+						r.Post("/copy", s.handleCopyWebinar)
 					})
 
 					r.Post("/start", s.handleStartWebinar)
