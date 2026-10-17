@@ -466,6 +466,7 @@ func (s *Server) Routes() http.Handler {
 			r.Use(s.requireAdmin)
 
 			r.Get("/stats", s.handleAdminStats)
+			r.Get("/stats/whatsapp", s.handleAdminWhatsAppUsage)
 			r.Get("/users", s.handleAdminUsers)
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)

@@ -327,6 +327,26 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, stats)
 }
 
+/* handleAdminWhatsAppUsage is GET /api/admin/stats/whatsapp?days=7|30|90.
+ *
+ * Which parts of the WhatsApp CRM hosts used, which is the data for deciding
+ * whether reminders alone are worth selling as an add-on. Any other days is 30. */
+func (s *Server) handleAdminWhatsAppUsage(w http.ResponseWriter, r *http.Request) {
+	days := 30
+	switch r.URL.Query().Get("days") {
+	case "7":
+		days = 7
+	case "90":
+		days = 90
+	}
+	usage, err := s.engage.WhatsAppUsage(r.Context(), days)
+	if err != nil {
+		s.fail(w, r, "admin whatsapp usage", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, usage)
+}
+
 // handleAdminDeleteWebinar is DELETE /api/admin/webinars/{slug} — the same
 // teardown a host's own delete performs (see deleteWebinarBySlug), reachable
 // here without owning the webinar. The one privilege this endpoint adds over

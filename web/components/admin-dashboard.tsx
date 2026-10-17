@@ -5,6 +5,7 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recha
 import { api } from "@/lib/api";
 import type { AdminDayCount, AdminStats, AdminWebinarGlance } from "@/lib/api-types";
 import { formatCount, formatDay, formatTimeRange, tzLabel } from "@/lib/format";
+import { AdminWhatsAppUsagePanel } from "./admin-whatsapp-usage";
 import { Alert } from "./controls";
 import { Badge, ButtonLink, Card, Stat } from "./ui";
 
@@ -200,6 +201,8 @@ export function AdminDashboard({
           onSeeAll={() => onWebinars("ended")}
         />
       </div>
+
+      <AdminWhatsAppUsagePanel />
     </div>
   );
 }

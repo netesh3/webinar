@@ -9,6 +9,7 @@ import type {
   WhatsAppConsent,
   AdminStats,
   AdminUser,
+  AdminWhatsAppUsage,
   AlertsResponse,
   AppConfig,
   ApprovalsResponse,
@@ -892,6 +893,9 @@ export const api = {
    *  capped, and the webinar list is every full record — both the wrong read
    *  for "how many are live". */
   adminStats: () => request<AdminStats>("/api/admin/stats", fresh),
+  /** Which WhatsApp CRM features hosts used over the last 7, 30 or 90 days. */
+  adminWhatsAppUsage: (days: 7 | 30 | 90) =>
+    request<AdminWhatsAppUsage>(`/api/admin/stats/whatsapp?days=${days}`, fresh),
 
   /** Every account, for the admin panel. Admin-only server side; `q` filters by
    *  email or name. */
