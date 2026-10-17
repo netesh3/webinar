@@ -370,6 +370,9 @@ func (s *Module) syncTemplates(ctx context.Context, user store.User) error {
 	}
 	in := make([]crmstore.TemplateInput, 0, len(found))
 	for _, t := range found {
+		if t.Auth != nil && t.Unsupported == "" {
+			t.Unsupported = authNotSendable
+		}
 		in = append(in, crmstore.TemplateInput{
 			Name:         t.Name,
 			Language:     t.Language,
@@ -382,6 +385,7 @@ func (s *Module) syncTemplates(ctx context.Context, user store.User) error {
 			Unsupported:  t.Unsupported,
 			HeaderFormat: t.HeaderFormat,
 			Buttons:      templateButtons(t.Buttons),
+			Layout:       layoutOf(t),
 		})
 	}
 	if err := s.store.ReplaceTemplates(ctx, user.ID, in); err != nil {
@@ -394,7 +398,8 @@ func (s *Module) syncTemplates(ctx context.Context, user store.User) error {
 func templateButtons(in []wa.TemplateButton) []types.CRMTemplateButton {
 	out := make([]types.CRMTemplateButton, 0, len(in))
 	for _, b := range in {
-		out = append(out, types.CRMTemplateButton{Type: b.Type, Text: b.Text, URL: b.URL, Dynamic: b.Dynamic})
+		out = append(out, types.CRMTemplateButton{Type: b.Type, Text: b.Text, URL: b.URL, Dynamic: b.Dynamic,
+			PhoneNumber: b.PhoneNumber, Example: b.Example, OTPType: b.OTPType})
 	}
 	return out
 }

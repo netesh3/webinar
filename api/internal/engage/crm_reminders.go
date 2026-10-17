@@ -503,7 +503,11 @@ func (s *Module) flushWhatsAppOutbox(ctx context.Context) bool {
 			s.log.Error("whatsapp outbox: template lookup", "error", err, "host", m.HostID)
 			continue
 		}
-		if !tmpl.Sendable {
+		/* Not Sendable only for want of a file (a video or document header, a carousel's
+		 * card pictures) is settled by fillRich: a broadcast can bring its own, and
+		 * fillRich says what is missing when it did not. */
+		missingFile := tmpl.Status == "APPROVED" && tmpl.Unsupported == "" && (tmpl.NeedsHeaderFile || tmpl.NeedsCardFiles)
+		if !tmpl.Sendable && !missingFile {
 			reason := tmpl.Unsupported
 			if reason == "" {
 				reason = "template " + tmpl.Name + " is " + strings.ToLower(tmpl.Status) + " at Meta"

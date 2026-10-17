@@ -20,6 +20,8 @@ import { Badge, Button, Card } from "@/components/ui";
 import { API_BASE, ApiError, api } from "@/lib/api";
 import { BroadcastHeaderPicker, HeaderMediaBlock } from "./header-media";
 import { headerChoiceProblem, headerRequest, type HeaderChoice } from "../header-media";
+import { broadcastExtrasProblem, broadcastExtrasRequest } from "../template-options";
+import { BroadcastExtras, NO_EXTRAS, seedExtras, type BroadcastExtrasDraft } from "./template-options";
 import {
   AudienceContacts,
   AudienceOptedIn,
@@ -97,7 +99,10 @@ const WEBINAR_FIELDS = ["topic", "when", "webinar_link", "join_link"];
 function broadcastable(t: CRMTemplate): boolean {
   return (
     t.sendable ||
-    Boolean(t.needsHeaderFile && t.status.toUpperCase() === "APPROVED" && !t.unsupported)
+    // Missing only a file the broadcast can bring: a video or document, or card pictures.
+    Boolean(
+      (t.needsHeaderFile || t.needsCardFiles) && t.status.toUpperCase() === "APPROVED" && !t.unsupported,
+    )
   );
 }
 
@@ -690,6 +695,7 @@ function Composer({
   const [params, setParams] = useState<CRMParam[]>(seed?.params ?? []);
   const [headerChoice, setHeaderChoice] = useState<HeaderChoice>(() => seedHeader(seed));
   const [ownFile, setOwnFile] = useState<CRMMediaFile | null>(seed?.headerFile ?? null);
+  const [extras, setExtras] = useState<BroadcastExtrasDraft>(() => seedExtras(seed));
   const [timing, setTiming] = useState<Timing>(openedAt.timing);
   const [when, setWhen] = useState({ at: openedAt.at, past: false });
   const now = useNow(30_000);
@@ -892,6 +898,7 @@ function Composer({
     setChosen(key);
     setHeaderChoice({ mode: "default" });
     setOwnFile(null);
+    setExtras(NO_EXTRAS);
     const picked = usable.find((t) => templateKey(t) === key);
     setParams(
       picked
@@ -931,6 +938,8 @@ function Composer({
       ? "Pick the template to send."
       : headerChoiceProblem(template, headerChoice)
         ? headerChoiceProblem(template, headerChoice)
+      : broadcastExtrasProblem(template, extras, now === null ? undefined : new Date(now))
+        ? broadcastExtrasProblem(template, extras, now === null ? undefined : new Date(now))
       : needsWebinar && !webinarId
         ? "Pick the webinar whose registrants you mean."
         : needsTag && !tagId
@@ -1005,6 +1014,7 @@ function Composer({
             : undefined,
         scheduledAt: scheduledAt ? scheduledAt.toISOString() : undefined,
         ...headerRequest(template.headerFormat, headerChoice),
+        ...broadcastExtrasRequest(template, extras),
       };
       const created =
         editing && seed
@@ -1251,6 +1261,7 @@ function Composer({
                         setOwnFile(file);
                       }}
                     />
+                    <BroadcastExtras template={template} value={extras} onChange={setExtras} />
                     {params.length > 0 && (
                       <div className="grid gap-2">
                         {params.map((p, i) => (

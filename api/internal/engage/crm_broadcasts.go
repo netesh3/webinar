@@ -3,6 +3,7 @@ package engage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -407,7 +408,10 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 	// A broadcast that brings its own header file can use a video or document template
 	// that has no default file yet; that is the only way round Sendable here.
 	ownFile := strings.TrimSpace(body.HeaderFileID) != ""
-	if !tmpl.Sendable && !(tmpl.NeedsHeaderFile && ownFile && tmpl.Status == "APPROVED" && tmpl.Unsupported == "") {
+	ownCards := len(body.CardFileIDs) > 0
+	fixable := tmpl.Status == "APPROVED" && tmpl.Unsupported == "" &&
+		(!tmpl.NeedsHeaderFile || ownFile) && (!tmpl.NeedsCardFiles || ownCards)
+	if !tmpl.Sendable && !fixable {
 		httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", unusableMessage(tmpl))
 		return crmstore.BroadcastInput{}, nil, false
 	}
@@ -417,6 +421,10 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 		return crmstore.BroadcastInput{}, nil, false
 	}
 	if !s.paramsAllowed(w, body.Params, slug) {
+		return crmstore.BroadcastInput{}, nil, false
+	}
+	extras, ok := s.broadcastExtras(w, r, user, tmpl, body)
+	if !ok {
 		return crmstore.BroadcastInput{}, nil, false
 	}
 	headerFileID, useCover, ok := s.broadcastHeaderChoice(w, r, user, tmpl, body)
@@ -503,7 +511,77 @@ func (s *Module) prepareBroadcast(w http.ResponseWriter, r *http.Request, user s
 		ScheduledAt:      scheduled,
 		HeaderFileID:     headerFileID,
 		HeaderUseCover:   useCover,
+		Coupon:           extras.Coupon,
+		OfferExpiresAt:   extras.OfferExpiresAt,
+		CardFileIDs:      extras.CardFileIDs,
 	}, to, true
+}
+
+/* broadcastExtras checks what a broadcast brings for its template beyond the header:
+ * a coupon for a copy-code button, the end of a limited-time offer (required when the
+ * offer has one — Meta counts down to it), and a picture per carousel card. */
+func (s *Module) broadcastExtras(w http.ResponseWriter, r *http.Request, user store.User,
+	tmpl types.CRMTemplate, body types.CRMBroadcastRequest) (crmstore.BroadcastHeaderInput, bool) {
+	var out crmstore.BroadcastHeaderInput
+	hasCoupon := false
+	for _, b := range tmpl.Buttons {
+		hasCoupon = hasCoupon || b.Type == "COPY_CODE"
+	}
+	if code := strings.TrimSpace(body.CouponCode); code != "" {
+		if !hasCoupon {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_no_coupon", "That template has no coupon button.")
+			return out, false
+		}
+		if len(code) > maxCouponCode || !couponChars.MatchString(code) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_coupon",
+				"The coupon is up to 15 letters and numbers, like SAVE20.")
+			return out, false
+		}
+		out.Coupon = code
+	}
+	if tmpl.Offer != nil && tmpl.Offer.HasExpiration {
+		raw := strings.TrimSpace(body.OfferExpiresAt)
+		at, err := time.Parse(time.RFC3339, raw)
+		if raw == "" || err != nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_offer_expiry",
+				"Choose when the offer ends — WhatsApp counts down to it.")
+			return out, false
+		}
+		if !at.After(time.Now()) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "crm_offer_expiry", "The offer's end has to be in the future.")
+			return out, false
+		}
+		out.OfferExpiresAt = &at
+	} else if strings.TrimSpace(body.OfferExpiresAt) != "" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "crm_offer_expiry", "That template has no offer end to set.")
+		return out, false
+	}
+	if len(body.CardFileIDs) > 0 {
+		if len(body.CardFileIDs) != len(tmpl.Cards) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_cards",
+				fmt.Sprintf("That carousel has %d cards; give a picture for each.", len(tmpl.Cards)))
+			return out, false
+		}
+		for i, id := range body.CardFileIDs {
+			f, err := s.store.MediaFileForHost(r.Context(), user.ID, strings.TrimSpace(id))
+			if errors.Is(err, store.ErrNotFound) {
+				httpx.Error(w, http.StatusUnprocessableEntity, "media_not_found",
+					fmt.Sprintf("Upload card %d's picture again.", i+1))
+				return out, false
+			}
+			if err != nil {
+				s.fail(w, r, "crm broadcast: card file", err)
+				return out, false
+			}
+			if headerMediaTypes[f.Mime].kind != strings.ToLower(tmpl.Cards[i].HeaderFormat) {
+				httpx.Error(w, http.StatusUnprocessableEntity, "media_wrong_kind",
+					fmt.Sprintf("Card %d needs a %s.", i+1, strings.ToLower(tmpl.Cards[i].HeaderFormat)))
+				return out, false
+			}
+			out.CardFileIDs = append(out.CardFileIDs, f.ID)
+		}
+	}
+	return out, true
 }
 
 /* broadcastHeaderChoice checks a broadcast's header override against its template: a
@@ -571,6 +649,13 @@ func (s *Module) withHeader(ctx context.Context, b *types.CRMBroadcast) {
 	}
 	b.HeaderFile = s.fileJSON(h.File)
 	b.HeaderUseCover = h.UseCover
+	b.CouponCode = h.Coupon
+	if h.OfferExpiresAt != nil {
+		b.OfferExpiresAt = h.OfferExpiresAt.UTC().Format(time.RFC3339)
+	}
+	for i := range h.CardFiles {
+		b.CardFiles = append(b.CardFiles, *s.fileJSON(&h.CardFiles[i]))
+	}
 }
 
 /* paramsProblem checks what each {{n}} is filled with, and returns the refusal rather

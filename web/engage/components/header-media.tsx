@@ -19,6 +19,8 @@ import {
   type HeaderFormat,
   type MediaFormat,
 } from "../header-media";
+import { isHeic, processedSummary, sizeText } from "../template-options";
+import { prepareImage } from "./image-upload";
 
 /* A template's header, everywhere it is written or shown: the picker in the editors,
  * the top of a WhatsApp bubble, the file a template sends by default, and a
@@ -112,9 +114,9 @@ export function HeaderMediaBlock({
   return null;
 }
 
-function sizeText(bytes: number): string {
-  if (bytes >= 1 << 20) return `${(bytes / (1 << 20)).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+/** Size (and, for a processed image, dimensions and the size before) of an uploaded file. */
+export function fileDetail(f: CRMMediaFile): string {
+  return f.width ? processedSummary(f) : sizeText(f.bytes);
 }
 
 /** A button that picks a file, checks it against Meta's limits, and uploads it. */
@@ -122,11 +124,14 @@ export function HeaderFileButton({
   format,
   label,
   disabled,
+  aspect,
   onUploaded,
 }: {
   format: MediaFormat;
   label: string;
   disabled?: boolean;
+  /** A carousel card's shape: the server center-crops the image to it. */
+  aspect?: "square" | "wide";
   onUploaded: (file: CRMMediaFile) => void | Promise<void>;
 }) {
   const { notify } = useToast();
@@ -136,16 +141,25 @@ export function HeaderFileButton({
 
   async function pick(file: File | undefined) {
     if (!file) return;
-    const problem = headerFileProblem(format, file);
-    if (problem) {
-      notify(problem, "error");
-      return;
-    }
     setBusy(true);
     try {
-      await onUploaded(await engageApi.uploadCrmMedia(file));
+      // An iPhone photo is converted here when the browser can read it.
+      const ready = format === "IMAGE" && isHeic(file) ? await prepareImage(file) : file;
+      const problem = headerFileProblem(format, ready);
+      if (problem) {
+        notify(problem, "error");
+        return;
+      }
+      const saved = await engageApi.uploadCrmMedia(ready, format === "IMAGE" ? aspect : undefined);
+      if (saved.width && saved.originalBytes && saved.originalBytes !== saved.bytes) {
+        notify(`Image ready for WhatsApp: ${processedSummary(saved)}.`, "ok");
+      }
+      await onUploaded(saved);
     } catch (e) {
-      notify(e instanceof ApiError ? e.message : "Could not upload that file.", "error");
+      notify(
+        e instanceof ApiError || e instanceof Error ? e.message : "Could not upload that file.",
+        "error",
+      );
     } finally {
       setBusy(false);
       if (input.current) input.current.value = "";
@@ -158,7 +172,10 @@ export function HeaderFileButton({
         ref={input}
         type="file"
         className="sr-only"
-        accept={rule.types.join(",")}
+        accept={(format === "IMAGE"
+          ? [...rule.types, "image/heic", "image/heif", ".heic", ".heif"]
+          : rule.types
+        ).join(",")}
         aria-label={`${rule.label} file`}
         onChange={(e) => void pick(e.target.files?.[0])}
         tabIndex={-1}
@@ -244,6 +261,7 @@ export function HeaderPicker({
           <span className="min-w-0 flex-1 truncate">
             {value.file ? value.file.filename : MEDIA_RULES[media].hint}
           </span>
+          {value.file && <span className="shrink-0">{fileDetail(value.file)}</span>}
         </div>
       )}
       {media && (
@@ -253,24 +271,6 @@ export function HeaderPicker({
           {media === "IMAGE" && " Without one, an image header sends the webinar's cover."}
         </p>
       )}
-    </div>
-  );
-}
-
-/** The wording as WhatsApp will show it, header included. */
-export function WordingPreview({ header, body }: { header: HeaderDraft; body: string }) {
-  if (!body.trim() && header.format === "NONE") return null;
-  return (
-    <div className="rounded-xl px-3 py-3" style={{ background: "#e7f6e9" }} aria-label="Preview">
-      <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-sm bg-[#d9fdd3] text-[12.5px] leading-relaxed text-[#111] shadow-sm">
-        <HeaderMediaBlock format={header.format} file={header.file} />
-        <div className="px-2.5 py-1.5">
-          {header.format === "TEXT" && header.text.trim() && (
-            <p className="font-semibold">{header.text.trim()}</p>
-          )}
-          <p className="whitespace-pre-wrap">{body || "…"}</p>
-        </div>
-      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ package crmstore
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/store"
 )
@@ -91,21 +92,45 @@ func (s *Store) SetTemplateMedia(ctx context.Context, hostID, name, language, fi
 type BroadcastHeader struct {
 	File     *MediaFile
 	UseCover bool
+	// Coupon, OfferExpiresAt and CardFiles are the broadcast's own copy-code coupon,
+	// limited-time offer end, and carousel pictures (migration 0112).
+	Coupon         string
+	OfferExpiresAt *time.Time
+	CardFiles      []MediaFile
+}
+
+// BroadcastHeaderInput is what a broadcast chooses beyond its template's defaults.
+type BroadcastHeaderInput struct {
+	FileID         string
+	UseCover       bool
+	Coupon         string
+	OfferExpiresAt *time.Time
+	CardFileIDs    []string
+}
+
+func (in BroadcastHeaderInput) empty() bool {
+	return in.FileID == "" && !in.UseCover && in.Coupon == "" && in.OfferExpiresAt == nil && len(in.CardFileIDs) == 0
 }
 
 // setBroadcastHeader stores a broadcast's header choice in the caller's transaction.
 // Neither set removes it.
-func setBroadcastHeader(ctx context.Context, q store.Querier, broadcastID, fileID string, useCover bool) error {
-	if fileID == "" && !useCover {
+func setBroadcastHeader(ctx context.Context, q store.Querier, broadcastID string, in BroadcastHeaderInput) error {
+	if in.empty() {
 		_, err := q.Exec(ctx, `DELETE FROM crm_broadcast_header WHERE broadcast_id = $1::uuid`, broadcastID)
 		return err
 	}
+	cards := in.CardFileIDs
+	if cards == nil {
+		cards = []string{}
+	}
 	_, err := q.Exec(ctx, `
-		INSERT INTO crm_broadcast_header (broadcast_id, file_id, use_cover)
-		VALUES ($1::uuid, NULLIF($2, '')::uuid, $3)
+		INSERT INTO crm_broadcast_header (broadcast_id, file_id, use_cover, coupon_code, offer_expires_at, card_file_ids)
+		VALUES ($1::uuid, NULLIF($2, '')::uuid, $3, $4, $5, $6::uuid[])
 		ON CONFLICT (broadcast_id) DO UPDATE
-		   SET file_id = EXCLUDED.file_id, use_cover = EXCLUDED.use_cover`,
-		broadcastID, fileID, useCover)
+		   SET file_id = EXCLUDED.file_id, use_cover = EXCLUDED.use_cover,
+		       coupon_code = EXCLUDED.coupon_code, offer_expires_at = EXCLUDED.offer_expires_at,
+		       card_file_ids = EXCLUDED.card_file_ids`,
+		broadcastID, in.FileID, in.UseCover, strings.TrimSpace(in.Coupon), in.OfferExpiresAt, cards)
 	return err
 }
 
@@ -120,12 +145,15 @@ func (s *Store) BroadcastHeaderFor(ctx context.Context, broadcastID string) (Bro
 		bytes    *int64
 		hostID   *string
 	)
+	var cardIDs []string
 	err := s.pool.QueryRow(ctx, `
-		SELECT bh.use_cover, f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token
+		SELECT bh.use_cover, f.id::text, f.host_id::text, f.storage_key, f.mime, f.filename, f.bytes, f.public_token,
+		       bh.coupon_code, bh.offer_expires_at, bh.card_file_ids::text[]
 		  FROM crm_broadcast_header bh
 		  LEFT JOIN crm_media_files f ON f.id = bh.file_id
 		 WHERE bh.broadcast_id = $1::uuid`, broadcastID).
-		Scan(&h.UseCover, &fileID, &hostID, &key, &mime, &fn, &bytes, &tok)
+		Scan(&h.UseCover, &fileID, &hostID, &key, &mime, &fn, &bytes, &tok,
+			&h.Coupon, &h.OfferExpiresAt, &cardIDs)
 	if noRows(err) {
 		return BroadcastHeader{}, nil
 	}
@@ -135,6 +163,30 @@ func (s *Store) BroadcastHeaderFor(ctx context.Context, broadcastID string) (Bro
 	if fileID != nil {
 		m = MediaFile{ID: *fileID, HostID: *hostID, StorageKey: *key, Mime: *mime, Filename: *fn, Bytes: *bytes, Token: *tok}
 		h.File = &m
+	}
+	if len(cardIDs) > 0 {
+		rows, err := s.pool.Query(ctx, `
+			SELECT `+mediaFileColumns+` FROM crm_media_files f WHERE f.id = ANY($1::uuid[])`, cardIDs)
+		if err != nil {
+			return BroadcastHeader{}, err
+		}
+		defer rows.Close()
+		byID := map[string]MediaFile{}
+		for rows.Next() {
+			mf, err := scanMediaFile(rows)
+			if err != nil {
+				return BroadcastHeader{}, err
+			}
+			byID[mf.ID] = mf
+		}
+		if err := rows.Err(); err != nil {
+			return BroadcastHeader{}, err
+		}
+		for _, id := range cardIDs {
+			if mf, ok := byID[id]; ok {
+				h.CardFiles = append(h.CardFiles, mf)
+			}
+		}
 	}
 	return h, nil
 }

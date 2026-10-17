@@ -12,8 +12,10 @@ import { MESSAGE_ROWS } from "./messages/catalog";
 import { templateKey } from "./crm-templates";
 import { CategoryPill, PhoneFrame, friendlyTemplateName } from "./wa-kit";
 import { WriteWordingDialog } from "./write-wording-dialog";
-import { HeaderMediaBlock, TemplateHeaderFile } from "./header-media";
+import { TemplateHeaderFile } from "./header-media";
 import { headerSummary } from "../header-media";
+import { languageLabel, languagesByName, templateKindLabel } from "../template-options";
+import { WhatsAppPreview, previewFromTemplate } from "./template-options";
 
 /* Templates tab: search and New template on one row, then the list and the
  * phone preview. New template opens the existing wording dialog. */
@@ -104,6 +106,7 @@ export function WhatsAppTemplates({
     return sortBy(matched, sort.dir, value, "string");
   }, [templates, query, sort, slots]);
 
+  const languages = useMemo(() => languagesByName(templates ?? []), [templates]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const safePage = Math.min(page, pages - 1);
   const rows = filtered.slice(safePage * PAGE, safePage * PAGE + PAGE);
@@ -194,6 +197,9 @@ export function WhatsAppTemplates({
                             {friendlyTemplateName(template.name)}
                           </b>
                           <span className="text-[11.5px] text-ink-3">{template.name}</span>
+                          {templateKindLabel(template) && (
+                            <span className="block text-[11px] text-ink-3">{templateKindLabel(template)}</span>
+                          )}
                           {headerSummary(template) && (
                             <span
                               className={`block text-[11px] ${template.needsHeaderFile ? "text-warn" : "text-ink-3"}`}
@@ -205,7 +211,19 @@ export function WhatsAppTemplates({
                         <td className="px-3 py-2.5">
                           <CategoryPill category={template.category} />
                         </td>
-                        <td className="px-3 py-2.5 text-ink-2">{template.language}</td>
+                        <td className="px-3 py-2.5 text-ink-2">
+                          {languageLabel(template.language)}
+                          {(languages.get(template.name)?.length ?? 0) > 1 && (
+                            <span className="block text-[11px] text-ink-3">
+                              Also in{" "}
+                              {languages
+                                .get(template.name)!
+                                .filter((l) => l !== template.language)
+                                .map(languageLabel)
+                                .join(", ")}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5">
                           <StatusText template={template} />
                         </td>
@@ -244,26 +262,18 @@ export function WhatsAppTemplates({
                 </p>
               </div>
               <PhoneFrame title={coach} subtitle="Business account">
-                <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-none bg-white text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">
-                  <HeaderMediaBlock format={selected.headerFormat} file={selected.headerFile} />
-                  <div className="px-2.5 py-1.5">
-                    {selected.header && <p className="font-semibold">{selected.header}</p>}
-                    {selected.body || "This template has no message text."}
-                    {(selected.buttons ?? []).length > 0 && (
-                      <div className="mt-1.5 flex flex-col border-t border-black/5 pt-1">
-                        {selected.buttons.map((button) => (
-                          <span
-                            key={button.text}
-                            className="inline-flex items-center justify-center py-1 text-[12px] font-medium text-[#027eb5]"
-                          >
-                            {button.text}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <WhatsAppPreview model={previewFromTemplate(selected)} compact />
               </PhoneFrame>
+              {selected.offer && (
+                <p className="text-[11.5px] text-ink-3">
+                  The offer card shows on phones; WhatsApp desktop and web show the plain message.
+                </p>
+              )}
+              {selected.needsCardFiles && (
+                <p className="text-[11.5px] text-warn">
+                  Written in WhatsApp Manager: each broadcast brings the card pictures.
+                </p>
+              )}
               {selected.status.toUpperCase() === "APPROVED" && (
                 <TemplateHeaderFile template={selected} onSaved={onCreated} />
               )}
@@ -282,6 +292,7 @@ export function WhatsAppTemplates({
       {writing && (
         <WriteWordingDialog
           connected={connected}
+          templates={templates ?? []}
           onClose={() => setWriting(false)}
           onCreated={() => {
             onCreated();

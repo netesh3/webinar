@@ -25,16 +25,25 @@ function eq(actual: unknown, expected: unknown, what: string): void {
 
 const MB = 1 << 20;
 
-eq(headerFileProblem("IMAGE", { type: "image/png", size: 5 * MB }), null, "5 MB png is fine");
+// Images are converted on upload, so a camera original over 5 MB is fine.
+eq(headerFileProblem("IMAGE", { type: "image/png", size: 12 * MB }), null, "12 MB png is converted");
 eq(
-  headerFileProblem("IMAGE", { type: "image/png", size: 5 * MB + 1 }),
-  "WhatsApp takes an image of up to 5 MB.",
-  "over 5 MB image refused",
+  headerFileProblem("IMAGE", { type: "image/jpeg", size: 25 * MB + 1 }),
+  "That image is over 25 MB. Use a smaller one.",
+  "over 25 MB image refused",
 );
+eq(headerFileProblem("IMAGE", { type: "image/gif", size: 10 }), null, "gif is converted");
+eq(headerFileProblem("IMAGE", { type: "image/webp", size: 10 }), null, "webp is converted");
 eq(
-  headerFileProblem("IMAGE", { type: "image/gif", size: 10 }),
-  "An image header takes JPEG or PNG.",
-  "gif refused",
+  headerFileProblem("IMAGE", { type: "image/bmp", size: 10 }),
+  "An image header takes JPG, PNG, WebP or GIF.",
+  "bmp refused",
+);
+eq(headerFileProblem("IMAGE", { type: "image/heic", size: 10 })?.startsWith("HEIC photos"), true, "heic explained");
+eq(
+  headerFileProblem("VIDEO", { type: "video/quicktime", size: 10 }),
+  "Video must be MP4 (H.264 video, AAC audio) under 16 MB.",
+  "mov refused precisely",
 );
 eq(headerFileProblem("VIDEO", { type: "video/mp4", size: 16 * MB }), null, "16 MB mp4 fine");
 eq(

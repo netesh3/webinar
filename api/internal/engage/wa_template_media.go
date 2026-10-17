@@ -55,6 +55,12 @@ var headerMediaTypes = map[string]mediaKind{
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": {"document", 100 << 20},
 }
 
+/* imageInputs are image types accepted on upload and converted (see wa_image.go). What
+ * is stored, and what Meta is sent, is always JPEG or PNG. */
+var imageInputs = map[string]bool{
+	"image/jpeg": true, "image/png": true, "image/webp": true, "image/gif": true,
+}
+
 // sniffAgrees reports whether the first bytes are what the declared type says.
 func sniffAgrees(declared string, head []byte) bool {
 	got := http.DetectContentType(head)
@@ -90,6 +96,15 @@ func (s *Module) fileURL(m crmstore.MediaFile) string {
 	return s.publicBase() + "/api/wa/files/" + m.Token
 }
 
+// fileJSONSized is fileJSON with what the upload did to an image.
+func (s *Module) fileJSONSized(m *crmstore.MediaFile, w, h int, original int64) *types.CRMMediaFile {
+	out := s.fileJSON(m)
+	if out != nil {
+		out.Width, out.Height, out.OriginalBytes = w, h, original
+	}
+	return out
+}
+
 func (s *Module) fileJSON(m *crmstore.MediaFile) *types.CRMMediaFile {
 	if m == nil {
 		return nil
@@ -111,10 +126,24 @@ func (s *Module) handleUploadCRMMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mime := strings.ToLower(strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0]))
+	if mime == "image/heic" || mime == "image/heif" {
+		httpx.Error(w, http.StatusUnsupportedMediaType, "media_heic",
+			"HEIC photos can't be read here. Upload a JPG or PNG (on iPhone: Settings → Camera → Formats → Most Compatible).")
+		return
+	}
+	aspect := strings.TrimSpace(r.URL.Query().Get("aspect"))
+	if !validAspect(aspect) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "media_aspect", "The card shape is square or wide.")
+		return
+	}
+	if imageInputs[mime] {
+		s.uploadImage(w, r, user, aspect)
+		return
+	}
 	kind, ok := headerMediaTypes[mime]
 	if !ok {
 		httpx.Error(w, http.StatusUnsupportedMediaType, "media_type",
-			"Use a JPG or PNG image, an MP4 video, or a PDF, Word, Excel, PowerPoint or text document.")
+			"Use a JPG, PNG, WebP or GIF image, an MP4 video, or a PDF, Word, Excel, PowerPoint or text document.")
 		return
 	}
 	filename := path.Base(strings.TrimSpace(r.URL.Query().Get("filename")))
@@ -158,8 +187,11 @@ func (s *Module) handleUploadCRMMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	if size > kind.limit {
 		_ = s.blobs.Delete(context.Background(), key)
-		httpx.Error(w, http.StatusRequestEntityTooLarge, "media_too_large",
-			"WhatsApp takes "+kind.kind+"s up to "+formatMB(kind.limit)+".")
+		msg := "WhatsApp takes " + kind.kind + "s up to " + formatMB(kind.limit) + "."
+		if kind.kind == "video" {
+			msg = "Video must be MP4 (H.264 video, AAC audio) under 16 MB. Export it again at a lower resolution or shorter."
+		}
+		httpx.Error(w, http.StatusRequestEntityTooLarge, "media_too_large", msg)
 		return
 	}
 	if err := s.blobs.Finalize(r.Context(), key); err != nil {
@@ -179,6 +211,80 @@ func (s *Module) handleUploadCRMMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func formatMB(n int64) string { return fmt.Sprintf("%d MB", n>>20) }
+
+/* uploadImage is POST /crm/media for an image: read whole (it is bounded), made right
+ * for WhatsApp by processImage, then stored. The response says what came out — size
+ * and dimensions — so the editor can show the coach the processed picture. */
+func (s *Module) uploadImage(w http.ResponseWriter, r *http.Request, user store.User, aspect string) {
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxImageInput+1))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_body", "Could not read that file.")
+		return
+	}
+	if len(data) == 0 {
+		httpx.Error(w, http.StatusUnprocessableEntity, "media_empty", "That file is empty.")
+		return
+	}
+	if len(data) > maxImageInput {
+		httpx.Error(w, http.StatusRequestEntityTooLarge, "media_too_large",
+			"That image is over "+formatMB(maxImageInput)+". Use a smaller one.")
+		return
+	}
+	if got := http.DetectContentType(data); !imageInputs[got] {
+		httpx.Error(w, http.StatusUnprocessableEntity, "media_mismatch",
+			"That file isn't really an image. Export it again as JPG or PNG.")
+		return
+	}
+	img, err := processImage(data, aspect)
+	if err != nil {
+		httpx.Error(w, http.StatusUnprocessableEntity, "media_image", err.Error())
+		return
+	}
+	filename := imageFilename(r.URL.Query().Get("filename"), img.Mime)
+	token, err := mediaToken()
+	if err != nil {
+		s.fail(w, r, "crm media: token", err)
+		return
+	}
+	id := uuid.NewString()
+	key := "wa/" + user.ID + "/files/" + id
+	size, err := s.blobs.Append(r.Context(), key, bytes.NewReader(img.Data))
+	if err == nil {
+		err = s.blobs.Finalize(r.Context(), key)
+	}
+	if err != nil {
+		_ = s.blobs.Delete(context.Background(), key)
+		s.fail(w, r, "crm media: store image", err)
+		return
+	}
+	file, err := s.store.CreateMediaFile(r.Context(), crmstore.MediaFile{
+		ID: id, HostID: user.ID, StorageKey: key, Mime: img.Mime, Filename: filename, Bytes: size, Token: token,
+	})
+	if err != nil {
+		_ = s.blobs.Delete(context.Background(), key)
+		s.fail(w, r, "crm media: record", err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, s.fileJSONSized(&file, img.Width, img.Height, int64(len(data))))
+}
+
+// imageFilename keeps the coach's name for the file with the extension it now has.
+func imageFilename(raw, mime string) string {
+	name := path.Base(strings.TrimSpace(raw))
+	if name == "." || name == "/" {
+		name = "image"
+	}
+	if i := strings.LastIndex(name, "."); i > 0 {
+		name = name[:i]
+	}
+	if utf8.RuneCountInString(name) > 190 {
+		name = string([]rune(name)[:190])
+	}
+	if mime == "image/png" {
+		return name + ".png"
+	}
+	return name + ".jpg"
+}
 
 /* handleCRMPublicFile is GET /wa/files/{token}: the public link Meta fetches a header
  * from. No session — the token is the key — so it is served defensively: the stored
@@ -276,6 +382,14 @@ func (s *Module) handleSetCRMTemplateMedia(w http.ResponseWriter, r *http.Reques
 func (s *Module) templateJSON(t crmstore.TemplateWithFile) types.CRMTemplate {
 	out := t.CRMTemplate
 	out.HeaderFile = s.fileJSON(t.File)
+	if len(t.CardFiles) == len(out.Cards) {
+		cards := make([]types.CRMTemplateCard, len(out.Cards))
+		copy(cards, out.Cards)
+		for i := range cards {
+			cards[i].File = s.fileJSON(&t.CardFiles[i])
+		}
+		out.Cards = cards
+	}
 	return out
 }
 
