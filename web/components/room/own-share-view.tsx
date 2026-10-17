@@ -108,9 +108,6 @@ export function OwnShareView({
           <p className="mt-3 text-[20px] font-semibold text-white">
             You&apos;re sharing your entire screen
           </p>
-          <p className="mt-1.5 text-[13.5px] text-white/65">
-            Everyone can see everything on your screen.
-          </p>
         </div>
         {share.frozen && <FrozenWarning isWindow={false} />}
       </div>
