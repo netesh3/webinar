@@ -198,10 +198,13 @@ func (s *Store) ApplySubscriptionStatus(ctx context.Context, id, status, custome
 		_, err = tx.Exec(ctx, `
 			INSERT INTO subscriptions (user_id, plan, status, trial_ends_at, current_period_end,
 			                           provider, provider_customer_id, provider_subscription_id)
-			VALUES ($1::uuid, $2, 'active', $3, $4, 'razorpay', $5, $6)
+			VALUES ($1::uuid, $2, 'active', $3, coalesce($4::timestamptz, $3), 'razorpay', $5, $6)
 			ON CONFLICT (user_id) DO UPDATE
 			   SET plan = EXCLUDED.plan, status = 'active',
-			       current_period_end = coalesce($4, subscriptions.current_period_end),
+			       -- Forward only: a late, older event never pulls the period back,
+			       -- so a healthy subscription stays ahead of effective_plan's grace (0108).
+			       current_period_end = CASE WHEN $4::timestamptz IS NULL THEN subscriptions.current_period_end
+			                                 ELSE greatest(coalesce(subscriptions.current_period_end, $4::timestamptz), $4::timestamptz) END,
 			       provider = 'razorpay',
 			       provider_customer_id = CASE WHEN EXCLUDED.provider_customer_id <> ''
 			                                   THEN EXCLUDED.provider_customer_id

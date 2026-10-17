@@ -336,8 +336,15 @@ func (s *Server) applySubscription(ctx context.Context, id, status, customerID s
 	return u, nil
 }
 
+/* identityClaims and methodClaims never hash with an empty salt: without
+ * TRIAL_HASH_SALT trials are off (handleStartTrial says trial_off), and a webhook
+ * for an older trial arriving after the salt was removed records nothing rather
+ * than unsalted hashes. */
 func (s *Server) identityClaims(u store.User) []store.TrialClaim {
 	salt := s.cfg.TrialHashSalt
+	if salt == "" {
+		return nil
+	}
 	return []store.TrialClaim{
 		{Kind: store.ClaimPhone, Digest: store.TrialDigest(salt, store.ClaimPhone, store.NormalisePhone(u.Phone))},
 		{Kind: store.ClaimEmail, Digest: store.TrialDigest(salt, store.ClaimEmail, store.NormaliseTrialEmail(u.Email))},
@@ -346,6 +353,9 @@ func (s *Server) identityClaims(u store.User) []store.TrialClaim {
 
 func (s *Server) methodClaims(p billing.Payment) []store.TrialClaim {
 	salt := s.cfg.TrialHashSalt
+	if salt == "" {
+		return nil
+	}
 	var out []store.TrialClaim
 	if vpa := store.NormaliseTrialVPA(p.VPA); vpa != "" {
 		out = append(out, store.TrialClaim{Kind: store.ClaimVPA, Digest: store.TrialDigest(salt, store.ClaimVPA, vpa)})

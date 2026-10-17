@@ -39,6 +39,9 @@
 #   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET — self-serve plans (Buy on /pricing).
 #     Both or neither. RAZORPAY_WEBHOOK_SECRET signs POST /api/webhooks/razorpay.
 #     BILLING_GST_PERCENT (repo Variable, default 18) is added to INR prices.
+#   TRIAL_HASH_SALT — turns on the 7-day free trial (with the Razorpay keys). Salts
+#     the hashes that keep it once per person. Generate once (openssl rand -hex 32)
+#     and never change it: earlier trials would stop matching. Unset: no trials.
 #   TELEMETRY_ENABLED — hardcoded below (not a secret): "true" turns on
 #     POST /telemetry for a performance-test window. Flip to "false" and
 #     redeploy when the test is done.
@@ -154,6 +157,7 @@ jobs:
       RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
       RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
       RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+      TRIAL_HASH_SALT: ${{ secrets.TRIAL_HASH_SALT }}
       BILLING_GST_PERCENT: ${{ vars.BILLING_GST_PERCENT }}
       ZOOM_CLIENT_ID: ${{ secrets.ZOOM_CLIENT_ID }}
       ZOOM_CLIENT_SECRET: ${{ secrets.ZOOM_CLIENT_SECRET }}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/billing"
+	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -278,6 +279,125 @@ func TestTrialIsOncePerPerson(t *testing.T) {
 	h.setPhone("+91 98111 00010")
 	if code, _, raw := h.startTrial("business"); code != http.StatusConflict || errorCode(t, []byte(raw)) != "trial_used" {
 		t.Fatalf("deleted account's phone: %d %s, want 409 trial_used", code, raw)
+	}
+}
+
+// Billing on but no TRIAL_HASH_SALT: no trials, and the catalogue says so.
+func TestTrialOffWithoutSalt(t *testing.T) {
+	_, srv := newFakeRazorpay(t)
+	h := newHarness(t, func(c *config.Config) {
+		c.RazorpayKeyID = rzpKeyID
+		c.RazorpayKeySecret = rzpSecret
+		c.RazorpayWebhookSecret = rzpWebhookSK
+		c.RazorpayAPIURL = srv.URL
+	})
+	_, raw := h.do(http.MethodGet, "/api/billing/plans", nil)
+	var cat types.BillingCatalogue
+	h.decode(raw, &cat)
+	if !cat.Enabled || cat.TrialDays != 0 {
+		t.Fatalf("catalogue without a salt: enabled %v trialDays %d, want pay-now only", cat.Enabled, cat.TrialDays)
+	}
+	h.signup("No Salt", "no-salt@example.com", false)
+	h.setPhone("+91 98111 00040")
+	if code, _, body := h.startTrial("business"); code != http.StatusServiceUnavailable || errorCode(t, []byte(body)) != "trial_off" {
+		t.Fatalf("trial without a salt: %d %s, want 503 trial_off", code, body)
+	}
+	var claims int
+	if err := h.store.Pool().QueryRow(t.Context(), `SELECT count(*) FROM trial_claims`).Scan(&claims); err != nil || claims != 0 {
+		t.Fatalf("claims recorded without a salt: %d (%v)", claims, err)
+	}
+}
+
+/* If Razorpay's webhooks stop, a subscription's plan still ends: three days past
+ * its period (or its trial, before a first charge). A later charged webhook brings
+ * it back. An admin-assigned plan never lapses. */
+func TestRazorpayPlanGraceAndRestore(t *testing.T) {
+	h, _ := billingHarness(t)
+	acct := h.signup("Grace Coach", "grace-coach@example.com", false)
+	h.setPhone("+91 98111 00030")
+	_, co, _ := h.startTrial("business")
+	if code, _, raw := h.verifyTrial(co.SubscriptionID, "pay_grace"); code != http.StatusOK {
+		t.Fatalf("verify: %d %s", code, raw)
+	}
+	ctx := t.Context()
+	set := func(sql string) {
+		t.Helper()
+		if _, err := h.store.Pool().Exec(ctx, sql+` WHERE user_id = $1::uuid`, acct.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan := func() types.Plan {
+		t.Helper()
+		p, err := h.store.PlanForUser(ctx, acct.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	// (d) Trialing, before any charge: the trial end is what counts.
+	set(`UPDATE subscriptions SET current_period_end = NULL, trial_ends_at = now() - interval '2 days'`)
+	if plan() != types.PlanBusiness {
+		t.Fatal("trial 2 days past its end lost the plan inside the grace")
+	}
+	set(`UPDATE subscriptions SET trial_ends_at = now() - interval '4 days'`)
+	if plan() != "" {
+		t.Fatal("trial 4 days past its end, no charge: still on the plan")
+	}
+
+	// Charged: active until Razorpay's current_end.
+	h.subWebhook("subscription.charged", co.SubscriptionID, "active", time.Now().Add(30*24*time.Hour).Unix(), "")
+	if plan() != types.PlanBusiness {
+		t.Fatal("charge did not put the plan back")
+	}
+
+	// (a) 2 days past the period: still inside the grace.
+	set(`UPDATE subscriptions SET current_period_end = now() - interval '2 days'`)
+	if plan() != types.PlanBusiness {
+		t.Fatal("active subscription 2 days past its period lost the plan")
+	}
+
+	// (b) 4 days past: no plan, and features are the no-plan defaults.
+	set(`UPDATE subscriptions SET current_period_end = now() - interval '4 days'`)
+	if plan() != "" {
+		t.Fatal("active subscription 4 days past its period still has the plan")
+	}
+	var defaults []string
+	if err := h.store.Pool().QueryRow(ctx, `SELECT effective_features('', '{}', '{}')`).Scan(&defaults); err != nil {
+		t.Fatal(err)
+	}
+	if a := h.me(); a.Plan != "" || fmt.Sprint(a.Features) != fmt.Sprint(defaults) {
+		t.Fatalf("after lapse: plan %q features %v, want none and %v", a.Plan, a.Features, defaults)
+	}
+
+	// (c) The renewal's webhook arrives late: access comes back by itself.
+	h.subWebhook("subscription.charged", co.SubscriptionID, "active", time.Now().Add(30*24*time.Hour).Unix(), "")
+	if plan() != types.PlanBusiness {
+		t.Fatal("a late charged webhook did not restore the plan")
+	}
+	// A late, older event never pulls the period back into the grace.
+	h.subWebhook("subscription.charged", co.SubscriptionID, "active", time.Now().Add(-10*24*time.Hour).Unix(), "")
+	if plan() != types.PlanBusiness {
+		t.Fatal("an older charged event moved the period backwards")
+	}
+
+	// A Razorpay row with no dates at all fails closed, unless it is a fresh trial.
+	set(`UPDATE subscriptions SET current_period_end = NULL, trial_ends_at = NULL, status = 'active'`)
+	if plan() != "" {
+		t.Fatal("a Razorpay row with no dates kept its plan")
+	}
+	set(`UPDATE subscriptions SET status = 'trialing', created_at = now()`)
+	if plan() != types.PlanBusiness {
+		t.Fatal("a fresh trial with no dates yet lost its plan")
+	}
+
+	// (e) Admin-assigned: no provider id, no end, never lapses.
+	if _, err := h.store.SetUserPlan(ctx, acct.ID, types.PlanEnterprise); err != nil {
+		t.Fatal(err)
+	}
+	set(`UPDATE subscriptions SET created_at = now() - interval '400 days', updated_at = now() - interval '400 days'`)
+	if plan() != types.PlanEnterprise {
+		t.Fatal("an admin-assigned plan lapsed")
 	}
 }
 
