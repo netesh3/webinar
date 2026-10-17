@@ -2,7 +2,6 @@
 
 import { VideoTrack } from "@livekit/components-react";
 import {
-  LocalParticipant,
   Track,
   type LocalVideoTrack,
   type Participant,
@@ -20,7 +19,6 @@ import {
   PinIcon,
   PlusIcon,
   ScreenShareIcon,
-  StopIcon,
 } from "../icons";
 import { tileFit } from "@/lib/layout";
 import { CAMERA_OFF_LABEL } from "@/lib/stage-presence";
@@ -155,14 +153,6 @@ export function ParticipantTile({
    * presenter what the room is seeing. Which they need — it is the only way to
    * know the share is working. */
   const isOwnShare = isScreen && participant.isLocal && !fileShare.active;
-  /* Only ever called for isOwnShare, so this is the local participant and a real
-   * screen capture — a shared file goes through fileShare.stop() instead and never
-   * shows this notice. Errors are swallowed like the control bar's stop: the browser
-   * may already have ended the capture, and stopping should never toast. */
-  const stopOwnShare = useCallback(() => {
-    if (!(participant instanceof LocalParticipant)) return;
-    participant.setScreenShareEnabled(false).catch(() => {});
-  }, [participant]);
   const hasVideo =
     !isOwnShare && !!publication && !publication.isMuted && !!publication.track;
   /* No publication at all: the person is in the room and never started the
@@ -245,7 +235,6 @@ export function ParticipantTile({
       ) : isOwnShare ? (
         <OwnShareNotice
           size={size}
-          onStop={stopOwnShare}
           track={publication?.track as LocalVideoTrack | undefined}
         />
       ) : (
@@ -633,25 +622,16 @@ const OWN_SHARE_SCALE = {
     badge: "mb-1.5 gap-1.5 px-2 py-0.5 text-[10px]",
     dot: "size-1.5",
     title: "text-[14px] font-semibold",
-    sub: "",
-    button: "",
-    icon: "",
   },
   md: {
     badge: "mb-2.5 gap-2 px-2.5 py-1 text-[12px]",
     dot: "size-2",
     title: "text-[20px] font-bold",
-    sub: "mt-1.5 text-[15px]",
-    button: "mt-4 px-5 py-2 text-[14px] rounded-xl",
-    icon: "size-3.5",
   },
   lg: {
     badge: "mb-5 gap-2.5 px-5 py-2 text-[18px]",
     dot: "size-3",
     title: "text-[32px] font-bold",
-    sub: "mt-2.5 text-[20px]",
-    button: "mt-6 px-8 py-3.5 text-[19px] rounded-[13px]",
-    icon: "size-4.5",
   },
 } as const;
 
@@ -660,15 +640,13 @@ const OWN_SHARE_SCALE = {
  *
  * They need to know it is live and that it is on the stage — but not to watch a
  * recording of the window they are looking at. The audience sees the real thing.
- * A stop button sits right here too, where the presenter is already looking.
+ * Stopping is the Share button in the control bar, so this stays a quiet label.
  */
 function OwnShareNotice({
   size,
-  onStop,
   track,
 }: {
   size: "sm" | "md" | "lg";
-  onStop: () => void;
   /** The live share, for switching sharp/video in place. */
   track?: LocalVideoTrack;
 }) {
@@ -701,32 +679,20 @@ function OwnShareNotice({
         </p>
         {/* Not on a filmstrip thumbnail — there is no room for more than the line. */}
         {size !== "sm" && (
-          <>
-            <p className={`text-white/70 ${s.sub}`}>Everyone can see it</p>
-            <button
-              type="button"
-              onClick={onStop}
-              /* Tailwind v4 resets a button's cursor to the default arrow, so the hand
-               * is put back explicitly — together with a lift on hover and a press on
-               * active, so this reads as something to click rather than a red label. */
-              className={`relative z-10 inline-flex cursor-pointer items-center gap-2 bg-live font-semibold text-white shadow-lg shadow-black/40 ring-1 ring-white/10 transition-[background-color,transform,box-shadow] duration-150 select-none hover:-translate-y-px hover:bg-[color-mix(in_srgb,var(--color-live)_85%,white)] hover:shadow-xl hover:shadow-live/30 active:translate-y-0 active:scale-[0.97] active:bg-[color-mix(in_srgb,var(--color-live)_85%,black)] outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${s.button}`}
-            >
-              <StopIcon className={s.icon} aria-hidden />
-              Stop sharing
-            </button>
-            <label
-              className={`relative z-10 mt-3 flex cursor-pointer items-center justify-center gap-2 text-white/80 select-none ${s.sub}`}
-              title="Smoother motion for a playing video; text on slides gets softer"
-            >
-              <input
-                type="checkbox"
-                checked={videoMode}
-                onChange={(e) => onModeChange(e.target.checked)}
-                className="size-4 cursor-pointer accent-[var(--color-brand)]"
-              />
-              Optimize for video
-            </label>
-          </>
+          <label
+            className={`relative z-10 mt-3 flex cursor-pointer items-center justify-center gap-2 text-white/80 select-none ${
+              size === "lg" ? "text-[14px]" : "text-[12px]"
+            }`}
+            title="Smoother motion for a playing video; text on slides gets softer"
+          >
+            <input
+              type="checkbox"
+              checked={videoMode}
+              onChange={(e) => onModeChange(e.target.checked)}
+              className="size-4 cursor-pointer accent-[var(--color-brand)]"
+            />
+            Optimize for video
+          </label>
         )}
       </div>
     </div>

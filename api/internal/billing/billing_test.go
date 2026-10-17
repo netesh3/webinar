@@ -58,3 +58,32 @@ func TestParseWebhookOnlyActsOnCapturedPayments(t *testing.T) {
 		t.Fatal("failed payment acted on")
 	}
 }
+
+// INR yearly is twelve whole months at a per-month price ending in 9, never more
+// than ten monthly payments; USD stays ten times monthly.
+func TestYearlyPricesAreWholeMonthsEndingInNine(t *testing.T) {
+	for _, p := range Plans {
+		if p.ContactOnly {
+			continue
+		}
+		for _, cur := range []string{INR, USD} {
+			m, _ := p.Price(cur, Monthly)
+			y, _ := p.Price(cur, Yearly)
+			if cur == USD {
+				if y != m*10 {
+					t.Errorf("%s USD yearly = %d, want %d", p.Name, y, m*10)
+				}
+				continue
+			}
+			if y%(12*100) != 0 || (y/12/100)%10 != 9 || y > m*10 {
+				t.Errorf("%s INR yearly = %d: want 12 × a ₹…9 month, at most ten months (%d)", p.Name, y, m*10)
+			}
+			if l := p.List(cur, Yearly); l%(12*100) != 0 || (l/12/100)%10 != 9 {
+				t.Errorf("%s INR yearly list = %d: want 12 × a ₹…9 month", p.Name, l)
+			}
+		}
+	}
+	if y, _ := Plans[0].Price(INR, Yearly); y != 39_948_00 {
+		t.Errorf("Professional INR yearly = %d, want ₹39,948", y)
+	}
+}
