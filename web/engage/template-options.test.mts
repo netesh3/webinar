@@ -139,7 +139,7 @@ eq(
   "offer request: no footer",
 );
 eq(
-  optionsRequest({ ...car, translationOf: "wl_own_1", language: "ta" }, "Pick"),
+  optionsRequest({ ...car, translationOf: "wl_own_1", title: "ignored", language: "ta" }, "Pick"),
   {
     language: "ta",
     name: "wl_own_1",
@@ -154,6 +154,8 @@ eq(
   "carousel translation request",
 );
 eq(optionsRequest(opts({ footer: "" }), "x").footer, "", "a removed footer is sent as empty");
+eq(optionsRequest(opts({ title: "  Webinar reminder 1 hour " }), "x").title, "Webinar reminder 1 hour", "a new template sends its title");
+eq(optionsRequest(opts({ title: "Webinar reminder", translationOf: "webinar_reminder" }), "x").title, undefined, "a translation sends no title");
 eq(optionsRequest(opts({}), "x").footer, undefined, "an untouched footer is left to the server");
 eq(
   optionsRequest(opts({ buttons: [btn("PHONE_NUMBER", { text: "Call", phoneNumber: "+91 (98765) 43210" })] }), "x").buttons,
@@ -165,7 +167,12 @@ eq(
 eq(templateKindLabel({ cards: [{ headerFormat: "IMAGE", body: "", buttons: [] }, { headerFormat: "IMAGE", body: "", buttons: [] }] }), "Carousel · 2 cards", "carousel label");
 eq(templateKindLabel({ auth: { securityRecommendation: true } }), "One-time code", "auth label");
 eq(
-  [...languagesByName([{ name: "a", language: "en" }, { name: "a", language: "hi" }, { name: "b", language: "en" }])],
+  [...languagesByName([
+    { name: "a", language: "en", own: true },
+    { name: "a", language: "hi", own: true },
+    { name: "b", language: "en", own: true },
+    { name: "from_manager", language: "en" },
+  ])],
   [["a", ["en", "hi"]], ["b", ["en"]]],
   "languages per name",
 );

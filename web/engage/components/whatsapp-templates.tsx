@@ -10,7 +10,7 @@ import type { CRMMergeField, CRMTemplate, MessageSlot } from "@/lib/api-types";
 import { sortBy } from "@/lib/table-sort";
 import { MESSAGE_ROWS } from "./messages/catalog";
 import { templateKey } from "./crm-templates";
-import { CategoryPill, PhoneFrame, friendlyTemplateName } from "./wa-kit";
+import { CategoryPill, PhoneFrame, templateLabel } from "./wa-kit";
 import { WriteWordingDialog } from "./write-wording-dialog";
 import { TemplateHeaderFile } from "./header-media";
 import { headerSummary } from "../header-media";
@@ -98,13 +98,13 @@ export function WhatsAppTemplates({
     const list = templates ?? [];
     const matched = q
       ? list.filter((template) => {
-          const hay = `${template.name} ${friendlyTemplateName(template.name)} ${template.body ?? ""}`.toLowerCase();
+          const hay = `${template.name} ${templateLabel(template)} ${template.body ?? ""}`.toLowerCase();
           return hay.includes(q);
         })
       : list;
     if (!sort.key) return matched;
     const value = (template: CRMTemplate) => {
-      if (sort.key === "name") return friendlyTemplateName(template.name);
+      if (sort.key === "name") return templateLabel(template);
       if (sort.key === "category") return template.category;
       if (sort.key === "language") return template.language;
       if (sort.key === "status") return statusLabel(template);
@@ -201,7 +201,7 @@ export function WhatsAppTemplates({
                       >
                         <td className="px-4 py-2.5">
                           <b className="block font-semibold text-ink">
-                            {friendlyTemplateName(template.name)}
+                            {templateLabel(template)}
                           </b>
                           <span className="text-[11.5px] text-ink-3">{template.name}</span>
                           {templateKindLabel(template) && (
@@ -262,7 +262,7 @@ export function WhatsAppTemplates({
             <>
               <div>
                 <h2 className="text-[14px] font-semibold">
-                  {friendlyTemplateName(selected.name)}
+                  {templateLabel(selected)}
                 </h2>
                 <p className="mt-0.5 text-[12px] text-ink-2">
                   {selected.category} · {selected.language} · {statusLabel(selected)}

@@ -138,7 +138,7 @@ func TestMediaDeleteRefusesFilesInUseAndSaysWhere(t *testing.T) {
 
 	_, header, _ := uploadMedia(t, h, "application/pdf", "deck.pdf", fakePDF)
 	res, raw := h.do(http.MethodPost, "/api/host/crm/templates", types.CRMWordingRequest{
-		Body: "Hi {{1}}, here is the deck.", Category: "MARKETING",
+		Title: "Deck", Body: "Hi {{1}}, here is the deck.", Category: "MARKETING",
 		Header: &types.CRMTemplateHeaderInput{Format: "DOCUMENT", FileID: header.ID},
 	})
 	if res.StatusCode != http.StatusOK {

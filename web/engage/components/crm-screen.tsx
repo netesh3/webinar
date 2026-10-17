@@ -73,6 +73,7 @@ import type {
   NotificationKind,
 } from "@/lib/api-types";
 import { formatRelative } from "@/lib/format";
+import { templateLabel } from "../template-name";
 
 /* Contacts and Inbox — the host's CRM.
  *
@@ -1128,7 +1129,7 @@ export function RemindersSettings({
               <option value="">Don&apos;t send this one</option>
               {usable.map((t) => (
                 <option key={templateKey(t)} value={templateKey(t)}>
-                  {t.name} · {t.language} · {t.category.toLowerCase()}
+                  {templateLabel(t)} · {t.language} · {t.category.toLowerCase()}
                 </option>
               ))}
             </Select>
@@ -1919,7 +1920,7 @@ export function Compose({
           >
             {usable.map((t) => (
               <option key={templateKey(t)} value={templateKey(t)}>
-                {t.name} · {t.language} · {t.category.toLowerCase()}
+                {templateLabel(t)} · {t.language} · {t.category.toLowerCase()}
               </option>
             ))}
           </Select>

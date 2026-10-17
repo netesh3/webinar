@@ -173,18 +173,8 @@ export function PhoneFrame({
   );
 }
 
-/** A template name as a coach would say it: `missed_you_v2` is "Missed you". */
-export function friendlyTemplateName(name: string): string {
-  const words = name
-    .replace(/[_-]+/g, " ")
-    .replace(/\bv\d+\b/gi, "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (words.length === 0) return name;
-  const s = words.join(" ").toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
+/* friendlyTemplateName and templateLabel live in ../template-name (pure, tested). */
+export { friendlyTemplateName, templateLabel } from "../template-name";
 
 /** Meta's category as a pill: marketing is what Meta charges most for and what needs
  *  the opt-in, so it is the one worth colouring. */

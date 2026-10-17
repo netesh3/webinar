@@ -24,7 +24,7 @@ func TestMediaHeaderTemplateWithoutAFileSubmitsASample(t *testing.T) {
 		{"DOCUMENT", "application%2Fpdf"},
 	} {
 		res, raw := h.do(http.MethodPost, "/api/host/crm/templates", types.CRMWordingRequest{
-			Body: "Hi {{1}}, see you soon.", Category: "UTILITY",
+			Title: "Sample " + tc.format, Body: "Hi {{1}}, see you soon.", Category: "UTILITY",
 			Header: &types.CRMTemplateHeaderInput{Format: tc.format},
 		})
 		if res.StatusCode != http.StatusOK {

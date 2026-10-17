@@ -211,6 +211,17 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 			var body map[string]any
 			raw, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(raw, &body)
+			// Meta refuses a name it already has in that language.
+			for _, t := range g.templates {
+				if t["name"] == body["name"] && t["language"] == body["language"] {
+					w.WriteHeader(http.StatusBadRequest)
+					_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+						"message": "Invalid parameter", "code": 100, "error_subcode": 2388024,
+						"error_user_title": "Content in this language already exists",
+					}})
+					return
+				}
+			}
 			g.created = append(g.created, body)
 			g.templates = append(g.templates, map[string]any{
 				"name": body["name"], "language": body["language"], "status": "PENDING",

@@ -56,7 +56,7 @@ import type {
 } from "@/lib/api-types";
 import { formatRelative, instantToZoned, localTimeZone, zonedToInstant } from "@/lib/format";
 import { useNow } from "@/lib/clock";
-import { PhoneFrame, rupees, templateRate } from "./wa-kit";
+import { PhoneFrame, rupees, templateLabel, templateRate } from "./wa-kit";
 import { SavedLists } from "./saved-lists";
 import {
   audienceDraft,
@@ -1325,7 +1325,7 @@ function Composer({
                   <option value="">Choose a template…</option>
                   {usable.map((t) => (
                     <option key={templateKey(t)} value={templateKey(t)}>
-                      {t.name} · {languageLabel(t.language)} · {t.category.toLowerCase()}
+                      {templateLabel(t)} · {languageLabel(t.language)} · {t.category.toLowerCase()}
                     </option>
                   ))}
                 </Select>
@@ -1460,7 +1460,7 @@ function Composer({
                 {preview ? ` · ${countText(preview.recipients, "person", "people")}` : ""}
               </ReviewLine>
               <ReviewLine label="Message">
-                {template ? `${template.name} · ${languageLabel(template.language)}` : "No template yet"}
+                {template ? `${templateLabel(template)} · ${languageLabel(template.language)}` : "No template yet"}
               </ReviewLine>
               <ReviewLine label="When">
                 {timing === "later" ? scheduleStamp || "Pick a time" : "Now"}

@@ -115,7 +115,7 @@ func TestWordingWithDocumentHeaderIsSubmittedWithItsSample(t *testing.T) {
 
 	// The wrong kind for the header is refused before anything reaches Meta.
 	res, raw := h.do(http.MethodPost, "/api/host/crm/templates", types.CRMWordingRequest{
-		Body: "Here is the deck.", Category: "MARKETING",
+		Title: "Deck video", Body: "Here is the deck.", Category: "MARKETING",
 		Header: &types.CRMTemplateHeaderInput{Format: "VIDEO", FileID: file.ID},
 	})
 	if res.StatusCode != http.StatusUnprocessableEntity || len(g.uploaded()) != 0 {
@@ -123,7 +123,7 @@ func TestWordingWithDocumentHeaderIsSubmittedWithItsSample(t *testing.T) {
 	}
 
 	res, raw = h.do(http.MethodPost, "/api/host/crm/templates", types.CRMWordingRequest{
-		Body: "Hi {{1}}, here is the deck.", Category: "MARKETING",
+		Title: "Deck", Body: "Hi {{1}}, here is the deck.", Category: "MARKETING",
 		Header: &types.CRMTemplateHeaderInput{Format: "DOCUMENT", FileID: file.ID},
 	})
 	if res.StatusCode != http.StatusOK {

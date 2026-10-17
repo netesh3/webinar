@@ -1771,6 +1771,11 @@ type CRMTemplate struct {
 	DefaultParams []CRMParam `json:"defaultParams"`
 	/** Whether DefaultParams is the host's own saved mapping rather than a guess. */
 	DefaultParamsSaved bool `json:"defaultParamsSaved,omitempty"`
+	/** Written here rather than in WhatsApp Manager: the host can add translations. */
+	Own bool `json:"own,omitempty"`
+	/** The title the host typed when writing it here. Empty for templates made
+	 *  elsewhere or before titles were kept. */
+	Title string `json:"title,omitempty"`
 }
 
 /* CRMTemplateMappingRequest is PUT /api/host/crm/templates/mapping: one template's
@@ -1925,6 +1930,10 @@ type CRMWordingRequest struct {
 	Language string `json:"language,omitempty"`
 	/** To add a translation of one of your own templates: its name. Empty for a new one. */
 	Name string `json:"name,omitempty"`
+	/** A new template's name as the host typed it, e.g. "Webinar reminder 1 hour". The
+	 *  server makes it a name Meta accepts (webinar_reminder_1_hour). Required when
+	 *  Name is empty; ignored for a translation. */
+	Title string `json:"title,omitempty"`
 	/** The line under the message, up to 60 characters. Absent keeps the default opt-out
 	 *  line; an empty string removes it. */
 	Footer *string `json:"footer,omitempty"`

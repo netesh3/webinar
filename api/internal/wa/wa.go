@@ -58,6 +58,11 @@ var (
 	// ErrMediaGone is Meta no longer holding an attachment: inbound media is only
 	// kept for a limited time, and Graph then answers code 100, subcode 33.
 	ErrMediaGone = errors.New("WhatsApp no longer has this attachment")
+	/* ErrTemplateNameTaken is Meta refusing a new template's name: there is already
+	 * one of that name in that language (subcode 2388024), or one of that name is
+	 * still being deleted (2388023, which keeps the name for four weeks). Neither
+	 * subcode is in Meta's published list, so the user-facing title is matched too. */
+	ErrTemplateNameTaken = errors.New("there is already a WhatsApp template with that name")
 )
 
 // Client is a Meta app that can complete Embedded Signup for a host's WABA.
@@ -533,6 +538,8 @@ func graphError(raw []byte, status int) error {
 			Code    int    `json:"code"`
 			Sub     int    `json:"error_subcode"`
 			Trace   string `json:"fbtrace_id"`
+			Title   string `json:"error_user_title"`
+			UserMsg string `json:"error_user_msg"`
 		} `json:"error"`
 	}
 	_ = json.Unmarshal(raw, &parsed)
@@ -547,6 +554,10 @@ func graphError(raw []byte, status int) error {
 	if parsed.Error.Code == 100 && parsed.Error.Sub == 33 {
 		return fmt.Errorf("%w (meta: %s; fbtrace %s)", ErrMediaGone, msg, parsed.Error.Trace)
 	}
+	if templateNameTaken(parsed.Error.Sub, parsed.Error.Title, parsed.Error.UserMsg) {
+		return fmt.Errorf("%w (meta: %s %s; subcode %d; fbtrace %s)", ErrTemplateNameTaken,
+			strings.TrimSpace(parsed.Error.Title), strings.TrimSpace(parsed.Error.UserMsg), parsed.Error.Sub, parsed.Error.Trace)
+	}
 	if msg == "" {
 		return fmt.Errorf("meta graph HTTP %d", status)
 	}
@@ -556,4 +567,12 @@ func graphError(raw []byte, status int) error {
 		return fmt.Errorf("meta graph: %s (fbtrace %s)", msg, parsed.Error.Trace)
 	}
 	return fmt.Errorf("meta graph: %s", msg)
+}
+
+func templateNameTaken(sub int, title, userMsg string) bool {
+	if sub == 2388023 || sub == 2388024 {
+		return true
+	}
+	t := strings.ToLower(title + " " + userMsg)
+	return strings.Contains(t, "template") && strings.Contains(t, "already exists")
 }

@@ -2,7 +2,6 @@ package engage
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/http"
@@ -165,6 +164,11 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 		s.fail(w, r, "crm wording plan", err)
 		return
 	}
+	// The name first: a header or card sample is uploaded to Meta before submitting.
+	name, title, ok := s.wordingName(w, r, user, req)
+	if !ok {
+		return
+	}
 	nt := plan.tmpl
 	var file *crmstore.MediaFile
 	if nt.Auth == nil && len(nt.Cards) == 0 {
@@ -178,23 +182,30 @@ func (s *Module) handleCreateCRMWording(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	name := strings.TrimSpace(req.Name)
-	if name != "" {
-		// A translation of one of the host's own templates: same name, another language.
-		if !strings.HasPrefix(name, "wl_own_") || !s.store.HasTemplateNamed(r.Context(), user.ID, name) {
-			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_name",
-				"Translations can be added to templates written here. Choose one of yours.")
-			return
-		}
-	} else if name, err = customTemplateName(); err != nil {
-		s.fail(w, r, "crm wording name", err)
-		return
-	}
 	nt.Name = name
 	status, err := s.whatsapp.CreateTemplate(r.Context(), user.WhatsAppToken, user.WhatsAppWABAID, nt)
+	if errors.Is(err, wa.ErrTemplateNameTaken) && req.Name == "" {
+		// Meta knows a name this host's list did not: made in WhatsApp Manager since the
+		// last sync, or still being deleted. Catch up, so the suggestion is free.
+		if err := s.syncTemplates(r.Context(), user); err != nil {
+			s.log.Warn("crm wording: resync after taken name", "host", user.ID, "error", err)
+		}
+		s.nameTaken(w, r, user, name, map[string]bool{name: true})
+		return
+	}
+	if errors.Is(err, wa.ErrTemplateNameTaken) {
+		httpx.Error(w, http.StatusConflict, "translation_exists",
+			"This template already has that language. Pick another language.")
+		return
+	}
 	if err != nil {
 		httpx.Error(w, http.StatusUnprocessableEntity, "template_refused", err.Error())
 		return
+	}
+	if req.Name == "" {
+		if err := s.store.RecordOwnTemplate(r.Context(), user.ID, name, title); err != nil {
+			s.log.Error("crm wording: record own template", "host", user.ID, "error", err)
+		}
 	}
 	if status == "" {
 		status = "PENDING"
@@ -380,14 +391,6 @@ func bodyExamples(body string) ([]string, error) {
 	return out, nil
 }
 
-func customTemplateName() (string, error) {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("wl_own_%x", b), nil
-}
-
 func newTemplate(t types.CRMStarterTemplate, base string) wa.NewTemplate {
 	nt := wa.NewTemplate{Name: t.Name, Language: "en", Category: t.Category, Body: t.Body,
 		Examples: t.Examples, Footer: "Reply STOP to opt out"}
@@ -432,4 +435,56 @@ func (s *Module) onQuickReply(ctx context.Context, host store.User, contactID, k
 	if err := s.applyTag(ctx, host, contactID, tag.ID); err != nil {
 		s.log.Warn("crm: quick reply apply", "host", host.ID, "contact", contactID, "error", err)
 	}
+}
+
+/* wordingName is the name a submission goes to Meta under, and the title it came from.
+ *
+ * A translation names one of the host's own templates: written here, so recorded in
+ * crm_own_templates (templates from WhatsApp Manager have their translations added
+ * there). A new template is named from its title. A name the host already has, in any
+ * language, is refused with the next free one to use instead: Meta would otherwise
+ * file it as another translation, or refuse it. Writes the refusal itself; false
+ * after it has. */
+func (s *Module) wordingName(w http.ResponseWriter, r *http.Request, user store.User, req types.CRMWordingRequest) (name, title string, ok bool) {
+	if name = strings.TrimSpace(req.Name); name != "" {
+		if !s.store.IsOwnTemplate(r.Context(), user.ID, name) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_name",
+				"Translations can be added to templates written here. Choose one of yours.")
+			return "", "", false
+		}
+		return name, "", true
+	}
+	title = strings.TrimSpace(req.Title)
+	if name = normaliseTemplateName(title); name == "" {
+		httpx.Error(w, http.StatusUnprocessableEntity, "name_required",
+			"Give the template a name, with at least one letter or number.")
+		return "", "", false
+	}
+	taken, err := s.store.TemplateNameTaken(r.Context(), user.ID, name)
+	if err != nil {
+		s.fail(w, r, "crm wording name", err)
+		return "", "", false
+	}
+	if taken {
+		s.nameTaken(w, r, user, name, nil)
+		return "", "", false
+	}
+	return name, title, true
+}
+
+/* nameTaken refuses a new template's name, with the next free one in
+ * fields.suggestion. also is names known to be taken that the store may not have. */
+func (s *Module) nameTaken(w http.ResponseWriter, r *http.Request, user store.User, name string, also map[string]bool) {
+	suggestion := nextFreeTemplateName(name, func(c string) bool {
+		if also[c] {
+			return true
+		}
+		taken, err := s.store.TemplateNameTaken(r.Context(), user.ID, c)
+		return err != nil || taken
+	})
+	httpx.JSON(w, http.StatusConflict, types.APIError{
+		Error:   "name_taken",
+		Message: fmt.Sprintf("You already have a template called %s. Choose another name.", name),
+		Fields:  map[string]string{"name": name, "suggestion": suggestion},
+	})
 }
