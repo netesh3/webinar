@@ -513,7 +513,7 @@ function AdminAccounts() {
                     {ACCOUNT_ROLE_LABEL[r]}
                     <span
                       className={`rounded-full px-1.5 text-[11px] leading-4 tabular-nums ${
-                        active ? "bg-brand text-stage" : "bg-surface-2 text-ink-2"
+                        active ? "bg-brand/15 text-brand" : "bg-surface-2 text-ink-2"
                       }`}
                     >
                       {users ? roleCounts[r] : "–"}
