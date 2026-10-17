@@ -84,6 +84,34 @@ export function MessageContent({ message }: { message: CRMMessage }) {
           <span>{model.name}</span>
         </span>
       );
+    case "template":
+      return (
+        <span className="grid gap-1">
+          {model.header === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={model.url}
+              alt="Header image"
+              className="max-h-48 w-full max-w-[260px] rounded-md object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          ) : model.header === "video" ? (
+            <video
+              src={model.url}
+              controls
+              preload="metadata"
+              className="max-h-48 w-full max-w-[260px] rounded-md bg-black"
+            />
+          ) : (
+            <a href={model.url} target="_blank" rel="noreferrer" className="font-medium underline">
+              {model.filename ? `Document: ${model.filename}` : "Document"}
+            </a>
+          )}
+          <span className="whitespace-pre-wrap">{model.text}</span>
+        </span>
+      );
   }
 }
 

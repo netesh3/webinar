@@ -177,7 +177,7 @@ function SendDialogBody({
   // A recipe's message is always about the webinar that just ended.
   const hasWebinar = Boolean(target.webinarId) || Boolean(automate);
   const offered = fields.filter(
-    (f) => hasWebinar || !["topic", "when", "watched"].includes(f.token),
+    (f) => hasWebinar || !["topic", "when", "webinar_link", "join_link", "watched"].includes(f.token),
   );
 
   function paramsFor(

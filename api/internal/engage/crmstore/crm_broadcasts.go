@@ -42,6 +42,10 @@ type BroadcastInput struct {
 	// Segment is the rule for the segment audience, stored so the broadcast reads back.
 	Segment     *types.CRMSegment
 	ScheduledAt time.Time
+	// HeaderFileID and HeaderUseCover are the broadcast's own header choice, kept in
+	// crm_broadcast_header by the caller (SetBroadcastHeader) after the row exists.
+	HeaderFileID   string
+	HeaderUseCover bool
 }
 
 /* BroadcastRecipient is one person's copy: their contact id and the values their
@@ -541,6 +545,12 @@ func (s *Store) CreateBroadcast(ctx context.Context, hostID string, in Broadcast
 
 // queueRecipients writes one outbox row per person, in the caller's transaction.
 func (s *Store) queueRecipients(ctx context.Context, q store.Querier, id string, in BroadcastInput, to []BroadcastRecipient) error {
+	/* The header choice goes in with the rows, in the same transaction: a broadcast
+	 * sent now is due the moment this commits, and the outbox must not see its rows
+	 * before it can see which file they carry. */
+	if err := setBroadcastHeader(ctx, q, id, in.HeaderFileID, in.HeaderUseCover); err != nil {
+		return err
+	}
 	due := in.ScheduledAt
 	if due.IsZero() {
 		due = time.Now()

@@ -56,8 +56,12 @@ import type {
   CRMTag,
   CRMTagRequest,
   CRMTagsResponse,
+  CRMMediaFile,
+  CRMTemplate,
+  CRMTemplateMediaRequest,
   CRMTemplatesResponse,
   CRMThreadResponse,
+  CRMWordingRequest,
   StatusResponse,
   WhatsAppCallbackRequest,
   WhatsAppRegisterRequest,
@@ -521,14 +525,40 @@ export const engageApi = {
     post<CRMStarterTemplatesResponse>("/api/host/crm/templates/starters"),
 
   /** Submit wording the host typed. Meta reviews it before it can be sent. */
-  createCrmWording: (body: { body: string; category: "UTILITY" | "MARKETING" }) =>
-    post<{
+  createCrmWording: async (body: CRMWordingRequest) => {
+    const saved = await post<{
       name: string;
       language: string;
       status: string;
       category: string;
       body: string;
-    }>("/api/host/crm/templates", body),
+    }>("/api/host/crm/templates", body);
+    dropCache(TEMPLATES_KEY);
+    return saved;
+  },
+
+  /** Store a header file (image, video or document). The raw bytes are the body, so a
+   *  100 MB document is not base64'd. Checked against Meta's limits by the server. */
+  uploadCrmMedia: (file: File) =>
+    request<CRMMediaFile>(
+      `/api/host/crm/media?filename=${encodeURIComponent(file.name)}`,
+      {
+        method: "POST",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      },
+    ),
+
+  /** Set (or, with no fileId, clear) the file a media-header template sends by default. */
+  setCrmTemplateMedia: async (name: string, language: string, fileId: string) => {
+    const body: CRMTemplateMediaRequest = { fileId };
+    const saved = await request<CRMTemplate>(
+      `/api/host/crm/templates/${seg(name)}/${seg(language)}/media`,
+      { method: "PUT", body: JSON.stringify(body) },
+    );
+    dropCache(TEMPLATES_KEY);
+    return saved;
+  },
 
   /** The Automations page: ready-made recipes over the drip and bot engines. */
   crmRecipes: () => request<CRMRecipesResponse>("/api/host/crm/recipes", fresh),

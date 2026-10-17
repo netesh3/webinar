@@ -561,7 +561,7 @@ func knownDripTrigger(trigger string) bool {
 func dripUsesWebinarFields(drip types.CRMDrip) bool {
 	for _, step := range drip.Steps {
 		for _, p := range step.Params {
-			if p.Field == "topic" || p.Field == "when" {
+			if needsWebinar(p.Field) {
 				return true
 			}
 		}
@@ -701,6 +701,7 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 	// One webinar is usually the source for many enrollments — everybody a finished
 	// webinar just enrolled shares it — so it is read once per sweep, not per person.
 	webinars := map[string]types.Webinar{}
+	joinLinks := map[string]func(string) mergeLinks{}
 	slotCache := map[string][]types.MessageSlot{}
 	queued, exited := 0, 0
 	for _, step := range due {
@@ -756,7 +757,21 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 		}
 
 		contact := types.CRMContact{ID: step.ContactID, Name: step.ContactName}
-		params := resolveBroadcastParams(step.Params, contact, wb, step.HostName, 0)
+		links := mergeLinks{Webinar: s.webinarPage(step.WebinarSlug)}
+		if step.WebinarSlug != "" && usesField(step.Params, "join_link") {
+			// One read of the webinar's join keys per sweep, shared by every step from it.
+			key := step.HostID + "/" + step.WebinarSlug
+			linksFor, ok := joinLinks[key]
+			if !ok {
+				if linksFor, err = s.broadcastLinks(ctx, step.HostID, step.WebinarSlug, step.Params); err != nil {
+					s.log.Error("drip sweep: could not read join links", "slug", step.WebinarSlug, "error", err)
+					continue
+				}
+				joinLinks[key] = linksFor
+			}
+			links = linksFor(step.ContactID)
+		}
+		params := resolveBroadcastParams(step.Params, contact, wb, step.HostName, 0, links)
 		err := s.store.QueueDripStep(ctx, step, params)
 		if errors.Is(err, store.ErrConflict) {
 			// Another sweep got there first. Nothing to say about it.

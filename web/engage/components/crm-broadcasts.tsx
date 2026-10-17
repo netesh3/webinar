@@ -17,7 +17,9 @@ import {
 import { MaterialIcon } from "@/components/icons";
 import { useToast } from "@/components/providers";
 import { Badge, Button, Card } from "@/components/ui";
-import { ApiError, api } from "@/lib/api";
+import { API_BASE, ApiError, api } from "@/lib/api";
+import { BroadcastHeaderPicker, HeaderMediaBlock } from "./header-media";
+import { headerChoiceProblem, headerRequest, type HeaderChoice } from "../header-media";
 import {
   AudienceContacts,
   AudienceList,
@@ -32,6 +34,7 @@ import {
 import type {
   CRMAudienceResponse,
   CRMBroadcast,
+  CRMMediaFile,
   CRMMergeField,
   CRMParam,
   CRMPeopleCounts,
@@ -89,7 +92,22 @@ const POLL_MS = 20_000;
 /** The merge fields that read from a webinar, and so need one named. The server
  *  is the authority (it refuses with `crm_no_webinar`); this only saves the host
  *  a round trip to find out. */
-const WEBINAR_FIELDS = ["topic", "when"];
+const WEBINAR_FIELDS = ["topic", "when", "webinar_link", "join_link"];
+
+/* A template can go out once its header has a file. A video or document template
+ * with none yet can still be broadcast with a file chosen here. */
+function broadcastable(t: CRMTemplate): boolean {
+  return (
+    t.sendable ||
+    Boolean(t.needsHeaderFile && t.status.toUpperCase() === "APPROVED" && !t.unsupported)
+  );
+}
+
+function seedHeader(seed: CRMBroadcast | null): HeaderChoice {
+  if (seed?.headerFile) return { mode: "file", fileId: seed.headerFile.id };
+  if (seed?.headerUseCover) return { mode: "cover" };
+  return { mode: "default" };
+}
 
 /** The "same words for everybody" choice in a placeholder's picker. Not a token
  *  the server offers, which is exactly why it is safe as the sentinel. */
@@ -674,6 +692,8 @@ function Composer({
   const [listName, setListName] = useState(seed?.listName ?? "");
   const [chosen, setChosen] = useState(seed ? `${seed.template}\u0000${seed.language}` : "");
   const [params, setParams] = useState<CRMParam[]>(seed?.params ?? []);
+  const [headerChoice, setHeaderChoice] = useState<HeaderChoice>(() => seedHeader(seed));
+  const [ownFile, setOwnFile] = useState<CRMMediaFile | null>(seed?.headerFile ?? null);
   const [timing, setTiming] = useState<Timing>(openedAt.timing);
   const [when, setWhen] = useState({ at: openedAt.at, past: false });
   const now = useNow(30_000);
@@ -873,12 +893,14 @@ function Composer({
   const preview = current?.res ?? null;
   const previewError = current?.error ?? null;
 
-  const usable = (templates ?? []).filter((t) => t.sendable);
-  const blocked = (templates ?? []).filter((t) => !t.sendable);
+  const usable = (templates ?? []).filter(broadcastable);
+  const blocked = (templates ?? []).filter((t) => !broadcastable(t));
   const template = usable.find((t) => templateKey(t) === chosen);
 
   function pickTemplate(key: string) {
     setChosen(key);
+    setHeaderChoice({ mode: "default" });
+    setOwnFile(null);
     const picked = usable.find((t) => templateKey(t) === key);
     setParams(
       picked
@@ -916,6 +938,8 @@ function Composer({
     ? "Connect your own WhatsApp Business account to send anything."
     : !template
       ? "Pick the template to send."
+      : headerChoiceProblem(template, headerChoice)
+        ? headerChoiceProblem(template, headerChoice)
       : needsWebinar && !webinarId
         ? "Pick the webinar whose registrants you mean."
         : needsTag && !tagId
@@ -995,6 +1019,7 @@ function Composer({
             ? current?.contactIds
             : undefined,
         scheduledAt: scheduledAt ? scheduledAt.toISOString() : undefined,
+        ...headerRequest(template.headerFormat, headerChoice),
       };
       const created =
         editing && seed
@@ -1253,6 +1278,15 @@ function Composer({
                       </span>
                       <Chip>{languageLabel(template.language)}</Chip>
                     </div>
+                    <BroadcastHeaderPicker
+                      template={template}
+                      choice={headerChoice}
+                      ownFile={ownFile}
+                      onChange={(choice, file) => {
+                        setHeaderChoice(choice);
+                        setOwnFile(file);
+                      }}
+                    />
                     {params.length > 0 && (
                       <div className="grid gap-2">
                         {params.map((p, i) => (
@@ -1296,7 +1330,23 @@ function Composer({
                       className="rounded-xl px-3 py-3"
                       style={{ background: "#e7f6e9" }}
                     >
-                      <div className="max-w-[92%] rounded-lg rounded-tl-sm bg-[#d9fdd3] px-3 py-2 text-[13px] leading-relaxed text-[#111] shadow-sm">
+                      <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-sm bg-[#d9fdd3] text-[13px] leading-relaxed text-[#111] shadow-sm">
+                        <HeaderMediaBlock
+                          format={template.headerFormat}
+                          file={
+                            headerChoice.mode === "file"
+                              ? ownFile
+                              : headerChoice.mode === "default"
+                                ? template.headerFile
+                                : null
+                          }
+                          cover={
+                            mergeWebinarId || webinarId
+                              ? `${API_BASE}/api/webinars/${encodeURIComponent(mergeWebinarId || webinarId)}/image`
+                              : undefined
+                          }
+                        />
+                        <div className="px-3 py-2">
                         {template.header && (
                           <p className="font-semibold">{template.header}</p>
                         )}
@@ -1312,6 +1362,7 @@ function Composer({
                             minute: "2-digit",
                           })}
                         </p>
+                        </div>
                       </div>
                     </div>
                   </>

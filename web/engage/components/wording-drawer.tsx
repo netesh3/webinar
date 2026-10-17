@@ -24,6 +24,15 @@ import {
 } from "@/lib/api-types";
 import { templateKey } from "./crm-templates";
 import { StarterTemplates } from "./starter-templates";
+import {
+  HeaderPicker,
+  NO_HEADER,
+  TemplateHeaderFile,
+  WordingPreview,
+  headerDraftProblem,
+  headerInput,
+  type HeaderDraft,
+} from "./header-media";
 import { friendlyTemplateName, CategoryPill } from "./wa-kit";
 import {
   resolveStarterTemplate,
@@ -388,6 +397,7 @@ export function WordingDrawer({
                       busy={busy || usingKey !== null}
                       using={usingKey === templateKey(template)}
                       onUse={() => void apply(template)}
+                      onChanged={onCreated}
                     />
                   ))}
                 </div>
@@ -427,12 +437,15 @@ function TemplateRow({
   busy,
   using,
   onUse,
+  onChanged,
 }: {
   template: CRMTemplate;
   target: { slot: MessageSlot; label: string } | null;
   busy: boolean;
   using: boolean;
   onUse: () => void;
+  /** The template's default header file was set or cleared. */
+  onChanged: () => void;
 }) {
   const status = template.status.toUpperCase();
   const inUse = Boolean(
@@ -482,6 +495,7 @@ function TemplateRow({
         <p className="mt-1 text-[12px] leading-snug text-ink-2">{template.body}</p>
       )}
       {why && <p className="mt-1 text-[11.5px] text-live">{why}</p>}
+      {status === "APPROVED" && <TemplateHeaderFile template={template} onSaved={onChanged} />}
       <div className="mt-1.5 flex justify-end">
         {inUse ? (
           <span className="inline-flex items-center gap-0.5 text-[11.5px] font-semibold text-ok">
@@ -500,7 +514,8 @@ function TemplateRow({
             {using && <Spinner className="size-3.5" />}
             Use for this message
           </Button>
-        ) : status === "PENDING" || (!template.sendable && status !== "REJECTED" && !why) ? (
+        ) : status === "PENDING" ||
+          (!template.sendable && status !== "REJECTED" && !why && !template.needsHeaderFile) ? (
           <span className="text-[11.5px] font-semibold text-warn">Waiting on Meta</span>
         ) : null}
       </div>
@@ -532,14 +547,24 @@ function WriteOwn({
   const [category, setCategory] = useState<"UTILITY" | "MARKETING">("UTILITY");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [header, setHeader] = useState<HeaderDraft>(NO_HEADER);
   const typed = draft.trim();
-  const match = starters?.find(
-    (item) => item.status === "APPROVED" && !item.error && sameBody(item.body, typed),
-  );
+  // A starter has no header, so wording with one is always the host's own.
+  const match =
+    header.format === "NONE"
+      ? starters?.find(
+          (item) => item.status === "APPROVED" && !item.error && sameBody(item.body, typed),
+        )
+      : undefined;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!typed || busy) return;
+    const headerProblem = match ? null : headerDraftProblem(header);
+    if (headerProblem) {
+      setNote(headerProblem);
+      return;
+    }
     setBusy(true);
     setNote(null);
     try {
@@ -570,7 +595,11 @@ function WriteOwn({
         if (ok) setDraft("");
         return;
       }
-      const saved = await engageApi.createCrmWording({ body: typed, category });
+      const saved = await engageApi.createCrmWording({
+        body: typed,
+        category,
+        header: headerInput(header),
+      });
       onCreated();
       if (saved.status === "APPROVED" && target) {
         const template: CRMTemplate = {
@@ -584,10 +613,14 @@ function WriteOwn({
           buttons: [],
         };
         const ok = await onUse(slotFromTemplate(target.slot, template, fields), target.label);
-        if (ok) setDraft("");
+        if (ok) {
+          setDraft("");
+          setHeader(NO_HEADER);
+        }
         return;
       }
       setDraft("");
+      setHeader(NO_HEADER);
       setNote(
         "Submitted to Meta. You can use it on this message once it is approved, usually in a few minutes.",
       );
@@ -620,6 +653,14 @@ function WriteOwn({
           disabled={!connected}
         />
       </label>
+      <div className="mt-2">
+        <HeaderPicker value={header} onChange={setHeader} disabled={busy || !connected} />
+      </div>
+      {(header.format !== "NONE" || typed) && (
+        <div className="mt-2">
+          <WordingPreview header={header} body={typed} />
+        </div>
+      )}
       {!match && (
         <label className="mt-2 flex items-center gap-2 text-[12px] text-ink-2">
           Category

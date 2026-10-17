@@ -7,6 +7,7 @@ import type {
   CRMTemplate,
 } from "@/lib/api-types";
 import { renderTemplate, templateKey } from "./crm-templates";
+import { HeaderMediaBlock } from "./header-media";
 import {
   AvatarStack,
   CategoryPill,
@@ -241,28 +242,11 @@ export function PhonePreview({
           Today
         </span>
         <div className="max-w-[92%] overflow-hidden rounded-lg rounded-tl-none bg-white text-[12.5px] leading-relaxed whitespace-pre-wrap text-[#111] shadow-sm">
-          {template.headerFormat === "IMAGE" && (
-            <div
-              className="relative aspect-[1.91/1] w-full bg-gradient-to-br from-brand to-[#5b8cff]"
-              role="img"
-              aria-label="The webinar's cover image"
-            >
-              <span className="absolute inset-0 grid place-items-center px-3 text-center text-[12px] font-semibold text-white/90">
-                Your webinar&apos;s cover
-              </span>
-              {cover && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={cover}
-                  alt=""
-                  className="absolute inset-0 size-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              )}
-            </div>
-          )}
+          <HeaderMediaBlock
+            format={template.headerFormat}
+            file={template.headerFile}
+            cover={cover}
+          />
           <div className="px-2.5 py-1.5">
             {template.header && (
               <p className="font-semibold">{template.header}</p>

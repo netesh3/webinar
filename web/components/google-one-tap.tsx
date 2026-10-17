@@ -187,7 +187,8 @@ export function GoogleOneTap({
           busy.current = true;
           void (async () => {
             try {
-              const account = await api.googleAuth(credential, hashedNonce);
+              // `stay` is the webinar page: a new account made there is audience.
+              const account = await api.googleAuth(credential, hashedNonce, stay ? "webinar" : undefined);
               await refresh();
               if (!stay) {
                 router.replace(landingAfterSignIn(account.canHost, destination));

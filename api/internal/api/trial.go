@@ -127,6 +127,10 @@ func (s *Server) handleStartTrial(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "trial: record subscription", err)
 		return
 	}
+	// Starting a trial is choosing the product: an audience account is a customer now.
+	if err := s.store.PromoteToCustomer(r.Context(), user.ID); err != nil {
+		s.log.Warn("trial: promote to customer", "user", user.ID, "error", err)
+	}
 	httpx.JSON(w, http.StatusCreated, types.TrialCheckout{
 		SubscriptionID: sub.ID,
 		KeyID:          s.cfg.RazorpayKeyID,

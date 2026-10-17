@@ -1342,6 +1342,10 @@ type CRMAttachment struct {
 	UnsupportedCode int `json:"unsupportedCode,omitempty"`
 	/** Meta's errors[].title (or message) for that same case. */
 	UnsupportedTitle string `json:"unsupportedTitle,omitempty"`
+	/** On a template the business sent: its header's kind (image, video or document)
+	 *  and the public link it was sent from, so the thread can show it. */
+	Header string `json:"header,omitempty"`
+	URL    string `json:"url,omitempty"`
 }
 
 /** CRMMessage is one message in a thread, from the host's point of view:
@@ -1727,10 +1731,56 @@ type CRMTemplate struct {
 	Sendable bool `json:"sendable"`
 	/** Why not, in words, when Sendable is false. */
 	Unsupported string `json:"unsupported,omitempty"`
-	/** IMAGE when the header is a picture — the webinar's cover is sent in it. */
+	/** TEXT, IMAGE, VIDEO or DOCUMENT, or empty for no header. An IMAGE header without a
+	 *  file of its own is sent with the webinar's cover. */
 	HeaderFormat string `json:"headerFormat,omitempty"`
+	/** The file sent in a media header by default, when the host has set one. A VIDEO or
+	 *  DOCUMENT header cannot be sent without it (see NeedsHeaderFile). */
+	HeaderFile *CRMMediaFile `json:"headerFile,omitempty"`
+	/** A VIDEO or DOCUMENT header with no file set yet: not sendable until one is. */
+	NeedsHeaderFile bool `json:"needsHeaderFile,omitempty"`
 	/** Buttons, in order, as Meta approved them. */
 	Buttons []CRMTemplateButton `json:"buttons"`
+}
+
+/* CRMMediaFile is a file a host uploaded for a WhatsApp template's header.
+ *
+ * Kind is the header format it fits. URL is the unguessable public link Meta fetches
+ * at send time; the editor also uses it as a preview. */
+type CRMMediaFile struct {
+	ID string `json:"id"`
+	/** image, video or document. */
+	Kind     string `json:"kind"`
+	MimeType string `json:"mimeType"`
+	Filename string `json:"filename,omitempty"`
+	Bytes    int64  `json:"bytes"`
+	URL      string `json:"url"`
+}
+
+/* CRMWordingRequest is wording the host typed, submitted to Meta for approval.
+ *
+ * Header is optional. A media header names a file uploaded first (POST
+ * /crm/media); it becomes the template's default header file once submitted. */
+type CRMWordingRequest struct {
+	Body     string                  `json:"body"`
+	Category string                  `json:"category"`
+	Header   *CRMTemplateHeaderInput `json:"header,omitempty"`
+}
+
+// CRMTemplateHeaderInput is the header of a template being written here.
+type CRMTemplateHeaderInput struct {
+	/** NONE, TEXT, IMAGE, VIDEO or DOCUMENT. */
+	Format string `json:"format"`
+	/** For TEXT: fixed text, up to 60 characters, no variables. */
+	Text string `json:"text,omitempty"`
+	/** For IMAGE, VIDEO and DOCUMENT: a file from POST /crm/media. */
+	FileID string `json:"fileId,omitempty"`
+}
+
+/* CRMTemplateMediaRequest sets a template's default header file, for templates written
+ * in WhatsApp Manager as well as here. An empty FileID clears it. */
+type CRMTemplateMediaRequest struct {
+	FileID string `json:"fileId"`
 }
 
 /* CRMTemplateButton is one button on a template. A quick reply's tap comes back as a
@@ -1991,6 +2041,10 @@ type CRMBroadcast struct {
 	CreatedAt   string `json:"createdAt"`
 	/** How it is going, counted from the outbox and the conversations. */
 	Stats CRMBroadcastStats `json:"stats"`
+	/** This broadcast's own header file, when it overrides the template's default. */
+	HeaderFile *CRMMediaFile `json:"headerFile,omitempty"`
+	/** An image header sent with the webinar cover instead of a file. */
+	HeaderUseCover bool `json:"headerUseCover,omitempty"`
 }
 
 /* CRMBroadcastStats is one broadcast's progress.
@@ -2058,6 +2112,11 @@ type CRMBroadcastRequest struct {
 	ListID string `json:"listId,omitempty"`
 	/** RFC3339, or empty for now. */
 	ScheduledAt string `json:"scheduledAt,omitempty"`
+	/** For a template with a media header: a file for this broadcast only, instead of
+	 *  the template's default. */
+	HeaderFileID string `json:"headerFileId,omitempty"`
+	/** For an IMAGE header: send the webinar cover, ignoring any default file. */
+	HeaderUseCover bool `json:"headerUseCover,omitempty"`
 }
 
 /* CRMAudienceResponse is how many people an audience would reach, before anybody
@@ -2679,6 +2738,13 @@ type AdminUser struct {
 	TrialFlag string `json:"trialFlag,omitempty"`
 	// TrialExemption is an admin's open "allow another trial" for this account.
 	TrialExemption bool `json:"trialExemption,omitempty"`
+	// AccountKind says whether this person signed up for Webinar Liv (customer) or
+	// only registered for somebody's webinar (audience). See AccountKind.
+	AccountKind AccountKind `json:"accountKind"`
+	// RegistrationCount is how many webinars this account has registered for, and
+	// LastWebinarTopic the most recent of them; the audience list shows both.
+	RegistrationCount int    `json:"registrationCount"`
+	LastWebinarTopic  string `json:"lastWebinarTopic,omitempty"`
 	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
 	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 	// Features are the switches in effect: the plan's, with this account's overrides
@@ -2699,7 +2765,11 @@ type AdminUser struct {
  * actually draws.
  */
 type AdminStats struct {
-	Accounts      int `json:"accounts"`
+	Accounts int `json:"accounts"`
+	// Customers and Audience split Accounts: signed up for the app vs made by a
+	// webinar registration (see AccountKind).
+	Customers     int `json:"customers"`
+	Audience      int `json:"audience"`
 	Hosts         int `json:"hosts"`
 	Admins        int `json:"admins"`
 	CdnBroadcast  int `json:"cdnBroadcast"`
@@ -2844,6 +2914,9 @@ type SupabaseAuthRequest struct {
 type GoogleAuthRequest struct {
 	IDToken string `json:"idToken"`
 	Nonce   string `json:"nonce,omitempty"`
+	// From is "webinar" when One Tap ran on a webinar's registration page: a new
+	// account made there is audience, not a customer. See AccountKind.
+	From string `json:"from,omitempty"`
 }
 
 /* HostRequest is POST /api/me/host-request.
@@ -3123,6 +3196,28 @@ type DeleteAccountRequest struct {
 
 type SetUserPlanRequest struct {
 	Plan Plan `json:"plan"`
+}
+
+/* AccountKind separates the people who signed up for Webinar Liv from the people
+ * a coach's webinar brought in. An audience account is created by registering for
+ * a webinar; it becomes a customer when it signs in from the app, pays, starts a
+ * trial, is given a plan or hosting, or an admin moves it. */
+type AccountKind string
+
+const (
+	AccountCustomer AccountKind = "customer"
+	AccountAudience AccountKind = "audience"
+)
+
+// SetAccountKindRequest is PATCH /api/admin/users/{id}/kind.
+type SetAccountKindRequest struct {
+	Kind AccountKind `json:"kind"`
+}
+
+// AdminAccountCounts is GET /api/admin/users/counts: the size of each list.
+type AdminAccountCounts struct {
+	Customers int `json:"customers"`
+	Audience  int `json:"audience"`
 }
 
 // RoomMeta is mirrored into LiveKit room metadata on every control change.

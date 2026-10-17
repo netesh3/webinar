@@ -25,6 +25,9 @@ export type MessageMedia = {
   emoji?: string;
   target?: string;
   contacts?: string[];
+  /** On a template the business sent: its header kind and public link. */
+  header?: string;
+  url?: string;
 };
 
 /** The fields the label needs. A CRMMessage satisfies this. */
@@ -45,7 +48,14 @@ export type ThreadModel =
   | { type: "document"; filename: string; caption?: string; media: boolean }
   | { type: "location"; name: string; address: string; href?: string }
   | { type: "contact"; name: string }
-  | { type: "reaction"; text: string };
+  | { type: "reaction"; text: string }
+  | {
+      type: "template";
+      text: string;
+      header: "image" | "video" | "document";
+      url: string;
+      filename: string;
+    };
 
 const FILE_RE = /^[^\\/\n\r]{1,240}\.[A-Za-z0-9]{1,8}$/;
 
@@ -152,11 +162,18 @@ export function threadModel(m: PreviewMessage): ThreadModel {
   const body = (m.body ?? "").trim();
   const media = Boolean(m.media?.id && m.id);
   switch (kind) {
-    case "":
-      return {
-        type: "text",
-        text: body || prettyTemplate(m.templateName) || "No message text",
-      };
+    case "": {
+      const text = body || prettyTemplate(m.templateName) || "No message text";
+      const header = m.media?.header;
+      const url = m.media?.url ?? "";
+      if (
+        (header === "image" || header === "video" || header === "document") &&
+        /^https?:\/\//i.test(url)
+      ) {
+        return { type: "template", text, header, url, filename: m.media?.filename?.trim() ?? "" };
+      }
+      return { type: "text", text };
+    }
     case "image":
       return { type: "photo", media, caption: caption(body, "") };
     case "sticker":
