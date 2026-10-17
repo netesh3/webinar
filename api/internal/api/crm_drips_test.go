@@ -125,10 +125,10 @@ func TestCRMDripBuilderRefusesWhatItCannotSend(t *testing.T) {
 		{"a template that is not theirs", "crm_no_template", types.CRMDripRequest{
 			Name: "S", Trigger: types.DripRegistered, Steps: []types.CRMDripStep{
 				{Template: "somebody_elses", Language: "en_US"}}}},
-		{"too few values for the template", "crm_template_params", types.CRMDripRequest{
+		// No values at all follows the template's mapping; some, but not one per blank, is refused.
+		{"more values than the template has blanks", "crm_template_params", types.CRMDripRequest{
 			Name: "S", Trigger: types.DripRegistered, Steps: []types.CRMDripStep{
-				{Template: testTemplateUtility, Language: "en_US"}}}},
-		{"a value left blank", "crm_bad_param", types.CRMDripRequest{
+				dripStep(0, types.CRMParam{Field: "first_name"}, types.CRMParam{Field: "topic"})}}}, {"a value left blank", "crm_bad_param", types.CRMDripRequest{
 			Name: "S", Trigger: types.DripRegistered, Steps: []types.CRMDripStep{
 				dripStep(0, types.CRMParam{Text: "   "})}}},
 		{"a merge field this server cannot fill", "crm_bad_merge_field", types.CRMDripRequest{

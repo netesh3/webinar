@@ -5,7 +5,7 @@ import { MaterialIcon } from "@/components/icons";
 import type { CRMMergeField, CRMTemplate } from "@/lib/api-types";
 import { exampleFor, renderTemplate } from "../crm-templates";
 import { friendlyTemplateName, rupees, templateRate } from "../wa-kit";
-import { guessParams } from "../wa-messages";
+import { effectiveTokens } from "../wa-messages";
 import { wordingKind } from "./catalog";
 
 /* Approved wordings for this kind. A few are shown; See all opens the rest.
@@ -98,9 +98,7 @@ export function WordingPicker({
           {shown.map((template) => {
             const on =
               template.name === templateName && template.language === language;
-            const filled = on
-              ? params
-              : guessParams(template, wordingKind(kind), fields);
+            const filled = effectiveTokens(on ? params : [], template, wordingKind(kind), fields);
             return (
               <button
                 key={`${template.name}\u0000${template.language}`}

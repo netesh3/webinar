@@ -18,6 +18,7 @@ import {
   DripStepNotify,
   DripStepTag,
   DripTagAdded,
+  NotifyWhatsAppDrip,
   type CRMDrip,
   type CRMDripMatch,
   type CRMDripStep,
@@ -28,7 +29,8 @@ import {
   type EngagementTier,
 } from "@/lib/api-types";
 import { templateKey } from "./crm-templates";
-import { categoryWords, readable } from "./wa-messages";
+import { categoryWords, effectiveTokens, readable, templateTokens } from "./wa-messages";
+import { UseBlanks } from "./template-mapping";
 
 /* "+ New automation": a rule written as When → Then, in plain choices. Saved on the
  * sequence engine (it already waits, retries and respects opt-outs). The sequences
@@ -137,10 +139,8 @@ export function RuleBuilder({
     {
       kind: "send",
       template: usable[0] ? templateKey(usable[0]) : "",
-      params: Array.from(
-        { length: usable[0]?.variables ?? 0 },
-        (_, i) => ["first_name", "topic", "when", "host"][i] ?? "first_name",
-      ),
+      // No values: the step follows the template's field mapping.
+      params: [],
     },
   ]);
   const [name, setName] = useState("");
@@ -149,11 +149,6 @@ export function RuleBuilder({
   const [newTag, setNewTag] = useState("");
 
   const tpl = (key: string) => usable.find((t) => templateKey(t) === key);
-  const defaultParams = (t: CRMTemplate | undefined) =>
-    Array.from(
-      { length: t?.variables ?? 0 },
-      (_, i) => ["first_name", "topic", "when", "host"][i] ?? "first_name",
-    );
 
 
   function update(i: number, s: Step) {
@@ -432,7 +427,7 @@ export function RuleBuilder({
                           update(i, {
                             kind: "send",
                             template: e.target.value,
-                            params: defaultParams(tpl(e.target.value)),
+                            params: [],
                           })
                         }
                       >
@@ -451,10 +446,21 @@ export function RuleBuilder({
                       <p className="text-[12px] leading-relaxed text-ink-3">
                         {readable(
                           tpl(s.template)?.body ?? "",
-                          s.params,
+                          effectiveTokens(s.params, tpl(s.template), NotifyWhatsAppDrip, fields),
                           fields,
                         )}
                       </p>
+                    )}
+                    {(tpl(s.template)?.variables ?? 0) > 0 && (
+                      <UseBlanks
+                        template={tpl(s.template)!}
+                        kind={NotifyWhatsAppDrip}
+                        params={s.params}
+                        defaults={templateTokens(tpl(s.template)!, NotifyWhatsAppDrip, fields)}
+                        fields={fields}
+                        controlPrefix={`rule-step-${i}`}
+                        onChange={(params) => update(i, { ...s, params })}
+                      />
                     )}
                   </div>
                 )}
@@ -530,7 +536,7 @@ export function RuleBuilder({
                     {
                       kind: "send",
                       template: usable[0] ? templateKey(usable[0]) : "",
-                      params: defaultParams(usable[0]),
+                      params: [],
                     },
                   ])
                 }

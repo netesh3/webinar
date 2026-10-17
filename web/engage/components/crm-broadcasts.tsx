@@ -29,6 +29,9 @@ import {
   type BroadcastExtrasDraft,
 } from "./template-options";
 import { ParamRow, TemplateTextBlock, paramView, slotControlId, useActiveSlot } from "./template-params";
+import { NotifyWhatsAppBroadcast } from "@/lib/api-types";
+import { mappingParams, sameAsDefaults } from "../template-mapping";
+import { DefaultsBadge } from "./template-mapping";
 import {
   AudienceContacts,
   AudienceList,
@@ -933,13 +936,15 @@ function Composer({
     setOwnFile(null);
     setExtras(NO_EXTRAS);
     const picked = usable.find((t) => templateKey(t) === key);
-    setParams(
-      picked
-        ? defaultTokens(picked.variables, fields).map((token) =>
-            token ? { field: token } : { text: "" },
-          )
-        : [],
+    setParams(picked ? broadcastDefaults(picked) : []);
+  }
+
+  /** A broadcast starts from the template's field mapping and is saved as sent. */
+  function broadcastDefaults(t: CRMTemplate): CRMParam[] {
+    const fallback = defaultTokens(t.variables, fields).map((token) =>
+      token ? { field: token } : { text: "" },
     );
+    return mappingParams(t, NotifyWhatsAppBroadcast, fields, fallback);
   }
 
   function setParam(i: number, change: CRMParam) {
@@ -1347,6 +1352,10 @@ function Composer({
                     <BroadcastExtras template={template} value={extras} onChange={setExtras} />
                     {params.length > 0 && (
                       <div className="grid gap-2">
+                        <DefaultsBadge
+                          inherits={sameAsDefaults(params, broadcastDefaults(template))}
+                          onReset={() => setParams(broadcastDefaults(template))}
+                        />
                         <TemplateTextBlock
                           body={template.body ?? ""}
                           header={template.header}

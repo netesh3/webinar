@@ -13,7 +13,7 @@ import {
   type CRMTemplate,
   type MessageSlot,
 } from "@/lib/api-types";
-import { guessParams } from "./wa-messages";
+import { templateTokens } from "./wa-messages";
 import { timingForSave } from "./message-timing";
 import { isFollowup, wordingKind } from "./messages/catalog";
 import { StarterTemplates } from "./starter-templates";
@@ -34,6 +34,8 @@ import {
   type OptionsDraft,
 } from "../template-options";
 import { TemplateOptionsFields, WhatsAppPreview, previewFromDraft } from "./template-options";
+import { WordingWithFields } from "./template-mapping";
+import { draftValues, mappingForSubmit, type Draft } from "../template-mapping";
 
 /* The "Write your own wording" dialog opened from a message in Setup. The
  * WhatsApp page uses the wording drawer instead. The templates library uses
@@ -80,10 +82,14 @@ export function slotWithWording(
   template: CRMTemplate,
   fields: CRMMergeField[],
 ): MessageSlot {
+  /* A starter's own values, when they say something the template's mapping does not;
+   * otherwise none, so the message follows the template's mapping. */
+  const defaults = templateTokens(template, wordingKind(slot.kind), fields);
   const params =
-    starter.params.length === template.variables
+    starter.params.length === template.variables &&
+    starter.params.some((p, i) => p !== defaults[i])
       ? starter.params
-      : guessParams(template, wordingKind(slot.kind), fields);
+      : [];
   return {
     ...slot,
     template: template.name,
@@ -98,7 +104,6 @@ export function slotWithWording(
 export function slotFromTemplate(
   slot: MessageSlot,
   template: CRMTemplate,
-  fields: CRMMergeField[],
 ): MessageSlot {
   const channels = slot.channels.includes(ChannelWhatsApp)
     ? slot.channels
@@ -109,7 +114,8 @@ export function slotFromTemplate(
     timing: timingForSave(slot.timing),
     template: template.name,
     language: template.language,
-    params: guessParams(template, wordingKind(slot.kind), fields),
+    // No values: follows the template's field mapping.
+    params: [],
     enabled: true,
   };
 }
@@ -124,8 +130,11 @@ export function WriteWordingDialog({
   onCreated,
   onUse,
   templates,
+  fields = [],
 }: {
   connected: boolean;
+  /** The merge fields, for "Insert field" and the mapping saved with the wording. */
+  fields?: CRMMergeField[];
   /** The host's templates, to add a language to one of their own. */
   templates?: CRMTemplate[];
   onClose: () => void;
@@ -136,6 +145,7 @@ export function WriteWordingDialog({
   const { notify } = useToast();
   const [starters, setStarters] = useState<CRMStarterTemplate[] | null>(null);
   const [draft, setDraft] = useState("");
+  const [mapping, setMapping] = useState<Draft[]>([]);
   const [options, setOptions] = useState<OptionsDraft>(DEFAULT_OPTIONS);
   const ownNames = useMemo(() => languagesByName(templates ?? []), [templates]);
   const [busy, setBusy] = useState(false);
@@ -178,6 +188,7 @@ export function WriteWordingDialog({
       const saved = await engageApi.createCrmWording({
         ...optionsRequest(options, typed),
         header: withHeader ? headerInput(header) : undefined,
+        params: isAuth ? undefined : mappingForSubmit(typed, mapping),
       });
       onCreated();
       if (saved.status === "APPROVED" && !isAuth) {
@@ -194,6 +205,7 @@ export function WriteWordingDialog({
         return;
       }
       setDraft("");
+      setMapping([]);
       setHeader(NO_HEADER);
       setOptions(DEFAULT_OPTIONS);
       setNote(
@@ -241,20 +253,25 @@ export function WriteWordingDialog({
             <HeaderPicker value={header} onChange={setHeader} disabled={busy || !connected} />
           )}
           {!isAuth && (
-            <textarea
-              className="field min-h-24 resize-y py-2"
+            <WordingWithFields
+              className="field min-h-24 w-full resize-y py-2"
               value={draft}
+              onChange={setDraft}
+              mapping={mapping}
+              onMapping={setMapping}
+              fields={fields}
               maxLength={options.kind === "OFFER" ? LIMITS.offerBody : LIMITS.body}
-              onChange={(e) => setDraft(e.target.value)}
               placeholder={
                 options.kind === "CAROUSEL"
                   ? "Hi {{1}}, pick the course that suits you."
                   : "Hi {{1}}, you're registered for {{2}}."
               }
-              aria-label="Your wording"
             />
           )}
-          <WhatsAppPreview model={previewFromDraft(header, typed, options)} />
+          <WhatsAppPreview
+            model={previewFromDraft(header, typed, options)}
+            fill={{ values: draftValues(typed, mapping, fields), active: null }}
+          />
           {note && <p className="text-[12.5px] text-ink-2">{note}</p>}
           <div className="flex justify-end">
             <Button type="submit" size="sm" disabled={busy || (!typed && !isAuth)}>

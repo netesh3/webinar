@@ -3776,6 +3776,26 @@ export interface CRMTemplate {
    * * A carousel without a file for every card: not sendable until it has them.
    */
   needsCardFiles?: boolean;
+  /**
+   * * What fills each body `{{n}}` unless a use says otherwise, one entry per
+   * 	 *  variable. The host's saved mapping when DefaultParamsSaved, otherwise a
+   * 	 *  suggestion from the wording. Never sent to Meta.
+   */
+  defaultParams: CRMParam[];
+  /**
+   * * Whether DefaultParams is the host's own saved mapping rather than a guess.
+   */
+  defaultParamsSaved?: boolean;
+}
+/**
+ *  CRMTemplateMappingRequest is PUT /api/host/crm/templates/mapping: one template's
+ *  * default field mapping, one entry per body `{{n}}`. Saving it does not resubmit the
+ *  * template to Meta.
+ */
+export interface CRMTemplateMappingRequest {
+  name: string;
+  language: string;
+  params: CRMParam[];
 }
 /**
  *  CRMTemplateOffer is a limited-time offer's line above the body. With an expiry, each
@@ -3990,6 +4010,12 @@ export interface CRMWordingRequest {
    * * square or wide: the shape the card images were uploaded in.
    */
   cardAspect?: string;
+  /**
+   * * The template's default field mapping, one entry per {{n}} in order. Saved with the
+   * 	 *  template (not sent to Meta) and used for the examples Meta reviews. An entry with
+   * 	 *  neither field nor text, or a missing one, is filled with the suggestion.
+   */
+  params?: CRMParam[];
 }
 /**
  *  CRMButtonInput is one button of a template being written here.
@@ -4104,6 +4130,10 @@ export interface CRMTemplatesResponse {
    * 	 *  cached, and nothing can be sent from it.
    */
   whatsappConnected: boolean;
+  /**
+   * * The fields a template's blanks can be mapped to, for the field mapping.
+   */
+  fields: CRMMergeField[];
 }
 /**
  *  CRMSendRequest is one outbound message: either free-form text or a template,

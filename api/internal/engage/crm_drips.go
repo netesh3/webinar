@@ -383,12 +383,18 @@ func (s *Module) stepsAllowed(
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_unusable", at+unusableMessage(tmpl))
 			return nil, false
 		}
-		if len(step.Params) != tmpl.Variables {
+		// No values means "follow the template's mapping"; what that resolves to today
+		// is checked like values of the step's own, so a step is not saved unsendable.
+		if len(step.Params) != 0 && len(step.Params) != tmpl.Variables {
 			httpx.Error(w, http.StatusUnprocessableEntity, "crm_template_params",
 				at+"that template needs exactly "+strconv.Itoa(tmpl.Variables)+" value(s) filling in.")
 			return nil, false
 		}
-		if code, msg := paramsProblem(step.Params, hasWebinar, "sequence"); code != "" {
+		check := step.Params
+		if len(check) == 0 {
+			check = templateDefaults(tmpl, types.NotifyWhatsAppDrip)
+		}
+		if code, msg := paramsProblem(check, hasWebinar, "sequence"); code != "" {
 			httpx.Error(w, http.StatusUnprocessableEntity, code, at+msg)
 			return nil, false
 		}
@@ -698,6 +704,7 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 	// webinar just enrolled shares it — so it is read once per sweep, not per person.
 	webinars := map[string]types.Webinar{}
 	joinLinks := map[string]func(string) mergeLinks{}
+	mappings := map[string][]types.CRMParam{}
 	slotCache := map[string][]types.MessageSlot{}
 	queued, exited := 0, 0
 	for _, step := range due {
@@ -752,14 +759,25 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 			wb = loaded
 		}
 
+		// A step saved without values follows its template's mapping, read once a sweep.
+		stepParams := step.Params
+		if len(stepParams) == 0 {
+			key := step.HostID + "/" + step.TemplateName + "/" + step.TemplateLanguage
+			defaults, ok := mappings[key]
+			if !ok {
+				defaults = s.effectiveParams(ctx, step.HostID, step.TemplateName, step.TemplateLanguage, nil, types.NotifyWhatsAppDrip)
+				mappings[key] = defaults
+			}
+			stepParams = defaults
+		}
 		contact := types.CRMContact{ID: step.ContactID, Name: step.ContactName}
 		links := mergeLinks{Webinar: s.webinarPage(step.WebinarSlug)}
-		if step.WebinarSlug != "" && usesField(step.Params, "join_link") {
+		if step.WebinarSlug != "" && usesField(stepParams, "join_link") {
 			// One read of the webinar's join keys per sweep, shared by every step from it.
 			key := step.HostID + "/" + step.WebinarSlug
 			linksFor, ok := joinLinks[key]
 			if !ok {
-				if linksFor, err = s.broadcastLinks(ctx, step.HostID, step.WebinarSlug, step.Params); err != nil {
+				if linksFor, err = s.broadcastLinks(ctx, step.HostID, step.WebinarSlug, stepParams); err != nil {
 					s.log.Error("drip sweep: could not read join links", "slug", step.WebinarSlug, "error", err)
 					continue
 				}
@@ -767,7 +785,7 @@ func (s *Module) AdvanceDrips(ctx context.Context) {
 			}
 			links = linksFor(step.ContactID)
 		}
-		params := resolveBroadcastParams(step.Params, contact, wb, step.HostName, 0, links)
+		params := resolveBroadcastParams(stepParams, contact, wb, step.HostName, 0, links)
 		err := s.store.QueueDripStep(ctx, step, params)
 		if errors.Is(err, store.ErrConflict) {
 			// Another sweep got there first. Nothing to say about it.

@@ -63,6 +63,8 @@ import type {
   CRMMediaRenameRequest,
   CRMTemplate,
   CRMTemplateMediaRequest,
+  CRMTemplateMappingRequest,
+  CRMParam,
   CRMTemplatesResponse,
   CRMThreadResponse,
   CRMWordingRequest,
@@ -581,6 +583,18 @@ export const engageApi = {
       `/api/host/crm/templates/${seg(name)}/${seg(language)}/media`,
       { method: "PUT", body: JSON.stringify(body) },
     );
+    dropCache(TEMPLATES_KEY);
+    return saved;
+  },
+
+  /** Save a template's default field mapping: what fills each {{n}} wherever the template
+   *  is used and that use has not chosen its own. Ours alone; nothing goes to Meta. */
+  setCrmTemplateMapping: async (name: string, language: string, params: CRMParam[]) => {
+    const body: CRMTemplateMappingRequest = { name, language, params };
+    const saved = await request<CRMTemplate>("/api/host/crm/templates/mapping", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
     dropCache(TEMPLATES_KEY);
     return saved;
   },

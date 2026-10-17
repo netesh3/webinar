@@ -1,5 +1,7 @@
 "use client";
 
+import { WordingWithFields } from "./template-mapping";
+import { draftValues, mappingForSubmit, type Draft } from "../template-mapping";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { engageApi } from "../api";
@@ -274,11 +276,11 @@ export function WordingDrawer({
       const next = starter
         ? {
             ...slotWithWording(target.slot, starter, template, fields),
-            channels: slotFromTemplate(target.slot, template, fields).channels,
-            timing: slotFromTemplate(target.slot, template, fields).timing,
+            channels: slotFromTemplate(target.slot, template).channels,
+            timing: slotFromTemplate(target.slot, template).timing,
             enabled: true,
           }
-        : slotFromTemplate(target.slot, template, fields);
+        : slotFromTemplate(target.slot, template);
       await onUse(next, target.label);
     } finally {
       setUsingKey(null);
@@ -582,6 +584,7 @@ function WriteOwn({
 }) {
   const { notify } = useToast();
   const [draft, setDraft] = useState("");
+  const [mapping, setMapping] = useState<Draft[]>([]);
   const [options, setOptions] = useState<OptionsDraft>(DEFAULT_OPTIONS);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -630,7 +633,7 @@ function WriteOwn({
           notify(msg, "error");
           return;
         }
-        const saved = slotFromTemplate(target.slot, resolved.template, fields);
+        const saved = slotFromTemplate(target.slot, resolved.template);
         const withStarter = slotWithWording(
           target.slot,
           match,
@@ -644,9 +647,11 @@ function WriteOwn({
         if (ok) setDraft("");
         return;
       }
+      const params = isAuth ? undefined : mappingForSubmit(typed, mapping);
       const saved = await engageApi.createCrmWording({
         ...optionsRequest(options, typed),
         header: withHeader ? headerInput(header) : undefined,
+        params,
       });
       onCreated();
       // A rich template is picked from the list once synced, with its buttons and cards.
@@ -661,16 +666,20 @@ function WriteOwn({
           variables: variableCount(saved.body),
           sendable: true,
           buttons: [],
+          defaultParams: params ?? [],
+          defaultParamsSaved: Boolean(params),
         };
-        const ok = await onUse(slotFromTemplate(target.slot, template, fields), target.label);
+        const ok = await onUse(slotFromTemplate(target.slot, template), target.label);
         if (ok) {
           setDraft("");
+          setMapping([]);
           setHeader(NO_HEADER);
           setOptions(DEFAULT_OPTIONS);
         }
         return;
       }
       setDraft("");
+      setMapping([]);
       setHeader(NO_HEADER);
       setOptions(DEFAULT_OPTIONS);
       setNote(
@@ -701,14 +710,16 @@ function WriteOwn({
       {!isAuth && (
         <label className="mt-2 block">
           <span className="mb-1 block text-[12px] text-ink-2">Message</span>
-          <textarea
+          <WordingWithFields
             className="field min-h-[52px] w-full resize-y py-2"
             rows={2}
             value={draft}
+            onChange={setDraft}
+            mapping={mapping}
+            onMapping={setMapping}
+            fields={fields}
             maxLength={options.kind === "OFFER" ? LIMITS.offerBody : LIMITS.body}
-            onChange={(e) => setDraft(e.target.value)}
             placeholder="Hi {{1}}, {{2}} starts {{3}}."
-            aria-label="Your wording"
             disabled={!connected}
           />
         </label>
@@ -719,7 +730,10 @@ function WriteOwn({
         </div>
       )}
       <div className="mt-2">
-        <WhatsAppPreview model={previewFromDraft(header, typed, options)} />
+        <WhatsAppPreview
+            model={previewFromDraft(header, typed, options)}
+            fill={{ values: draftValues(typed, mapping, fields), active: null }}
+          />
       </div>
       {note && <p className="mt-2 text-[12px] text-ink-2">{note}</p>}
       <div className="mt-2 flex items-center justify-between gap-2">

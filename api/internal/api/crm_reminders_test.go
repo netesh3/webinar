@@ -161,16 +161,8 @@ func TestCRMReminderSettings(t *testing.T) {
 			},
 			code: "crm_no_template",
 		},
-		{
-			/* Meta rejects a send whose parameter count does not match the approved
-			 * template, so a reminder configured this way is one that never arrives. */
-			name: "too few values for the template's placeholders",
-			in: types.CRMReminder{
-				Kind: types.NotifyWhatsAppConfirmed, Template: testTemplateUtility,
-				Language: "en_US",
-			},
-			code: "crm_template_params",
-		},
+		// No values at all is "follow the template's mapping" (template_mapping_test.go);
+		// some but not one per blank is still refused.
 		{
 			name: "more values than the template has placeholders",
 			in: types.CRMReminder{

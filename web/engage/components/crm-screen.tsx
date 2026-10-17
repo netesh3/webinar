@@ -16,6 +16,8 @@ import {
   Tabs,
 } from "@/components/controls";
 import { previewLabel } from "../message-kind";
+import { effectiveTokens } from "./wa-messages";
+import { DefaultsBadge } from "./template-mapping";
 import { Broadcasts } from "./crm-broadcasts";
 import { MessageContent } from "./message-content";
 import { NotesPane } from "./crm-notes";
@@ -24,7 +26,6 @@ import { ContactTags, TagChips, TagManager } from "./crm-tags";
 import {
   BlockedList,
   RefreshTemplates,
-  defaultTokens,
   exampleFor,
   templateKey,
 } from "./crm-templates";
@@ -1082,9 +1083,12 @@ export function RemindersSettings({
         // Meta. Said out loud rather than silently shown as "Don't send", which
         // would read as a setting the host had made.
         const missing = row.template !== "" && !template;
+        // Saved with no values, it follows the template's field mapping.
+        const inherits = Boolean(template) && row.params.length === 0;
+        const filled = effectiveTokens(row.params, template, kind, fields);
         const tokens = Array.from(
           { length: template?.variables ?? 0 },
-          (_, i) => row.params[i] ?? "",
+          (_, i) => filled[i] ?? "",
         );
 
         return (
@@ -1115,11 +1119,9 @@ export function RemindersSettings({
                 update(kind, {
                   template: picked.name,
                   language: picked.language,
-                  // Prefilled in the order the fields are listed, so a newly
-                  // picked template is already valid: name, then topic, then
-                  // when. Changing one is a click; getting one wrong loses a
-                  // message.
-                  params: defaultTokens(picked.variables, usableFields),
+                  // No values: it follows the template's field mapping, which is
+                  // already valid for this message. Changing a blank customises it.
+                  params: [],
                 });
               }}
             >
@@ -1133,6 +1135,12 @@ export function RemindersSettings({
 
             {template && (
               <>
+                {template.variables > 0 && (
+                  <DefaultsBadge
+                    inherits={inherits}
+                    onReset={() => update(kind, { params: [] })}
+                  />
+                )}
                 <TemplateBlanks
                   body={template.body ?? ""}
                   header={template.header}

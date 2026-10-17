@@ -6,7 +6,7 @@ import { SearchIcon } from "@/components/icons";
 import { useSession } from "@/components/providers";
 import { SortHeader, useSort } from "@/components/sort-header";
 import { Button, ListPager } from "@/components/ui";
-import type { CRMTemplate, MessageSlot } from "@/lib/api-types";
+import type { CRMMergeField, CRMTemplate, MessageSlot } from "@/lib/api-types";
 import { sortBy } from "@/lib/table-sort";
 import { MESSAGE_ROWS } from "./messages/catalog";
 import { templateKey } from "./crm-templates";
@@ -16,6 +16,7 @@ import { TemplateHeaderFile } from "./header-media";
 import { headerSummary } from "../header-media";
 import { languageLabel, languagesByName, templateKindLabel } from "../template-options";
 import { WhatsAppPreview, previewFromTemplate } from "./template-options";
+import { TemplateFieldMapping } from "./template-mapping";
 
 /* Templates tab: search and New template on one row, then the list and the
  * phone preview. New template opens the existing wording dialog. */
@@ -48,10 +49,16 @@ function usedIn(template: CRMTemplate, slots: MessageSlot[]): string {
 
 export function WhatsAppTemplates({
   templates,
+  fields = [],
   onCreated,
+  onTemplateSaved,
 }: {
   templates: CRMTemplate[] | null;
+  /** The merge fields, for the field mapping. */
+  fields?: CRMMergeField[];
   onCreated: () => void;
+  /** One template changed here (its field mapping), without a trip to Meta. */
+  onTemplateSaved?: (saved: CRMTemplate) => void;
 }) {
   const { account } = useSession();
   const connected = Boolean(account?.whatsapp?.connected);
@@ -277,6 +284,13 @@ export function WhatsAppTemplates({
               {selected.status.toUpperCase() === "APPROVED" && (
                 <TemplateHeaderFile template={selected} onSaved={onCreated} />
               )}
+              {fields.length > 0 && (
+                <TemplateFieldMapping
+                  template={selected}
+                  fields={fields}
+                  onSaved={(saved) => onTemplateSaved?.(saved)}
+                />
+              )}
               <p className="text-[12px] text-ink-3">
                 {usedIn(selected, slots)
                   ? `Used in ${usedIn(selected, slots)}`
@@ -293,6 +307,7 @@ export function WhatsAppTemplates({
         <WriteWordingDialog
           connected={connected}
           templates={templates ?? []}
+          fields={fields}
           onClose={() => setWriting(false)}
           onCreated={() => {
             onCreated();

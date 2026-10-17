@@ -238,7 +238,10 @@ export function TemplateBlanks({
             active={active}
             controlPrefix={controlPrefix}
           />
-          <div className="grid gap-2 sm:grid-cols-2">
+          {/* Columns by the space this sits in, not the window: in a side panel one row
+              per blank, so a field's name is not cut short. */}
+          <div className="@container">
+            <div className="grid grid-cols-1 gap-2 @[34rem]:grid-cols-2">
             {views.map((_, i) => (
               <ParamRow
                 key={i}
@@ -250,6 +253,7 @@ export function TemplateBlanks({
                 {control(i)}
               </ParamRow>
             ))}
+            </div>
           </div>
         </>
       )}

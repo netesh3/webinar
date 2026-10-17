@@ -5,6 +5,7 @@ import {
   type NotificationKind,
 } from "@/lib/api-types";
 import { renderTemplate } from "./crm-templates";
+import { mappingTokens } from "../template-mapping";
 
 /* Wording helpers shared by the message pane and the rule builder.
  * The old message editor that lived here was replaced by the slot pane. */
@@ -66,6 +67,27 @@ export function guessParams(
   while (out.length < t.variables)
     out.push(order[out.length % Math.max(1, order.length)] ?? "first_name");
   return out;
+}
+
+/** What a template fills its blanks with on this kind of message when a use has not
+ *  chosen its own: the saved mapping, with the guess for any blank it cannot fill here. */
+export function templateTokens(
+  t: CRMTemplate,
+  kind: NotificationKind,
+  fields: CRMMergeField[],
+): string[] {
+  return mappingTokens(t, kind, fields, guessParams(t, kind, fields));
+}
+
+/** A use's values as they will be sent: its own, or (saved with none) the template's. */
+export function effectiveTokens(
+  params: string[] | null | undefined,
+  t: CRMTemplate | undefined,
+  kind: NotificationKind,
+  fields: CRMMergeField[],
+): string[] {
+  if (params && params.length > 0) return params;
+  return t ? templateTokens(t, kind, fields) : [];
 }
 
 /** The wording with each blank shown as what fills it: "Hi [first name], …". */

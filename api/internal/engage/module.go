@@ -164,6 +164,7 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/templates/starters", s.handleCRMStarterTemplates)
 	host.Post("/crm/templates/starters", s.handleCreateCRMStarterTemplates)
 	host.Post("/crm/templates", s.handleCreateCRMWording)
+	host.Put("/crm/templates/mapping", s.handleSetCRMTemplateMapping)
 	host.Post("/crm/media", s.handleUploadCRMMedia)
 	// The media library behind the gallery: list, rename, delete one or several.
 	host.Get("/crm/media", s.handleCRMMediaLibrary)
