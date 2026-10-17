@@ -73,6 +73,8 @@ func TestLinkedInIngest(t *testing.T) {
 		{base, "LIVEKEY99", base + "/LIVEKEY99", nil},
 		{base + "/", " LIVEKEY99 ", base + "/LIVEKEY99", nil},
 		{base, "", "", ErrLinkedInNeedKey},
+		// LinkedIn shows the key on the end of the Stream URL and again as the key.
+		{"rtmps://ip-1-2-3-4.live-input-li.bitcod.in/live/081c7950-aaaa", "081c7950-aaaa", "rtmps://ip-1-2-3-4.live-input-li.bitcod.in/live/081c7950-aaaa", nil},
 		{"rtmp://live.example.com/app", "k", "rtmp://live.example.com/app/k", nil},
 		{"", "k", "", ErrLinkedInNeedURL},
 		{"https://linkedin.com/live", "k", "", ErrLinkedInNeedURL},
@@ -91,5 +93,17 @@ func TestHintHidesTheKey(t *testing.T) {
 	got := Hint("rtmps://1a2b3c.channel.media.azure.net:2935/live/abc123/SECRETKEY99")
 	if got != "1a2b3c.channel.media.azure.net · key ending EY99" {
 		t.Errorf("Hint = %q", got)
+	}
+}
+
+func TestFixDoubledKey(t *testing.T) {
+	for in, want := range map[string]string{
+		"rtmps://h.example/live/abc-1/abc-1": "rtmps://h.example/live/abc-1",
+		"rtmps://h.example/live/abc-1":       "rtmps://h.example/live/abc-1",
+		"rtmps://h.example/live2/key":        "rtmps://h.example/live2/key",
+	} {
+		if got := FixDoubledKey(in); got != want {
+			t.Errorf("FixDoubledKey(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

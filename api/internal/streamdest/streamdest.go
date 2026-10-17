@@ -136,7 +136,30 @@ func LinkedInIngest(streamURL, key string) (string, error) {
 	if key == "" || strings.ContainsAny(key, " \t\n") {
 		return "", ErrLinkedInNeedKey
 	}
+	/* LinkedIn's Stream URL can already end with the key (".../live/<key>"),
+	 * with the same key shown again under Stream Key. Appending it a second
+	 * time pushes to ".../live/<key>/<key>", which LinkedIn never receives, so
+	 * Go live stays greyed out. */
+	if strings.HasSuffix(u, "/"+key) {
+		return u, nil
+	}
 	return u + "/" + key, nil
+}
+
+/* FixDoubledKey repairs an ingest saved before LinkedInIngest knew LinkedIn's
+ * Stream URL can already carry the key: ".../live/<key>/<key>" becomes
+ * ".../live/<key>". Anything else is returned unchanged. */
+func FixDoubledKey(ingest string) string {
+	i := strings.LastIndexByte(ingest, '/')
+	if i <= 0 {
+		return ingest
+	}
+	last := ingest[i+1:]
+	head := ingest[:i]
+	if last != "" && strings.HasSuffix(head, "/"+last) {
+		return head
+	}
+	return ingest
 }
 
 /* Hint is what the Settings card shows for a saved ingest without echoing the
