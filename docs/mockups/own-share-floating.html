@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Floating window: window vs entire screen (mock)</title>
+<style>
+  :root { --ok:#22c55e; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px; background:#e9ebef; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#111; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:15px; margin:30px 0 10px; }
+  .sub { color:#555; margin:0 0 20px; max-width:1150px; }
+  .cols { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; }
+  .label { font-weight:600; margin:0 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .tag { font-size:11px; padding:2px 8px; border-radius:99px; font-weight:600; }
+  .t-now { background:#e5e7eb; color:#374151; } .t-new { background:#dcfce7; color:#166534; } .t-opt { background:#e0e7ff; color:#3730a3; }
+  .note { color:#444; font-size:12.5px; margin:8px 0 0; }
+
+  /* the floating window, at real-ish size */
+  .pip { width:100%; max-width:400px; aspect-ratio:400/250; background:#000; border-radius:10px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 10px 28px rgba(0,0,0,.28); border:1px solid #2a2a2e; color:#fff; }
+  .chrome { height:24px; background:#202124; display:flex; align-items:center; gap:6px; padding:0 9px; font-size:10.5px; color:#bbb; }
+  .chrome .x { margin-left:auto; letter-spacing:6px; color:#888; }
+  .pic { flex:1; min-height:0; position:relative; display:grid; place-items:center; background:#000; }
+  .bar { height:34px; display:flex; align-items:center; gap:7px; padding:0 9px; border-top:1px solid rgba(255,255,255,.1); font-size:11px; }
+  .bar .t { color:#888; font-variant-numeric:tabular-nums; } .bar .back { margin-left:auto; color:#ddd; font-weight:500; padding:4px 7px; border-radius:6px; background:rgba(255,255,255,.08); }
+  .live { display:inline-flex; gap:4px; align-items:center; background:rgba(34,197,94,.15); color:var(--ok); font-weight:700; font-size:9.5px; letter-spacing:.06em; padding:2px 7px; border-radius:99px; }
+  .live:before { content:""; width:5px; height:5px; border-radius:99px; background:var(--ok); }
+
+  .ptag { position:absolute; top:7px; left:7px; font-size:9.5px; font-weight:600; padding:3px 7px; border-radius:6px; display:inline-flex; gap:5px; align-items:center; }
+  .ptag.lv { background:rgba(0,0,0,.7); color:#bbf7d0; } .ptag.lv:before { content:""; width:6px; height:6px; border-radius:99px; background:var(--ok); }
+  .ptag.sn { background:rgba(0,0,0,.75); color:#e5e7eb; } .ptag.sn:before { content:"⏸"; font-size:9px; }
+  .strip { position:absolute; left:0; right:0; bottom:0; background:linear-gradient(transparent, rgba(0,0,0,.85) 40%); padding:16px 9px 6px; font-size:10.5px; color:#e5e7eb; }
+
+  /* fake content */
+  .win { width:94%; height:90%; background:#fff; border-radius:4px; position:relative; overflow:hidden; }
+  .win .s { position:absolute; left:0; top:0; bottom:0; width:20%; background:#f1f1ef; }
+  .win .g { position:absolute; left:24%; right:4%; top:10%; bottom:8%; background:repeating-linear-gradient(90deg,#e5e7eb 0 1px,transparent 1px 14.2%),repeating-linear-gradient(#e5e7eb 0 1px,transparent 1px 20%); }
+  .win .e { position:absolute; height:5%; border-radius:3px; background:#f0abfc; }
+  .scr { height:94%; aspect-ratio:16/10; max-width:96%; background:#f6f7f9; border-radius:3px; position:relative; overflow:hidden; }
+  .scr:before { content:""; position:absolute; inset:0 0 auto 0; height:6%; background:#2f6fe4; }
+  .scr .s { position:absolute; left:0; top:6%; bottom:0; width:20%; background:#eceef2; }
+  .scr .c { position:absolute; background:#fff; border:1px solid #dde1e7; border-radius:2px; }
+  .scr .d { position:absolute; left:25%; right:25%; bottom:2%; height:6%; background:rgba(0,0,0,.18); border-radius:3px; }
+  .slide { position:absolute; left:24%; top:12%; right:4%; bottom:12%; background:#fff; border:1px solid #e2e8f0; }
+  .slide i { position:absolute; left:8%; height:6%; background:#cbd5e1; border-radius:2px; }
+
+  /* desktop scene */
+  .desk { aspect-ratio:16/10; border-radius:10px; overflow:hidden; position:relative; background:linear-gradient(135deg,#334155,#0f172a); box-shadow:0 6px 18px rgba(0,0,0,.2); }
+  .desk .menubar { position:absolute; inset:0 0 auto 0; height:5%; background:rgba(255,255,255,.75); }
+  .desk .app { position:absolute; left:6%; top:10%; width:66%; height:78%; background:#fff; border-radius:6px; overflow:hidden; }
+  .desk .app .tb { height:9%; background:#f1f5f9; border-bottom:1px solid #e2e8f0; }
+  .desk .app .h { position:absolute; left:8%; top:18%; width:50%; height:8%; background:#1e293b; border-radius:3px; }
+  .desk .app i { position:absolute; left:8%; height:4%; background:#cbd5e1; border-radius:2px; }
+  .desk .mini { position:absolute; right:3%; bottom:8%; width:34%; aspect-ratio:400/250; background:#000; border-radius:5px; overflow:hidden; border:1px solid #444; display:flex; flex-direction:column; }
+  .desk .mini .mp { flex:1; position:relative; display:grid; place-items:center; }
+  .desk .mini .mb { height:16%; border-top:1px solid #333; display:flex; align-items:center; padding:0 5%; }
+  .desk .mini .mb span { width:22%; height:40%; border-radius:99px; background:rgba(34,197,94,.35); }
+  .desk .border { position:absolute; inset:0; border:3px solid var(--ok); border-radius:10px; pointer-events:none; }
+  .desk .wborder { position:absolute; left:6%; top:10%; width:66%; height:78%; border:3px solid var(--ok); border-radius:6px; pointer-events:none; }
+  .cap { position:absolute; left:8px; bottom:8px; background:rgba(0,0,0,.6); color:#fff; font-size:10px; padding:3px 8px; border-radius:6px; }
+
+  .rules { background:#fff; border-radius:10px; padding:14px 18px; margin-top:26px; max-width:1150px; font-size:13px; }
+  .rules b { font-weight:600; }
+  .rules li { margin:4px 0; }
+</style>
+</head>
+<body>
+<h1>Floating window: the same layout for a window and the entire screen</h1>
+<p class="sub">Mock only. Both shares get the same floating window: a picture on top and the sharing bar below. The difference is one label in the corner of the picture. <b>Live view</b> means it moves as you work. <b>Snapshot</b> means a still picture from when you started. The bar is identical in both cases.</p>
+
+<div class="cols">
+  <div>
+    <p class="label">A · Sharing a window <span class="tag t-now">As today, labelled</span></p>
+    <div class="pip">
+      <div class="chrome">webinarliv.com <span class="x">▣ ⤢ ✕</span></div>
+      <div class="pic">
+        <div class="win"><div class="s"></div><div class="g"></div>
+          <div class="e" style="left:72%;top:22%;width:16%"></div><div class="e" style="left:38%;top:62%;width:14%"></div></div>
+        <span class="ptag lv">Live view</span>
+      </div>
+      <div class="bar"><span class="live">LIVE</span>Sharing a window <span class="t">0:49</span><span class="back">Back to webinar</span></div>
+    </div>
+    <p class="note">The shared window, live. The only addition is the "Live view" label, so the two floating windows can be told apart at a glance.</p>
+  </div>
+
+  <div>
+    <p class="label">B · Sharing the entire screen <span class="tag t-new">New</span></p>
+    <div class="pip">
+      <div class="chrome">webinarliv.com <span class="x">▣ ⤢ ✕</span></div>
+      <div class="pic">
+        <div class="scr"><div class="s"></div><div class="c" style="left:26%;top:16%;width:30%;height:38%"></div><div class="c" style="left:60%;top:16%;width:34%;height:60%"></div><div class="d"></div></div>
+        <span class="ptag sn">Snapshot · not updating</span>
+        <div class="strip">Everyone sees your whole screen, including this little window.</div>
+      </div>
+      <div class="bar"><span class="live">LIVE</span>Sharing entire screen <span class="t">0:07</span><span class="back">Back to webinar</span></div>
+    </div>
+    <p class="note">Was text only. Now it shows the same snapshot as the stage, which confirms <i>which</i> screen is shared. "Snapshot · not updating" says it won't move, and the line below is the reminder that already exists today.</p>
+  </div>
+
+  <div>
+    <p class="label">C · Entire screen, Live preview on <span class="tag t-opt">Two screens only</span></p>
+    <div class="pip">
+      <div class="chrome">webinarliv.com <span class="x">▣ ⤢ ✕</span></div>
+      <div class="pic">
+        <div class="scr"><div class="s"></div><div class="slide"><i style="top:18%;width:50%;height:9%;background:#1e293b"></i><i style="top:40%;width:80%"></i><i style="top:52%;width:70%"></i><i style="top:64%;width:76%"></i></div><div class="d"></div></div>
+        <span class="ptag lv">Live view</span>
+      </div>
+      <div class="bar"><span class="live">LIVE</span>Sharing entire screen <span class="t">0:41</span><span class="back">Back to webinar</span></div>
+    </div>
+    <p class="note">Only if the presenter turned on Live preview (the earlier mock), meaning the webinar is on another screen. Then the floating window goes live too, with the same "Live view" label as A.</p>
+  </div>
+</div>
+
+<h2>Where it sits, and what the audience gets</h2>
+<div class="cols">
+  <div>
+    <div class="desk"><div class="menubar"></div>
+      <div class="app"><div class="tb"></div><div class="h"></div><i style="top:34%;width:70%"></i><i style="top:42%;width:62%"></i><i style="top:50%;width:66%"></i></div>
+      <div class="wborder"></div>
+      <div class="mini"><div class="mp"><div class="win" style="width:90%;height:86%"><div class="s"></div></div></div><div class="mb"><span></span></div></div>
+      <span class="cap">Audience sees: only the outlined window</span>
+    </div>
+    <p class="note">A window share: the floating window is not in what the audience sees.</p>
+  </div>
+  <div>
+    <div class="desk"><div class="menubar"></div>
+      <div class="app"><div class="tb"></div><div class="h"></div><i style="top:34%;width:70%"></i><i style="top:42%;width:62%"></i><i style="top:50%;width:66%"></i></div>
+      <div class="mini"><div class="mp"><div class="scr" style="height:86%"><div class="s"></div><div class="d"></div></div></div><div class="mb"><span></span></div></div>
+      <div class="border"></div>
+      <span class="cap">Audience sees: the whole screen, floating window included</span>
+    </div>
+    <p class="note">The entire screen: the audience does see the floating window, but it holds a still picture, so they see a small static thumbnail and never a tunnel.</p>
+  </div>
+  <div>
+    <div class="desk" style="display:grid;grid-template-columns:1fr 1fr;gap:3%;padding:3%;background:#0f172a">
+      <div style="position:relative;background:linear-gradient(135deg,#334155,#1e293b);border-radius:6px;overflow:hidden">
+        <div class="app" style="left:6%;top:8%;width:88%;height:80%"><div class="tb"></div><div class="h"></div><i style="top:34%;width:70%"></i><i style="top:46%;width:62%"></i></div>
+        <div class="border" style="border-radius:6px"></div>
+      </div>
+      <div style="position:relative;background:linear-gradient(135deg,#475569,#334155);border-radius:6px;overflow:hidden">
+        <div class="mini" style="right:8%;bottom:10%;width:80%"><div class="mp"><div class="scr" style="height:86%"><div class="s"></div><div class="d"></div></div></div><div class="mb"><span></span></div></div>
+      </div>
+      <span class="cap">Shared: left screen · floating window on the right</span>
+    </div>
+    <p class="note">Live preview on: the floating window is on the other screen, outside the share, so a live picture is safe.</p>
+  </div>
+</div>
+
+<div class="rules">
+  <b>Rules that keep it unconfusing</b>
+  <ul>
+    <li><b>One layout.</b> Same size and frame, the picture on top, and the bar below with LIVE, what you're sharing, the time, and Back to webinar.</li>
+    <li><b>One label decides.</b> A green dot with "Live view" means it moves. A pause icon with "Snapshot · not updating" means it doesn't. Nothing else differs between A and B.</li>
+    <li><b>The bar's LIVE badge always means "you are sharing".</b> It is never used to describe the preview.</li>
+    <li><b>The stage follows the same rule.</b> The stage and the floating window always show the same kind of picture: both live or both snapshot.</li>
+  </ul>
+</div>
+</body>
+</html>

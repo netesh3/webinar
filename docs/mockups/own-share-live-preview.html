@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Entire screen — live preview switch (mock)</title>
+<style>
+  :root { --ok:#22c55e; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:28px; background:#e9ebef; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#111; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#555; margin:0 0 22px; max-width:1100px; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:30px; }
+  .label { font-weight:600; margin:0 0 8px; display:flex; gap:8px; align-items:center; }
+  .tag { font-size:11px; padding:2px 8px; border-radius:99px; font-weight:600; background:#e0e7ff; color:#3730a3; }
+  .note { color:#444; font-size:12.5px; margin:8px 0 0; }
+
+  .room { aspect-ratio:16/9.4; background:#0b0b0c; border-radius:10px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 20px rgba(0,0,0,.18); position:relative; }
+  .topbar { height:26px; display:flex; align-items:center; gap:6px; padding:0 10px; color:#ddd; font-size:10px; }
+  .topbar .pill { background:#1f1f22; border-radius:6px; padding:2px 7px; }
+  .stage { flex:1; position:relative; min-height:0; display:flex; flex-direction:column; }
+  .ctrl { height:34px; display:flex; align-items:center; justify-content:center; gap:10px; color:#bbb; font-size:9px; }
+  .ctrl span { background:#1f1f22; padding:4px 8px; border-radius:6px; }
+  .ctrl .stop { background:#2563eb; color:#fff; }
+
+  .live { display:inline-flex; gap:4px; align-items:center; background:rgba(34,197,94,.15); color:var(--ok); font-weight:700; font-size:8.5px; letter-spacing:.06em; padding:2px 6px; border-radius:99px; }
+  .live:before { content:""; width:5px; height:5px; border-radius:99px; background:var(--ok); }
+  .hdr { display:flex; align-items:center; gap:6px; padding:5px 10px; font-size:10.5px; color:#eee; }
+  .hdr b { font-weight:600; } .hdr .m { color:#999; } .hdr .t { color:#888; }
+  .pic { flex:1; min-height:0; position:relative; margin:0 10px; display:grid; place-items:center; }
+  .btns { display:flex; justify-content:center; gap:6px; padding:6px 0 8px; }
+  .btn { background:rgba(255,255,255,.12); color:#eee; font-size:9.5px; padding:5px 9px; border-radius:6px; display:inline-flex; gap:5px; align-items:center; }
+  .btn.on { background:rgba(34,197,94,.2); color:#bbf7d0; outline:1px solid rgba(34,197,94,.45); }
+  .sw { width:20px; height:11px; border-radius:99px; background:rgba(255,255,255,.3); position:relative; }
+  .sw:after { content:""; position:absolute; top:1.5px; left:1.5px; width:8px; height:8px; border-radius:99px; background:#fff; }
+  .btn.on .sw { background:var(--ok); } .btn.on .sw:after { left:10.5px; }
+
+  .screen { height:100%; aspect-ratio:16/10; max-width:100%; background:#f6f7f9; border-radius:4px; position:relative; overflow:hidden; }
+  .screen:before { content:""; position:absolute; inset:0 0 auto 0; height:6%; background:#2f6fe4; }
+  .screen .side { position:absolute; left:0; top:6%; bottom:0; width:20%; background:#eceef2; }
+  .screen .card { position:absolute; background:#fff; border:1px solid #dde1e7; border-radius:3px; }
+  .screen .dock { position:absolute; left:25%; right:25%; bottom:2%; height:6%; background:rgba(0,0,0,.18); border-radius:4px; }
+  .chip { position:absolute; bottom:8px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.75); color:#fff; font-size:9px; padding:4px 9px; border-radius:99px; white-space:nowrap; }
+
+  /* the mirror */
+  .mirror { height:100%; aspect-ratio:16/10; max-width:100%; background:#0b0b0c; border-radius:4px; position:relative; overflow:hidden; border:1px solid #333; }
+  .mirror .lvl { position:absolute; inset:9% 7% 11% 7%; background:#0b0b0c; border:1px solid #444; }
+  .mirror .lvl .lvl { inset:9% 7% 11% 7%; }
+
+  /* popover */
+  .pop { position:absolute; bottom:52px; left:50%; transform:translateX(-50%); width:300px; background:#1b1b1e; color:#eee; border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:12px 13px; box-shadow:0 12px 30px rgba(0,0,0,.5); z-index:5; }
+  .pop h4 { margin:0 0 5px; font-size:12px; }
+  .pop p { margin:0 0 9px; font-size:10.5px; color:#bbb; line-height:1.45; }
+  .pop .art { display:flex; gap:8px; align-items:center; justify-content:center; margin:6px 0 10px; }
+  .mon { width:72px; height:44px; border:2px solid #666; border-radius:4px; position:relative; font-size:8px; color:#ccc; display:grid; place-items:center; text-align:center; }
+  .mon.shared { border-color:var(--ok); } .mon small { display:block; color:#888; }
+  .pop .acts { display:flex; justify-content:flex-end; gap:6px; }
+  .pop .a { font-size:10px; padding:5px 9px; border-radius:6px; background:rgba(255,255,255,.1); }
+  .pop .a.p { background:#2563eb; color:#fff; }
+  .warn { position:absolute; top:8px; left:50%; transform:translateX(-50%); background:#fef3c7; color:#92400e; font-size:9.5px; padding:5px 10px; border-radius:7px; white-space:nowrap; font-weight:500; }
+</style>
+</head>
+<body>
+<h1>Entire screen share: optional live preview</h1>
+<p class="sub">Mock only. The snapshot stays the default. A "Live preview" switch joins the buttons under the picture. Turning it on asks once, because it only works when this window is on a different screen from the one being shared. The choice is remembered.</p>
+
+<div class="row">
+  <div>
+    <p class="label">1 · Default (same as today) <span class="tag">Off</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="hdr"><span class="live">LIVE</span><b>Everyone can see your entire screen</b><span class="m">, including this page</span> <span class="t">0:06</span></div>
+        <div class="pic">
+          <div class="screen"><div class="side"></div><div class="card" style="left:26%;top:16%;width:30%;height:38%"></div><div class="card" style="left:60%;top:16%;width:34%;height:60%"></div><div class="dock"></div></div>
+          <span class="chip">Snapshot from when you started · not live, so this page doesn't mirror itself</span>
+        </div>
+        <div class="btns"><span class="btn">Share a window instead</span><span class="btn"><span class="sw"></span>Live preview</span><span class="btn">Floating controls</span></div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span class="stop">Stop sharing</span><span>More</span></div>
+    </div>
+    <p class="note">Nothing changes for most presenters: same snapshot, plus one switch.</p>
+  </div>
+
+  <div>
+    <p class="label">2 · Turning it on (asked once) <span class="tag">Confirm</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="hdr"><span class="live">LIVE</span><b>Everyone can see your entire screen</b><span class="m">, including this page</span> <span class="t">0:06</span></div>
+        <div class="pic" style="opacity:.35">
+          <div class="screen"><div class="side"></div><div class="dock"></div></div>
+        </div>
+        <div class="btns"><span class="btn">Share a window instead</span><span class="btn on"><span class="sw"></span>Live preview</span><span class="btn">Floating controls</span></div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span class="stop">Stop sharing</span><span>More</span></div>
+      <div class="pop">
+        <h4>Is this window on another screen?</h4>
+        <p>A live preview only works when this webinar window is on a different screen from the one you're sharing. On the same screen it shows itself inside itself, and everyone sees that.</p>
+        <div class="art">
+          <div class="mon shared">Shared<small>your slides</small></div>
+          <div class="mon">This window<small>live preview</small></div>
+        </div>
+        <div class="acts"><span class="a">Keep snapshot</span><span class="a p">It's on another screen</span></div>
+      </div>
+    </div>
+    <p class="note">One question with a two-screens picture, so nobody turns it on by accident. Saying yes remembers it for next time, and the question isn't asked again.</p>
+  </div>
+</div>
+
+<div class="row">
+  <div>
+    <p class="label">3 · On, with two screens <span class="tag">Live</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="hdr"><span class="live">LIVE</span><b>This is what everyone sees</b><span class="m"> · your entire screen</span> <span class="t">0:41</span></div>
+        <div class="pic">
+          <div class="screen" style="outline:1px solid rgba(255,255,255,.15)"><div class="side"></div>
+            <div class="card" style="left:24%;top:12%;width:72%;height:76%;background:#fff"></div>
+            <div class="card" style="left:30%;top:22%;width:40%;height:8%;background:#1e293b;border:0"></div>
+            <div class="card" style="left:30%;top:36%;width:58%;height:3%;background:#cbd5e1;border:0"></div>
+            <div class="card" style="left:30%;top:42%;width:52%;height:3%;background:#cbd5e1;border:0"></div>
+            <div class="card" style="left:30%;top:48%;width:56%;height:3%;background:#cbd5e1;border:0"></div>
+            <div class="dock"></div></div>
+        </div>
+        <div class="btns"><span class="btn">Share a window instead</span><span class="btn on"><span class="sw"></span>Live preview</span><span class="btn">Floating controls</span></div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span class="stop">Stop sharing</span><span>More</span></div>
+    </div>
+    <p class="note">The live picture of the other screen, fitted to the stage like a window share. The header changes to "This is what everyone sees".</p>
+  </div>
+
+  <div>
+    <p class="label">4 · On, but it's the same screen <span class="tag">Auto-fallback</span></p>
+    <div class="room">
+      <div class="topbar"><span class="pill">Instant webinar</span><span style="flex:1"></span><span class="pill">Speaker</span><span class="pill">Grid</span></div>
+      <div class="stage">
+        <div class="hdr"><span class="live">LIVE</span><b>Everyone can see your entire screen</b><span class="m">, including this page</span> <span class="t">0:12</span></div>
+        <div class="pic">
+          <div class="mirror"><div class="lvl"><div class="lvl"><div class="lvl"><div class="lvl"></div></div></div></div></div>
+          <span class="warn">⚠ This window is on the shared screen, so everyone sees a mirror. Switched back to the snapshot.</span>
+        </div>
+        <div class="btns"><span class="btn">Share a window instead</span><span class="btn"><span class="sw"></span>Live preview</span><span class="btn">Floating controls</span></div>
+      </div>
+      <div class="ctrl"><span>Mute</span><span>Stop video</span><span class="stop">Stop sharing</span><span>More</span></div>
+    </div>
+    <p class="note">Safety net, to be confirmed while building: if the live picture starts showing this page inside itself, switch back to the snapshot and say why. If detection turns out unreliable, it ships without this and the question in step 2 is the guard.</p>
+  </div>
+</div>
+</body>
+</html>
