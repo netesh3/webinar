@@ -113,7 +113,13 @@ export type VirtualBackgroundId =
   | "horizon"
   | "conference"
   | "studio"
-  | "sage";
+  | "sage"
+  | "bookshelf"
+  | "seaside"
+  | "study"
+  | "lounge"
+  | "nook"
+  | "living";
 
 export type BackgroundChoice =
   | { mode: "none" }
@@ -131,6 +137,14 @@ export const VIRTUAL_BACKGROUNDS: readonly {
   { id: "conference", label: "Conference", src: "/backgrounds/conference.jpg" },
   { id: "studio", label: "Studio", src: "/backgrounds/studio.jpg" },
   { id: "sage", label: "Sage", src: "/backgrounds/sage.jpg" },
+  /* Photographic rooms, centre-cropped to 16:9 at 1280x720 like the rest. Chosen for a
+   * calm middle third — where the presenter sits — and enough resolution to survive the crop. */
+  { id: "bookshelf", label: "Bookshelf", src: "/backgrounds/bookshelf.jpg" },
+  { id: "seaside", label: "Seaside", src: "/backgrounds/seaside.jpg" },
+  { id: "study", label: "Study", src: "/backgrounds/study.jpg" },
+  { id: "lounge", label: "Lounge", src: "/backgrounds/lounge.jpg" },
+  { id: "nook", label: "Reading nook", src: "/backgrounds/nook.jpg" },
+  { id: "living", label: "Living room", src: "/backgrounds/living.jpg" },
 ];
 
 const BACKGROUND_IDS = new Set<string>(VIRTUAL_BACKGROUNDS.map((b) => b.id));
