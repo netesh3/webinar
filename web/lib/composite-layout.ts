@@ -7,7 +7,8 @@
  * Standard (recordings, CDN broadcast): a share sits next to a camera strip down the right.
  * Edge: the share fills the whole frame and the cameras are small tiles over the bottom-right
  * corner. The edge mix is the audience's only picture, and next to a 22% strip a share lost a
- * third of its pixels, which at 720p made slide text unreadable. */
+ * third of its pixels, which at 720p made slide text unreadable. Only cameras that are on get a
+ * tile there: someone with their camera off is an initials card the audience gains nothing from. */
 
 /** At most this many camera tiles over an edge share; more would cover the slides. */
 export const EDGE_PIP_TILES = 3;
@@ -22,6 +23,8 @@ export type CompositeLayout = {
   /** Show "No camera published" when there are none. */
   emptyNote: boolean;
   compactTiles: boolean;
+  /** Only tiles with a live camera: an initials tile over a share covers slides for nothing. */
+  camerasOnly: boolean;
 };
 
 export function compositeLayout(opts: { edge: boolean; sharing: boolean }): CompositeLayout {
@@ -34,6 +37,7 @@ export function compositeLayout(opts: { edge: boolean; sharing: boolean }): Comp
       maxTiles: EDGE_PIP_TILES,
       emptyNote: false,
       compactTiles: true,
+      camerasOnly: true,
     };
   }
   if (opts.sharing) {
@@ -46,6 +50,7 @@ export function compositeLayout(opts: { edge: boolean; sharing: boolean }): Comp
       maxTiles: undefined,
       emptyNote: true,
       compactTiles: false,
+      camerasOnly: false,
     };
   }
   return {
@@ -57,10 +62,20 @@ export function compositeLayout(opts: { edge: boolean; sharing: boolean }): Comp
     maxTiles: 5,
     emptyNote: true,
     compactTiles: true,
+    camerasOnly: false,
   };
 }
 
 /** Whether a template path asks for the edge layout: <template>/edge or <template>/edge/clock. */
 export function isEdgeTemplatePath(path: string): boolean {
   return /\/edge(\/|$)/.test(path);
+}
+
+/** Whether a camera entry has a picture: published, not muted (camera off), and subscribed.
+ *  useTracks with onlySubscribed false also returns placeholders for people with no camera. */
+export function cameraIsOn(ref: {
+  publication?: { isMuted: boolean; isSubscribed: boolean } | undefined;
+}): boolean {
+  const pub = ref.publication;
+  return Boolean(pub && !pub.isMuted && pub.isSubscribed);
 }
