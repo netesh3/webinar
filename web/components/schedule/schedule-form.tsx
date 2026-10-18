@@ -20,7 +20,7 @@ import type { MessagesSaveHandle } from "@/engage";
 import {
   FeatureCloudRecording,
   FeatureJoinWithoutRegistration,
-  FeatureZoom,
+  FeatureEdgeDelivery, FeatureZoom,
   type CRMMediaFile,
   type MessageSlot,
   type Webinar,
@@ -99,7 +99,7 @@ function targetForFields(fields: Record<string, string>): string | null {
     return "settings-registration";
   }
   if (keys.includes("panelistEmails")) return "panelists";
-  if (keys.includes("venue")) return "where-it-runs";
+  if (keys.includes("venue") || keys.includes("delivery")) return "where-it-runs";
   return "settings-the-basics";
 }
 
@@ -518,6 +518,14 @@ function ScheduleFormBody({
           : (account?.features ?? []).includes(FeatureZoom)
             ? form.venue
             : "app",
+      /* Only a host with the switch says anything: everyone else omits it and the server
+       * keeps what is saved. Edge fits a single live webinar in this app; otherwise standard. */
+      ...((account?.features ?? []).includes(FeatureEdgeDelivery)
+        ? {
+            delivery:
+              !asSeries && form.kind === "live" && form.venue === "app" ? form.delivery : "standard",
+          }
+        : {}),
     };
   }
 

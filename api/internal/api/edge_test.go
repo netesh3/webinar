@@ -248,6 +248,28 @@ func TestEdgeJoinGivesPlaybackNotALiveKitToken(t *testing.T) {
 	}
 }
 
+func TestEdgeEgressUsesTheEdgeEncoding(t *testing.T) {
+	h := newHarness(t, edgeConfig, func(c *config.Config) {
+		c.EdgeEncodingWidth, c.EdgeEncodingHeight, c.EdgeEncodingFPS = 1920, 1080, 30
+		c.EdgeVideoBitrateKbps, c.EdgeH264Profile = 4500, "high"
+	})
+	edgeHost(t, h, "edge-enc@test.dev")
+	wb := edgeWebinar(h, "Edge encoding")
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		h.rooms.mu.Lock()
+		enc := h.rooms.lastEncoding
+		h.rooms.mu.Unlock()
+		if enc.Width == 1920 && enc.Height == 1080 && enc.BitrateKbps == 4500 && enc.Profile == "high" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("edge egress encoding = %+v for %s", enc, wb.ID)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestEdgePlaybackBaseOverridesTheOrigin(t *testing.T) {
 	h := newHarness(t, edgeConfig, func(c *config.Config) { c.EdgePlaybackBase = "https://webinarliv.b-cdn.net/live" })
 	edgeHost(t, h, "edge-cdn@test.dev")

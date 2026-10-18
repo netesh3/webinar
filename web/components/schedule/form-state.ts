@@ -84,6 +84,9 @@ export type FormState = {
   streamKey: string;
   streamWatchUrl: string;
   venue: "app" | "zoom_meeting" | "zoom_webinar";
+  /** How the audience receives the session (docs/edge-delivery.md). Offered only to hosts
+   *  with the edge_delivery feature, for a single live webinar in this app. */
+  delivery: "standard" | "edge";
   recurrence: RecurrenceForm;
   /** "this" edits one session. "following" edits it and later non-exception sessions. */
   seriesScope: "this" | "following";
@@ -179,6 +182,7 @@ export function initialState(
         webinar.venue === "zoom_meeting" || webinar.venue === "zoom_webinar"
           ? webinar.venue
           : "app",
+      delivery: webinar.delivery === "edge" ? "edge" : "standard",
       ...seriesFields(webinar, when.date),
     };
   }
@@ -252,6 +256,7 @@ export function initialState(
     streamKey: "",
     streamWatchUrl: "",
     venue: "app",
+    delivery: "standard",
     ...seriesFields(null, when.date),
   };
 }

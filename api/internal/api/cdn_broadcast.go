@@ -69,7 +69,14 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	 * NIC as the SFU. 1080p × a few hundred viewers does not fit a CX33. */
 	preset := livekit.EncodingOptionsPreset_H264_720P_30
 
-	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), preset, origin, extras)
+	var info *livekit.EgressInfo
+	var err error
+	if wb.Delivery == types.DeliveryEdge {
+		// Edge webinars' mix encoding is configurable (EDGE_ENCODING_*); defaults match the preset.
+		info, err = sfu.StartBroadcastEgressEncoded(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), s.edgeEncoding(), origin, extras)
+	} else {
+		info, err = sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), preset, origin, extras)
+	}
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", err)
 		broadcastMu.Lock()

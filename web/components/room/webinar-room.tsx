@@ -103,6 +103,8 @@ import { trackEvent, useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
+import { EdgeAudienceRoom } from "./edge-audience-room";
+import { EdgeBadge } from "./edge-badge";
 
 /* The webinar room.
  *
@@ -192,16 +194,24 @@ export function WebinarRoom({
   const [promotedToStage, setPromotedToStage] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
 
+  /* One promotion at a time. An edge viewer hears about the same promotion twice — the
+   * accept response and the stage-granted event — and a second join while the first is in
+   * flight would remount the stage it just mounted. */
+  const promoting = useRef(false);
   const handlePromoted = useCallback(async () => {
+    if (promoting.current) return;
+    promoting.current = true;
     setTransitioning(true);
     try {
       const fresh = await api.join(slug, joinKey);
       setCurrentJoin(fresh);
-      setPromotedToStage(true);
+      // An edge join that still says "edge" has no stage grant yet: stay on the feed.
+      setPromotedToStage(fresh.delivery !== "edge");
     } catch {
       // Stay on the mix player rather than mounting WebRTC with a data-only token.
     } finally {
       setTransitioning(false);
+      promoting.current = false;
     }
   }, [slug, joinKey]);
 
@@ -265,6 +275,20 @@ export function WebinarRoom({
     return Promise.race([mint, giveUp]);
   }, [isScheduledPresenter, slug, joinKey]);
   const webinarUsesCdn = Boolean(initialJoin.cdnBroadcast || currentJoin.cdnBroadcast);
+  /* Edge delivery (docs/edge-delivery.md): the audience is on LL-HLS with an SSE event
+   * stream, and the stage is ordinary WebRTC. Either join says so — the feed's, or a stage
+   * token's edgeWebinar — and from then on demotion goes back to the feed. */
+  const webinarUsesEdge = Boolean(
+    initialJoin.delivery === "edge" || initialJoin.edgeWebinar ||
+      currentJoin.delivery === "edge" || currentJoin.edgeWebinar,
+  );
+  const refreshEdgeJoin = useCallback(async () => {
+    try {
+      setCurrentJoin(await api.join(slug, joinKey));
+    } catch {
+      // The landing page handles a session that is over; nothing better to do here.
+    }
+  }, [slug, joinKey]);
 
   if (transitioning) {
     return (
@@ -274,6 +298,22 @@ export function WebinarRoom({
           <p className="text-[13px] text-white">Updating stage status...</p>
         </div>
       </main>
+    );
+  }
+
+  if (currentJoin.delivery === "edge" && !isScheduledPresenter && !promotedToStage) {
+    return (
+      <EdgeAudienceRoom
+        join={currentJoin}
+        slug={slug}
+        initialTopic={initialTopic}
+        initialImageUrl={initialImageUrl}
+        joinKey={joinKey}
+        onLeave={onLeave}
+        onPromoted={handlePromoted}
+        onRemoved={() => depart("removed")}
+        onRefreshJoin={refreshEdgeJoin}
+      />
     );
   }
 
@@ -322,7 +362,7 @@ export function WebinarRoom({
       initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
-      onDemoted={webinarUsesCdn ? handleDemoted : undefined}
+      onDemoted={webinarUsesCdn || webinarUsesEdge ? handleDemoted : undefined}
       freshCredential={freshCredential}
       // Only the room this page opened with: a promotion or demotion later in the session
       // is a new join the person should check their devices for, as it always was.
@@ -1677,6 +1717,7 @@ export function RoomHeader() {
           {/* Everyone sees this, including the audience — consent is not something
               to leave to the browser that pressed the button. */}
           <RecordingIndicator />
+          {isHost && <EdgeBadge />}
           {/* Only exceptional room state — not the room ID on every frame. Inline
               rather than on a second line, which made the header taller than
               the 3rem the stage is offset by. */}

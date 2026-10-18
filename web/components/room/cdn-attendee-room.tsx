@@ -959,7 +959,7 @@ function HlsPlayer({
   );
 }
 
-function StagePlayerChrome({
+export function StagePlayerChrome({
   videoRef,
   loading,
   error,

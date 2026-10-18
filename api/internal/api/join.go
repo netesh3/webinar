@@ -743,6 +743,7 @@ func (s *Server) issueToken(
 		CdnBroadcast:   cdnBroadcast,
 		CdnStreamURL:   cdnStreamURL,
 		CdnLowLatency:  cdnLowLatency,
+		EdgeWebinar:    wb.Delivery == types.DeliveryEdge,
 	})
 	return true
 }

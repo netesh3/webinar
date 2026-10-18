@@ -59,6 +59,8 @@ type fakeRooms struct {
 	 * people they never put in the roster; the edge-delivery tests need the real answer,
 	 * since an edge viewer is never in the room. */
 	strictRoster bool
+	// lastEncoding is the encoding the last edge broadcast egress was started with.
+	lastEncoding lk.BroadcastEncoding
 	/* onEnsureRoom runs inside EnsureRoom, before it returns.
 	 *
 	 * The only way to make a CONCURRENT event deterministic: it simulates another request
@@ -400,6 +402,13 @@ func (f *fakeRooms) StartRoomCompositeEgress(_ context.Context, roomName, storag
 		EgressId: "EG_fake_" + roomName,
 		Status:   livekit.EgressStatus_EGRESS_STARTING,
 	}, nil
+}
+
+func (f *fakeRooms) StartBroadcastEgressEncoded(ctx context.Context, roomName string, template string, enc lk.BroadcastEncoding, rtmpURL string, extraURLs []string) (*livekit.EgressInfo, error) {
+	f.mu.Lock()
+	f.lastEncoding = enc
+	f.mu.Unlock()
+	return f.StartBroadcastEgress(ctx, roomName, template, livekit.EncodingOptionsPreset_H264_720P_30, rtmpURL, extraURLs)
 }
 
 func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string, extraURLs []string) (*livekit.EgressInfo, error) {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { FeatureZoom } from "@/lib/api-types";
+import { FeatureEdgeDelivery, FeatureZoom } from "@/lib/api-types";
 import { useSession } from "../providers";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
@@ -39,6 +39,8 @@ export function WhereSection({
   const { account, status } = useSession();
   const zoomAllowed =
     status === "signed-in" && (account?.features ?? []).includes(FeatureZoom);
+  const edgeAllowed =
+    status === "signed-in" && (account?.features ?? []).includes(FeatureEdgeDelivery);
   const [zoomConnected, setZoomConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -128,6 +130,62 @@ export function WhereSection({
           <p className="mt-2 text-[12px] font-medium text-live">{fields.venue}</p>
         )}
       </FormSection>
+      {edgeAllowed && !series && form.venue === "app" && form.kind === "live" && (
+        <DeliverySection form={form} set={set} error={fields.delivery} />
+      )}
     </FormGroup>
+  );
+}
+
+const DELIVERY = [
+  {
+    id: "standard" as const,
+    title: "Standard",
+    detail: "Everyone joins the video room",
+  },
+  {
+    id: "edge" as const,
+    title: "Edge (beta)",
+    detail: "Audience watches a low-latency stream",
+  },
+];
+
+/** Edge delivery (docs/edge-delivery.md): only for hosts with the switch, for a single live
+ *  webinar in this app. The stage is the same either way. */
+function DeliverySection({
+  form,
+  set,
+  error,
+}: {
+  form: FormState;
+  set: SetForm;
+  error?: string;
+}) {
+  return (
+    <FormSection
+      title="Delivery"
+      description="Edge puts the audience on a stream a few seconds behind, so far more people can watch. You, your panelists and anyone you bring on stage stay live. Chat, Q&A, polls and raised hands work the same."
+    >
+      <div id="delivery" className="grid gap-2 sm:grid-cols-2">
+        {DELIVERY.map((choice) => {
+          const selected = form.delivery === choice.id;
+          return (
+            <button
+              key={choice.id}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => set("delivery", choice.id)}
+              className={`rounded-xl border px-3 py-3 text-left ${
+                selected ? "border-brand bg-brand-soft" : "border-line bg-surface hover:border-brand-line"
+              }`}
+            >
+              <span className="block text-[13.5px] font-semibold text-ink">{choice.title}</span>
+              <span className="mt-0.5 block text-[12px] leading-snug text-ink-3">{choice.detail}</span>
+            </button>
+          );
+        })}
+      </div>
+      {error && <p className="mt-2 text-[12px] font-medium text-live">{error}</p>}
+    </FormSection>
   );
 }

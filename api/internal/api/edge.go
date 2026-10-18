@@ -128,7 +128,8 @@ func (s *Server) forgetDelivery(slug string) { s.deliveryCache.Delete(slug) }
  * host testing edge has to know they are not getting it. */
 func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.WebinarInput, prev string) (string, map[string]string) {
 	want := strings.TrimSpace(in.Delivery)
-	if want == "" {
+	explicit := want != ""
+	if !explicit {
 		if prev == "" {
 			return types.DeliveryStandard, nil
 		}
@@ -147,6 +148,13 @@ func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.We
 			return prev, nil
 		}
 		return "", map[string]string{"delivery": featureLabel(types.FeatureEdgeDelivery) + " isn't switched on for this account."}
+	}
+	// A save that did not ask for edge but inherits it, and no longer fits (moved to Zoom,
+	// made recurring), quietly becomes standard: refusing an edit over a field the host
+	// never touched would be worse than the downgrade.
+	if !explicit && ((in.Venue != "" && in.Venue != "app") || in.Kind == types.KindSimulive ||
+		in.Kind == types.KindRecurring || seriesRequested(in)) {
+		return types.DeliveryStandard, nil
 	}
 	switch {
 	case in.Venue != "" && in.Venue != "app":
@@ -462,4 +470,27 @@ func (s *Server) mixTemplateURL(wb types.Webinar) string {
 func (s *Server) handleServerTime(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	httpx.JSON(w, http.StatusOK, types.ServerTime{Now: time.Now().UnixMilli()})
+}
+
+// edgeEncoding is the edge mix encoding from config (EDGE_ENCODING_*, validated at load).
+func (s *Server) edgeEncoding() lk.BroadcastEncoding {
+	enc := lk.BroadcastEncoding{
+		Width: s.cfg.EdgeEncodingWidth, Height: s.cfg.EdgeEncodingHeight,
+		FPS: s.cfg.EdgeEncodingFPS, BitrateKbps: s.cfg.EdgeVideoBitrateKbps,
+		Profile: s.cfg.EdgeH264Profile,
+	}
+	// A config built by hand (tests, tools) rather than by Load gets today's encoding.
+	if enc.Width == 0 || enc.Height == 0 {
+		enc.Width, enc.Height = 1280, 720
+	}
+	if enc.FPS == 0 {
+		enc.FPS = 30
+	}
+	if enc.BitrateKbps == 0 {
+		enc.BitrateKbps = 1700
+	}
+	if enc.Profile == "" {
+		enc.Profile = "baseline"
+	}
+	return enc
 }

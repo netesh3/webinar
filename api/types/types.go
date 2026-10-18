@@ -3427,6 +3427,9 @@ type JoinResponse struct {
 	EventsToken string `json:"eventsToken,omitempty"`
 	// DebugClock asks the edge player to show its server-synced clock (EDGE_DEBUG_CLOCK).
 	DebugClock bool `json:"debugClock,omitempty"`
+	// EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
+	// viewer's browser knows that demotion returns them to the feed, not to the SFU.
+	EdgeWebinar bool `json:"edgeWebinar,omitempty"`
 }
 
 // ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
