@@ -18,7 +18,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -362,7 +364,7 @@ func (s *Server) handleEdgeEvents(w http.ResponseWriter, r *http.Request) {
 		if kind == "" {
 			_, err = fmt.Fprint(w, ": ping\n\n")
 		} else {
-			_, err = fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", edgeEventSeq.Add(1), kind, data)
+			_, err = io.WriteString(w, sseFrame(edgeEventSeq.Add(1), kind, data))
 		}
 		if err != nil {
 			return false
@@ -493,4 +495,26 @@ func (s *Server) edgeEncoding() lk.BroadcastEncoding {
 		enc.Profile = "baseline"
 	}
 	return enc
+}
+
+/* sseFrame renders one Server-Sent Events message. The stream is text/event-stream, never
+ * HTML, so the risk is not script injection but framing: a CR or LF inside the event name
+ * or the payload would end the field early and let the rest be read as a new field (a
+ * forged "event:" or "id:"). The name loses any line breaks, and each line of the payload
+ * becomes its own "data:" field, which is how the SSE format carries multi-line data. */
+func sseFrame(id int64, kind string, data []byte) string {
+	var b strings.Builder
+	b.WriteString("id: ")
+	b.WriteString(strconv.FormatInt(id, 10))
+	b.WriteString("\nevent: ")
+	b.WriteString(strings.NewReplacer("\r", "", "\n", "").Replace(kind))
+	b.WriteByte('\n')
+	lines := strings.Split(strings.ReplaceAll(strings.ReplaceAll(string(data), "\r\n", "\n"), "\r", "\n"), "\n")
+	for _, line := range lines {
+		b.WriteString("data: ")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	b.WriteByte('\n')
+	return b.String()
 }

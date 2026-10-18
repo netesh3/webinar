@@ -25,7 +25,13 @@ import {
   hostListFilterKey,
   hostListPageKey,
 } from "@/lib/host-list-cache";
-import { type Webinar, type WebinarInput } from "@/lib/api-types";
+import { FeatureEdgeDelivery, type Webinar, type WebinarInput } from "@/lib/api-types";
+import {
+  instantDeliveryFor,
+  readInstantDelivery,
+  saveInstantDelivery,
+  type InstantDelivery,
+} from "@/lib/instant-delivery";
 import {
   hostHomeCreateActions,
   hostHomeCreateColumns,
@@ -39,7 +45,10 @@ import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
  * other field set to the same defaults the schedule form's blank form would
  * have sent. It is not a different kind of webinar — a host can rename it or
  * change its settings afterwards exactly like any other. */
-function instantWebinarInput(maxAttendees: number): WebinarInput {
+function instantWebinarInput(
+  maxAttendees: number,
+  delivery: InstantDelivery = "standard",
+): WebinarInput {
   return {
     topic: "Instant webinar",
     summary: "",
@@ -54,6 +63,8 @@ function instantWebinarInput(maxAttendees: number): WebinarInput {
     kind: "live",
     status: "scheduled",
     instant: true,
+    // Standard unless the host has Edge delivery and picked it beside the button.
+    delivery,
     registrationRequired: true,
     approval: "automatic",
     attendeeLimit:
@@ -165,6 +176,12 @@ export function HostWebinarsScreen() {
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [stageKnown, setStageKnown] = useState(bypass);
   const [startingInstant, setStartingInstant] = useState(false);
+  /* The host's last pick, from this browser. Safe to read on the first render: the
+   * choice only shows once the session has loaded the account's features, which the
+   * server render never has. */
+  const [instantDelivery, setInstantDelivery] = useState<InstantDelivery>(() =>
+    typeof window === "undefined" ? "standard" : readInstantDelivery(),
+  );
   /* The host's own list is paged server-side, so this screen no longer holds
    * it: HostWebinarBrowser fetches it. Bumping reloadToken is how a webinar
    * created here gets into a list this component cannot reach into. */
@@ -174,6 +191,7 @@ export function HostWebinarsScreen() {
   /* features on /api/auth/me, not isAdmin. An admin without the switch gets
    * the single Schedule card. */
   const createActions = hostHomeCreateActions(account?.features);
+  const edgeAllowed = (account?.features ?? []).includes(FeatureEdgeDelivery);
   const twoColumns = hostHomeCreateColumns(createActions) === 2;
   /* Read during the prefetch's callback. The prefetch itself must not restart when
    * the session resolves, or it would drop the list it just fetched. */
@@ -262,7 +280,7 @@ export function HostWebinarsScreen() {
     setStartingInstant(true);
     try {
       const created = await api.createWebinar(
-        instantWebinarInput(maxAttendees),
+        instantWebinarInput(maxAttendees, instantDeliveryFor(instantDelivery, edgeAllowed)),
       );
       await api.startWebinar(created.id);
       pendingTab.open(`/host/${created.id}/room`);
@@ -401,25 +419,37 @@ export function HostWebinarsScreen() {
           />
         </Link>
         {createActions.includes("instant") && (
-          <button
-            type="button"
-            onClick={startInstantWebinar}
-            disabled={startingInstant}
-            aria-busy={startingInstant}
-            className={actionCardClass}
-          >
-            <ActionCardBody
-              icon={
-                startingInstant ? (
-                  <Spinner className="size-4" />
-                ) : (
-                  <PlayIcon className="size-3.5" />
-                )
-              }
-              title={startingInstant ? "Starting…" : "Instant webinar"}
-              subtitle="Go live immediately, no form"
-            />
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={startInstantWebinar}
+              disabled={startingInstant}
+              aria-busy={startingInstant}
+              className={actionCardClass}
+            >
+              <ActionCardBody
+                icon={
+                  startingInstant ? (
+                    <Spinner className="size-4" />
+                  ) : (
+                    <PlayIcon className="size-3.5" />
+                  )
+                }
+                title={startingInstant ? "Starting…" : "Instant webinar"}
+                subtitle="Go live immediately, no form"
+              />
+            </button>
+            {edgeAllowed && (
+              <InstantDeliveryChoice
+                value={instantDelivery}
+                disabled={startingInstant}
+                onChange={(next) => {
+                  setInstantDelivery(next);
+                  saveInstantDelivery(next);
+                }}
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -464,6 +494,52 @@ function HostWelcomeBanner() {
       >
         <CloseIcon className="size-3.5" />
       </button>
+    </div>
+  );
+}
+
+/* Standard / Edge beside the instant button, for hosts with Edge delivery. Outside the
+ * button on purpose: a control inside a button is not reachable on its own. */
+function InstantDeliveryChoice({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: InstantDelivery;
+  disabled: boolean;
+  onChange: (next: InstantDelivery) => void;
+}) {
+  const choices: { id: InstantDelivery; label: string }[] = [
+    { id: "standard", label: "Standard" },
+    { id: "edge", label: "Edge (beta)" },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Instant webinar delivery"
+      className="flex items-center gap-2 px-1 text-[12.5px] text-ink-2"
+    >
+      <span>Delivery</span>
+      <div className="inline-flex rounded-lg border border-line-2 p-0.5">
+        {choices.map((choice) => {
+          const selected = value === choice.id;
+          return (
+            <button
+              key={choice.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={disabled}
+              onClick={() => onChange(choice.id)}
+              className={`rounded-md px-2.5 py-1 font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-60 ${
+                selected ? "bg-surface-2 text-ink" : "text-ink-2 hover:text-ink"
+              }`}
+            >
+              {choice.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
