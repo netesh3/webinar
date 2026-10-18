@@ -180,6 +180,15 @@ fi
 [[ -n "${RECORDINGS_RETENTION_DAYS:-}" ]] && ENV_VARS+=("RECORDINGS_RETENTION_DAYS=${RECORDINGS_RETENTION_DAYS}")
 [[ -n "${MEDIA_QUOTA_DEFAULT_MB:-}" ]] && ENV_VARS+=("MEDIA_QUOTA_DEFAULT_MB=${MEDIA_QUOTA_DEFAULT_MB}")
 [[ -n "${EMPTY_ROOM_CLOSE_MIN:-}" ]] && ENV_VARS+=("EMPTY_ROOM_CLOSE_MIN=${EMPTY_ROOM_CLOSE_MIN}")
+# Edge delivery (docs/edge-delivery.md); each unset keeps the API's default.
+[[ -n "${EDGE_PLAYBACK_BASE:-}" ]] && ENV_VARS+=("EDGE_PLAYBACK_BASE=${EDGE_PLAYBACK_BASE}")
+[[ -n "${EDGE_PLAYBACK_LOW_LATENCY:-}" ]] && ENV_VARS+=("EDGE_PLAYBACK_LOW_LATENCY=${EDGE_PLAYBACK_LOW_LATENCY}")
+[[ -n "${EDGE_DEBUG_CLOCK:-}" ]] && ENV_VARS+=("EDGE_DEBUG_CLOCK=${EDGE_DEBUG_CLOCK}")
+[[ -n "${EDGE_ENCODING_WIDTH:-}" ]] && ENV_VARS+=("EDGE_ENCODING_WIDTH=${EDGE_ENCODING_WIDTH}")
+[[ -n "${EDGE_ENCODING_HEIGHT:-}" ]] && ENV_VARS+=("EDGE_ENCODING_HEIGHT=${EDGE_ENCODING_HEIGHT}")
+[[ -n "${EDGE_ENCODING_FPS:-}" ]] && ENV_VARS+=("EDGE_ENCODING_FPS=${EDGE_ENCODING_FPS}")
+[[ -n "${EDGE_VIDEO_BITRATE_KBPS:-}" ]] && ENV_VARS+=("EDGE_VIDEO_BITRATE_KBPS=${EDGE_VIDEO_BITRATE_KBPS}")
+[[ -n "${EDGE_H264_PROFILE:-}" ]] && ENV_VARS+=("EDGE_H264_PROFILE=${EDGE_H264_PROFILE}")
 # Turns on POST /api/internal/tick, which Cloud Scheduler calls every minute so that
 # reminders, drips and meeting limits run while the service is scaled to zero. See
 # deploy/cloud-scheduler-tick.sh, which needs the same value.
