@@ -414,3 +414,38 @@ func TestEdgeOccupancyAndRemoval(t *testing.T) {
 		t.Fatalf("bob after alice left: %d %s", res.StatusCode, raw)
 	}
 }
+
+/* The instant button's Standard / Edge choice: an instant create goes through the same
+ * delivery check as a scheduled one, so edge is stored for a host with the switch and
+ * refused, as a delivery field error, for a host without it. */
+func TestInstantCreateCarriesEdgeDelivery(t *testing.T) {
+	h := newHarness(t, edgeConfig)
+	acct := edgeHost(t, h, "edge-instant@test.dev")
+	grantFeature(t, h, acct.ID, types.FeatureInstantWebinar)
+
+	in := policyInput("Instant edge", true, true)
+	in.Delivery = types.DeliveryEdge
+	res, raw := h.do(http.MethodPost, "/api/host/webinars", in)
+	if res.StatusCode != http.StatusCreated && res.StatusCode != http.StatusOK {
+		t.Fatalf("instant edge create: %d %s", res.StatusCode, raw)
+	}
+	var wb types.Webinar
+	if err := json.Unmarshal(raw, &wb); err != nil {
+		t.Fatal(err)
+	}
+	if wb.Delivery != types.DeliveryEdge {
+		t.Fatalf("instant delivery = %q, want edge", wb.Delivery)
+	}
+
+	// Without the switch the same request is refused on the delivery field.
+	h2 := newHarness(t, edgeConfig)
+	plain := h2.signup("Instant Plain", "edge-instant-plain@test.dev", true)
+	grantFeature(t, h2, plain.ID, types.FeatureInstantWebinar)
+	res, raw = h2.do(http.MethodPost, "/api/host/webinars", in)
+	if res.StatusCode == http.StatusCreated || res.StatusCode == http.StatusOK {
+		t.Fatalf("instant edge saved without the switch: %d %s", res.StatusCode, raw)
+	}
+	if !strings.Contains(string(raw), "delivery") {
+		t.Fatalf("expected a delivery field error, got %s", raw)
+	}
+}
