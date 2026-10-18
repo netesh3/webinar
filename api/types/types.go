@@ -3511,6 +3511,10 @@ type RoomMeta struct {
 	// thing people sue over, so the indicator has to come from the server and
 	// reach the whole room.
 	Recording bool `json:"recording"`
+	// RecordingStartedAt is when the recording in progress started (RFC3339), so every
+	// client — including one that joined or rejoined mid-way — shows the same REC
+	// time. Empty when nothing is being recorded.
+	RecordingStartedAt string `json:"recordingStartedAt,omitempty"`
 	// MaxDurationMin is the maximum allowed duration for this session in minutes.
 	MaxDurationMin int `json:"maxDurationMin,omitempty"`
 }
