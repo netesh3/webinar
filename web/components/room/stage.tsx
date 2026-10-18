@@ -34,6 +34,8 @@ import {
   ArrowLeftIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ExpandIcon,
+  FullscreenExitIcon,
   VolumeIcon,
   VolumeMuteIcon,
 } from "../icons";
@@ -558,8 +560,15 @@ const RESIZE_CORNERS: Record<
 const FLOAT_CAM_W_KEY = "wl-floating-cam-w";
 const FLOAT_CAM_POS_KEY = "wl-floating-cam-pos";
 const FLOAT_CAM_MIN = 96;
-const FLOAT_CAM_MAX = 280;
+/* Hard ceiling for one camera's width. Was 280, which is a thumbnail: an attendee who
+ * wanted to see the presenter's face had nowhere to go. The real limit is the stage —
+ * see maxTileW — so this only stops a huge monitor producing a silly size. */
+const FLOAT_CAM_MAX = 720;
 const FLOAT_CAM_DEFAULT = 132;
+/** Share of the stage width the cameras may take when enlarged — the slide stays readable. */
+const FLOAT_ENLARGED_SHARE = 0.45;
+/** At or above this width the cameras count as enlarged, so the button offers to shrink. */
+const FLOAT_ENLARGED_AT = 240;
 const FLOAT_MARGIN = 8;
 /** Gap between tiles + panel padding (p-0.5 = 2px each side → 4, gap-1.5 = 6). */
 const FLOAT_GAP = 6;
@@ -613,6 +622,15 @@ function panelSize(tileW: number, tileCount: number, showExtra: boolean) {
     (showExtra ? FLOAT_GAP + extraW : 0);
   const height = FLOAT_PAD * 2 + (tileW * 9) / 16;
   return { width, height };
+}
+
+/** Widest one tile may be on this stage: the panel never takes more than
+ *  FLOAT_ENLARGED_SHARE of the width, however many cameras it holds. */
+function maxTileW(stageW: number, tileCount: number, showExtra: boolean): number {
+  const n = Math.max(1, tileCount);
+  const fixed = FLOAT_PAD * 2 + (n - 1) * FLOAT_GAP + (showExtra ? FLOAT_GAP + 36 : 0);
+  const fit = Math.floor((stageW * FLOAT_ENLARGED_SHARE - fixed) / n);
+  return Math.min(FLOAT_CAM_MAX, Math.max(FLOAT_CAM_MIN, fit));
 }
 
 function clampPos(
@@ -714,6 +732,12 @@ function FloatingCameras({
     if (!stage) return;
     const sw = stage.clientWidth;
     const sh = stage.clientHeight;
+    // A size saved on a bigger window (or with fewer cameras) must not overflow this one.
+    const ceiling = maxTileW(sw, tiles.length, showExtra);
+    if (tileW > ceiling) {
+      setTileW(ceiling);
+      return;
+    }
     const next = pos
       ? fromFractions(pos, sw, sh, size.width, size.height)
       : clampPos(
@@ -725,7 +749,7 @@ function FloatingCameras({
           size.height,
         );
     setLayout(next);
-  }, [pos, size.width, size.height, open, tiles.length, showExtra]);
+  }, [pos, size.width, size.height, open, tiles.length, showExtra, tileW]);
 
   const persistTileW = (w: number) => {
     try {
@@ -773,8 +797,12 @@ function FloatingCameras({
     const aff = RESIZE_CORNERS[start.corner];
     const dx = (clientX - start.x) * aff.sx;
     const dy = (clientY - start.y) * aff.sy;
+    const stageEl = panel.current?.offsetParent as HTMLElement | null;
+    const ceiling = stageEl
+      ? maxTileW(stageEl.clientWidth, tiles.length, showExtra)
+      : FLOAT_CAM_MAX;
     const nextW = Math.min(
-      FLOAT_CAM_MAX,
+      ceiling,
       Math.max(FLOAT_CAM_MIN, Math.round(start.startW + (dx + dy) / 2)),
     );
     const nextSize = panelSize(nextW, tiles.length, showExtra);
@@ -813,6 +841,34 @@ function FloatingCameras({
   };
 
   const showChrome = hover || drag !== null || resizing !== null;
+
+  /* One click between small and large — the corners are still there for anything in
+   * between. Grows away from the stage edge it sits nearest, so cameras parked
+   * bottom-right stay bottom-right instead of sliding over the slide's middle. */
+  const enlarged = tileW >= FLOAT_ENLARGED_AT;
+  const toggleEnlarged = () => {
+    const stage = panel.current?.offsetParent as HTMLElement | null;
+    const nextW = enlarged
+      ? FLOAT_CAM_DEFAULT
+      : stage
+        ? maxTileW(stage.clientWidth, tiles.length, showExtra)
+        : FLOAT_CAM_MAX;
+    const nextSize = panelSize(nextW, tiles.length, showExtra);
+    setTileW(nextW);
+    persistTileW(nextW);
+    if (!stage) return;
+    const sw = stage.clientWidth;
+    const sh = stage.clientHeight;
+    const onRight = layout.left + size.width / 2 >= sw / 2;
+    const onBottom = layout.top + size.height / 2 >= sh / 2;
+    const left = onRight ? layout.left + size.width - nextSize.width : layout.left;
+    const top = onBottom ? layout.top + size.height - nextSize.height : layout.top;
+    const clamped = clampPos(left, top, sw, sh, nextSize.width, nextSize.height);
+    const frac = toFractions(clamped.left, clamped.top, sw, sh, nextSize.width, nextSize.height);
+    setPos(frac);
+    persistPos(frac);
+    setLayout(clamped);
+  };
 
   const startResize = useCallback(
     (
@@ -944,6 +1000,11 @@ function FloatingCameras({
       }}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
+      onDoubleClick={(e) => {
+        // Double-click a camera to enlarge or shrink, as in Zoom. Not on a button.
+        if ((e.target as HTMLElement).closest("button")) return;
+        toggleEnlarged();
+      }}
       onPointerDown={(e) => {
         // Drag the frame; corner hits and tile buttons stopPropagation.
         if (e.button !== 0) return;
@@ -1004,12 +1065,31 @@ function FloatingCameras({
         }
       }}
     >
-      {/* Hide — top-right only. */}
+      {/* Enlarge / shrink and hide, top-centre.
+          Centred rather than top-right because the tile's own Pin button lives in its
+          top-right corner, and the hide button used to sit on top of it. Enlarge is
+          always shown (faintly until hover) — it is the control attendees were looking
+          for and could not find; hide stays hover-only. */}
       <div
-        className={`pointer-events-none absolute top-0 right-0 z-30 p-1.5 transition-opacity ${
-          showChrome ? "opacity-100" : "opacity-0"
-        }`}
+        className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center gap-1 p-1.5"
       >
+        <button
+          type="button"
+          data-float-hide
+          onClick={toggleEnlarged}
+          aria-label={enlarged ? "Make the cameras smaller" : "Make the cameras bigger"}
+          title={enlarged ? "Smaller" : "Bigger"}
+          className={`pointer-events-auto inline-flex h-5 items-center gap-1 rounded-md bg-black/55 px-1.5 text-[10px] font-semibold text-white/90 outline-none backdrop-blur transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-white/50 ${
+            showChrome ? "opacity-100" : "opacity-70"
+          }`}
+        >
+          {enlarged ? (
+            <FullscreenExitIcon className="size-3" />
+          ) : (
+            <ExpandIcon className="size-3" />
+          )}
+          {tileW >= 168 && <span>{enlarged ? "Smaller" : "Bigger"}</span>}
+        </button>
         <button
           type="button"
           data-float-hide
@@ -1017,7 +1097,9 @@ function FloatingCameras({
           aria-expanded={true}
           aria-label="Hide the cameras"
           title="Hide cameras"
-          className="pointer-events-auto inline-flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-md bg-black/55 px-1 text-[10px] font-semibold text-white/90 outline-none backdrop-blur transition-colors hover:bg-black/75 focus-visible:ring-2 focus-visible:ring-white/50"
+          className={`pointer-events-auto inline-flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-md bg-black/55 px-1 text-[10px] font-semibold text-white/90 outline-none backdrop-blur transition-[opacity,background-color] hover:bg-black/75 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-white/50 ${
+            showChrome ? "opacity-100" : "opacity-0"
+          }`}
         >
           <ChevronDownIcon className="size-3" />
         </button>
