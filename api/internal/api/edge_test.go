@@ -379,6 +379,7 @@ func TestEdgeOccupancyAndRemoval(t *testing.T) {
 	_, aj, _ := h.joinAsGuestKey(wb.ID, alice.JoinKey)
 	_, cj, _ := h.joinAsGuestKey(wb.ID, carol.JoinKey)
 	aEv, _, cancel := h.openEvents(wb.ID, aj.EventsToken)
+	defer cancel() // also closed below, to free her seat; a failure before then must not hang
 	waitFor(t, aEv, 3*time.Second, func(e sseEvent) bool { return e.kind == "meta" })
 	cEv, _, cCancel := h.openEvents(wb.ID, cj.EventsToken)
 	defer cCancel()
@@ -397,6 +398,24 @@ func TestEdgeOccupancyAndRemoval(t *testing.T) {
 		t.Fatalf("edge status: %d %+v", res.StatusCode, status)
 	}
 
+	// So does the Participants panel, though neither is on the video server.
+	res, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/participants", nil)
+	var live types.LiveRoom
+	h.decode(raw, &live)
+	if res.StatusCode != http.StatusOK || live.Attendees != 2 || len(live.Participants) != 2 {
+		t.Fatalf("participants: %d %s, want both edge viewers", res.StatusCode, raw)
+	}
+	listed := map[string]types.LiveParticipant{}
+	for _, p := range live.Participants {
+		listed[p.Identity] = p
+	}
+	if p, ok := listed[aj.Identity]; !ok || p.Role != types.RoleAttendee || p.Name == "" || p.JoinedAt == "" {
+		t.Fatalf("alice on the roster: %+v", live.Participants)
+	}
+	if _, ok := listed[cj.Identity]; !ok {
+		t.Fatalf("carol on the roster: %+v", live.Participants)
+	}
+
 	// Removing her, though she is not in the LiveKit room, records it and her stream is refused after.
 	if res, raw := h.do(http.MethodDelete, "/api/host/webinars/"+wb.ID+"/participants/"+aj.Identity, nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("remove: %d %s", res.StatusCode, raw)
@@ -408,6 +427,13 @@ func TestEdgeOccupancyAndRemoval(t *testing.T) {
 		t.Fatalf("removed viewer's stream: %d, want 403", res.StatusCode)
 	} else {
 		c()
+	}
+	// And she is off the roster; carol is still on it.
+	_, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/participants", nil)
+	live = types.LiveRoom{}
+	h.decode(raw, &live)
+	if live.Attendees != 1 || len(live.Participants) != 1 || live.Participants[0].Identity != cj.Identity {
+		t.Fatalf("participants after removal: %s", raw)
 	}
 	// Her seat is free again.
 	if res, _, raw := h.joinAsGuestKey(wb.ID, bob.JoinKey); res.StatusCode != http.StatusOK {

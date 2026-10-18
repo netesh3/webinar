@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -62,4 +63,33 @@ func (s *Store) OpenEdgeVisits(ctx context.Context, slug string) (int, error) {
 		  FROM attendance_visits v JOIN webinars w ON w.id = v.webinar_id
 		 WHERE w.slug = $1 AND v.left_at IS NULL AND v.identity LIKE 'att\_%'`, slug).Scan(&n)
 	return n, err
+}
+
+// EdgeViewer is one person watching the edge feed right now, for the host's roster.
+type EdgeViewer struct {
+	Identity string
+	Name     string
+	JoinedAt time.Time
+}
+
+/* OpenEdgeViewers is who OpenEdgeVisits counts, by name: the host's Participants panel lists
+ * them beside the people on the video server, which cannot see them. The name is the one the
+ * event stream opened the visit with (OpenVisit writes it to attendance). */
+func (s *Store) OpenEdgeViewers(ctx context.Context, slug string) ([]EdgeViewer, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT v.identity, COALESCE(a.name, ''), min(v.joined_at)
+		  FROM attendance_visits v
+		  JOIN webinars w ON w.id = v.webinar_id
+		  LEFT JOIN attendance a ON a.webinar_id = v.webinar_id AND a.identity = v.identity
+		 WHERE w.slug = $1 AND v.left_at IS NULL AND v.identity LIKE 'att\_%'
+		 GROUP BY v.identity, a.name
+		 ORDER BY min(v.joined_at)`, slug)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (EdgeViewer, error) {
+		var v EdgeViewer
+		err := row.Scan(&v.Identity, &v.Name, &v.JoinedAt)
+		return v, err
+	})
 }
