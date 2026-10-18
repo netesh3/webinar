@@ -112,7 +112,7 @@ func (s *Server) handleSetStream(w http.ResponseWriter, r *http.Request) {
 		newIngest = ""
 	}
 	if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
-		s.syncStreamDest(r.Context(), wb, sfu, oldIngest, newIngest)
+		s.syncStreamDest(r.Context(), wb, sfu, "stream", oldIngest, newIngest)
 	}
 
 	/* Only now, with the push taken down above.

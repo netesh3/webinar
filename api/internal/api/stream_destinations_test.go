@@ -105,7 +105,9 @@ func TestLinkedInStreamsWithYouTubeAndPausesPerRoom(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("youtube: %d %s", res.StatusCode, raw)
 	}
-	calls := strings.Join(h.rooms.egressCalls, "\n")
+	// One compositor: started on the first destination, every other one attached to it
+	// with its own UpdateStream (so a refused key costs only that platform).
+	calls := h.rooms.pushedURLs()
 	if !strings.Contains(calls, "a.rtmps.youtube.com/live2/abcd-efgh-ijkl-mnop") || !strings.Contains(calls, liIngest) {
 		t.Fatalf("want one compositor pushing YouTube and LinkedIn, got:\n%s", calls)
 	}
@@ -223,7 +225,7 @@ func TestInstagramAndFacebookStreamBesideLinkedIn(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("youtube: %d %s", res.StatusCode, raw)
 	}
-	calls := strings.Join(h.rooms.egressCalls, "\n")
+	calls := h.rooms.pushedURLs()
 	for _, want := range []string{"abcd-efgh-ijkl-mnop", liIngest, igURL + igKey, fbURL + fbKey} {
 		if !strings.Contains(calls, want) {
 			t.Fatalf("want %q pushed by the one compositor, got:\n%s", want, calls)

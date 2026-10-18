@@ -38,7 +38,7 @@ import (
 type RoomManager interface {
 	URL() string
 	Token(spec lk.Spec) (string, error)
-	EnsureRoom(ctx context.Context, room string, maxParticipants, emptyTimeoutSec uint32, metadata string) (participants int, known bool, err error)
+	EnsureRoom(ctx context.Context, room string, maxParticipants, emptyTimeoutSec, departureTimeoutSec uint32, metadata string) (participants int, known bool, err error)
 	SetMetadata(ctx context.Context, room, metadata string) error
 	SendData(ctx context.Context, room, topic string, data []byte, to []string) error
 	ParticipantCount(ctx context.Context, room string) (int, error)

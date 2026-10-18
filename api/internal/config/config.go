@@ -151,6 +151,11 @@ type Config struct {
 	 * (the egress loads the template at <template>/clock) and on the edge player, so
 	 * glass-to-glass latency can be read off a screenshot. Off by default; a test aid. */
 	EdgeDebugClock bool
+	/* EdgePlaybackLowLatency tells edge players the playback base is close to them (a CDN
+	 * pull zone in front of the origin), so LL-HLS can be used from the start. Off: players
+	 * start on standard HLS and only switch to LL-HLS when they measure fast requests, because
+	 * LL-HLS against a distant origin (India to Germany, ~0.4s a request) cannot keep up. */
+	EdgePlaybackLowLatency bool
 	/* EdgeEncoding is the mix encoding for edge webinars' egress only: EDGE_ENCODING_WIDTH /
 	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (30), EDGE_VIDEO_BITRATE_KBPS (1700) and
 	 * EDGE_H264_PROFILE (baseline|main|high, default baseline). The keyframe interval stays
@@ -502,6 +507,7 @@ func Load() (Config, error) {
 		BroadcastHLSBase:            strings.TrimRight(env("BROADCAST_HLS_BASE", ""), "/"),
 		EdgePlaybackBase:            strings.TrimRight(env("EDGE_PLAYBACK_BASE", ""), "/"),
 		EdgeDebugClock:              strings.EqualFold(strings.TrimSpace(env("EDGE_DEBUG_CLOCK", "")), "true"),
+		EdgePlaybackLowLatency:      strings.EqualFold(strings.TrimSpace(env("EDGE_PLAYBACK_LOW_LATENCY", "")), "true"),
 		EdgeEncodingWidth:           envIntStrict("EDGE_ENCODING_WIDTH", 1280),
 		EdgeEncodingHeight:          envIntStrict("EDGE_ENCODING_HEIGHT", 720),
 		EdgeEncodingFPS:             envIntStrict("EDGE_ENCODING_FPS", 30),

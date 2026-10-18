@@ -278,6 +278,7 @@ func (s *Server) issueEdgeAudience(w http.ResponseWriter, r *http.Request, wb ty
 		PlaybackURL:    playback,
 		EventsToken:    tok,
 		DebugClock:     s.cfg.EdgeDebugClock,
+		LowLatency:     s.cfg.EdgePlaybackLowLatency,
 	})
 	return true
 }
@@ -461,12 +462,23 @@ func (s *Server) removeEdgeViewer(ctx context.Context, sfu RoomManager, slug, id
  * draws a server-synced clock in a corner; read against the edge player's own clock, the
  * difference is the glass-to-glass latency. A path segment rather than a query string because
  * LiveKit appends its own query (?url=…&token=…) to the base URL. */
+/* mixTemplateURL is the composite page an egress renders for this webinar.
+ *
+ * Edge webinars get <template>/edge: the screen share fills the whole frame with the cameras
+ * as small tiles over a corner, because the edge mix is the audience's only picture and a
+ * share squeezed beside a camera strip lost a third of its pixels (unreadable slides at
+ * 720p). Recordings and the CDN broadcast keep the template as it is. /clock adds the
+ * latency clock (EDGE_DEBUG_CLOCK). Path segments, because LiveKit appends its own query. */
 func (s *Server) mixTemplateURL(wb types.Webinar) string {
 	base := s.cfg.RecordingsEgressTemplateURL
-	if base != "" && s.cfg.EdgeDebugClock && wb.Delivery == types.DeliveryEdge {
-		return strings.TrimRight(base, "/") + "/clock"
+	if base == "" || wb.Delivery != types.DeliveryEdge {
+		return base
 	}
-	return base
+	u := strings.TrimRight(base, "/") + "/edge"
+	if s.cfg.EdgeDebugClock {
+		u += "/clock"
+	}
+	return u
 }
 
 func (s *Server) handleServerTime(w http.ResponseWriter, r *http.Request) {

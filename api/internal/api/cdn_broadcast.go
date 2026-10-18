@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/livekit/protocol/livekit"
-	"github.com/netkumar/webcast/api/internal/integrations"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/streamdest"
 	"github.com/netkumar/webcast/api/types"
@@ -36,8 +35,9 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	if sfu == nil {
 		return
 	}
-	origin, extras := s.mixDestinations(ctx, wb)
-	if origin == "" && len(extras) == 0 {
+	origin, dests := s.mixPlan(ctx, wb)
+	startURL, startDest, rest := firstOutput(origin, dests)
+	if startURL == "" {
 		return
 	}
 
@@ -69,16 +69,20 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	 * NIC as the SFU. 1080p × a few hundred viewers does not fit a CX33. */
 	preset := livekit.EncodingOptionsPreset_H264_720P_30
 
+	/* Started on one output only — our origin, or the first platform when there is none —
+	 * and the rest attached after it, so that one refused stream key cannot fail the whole
+	 * mix. See mix_destinations.go. */
+	noteMixStart(wb.ID, time.Now())
 	var info *livekit.EgressInfo
 	var err error
 	if wb.Delivery == types.DeliveryEdge {
 		// Edge webinars' mix encoding is configurable (EDGE_ENCODING_*); defaults match the preset.
-		info, err = sfu.StartBroadcastEgressEncoded(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), s.edgeEncoding(), origin, extras)
+		info, err = sfu.StartBroadcastEgressEncoded(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), s.edgeEncoding(), startURL, nil)
 	} else {
-		info, err = sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), preset, origin, extras)
+		info, err = sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), preset, startURL, nil)
 	}
 	if err != nil {
-		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", err)
+		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", redactErr(err, startURL))
 		broadcastMu.Lock()
 		delete(activeBroadcasts, wb.ID)
 		broadcastMu.Unlock()
@@ -88,8 +92,10 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	broadcastMu.Lock()
 	activeBroadcasts[wb.ID] = info.EgressId
 	broadcastMu.Unlock()
+	noteEgressStartDest(info.EgressId, startDest)
 
 	s.log.Info("cdn broadcast started", "slug", wb.ID, "egress", info.EgressId)
+	s.attachDestinations(ctx, wb.ID, sfu, info.EgressId, rest)
 }
 
 /* broadcastEgressRunning asks LiveKit whether this room still has a live mix.
@@ -176,22 +182,25 @@ func (s *Server) startEgressRecording(
 	storageKey string,
 	s3Opts lk.EgressS3Options,
 ) (info *livekit.EgressInfo, carriesMix bool, err error) {
-	origin, extras := s.mixDestinations(ctx, wb)
+	origin, dests := s.mixPlan(ctx, wb)
+	startURL, startDest, rest := firstOutput(origin, dests)
 
 	running, listErr := s.broadcastEgressIDs(ctx, wb.ID, sfu)
 	if listErr != nil || len(running) == 0 {
 		/* No mix to fold into, but a destination is already on file — the host
 		 * set up YouTube before pressing Record. Carry it from the start rather
 		 * than leaving it for a second compositor that will be refused. */
-		if origin != "" || len(extras) > 0 {
+		if startURL != "" {
 			info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
-				livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extras)
+				livekit.EncodingOptionsPreset_H264_720P_30, startURL, storageKey, s3Opts, nil)
 			if err != nil {
 				return nil, false, err
 			}
 			broadcastMu.Lock()
 			activeBroadcasts[wb.ID] = info.EgressId
 			broadcastMu.Unlock()
+			noteEgressStartDest(info.EgressId, startDest)
+			s.attachDestinations(ctx, wb.ID, sfu, info.EgressId, rest)
 			return info, true, nil
 		}
 
@@ -221,7 +230,7 @@ func (s *Server) startEgressRecording(
 	}
 
 	info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
-		livekit.EncodingOptionsPreset_H264_720P_30, origin, storageKey, s3Opts, extras)
+		livekit.EncodingOptionsPreset_H264_720P_30, startURL, storageKey, s3Opts, nil)
 	if err != nil {
 		// The room now has no mix and no recording. Releasing the slot is what
 		// lets the sweeper notice and put the mix back.
@@ -234,6 +243,8 @@ func (s *Server) startEgressRecording(
 	broadcastMu.Lock()
 	activeBroadcasts[wb.ID] = info.EgressId
 	broadcastMu.Unlock()
+	noteEgressStartDest(info.EgressId, startDest)
+	s.attachDestinations(ctx, wb.ID, sfu, info.EgressId, rest)
 
 	s.log.Info("recording folded into the attendee mix",
 		"slug", wb.ID, "egress", info.EgressId, "replaced", running)
@@ -291,8 +302,8 @@ func (s *Server) sweepBroadcasts(ctx context.Context) {
 		if err != nil || wb.Kind == types.KindSimulive {
 			continue
 		}
-		origin, extras := s.mixDestinations(ctx, wb)
-		if origin == "" && len(extras) == 0 {
+		origin, dests := s.mixPlan(ctx, wb)
+		if origin == "" && len(dests) == 0 {
 			continue
 		}
 		sfu, err := s.sfuFor(ctx, wb)
@@ -310,6 +321,11 @@ func (s *Server) sweepBroadcasts(ctx context.Context) {
 		delete(activeBroadcasts, slug)
 		broadcastMu.Unlock()
 
+		/* A mix that keeps dying straight after it starts is not restarted at this pace
+		 * forever: each attempt is a Chromium boot on the SFU box. See mixBackoff. */
+		if !mixRestartAllowed(slug, time.Now()) {
+			continue
+		}
 		s.log.Warn("cdn broadcast sweeper: live room has no mix, restarting", "slug", slug)
 		s.startBroadcastIfEnabled(ctx, wb, sfu)
 	}
@@ -334,39 +350,12 @@ func (s *Server) stopBroadcastIfActive(ctx context.Context, slug string, sfu Roo
 	}
 }
 
-// mixDestinations is the RTMP URLs this room's compositor should push: the
-// attendee origin (when this host is on CDN broadcast) and the host's own
-// destinations — YouTube or another pasted key, and each saved platform
-// (LinkedIn, Instagram, Facebook Live) not paused in this room. Either may be
-// empty. Both empty means do not start a compositor at all.
+// mixDestinations is mixPlan as plain URLs: the attendee origin (when there is
+// one) and the host's own destinations not refused this session. Both empty
+// means do not start a compositor at all.
 func (s *Server) mixDestinations(ctx context.Context, wb types.Webinar) (origin string, extras []string) {
-	if can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID); err == nil && can {
-		origin = s.cfg.BroadcastRTMPURL(wb.ID)
-	}
-	/* An edge webinar's audience watches this same mix, as LL-HLS from the origin (or a CDN
-	 * pull zone in front of it), whether or not the host is on CDN broadcast. The origin is
-	 * the only push edge needs: a CDN mirrors it rather than taking a second ingest. */
-	if wb.Delivery == types.DeliveryEdge {
-		origin = s.cfg.BroadcastRTMPURL(wb.ID)
-	}
-	seen := map[string]bool{}
-	add := func(u string) {
-		if u != "" && !seen[u] {
-			seen[u] = true
-			extras = append(extras, u)
-		}
-	}
-	extra, on, err := s.store.WebinarStreamIngest(ctx, wb.ID)
-	if err != nil {
-		s.log.Warn("stream dest: could not load ingest", "slug", wb.ID, "error", err)
-	} else if on {
-		// A saved-but-stopped destination is not one to push to.
-		add(extra)
-	}
-	for _, p := range integrations.RTMPPlatforms {
-		add(s.platformIngestFor(ctx, wb, p.ID))
-	}
-	return origin, extras
+	origin, dests := s.mixPlan(ctx, wb)
+	return origin, destURLs(dests)
 }
 
 /* platformIngestFor is the URL this webinar should push to one platform right
@@ -391,10 +380,20 @@ func (s *Server) platformIngestFor(ctx context.Context, wb types.Webinar, platfo
  *
  * One compositor, extra URL — that is the whole point of not starting a second
  * Chromium for YouTube. If nothing is encoding yet and the webinar is live,
- * startBroadcastIfEnabled is what creates the job. */
-func (s *Server) syncStreamDest(ctx context.Context, wb types.Webinar, sfu RoomManager, oldURL, newURL string) {
+ * startBroadcastIfEnabled is what creates the job.
+ *
+ * platform names the destination for logs and for the host's "refused" notice.
+ * A destination the host has just saved or resumed gets a fresh try even if its
+ * URL was refused earlier in the session. */
+func (s *Server) syncStreamDest(ctx context.Context, wb types.Webinar, sfu RoomManager, platform, oldURL, newURL string) {
 	if sfu == nil || oldURL == newURL {
 		return
+	}
+	if oldURL != "" {
+		destFailures.forget(wb.ID, oldURL)
+	}
+	if newURL != "" {
+		destFailures.forget(wb.ID, newURL)
 	}
 	if wb.Status != types.StatusLive {
 		return
@@ -412,17 +411,15 @@ func (s *Server) syncStreamDest(ctx context.Context, wb types.Webinar, sfu RoomM
 		return
 	}
 
-	var add, remove []string
-	if oldURL != "" {
-		remove = []string{oldURL}
-	}
-	if newURL != "" {
-		add = []string{newURL}
-	}
 	for _, id := range ids {
-		if _, err := sfu.UpdateStream(ctx, id, add, remove); err != nil {
-			s.log.Warn("stream dest: update stream failed",
-				"slug", wb.ID, "egress", id, "error", err)
+		if oldURL != "" {
+			if _, err := sfu.UpdateStream(ctx, id, nil, []string{oldURL}); err != nil {
+				s.log.Warn("stream dest: could not detach the old destination",
+					"slug", wb.ID, "egress", id, "platform", platform, "error", redactErr(err, oldURL))
+			}
+		}
+		if newURL != "" {
+			s.attachDestinations(ctx, wb.ID, sfu, id, []mixDest{{Platform: platform, URL: newURL}})
 		}
 	}
 }

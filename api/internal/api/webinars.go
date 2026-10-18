@@ -77,6 +77,7 @@ func publicWebinar(wb types.Webinar) types.Webinar {
 	wb.StreamWatchURL = ""
 	wb.StreamConfigured = false
 	wb.StreamKeySaved = false
+	wb.StreamRefused = false
 	wb.ZoomID = ""
 	return wb
 }

@@ -62,14 +62,45 @@ both can run side by side on the same deployment and be compared.
   replays the SSE events onto that Room's emitter as `DataReceived`, `RoomMetadataChanged`
   and `Connected`. Every shared hook (chat, Q&A, polls, hands, controls, surveys) runs
   unchanged.
-- **Player.** `EdgePlayer` uses hls.js with `lowLatencyMode: true, liveDurationInfinity:
-  true, maxBufferLength: 4, maxLiveSyncPlaybackRate: 1.15`.
-  - It deliberately does **not** set `liveSyncDurationCount` or `liveMaxLatencyDurationCount`
-    in LL mode: hls.js only honours the playlist's `PART-HOLD-BACK` (about 0.6s) when those
-    are unset (see 6ffc2e2). The counts (2 and 3) apply only to the non-LL fallback.
-  - Safari plays the playlist natively.
-  - The player shows how far behind live it is, a **Jump to live** button past 4s, and sends
-    an `edge_latency` telemetry sample every 30s when telemetry is on.
+- **Player.** `EdgePlayer` uses hls.js and adapts to the viewer's connection
+  (`lib/edge-hls.ts`, `ModeDecider`):
+  - **Smooth (standard HLS)** by default: whole 1s segments, about 3s behind, few requests.
+    Measured from India against the Germany origin, every request takes ~0.4–0.5s to first
+    byte and a 200ms part ~0.9s, so LL-HLS cannot keep up there: it fell behind to 6–8s,
+    jumped back to ~2s, stuttered and went black.
+  - **Low latency (LL-HLS)** when the join response says `lowLatency: true`
+    (`EDGE_PLAYBACK_LOW_LATENCY`, set it once the playback base is a CDN close to viewers),
+    or when the player measures a median fragment time-to-first-byte under 120ms over its
+    first 6 fragments. It moves up once. If LL then stalls more than twice in 30s it drops
+    back to smooth for the rest of the session — no flapping.
+  - The mode is switched with `hls.lowLatencyMode` on the one instance. Neither mode sets
+    `liveSyncDurationCount` / `liveMaxLatencyDurationCount` / `liveSyncDuration`: hls.js reads
+    those from the constructor config and, when set, ignores the playlist's `PART-HOLD-BACK`
+    (see 6ffc2e2). Smooth mode lands on hls.js's default 3 × target duration.
+  - A stall or a recovery never shows black: the last frame is held on a canvas with a
+    "Reconnecting…" badge until playback resumes. Fatal network errors retry with backoff
+    (1, 2, 4, 8, 10s); media errors use hls.js's recovery.
+  - Safari plays the playlist natively (no mode switch).
+  - The readout shows how far behind live and the mode (*2.9s behind · Smooth*). **Jump to
+    live** appears past 6s (smooth) or 4s (low latency). `edge_latency` telemetry every 30s
+    carries the latency, mode, stall count and median TTFB.
+- **Layout.** Edge webinars' egress loads the composite at `<template>/edge`. While someone
+  shares their screen the share fills the **whole frame** and up to three camera tiles sit
+  small over the bottom-right corner (`lib/composite-layout.ts`). Next to the standard 22%
+  camera strip a share got only ~1000×560 of a 1280×720 frame, which made slide text
+  unreadable. Recordings and the CDN broadcast keep the standard layout.
+- **A bad destination no longer takes the mix down.** The compositor starts on our origin
+  alone and each platform (YouTube or pasted key, LinkedIn, Instagram, Facebook) is attached
+  with its own `UpdateStream`. A platform that refuses its key is retired for the session
+  (`mix_destinations.go`): detached, not retried on restarts, and shown to the host in the
+  platform's dialog ("refused this stream key"). Pausing and resuming, or saving a new key,
+  tries it again. Before this, one stale key failed the whole egress every 30s and viewers
+  saw black (2026-10-18).
+- **The mix survives a host refresh.** Edge rooms are created with a 3-minute departure
+  timeout instead of the server's 20s: the audience is not in the room, so a host dropping for
+  half a minute used to empty it, close it, and end the compositor ("Source closed"). And a mix
+  that ends while live is put back from the egress webhook within ~3s, not at the next
+  sweeper pass; restarts that keep failing back off (10s doubling to 5 min).
 - **Stage.**
   1. Raise hand goes through `/say` as before.
   2. The host's invite reaches the viewer over SSE.
@@ -89,11 +120,21 @@ both can run side by side on the same deployment and be compared.
 |---|---|---|
 | `EDGE_PLAYBACK_BASE` | empty | Where viewers play `<base>/<slug>/index.m3u8`. Empty means the origin's own `/live` (per-project `broadcastHlsBase`, else `BROADCAST_HLS_BASE`). Point it at a Bunny pull zone hostname that mirrors the origin's `/live/` path. That is the only switch: no code change. |
 | `BROADCAST_RTMP_BASE` | (existing) | Required. The egress pushes the mix here. Without it, edge cannot be chosen. |
-| `EDGE_DEBUG_CLOCK` | `false` | Latency aid. Edge webinars' egress loads the composite at `<RECORDINGS_EGRESS_TEMPLATE_URL>/clock`, which draws a server-synced clock (ms) in the corner. The edge player shows its own synced clock beside the latency readout. Glass-to-glass latency is one clock minus the other on a single screenshot. Both sync to `GET /api/time`. |
+| `EDGE_PLAYBACK_LOW_LATENCY` | `false` | Tells viewers the playback base is close to them, so the player starts in LL-HLS. Set it **only** once `EDGE_PLAYBACK_BASE` points at a CDN pull zone; against the distant origin, LL-HLS stutters (see Player). Off, players still move up to LL-HLS on their own when they measure fast requests. |
+| `EDGE_DEBUG_CLOCK` | `false` | Latency aid. Edge webinars' egress loads the composite at `<RECORDINGS_EGRESS_TEMPLATE_URL>/edge/clock`, which draws a server-synced clock (ms) in the corner. The edge player shows its own synced clock beside the latency readout. Glass-to-glass latency is one clock minus the other on a single screenshot. Both sync to `GET /api/time`. |
 | `EDGE_ENCODING_WIDTH` / `EDGE_ENCODING_HEIGHT` | `1280` / `720` | Edge mix resolution (even, 320–3840 × 180–2160). |
 | `EDGE_ENCODING_FPS` | `30` | 10–60. |
 | `EDGE_VIDEO_BITRATE_KBPS` | `1700` | 300–20000. Use about **4500 for 1080p**. |
 | `EDGE_H264_PROFILE` | `baseline` | `baseline`, `main` or `high`. Baseline stays the default because the same mix still feeds WHEP for CDN-broadcast hosts, and WHEP cannot take B-frames. Once only HLS consumes the mix, **high** gives noticeably sharper screen-share text for the same bitrate. |
+
+**Recommended test encoding for screen-share legibility:** `EDGE_ENCODING_WIDTH=1920`,
+`EDGE_ENCODING_HEIGHT=1080`, `EDGE_ENCODING_FPS=20`, `EDGE_VIDEO_BITRATE_KBPS=3500`,
+`EDGE_H264_PROFILE=high` — once only HLS consumes the mix (no CDN-broadcast hosts). 20 fps
+keeps the encode close to today's 720p30 in CPU, and for slides resolution matters far more
+than frame rate. Until the dedicated egress box exists this runs on the **shared SFU box**,
+so watch its CPU in Grafana during the test, and go back to the defaults if the stage starts
+to suffer. Raise the bitrate only after the CDN pull zone is in place: the current path to the
+origin struggles even at 1.7 Mbps.
 
 These apply only to edge webinars' egress. The keyframe interval is fixed at 1s, which gives
 clean LL-HLS segments and a fast first frame. Values are validated at startup: a bad value
@@ -121,8 +162,8 @@ box can carry it (see Phase 2).
 6. Compare SFU load in Grafana (CPU, packets/s) with N viewers on the edge webinar against
    the same N on the standard one.
 
-Expected delay: with the origin alone, about 1.5–3s (PART-HOLD-BACK plus egress encode plus
-RTMP). Through a CDN pull zone, add the edge's playlist fetch.
+Expected delay: in smooth mode about 3–4s, steady. In low-latency mode about 1.5–3s, but only
+where requests are fast — next to the origin, or through a CDN pull zone close to the viewer.
 
 ## Phase 2
 

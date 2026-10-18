@@ -594,6 +594,23 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 				"slug", slug, "error", err)
 		}
 
+	/* A platform refusing its stream mid-session shows up here, as a failed stream result
+	 * on a compositor that is otherwise fine. Retired so egress stops retrying it and the
+	 * host is told. See mix_destinations.go. */
+	case webhook.EventEgressUpdated:
+		info := event.EgressInfo
+		if info == nil {
+			break
+		}
+		if slug := lk.SlugFromRoom(info.GetRoomName()); slug != "" {
+			if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+				if sfu, err := s.sfuFor(r.Context(), wb); err == nil {
+					active := info.GetStatus() == livekit.EgressStatus_EGRESS_ACTIVE
+					s.noteFailedStreams(r.Context(), slug, info, sfu, active)
+				}
+			}
+		}
+
 	case webhook.EventEgressEnded:
 		info := event.EgressInfo
 		if info == nil {
@@ -605,6 +622,9 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			"room", info.RoomName,
 			"error", info.GetError(),
 			"details", info.GetDetails())
+
+		// A live room's mix is put back within seconds, not at the sweeper's next pass.
+		s.onBroadcastEgressEnded(r.Context(), info)
 
 		rec, err := s.store.RecordingByEgressID(r.Context(), info.EgressId)
 		if err != nil {

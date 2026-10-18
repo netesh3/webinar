@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -46,6 +47,13 @@ import (
 
 type fakeRooms struct {
 	mu sync.Mutex
+	// departures is the departure timeout each room was created with (EnsureRoom).
+	departures map[string]uint32
+	// streamAdds / streamRemoves are every URL UpdateStream attached or detached.
+	streamAdds    []string
+	streamRemoves []string
+	// refuseStream makes UpdateStream refuse those URLs, as a platform refusing a key does.
+	refuseStream map[string]bool
 	// project is this fake's id, so a URL and a token can be traced back to the project that
 	// produced them — which is the whole thing a multi-project test has to assert.
 	project string
@@ -151,7 +159,13 @@ func (f *fakeRooms) Token(spec lk.Spec) (string, error) {
 	return "fake-token-for-" + string(spec.Role) + "@" + f.project, nil
 }
 
-func (f *fakeRooms) EnsureRoom(_ context.Context, room string, max, _ uint32, metadata string) (int, bool, error) {
+func (f *fakeRooms) EnsureRoom(_ context.Context, room string, max, _, departure uint32, metadata string) (int, bool, error) {
+	f.mu.Lock()
+	if f.departures == nil {
+		f.departures = map[string]uint32{}
+	}
+	f.departures[room] = departure
+	f.mu.Unlock()
 	f.mu.Lock()
 	hook := f.onEnsureRoom
 	f.mu.Unlock()
@@ -449,7 +463,14 @@ func (f *fakeRooms) UpdateStream(_ context.Context, egressID string, add, remove
 	if f.egressErr != nil {
 		return nil, f.egressErr
 	}
+	for _, u := range add {
+		if f.refuseStream[u] {
+			return nil, errors.New("publish rejected: invalid url " + u)
+		}
+	}
 	f.egressCalls = append(f.egressCalls, "update:"+egressID)
+	f.streamAdds = append(f.streamAdds, add...)
+	f.streamRemoves = append(f.streamRemoves, remove...)
 	return &livekit.EgressInfo{EgressId: egressID, Status: livekit.EgressStatus_EGRESS_ACTIVE}, nil
 }
 
@@ -467,6 +488,14 @@ func (f *fakeRooms) StopEgress(_ context.Context, egressID string) (*livekit.Egr
 		EgressId: egressID,
 		Status:   livekit.EgressStatus_EGRESS_ENDING,
 	}, nil
+}
+
+// pushedURLs is every RTMP output the fake was asked to push, whether the egress
+// was started on it or it was attached afterwards, one per line.
+func (f *fakeRooms) pushedURLs() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return strings.Join(append(append([]string{}, f.egressCalls...), f.streamAdds...), "\n")
 }
 
 func (f *fakeRooms) setRoster(list ...types.LiveParticipant) {
