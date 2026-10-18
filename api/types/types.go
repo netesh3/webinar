@@ -826,6 +826,12 @@ type Webinar struct {
 	 * Zoom account. The host start link is not on this type. */
 	Venue  string `json:"venue,omitempty"`
 	ZoomID string `json:"zoomId,omitempty"`
+	/* Delivery is how the audience receives the session: DeliveryStandard (everyone on
+	 * the SFU, or the WHEP mix for CDN-broadcast hosts — today's behaviour) or
+	 * DeliveryEdge (the audience watches LL-HLS and gets chat, polls and controls over
+	 * the SSE event stream, never connecting to LiveKit). Edge is opt-in per webinar,
+	 * behind FeatureEdgeDelivery. See docs/edge-delivery.md. */
+	Delivery string `json:"delivery,omitempty"`
 	/* ZoomNotice is set on a save Zoom's plan refused. Not stored. */
 	ZoomNotice string `json:"zoomNotice,omitempty"`
 
@@ -945,6 +951,9 @@ type WebinarInput struct {
 
 	/* Venue is app, zoom_meeting, or zoom_webinar. Empty means this app. */
 	Venue string `json:"venue,omitempty"`
+	/* Delivery is standard or edge (Webinar.Delivery). Empty keeps what is saved,
+	 * or standard on a create, so a client that never heard of it changes nothing. */
+	Delivery string `json:"delivery,omitempty"`
 
 	/* Recurrence is set when this save creates a series, or when a following
 	 * edit changes the schedule. SeriesScope is "this" or "following" on an
@@ -1107,6 +1116,20 @@ const (
 	 * turning it off for an account keeps it off. The host's switch decides for
 	 * everyone in their session; see JoinResponse.Whiteboard. */
 	FeatureWhiteboard = "whiteboard"
+	/* FeatureEdgeDelivery lets a host choose Edge delivery for a webinar: the stage
+	 * stays on WebRTC and the audience watches a low-latency HLS feed, with chat,
+	 * polls and controls over the SSE event stream instead of LiveKit.
+	 *
+	 * Off — the default for every account, because absent means off — means the
+	 * choice is not offered and a save asking for it is refused. Beta. See
+	 * docs/edge-delivery.md. */
+	FeatureEdgeDelivery = "edge_delivery"
+)
+
+// Delivery modes (Webinar.Delivery).
+const (
+	DeliveryStandard = "standard"
+	DeliveryEdge     = "edge"
 )
 
 /* Feature is one switch as the admin screen renders it.
@@ -1155,6 +1178,11 @@ var Features = []Feature{
 		Key:         FeatureWhiteboard,
 		Label:       "Whiteboard",
 		Description: "Let this host and their panelists open a shared whiteboard from More in the live room. Attendees watch it. Off means no whiteboard.",
+	},
+	{
+		Key:         FeatureEdgeDelivery,
+		Label:       "Edge delivery (beta)",
+		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery.",
 	},
 }
 
@@ -3390,6 +3418,29 @@ type JoinResponse struct {
 	// CdnLowLatency is true when CdnStreamURL is the live origin (WHEP),
 	// so the player can sit close to the live edge. False for simulive.
 	CdnLowLatency bool `json:"cdnLowLatency,omitempty"`
+	/* Delivery is "edge" when this caller is an edge-delivery viewer (Webinar.Delivery): Token
+	 * and URL are empty, the browser plays PlaybackURL with hls.js, and reads session events
+	 * from GET /api/webinars/{slug}/events?t=EventsToken instead of the LiveKit data channel.
+	 * Empty for everyone else, including someone on an edge webinar's stage. */
+	Delivery    string `json:"delivery,omitempty"`
+	PlaybackURL string `json:"playbackUrl,omitempty"`
+	EventsToken string `json:"eventsToken,omitempty"`
+	// DebugClock asks the edge player to show its server-synced clock (EDGE_DEBUG_CLOCK).
+	DebugClock bool `json:"debugClock,omitempty"`
+}
+
+// ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
+// latency clock overlay.
+type ServerTime struct {
+	Now int64 `json:"now"`
+}
+
+/* EdgeStatus is the host's view of a webinar's delivery: whether the audience is on edge,
+ * how many are watching the feed right now (open event streams), and what they play. */
+type EdgeStatus struct {
+	Delivery    string `json:"delivery"`
+	Viewers     int    `json:"viewers"`
+	PlaybackURL string `json:"playbackUrl,omitempty"`
 }
 
 type SetUserMaxDurationRequest struct {

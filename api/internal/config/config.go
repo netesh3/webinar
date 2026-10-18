@@ -141,6 +141,16 @@ type Config struct {
 	 * watch, and a WHEP URL without RTMP would 404 forever. */
 	BroadcastRTMPBase string
 	BroadcastHLSBase  string
+	/* EdgePlaybackBase is where an Edge-delivery audience plays the LL-HLS feed:
+	 * <base>/<slug>/index.m3u8. Empty derives it from the same origin as the WHEP feed
+	 * (the per-project or global BroadcastHLSBase, whose /live/* route MediaMTX's LL-HLS
+	 * already sits behind). Point it at a CDN pull zone that mirrors that origin (Bunny)
+	 * and nothing else changes. See docs/edge-delivery.md. */
+	EdgePlaybackBase string
+	/* EdgeDebugClock overlays a server-synced wall clock on an edge webinar's composite
+	 * (the egress loads the template at <template>/clock) and on the edge player, so
+	 * glass-to-glass latency can be read off a screenshot. Off by default; a test aid. */
+	EdgeDebugClock bool
 
 	// Branding and public URLs are served to the frontend over /api/config so
 	// the bundle carries no build-time constants for things an operator sets.
@@ -480,6 +490,8 @@ func Load() (Config, error) {
 		RecordingsCDNBaseURL:        strings.TrimRight(env("RECORDINGS_CDN_BASE_URL", ""), "/"),
 		BroadcastRTMPBase:           strings.TrimRight(env("BROADCAST_RTMP_BASE", ""), "/"),
 		BroadcastHLSBase:            strings.TrimRight(env("BROADCAST_HLS_BASE", ""), "/"),
+		EdgePlaybackBase:            strings.TrimRight(env("EDGE_PLAYBACK_BASE", ""), "/"),
+		EdgeDebugClock:              strings.EqualFold(strings.TrimSpace(env("EDGE_DEBUG_CLOCK", "")), "true"),
 	}
 	if c.RecordingsMode == "" {
 		if c.RecordingsBackend == "s3" {
@@ -849,6 +861,29 @@ func (c Config) BroadcastHLSURLFor(projectID, slug string) string {
 		return p.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
 	}
 	return c.BroadcastHLSURL(slug)
+}
+
+/* EdgePlaybackURLFor is the LL-HLS playlist an Edge-delivery audience plays.
+ *
+ * Empty when there is no live origin (no BROADCAST_RTMP_BASE): the egress has nowhere to
+ * push, so there is nothing to play, and join keeps the audience on standard delivery. */
+func (c Config) EdgePlaybackURLFor(projectID, slug string) string {
+	slug = strings.TrimSpace(slug)
+	if c.BroadcastRTMPBase == "" || slug == "" {
+		return ""
+	}
+	base := c.EdgePlaybackBase
+	if base == "" {
+		if p, ok := c.liveKitProject(projectID); ok && p.BroadcastHLSBase != "" {
+			base = p.BroadcastHLSBase
+		} else {
+			base = c.BroadcastHLSBase
+		}
+	}
+	if base == "" {
+		return ""
+	}
+	return base + "/" + slug + "/index.m3u8"
 }
 
 func (c Config) liveKitProject(id string) (LiveKitProject, bool) {

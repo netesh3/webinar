@@ -24,6 +24,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/notify"
+	"github.com/netkumar/webcast/api/internal/realtime"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/internal/zoom"
@@ -176,6 +177,11 @@ type Server struct {
 	// conversation and per IP. Both protect the free AI allowances as much as the server.
 	salesStartLimit *httpx.RateLimiter
 	salesMsgLimit   *httpx.RateLimiter
+
+	// rt carries session events to edge-delivery viewers (edge.go). Never nil.
+	rt *realtime.Bus
+	// deliveryCache remembers which webinars are on edge delivery (isEdge).
+	deliveryCache deliveryCacheMap
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -258,6 +264,26 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		salesMsgLimit:   httpx.NewRateLimiter(12, time.Minute),
 	}
 	srv.initEngagement()
+
+	/* Edge delivery's event bus. With a store it fans out across instances through Postgres
+	 * LISTEN/NOTIFY; the LISTEN connection opens only when this instance gets its first edge
+	 * viewer. The pool is wrapped so every SendData and SetMetadata also reaches edge viewers
+	 * (edgePool) — a no-op for every webinar that is not on edge delivery. */
+	var bus *realtime.Bus
+	hub := realtime.NewHub(func() {
+		if bus != nil {
+			bus.Start()
+		}
+	})
+	if st != nil {
+		bus = realtime.NewBus(hub, st, st.ListenConn, log)
+	} else {
+		bus = realtime.NewBus(hub, nil, nil, log)
+	}
+	srv.rt = bus
+	if sfu != nil {
+		srv.sfu = edgePool{SFUPool: sfu, s: srv}
+	}
 	return srv
 }
 
@@ -274,7 +300,7 @@ func (s *Server) Routes() http.Handler {
 	// that is not going to finish.
 	// The tick is exempt too: it bounds itself (tickBudget) and a pass cut at 20 s would
 	// leave the rest of the outbox for a minute later.
-	r.Use(httpx.Timeout(20*time.Second, "/recordings/", "/api/internal/tick"))
+	r.Use(httpx.Timeout(20*time.Second, "/recordings/", "/api/internal/tick", "/events"))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: s.cfg.CORSOrigins,
 		AllowedMethods: []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
@@ -424,6 +450,13 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/webinars/{slug}/survey/responses", s.handleSubmitSurvey)
 		r.Post("/webinars/{slug}/survey/click", s.handleSurveyClick)
 		r.Post("/webinars/{slug}/stage-invite", s.handleStageInviteRespond)
+		// Edge delivery's event stream: chat, polls, controls and stage invites for a
+		// viewer who is watching LL-HLS and is not connected to LiveKit (edge.go). The
+		// credential is the events token from join, as ?t= because EventSource cannot set
+		// headers. Exempt from the request timeout below; it bounds itself.
+		r.Get("/webinars/{slug}/events", s.handleEdgeEvents)
+		// The server's clock, for the edge latency overlay (EDGE_DEBUG_CLOCK).
+		r.Get("/time", s.handleServerTime)
 		r.Post("/webinars/{slug}/captions", s.handleAppendCaption)
 
 		// Chat history. The same request answers "catch up after a dropped connection" and
@@ -683,6 +716,7 @@ func (s *Server) Routes() http.Handler {
 
 					// ---- in-session moderation ----
 					r.Get("/participants", s.handleParticipants)
+					r.Get("/edge", s.handleHostEdgeStatus)
 					r.Post("/mute-all", s.handleMuteAll)
 					r.Post("/participants/allow-all", s.handleAllowAllToSpeak)
 					r.Post("/participants/stage-all", s.handleBringAllOnStage)

@@ -54,6 +54,12 @@ func (s *Server) handleCopyWebinar(w http.ResponseWriter, r *http.Request) {
 	if zoom.IsVenue(in.Venue) && !user.HasFeature(types.FeatureZoom) {
 		in.Venue = zoom.VenueApp
 	}
+	// Edge carries over only where a new webinar could choose it; otherwise the copy is
+	// standard rather than a create that fails on a field the host never touched.
+	if in.Delivery == types.DeliveryEdge &&
+		(!user.HasFeature(types.FeatureEdgeDelivery) || in.Kind != types.KindLive || zoom.IsVenue(in.Venue)) {
+		in.Delivery = types.DeliveryStandard
+	}
 
 	wb, ok := s.createWebinar(w, r, user, in)
 	if !ok {
@@ -143,6 +149,7 @@ func copyInput(src types.Webinar, panel []store.PanelistContact, now time.Time) 
 		Options:              src.Options,
 		Controls:             src.Controls,
 		Venue:                venue,
+		Delivery:             src.Delivery,
 	}
 }
 

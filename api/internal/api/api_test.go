@@ -54,6 +54,11 @@ type fakeRooms struct {
 	 * against the real service from a test, and it is the trigger for the failover in
 	 * Server.ensureRoom, so it has to be arrangeable here. */
 	refuseRooms bool
+	/* strictRoster makes SetRole and RemoveParticipant answer lk.ErrNotInRoom for an identity
+	 * that is not in roster, as the real SFU does. Off by default because most tests act on
+	 * people they never put in the roster; the edge-delivery tests need the real answer,
+	 * since an edge viewer is never in the room. */
+	strictRoster bool
 	/* onEnsureRoom runs inside EnsureRoom, before it returns.
 	 *
 	 * The only way to make a CONCURRENT event deterministic: it simulates another request
@@ -238,6 +243,9 @@ func (f *fakeRooms) SetRole(_ context.Context, spec lk.Spec) error {
 		f.roster[i].MutedByHost = spec.MutedByHost
 		return nil
 	}
+	if f.strictRoster {
+		return lk.ErrNotInRoom
+	}
 	return nil
 }
 
@@ -361,6 +369,15 @@ func (f *fakeRooms) HideAll(_ context.Context, _ string, role types.Role, hidden
 func (f *fakeRooms) RemoveParticipant(_ context.Context, _, identity string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.strictRoster {
+		found := false
+		for _, p := range f.roster {
+			found = found || p.Identity == identity
+		}
+		if !found {
+			return lk.ErrNotInRoom
+		}
+	}
 	f.removed = append(f.removed, identity)
 	return nil
 }

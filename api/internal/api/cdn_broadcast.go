@@ -69,7 +69,7 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	 * NIC as the SFU. 1080p × a few hundred viewers does not fit a CX33. */
 	preset := livekit.EncodingOptionsPreset_H264_720P_30
 
-	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL, preset, origin, extras)
+	info, err := sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), preset, origin, extras)
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", err)
 		broadcastMu.Lock()
@@ -334,6 +334,12 @@ func (s *Server) stopBroadcastIfActive(ctx context.Context, slug string, sfu Roo
 // empty. Both empty means do not start a compositor at all.
 func (s *Server) mixDestinations(ctx context.Context, wb types.Webinar) (origin string, extras []string) {
 	if can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID); err == nil && can {
+		origin = s.cfg.BroadcastRTMPURL(wb.ID)
+	}
+	/* An edge webinar's audience watches this same mix, as LL-HLS from the origin (or a CDN
+	 * pull zone in front of it), whether or not the host is on CDN broadcast. The origin is
+	 * the only push edge needs: a CDN mirrors it rather than taking a second ingest. */
+	if wb.Delivery == types.DeliveryEdge {
 		origin = s.cfg.BroadcastRTMPURL(wb.ID)
 	}
 	seen := map[string]bool{}
