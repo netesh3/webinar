@@ -328,6 +328,7 @@ export function EdgeAudienceRoom({
                           slug={slug}
                           debugClock={Boolean(join.debugClock)}
                           clockOffsetMs={clockOffset}
+                          lowLatency={Boolean(join.lowLatency)}
                         />
                         {streamState === "retrying" && (
                           <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full bg-black/60 px-3 py-1 text-[11.5px] text-white/80">

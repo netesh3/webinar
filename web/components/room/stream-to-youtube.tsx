@@ -149,6 +149,12 @@ export function useYouTubeStream(): YouTubeStream {
       }
     >
       <div className="space-y-3 py-1">
+        {wb?.streamRefused && (
+          <p className="rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-[12.5px] text-ink">
+            The stream destination refused the stream key. Your webinar carries on without it —
+            paste a new key, or check the live in YouTube Studio and press Update.
+          </p>
+        )}
         {/* The link the audience needs. Only on the connected path — the
           * paste path already renders it as an editable field below. */}
         {watch && connected && !paste && (

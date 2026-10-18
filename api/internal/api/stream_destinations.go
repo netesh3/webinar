@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/httpx"
@@ -145,7 +146,7 @@ func (s *Server) resyncPlatform(ctx context.Context, slug, platform, old string)
 	if err != nil {
 		return
 	}
-	s.syncStreamDest(ctx, wb, sfu, old, now)
+	s.syncStreamDest(ctx, wb, sfu, platform, old, now)
 }
 
 func (s *Server) handleSetWebinarStreamPaused(w http.ResponseWriter, r *http.Request, p integrations.RTMPPlatform) {
@@ -203,6 +204,10 @@ func (s *Server) writeWebinarStreamDestination(w http.ResponseWriter, r *http.Re
 	}
 	if ingest != "" {
 		out.Hint = streamdest.Hint(ingest)
+	}
+	if !paused && destFailures.platformFailed(slug, p.ID, s.platformIngestFor(ctx, wb, p.ID), time.Now()) {
+		out.Refused = true
+		out.Streaming = false
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }

@@ -807,6 +807,9 @@ type Webinar struct {
 	// is currently pushing, so the form can say "already set" without echoing
 	// the key and the host can go live again without re-pasting it.
 	StreamKeySaved bool `json:"streamKeySaved,omitempty"`
+	// StreamRefused is true when that destination refused the stream this session
+	// (a stale or mistyped key): the mix carries on without it. Host views only.
+	StreamRefused bool `json:"streamRefused,omitempty"`
 
 	/* SFUProject is which LiveKit project this webinar's room lives on, once chosen.
 	 *
@@ -3427,6 +3430,10 @@ type JoinResponse struct {
 	EventsToken string `json:"eventsToken,omitempty"`
 	// DebugClock asks the edge player to show its server-synced clock (EDGE_DEBUG_CLOCK).
 	DebugClock bool `json:"debugClock,omitempty"`
+	/* LowLatency says the playback URL is served close to viewers (a CDN pull zone), so the
+	 * player may use LL-HLS from the first second. Without it the player starts on standard
+	 * HLS and only moves to LL-HLS if it measures fast requests (EDGE_PLAYBACK_LOW_LATENCY). */
+	LowLatency bool `json:"lowLatency,omitempty"`
 	// EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
 	// viewer's browser knows that demotion returns them to the feed, not to the SFU.
 	EdgeWebinar bool `json:"edgeWebinar,omitempty"`
@@ -3981,6 +3988,10 @@ type WebinarStreamDestination struct {
 	Paused     bool   `json:"paused"`
 	Streaming  bool   `json:"streaming"`
 	Hint       string `json:"hint,omitempty"`
+	// Refused is true when the platform refused this key during the session. The
+	// webinar's own stream carries on; this destination is skipped until the host
+	// saves a new key or resumes it.
+	Refused bool `json:"refused,omitempty"`
 }
 
 // SetWebinarStreamPausedRequest pauses or resumes one platform for one webinar.

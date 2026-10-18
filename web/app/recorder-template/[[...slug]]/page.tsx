@@ -4,6 +4,7 @@ import { Component, Suspense, useEffect, useState, useMemo, useRef } from "react
 import { usePathname, useSearchParams } from "next/navigation";
 import { EdgeClock } from "@/components/room/edge-clock";
 import { useServerClockOffset } from "@/lib/edge-events";
+import { compositeLayout, isEdgeTemplatePath } from "@/lib/composite-layout";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -42,7 +43,11 @@ function RecorderTemplateInner() {
   /* <template>/clock is the edge latency aid (EDGE_DEBUG_CLOCK, docs/edge-delivery.md): the
    * server sends edge webinars' egress here, and this page draws a server-synced clock that
    * the edge player shows too. A path segment because LiveKit appends its own query. */
-  const debugClock = /\/clock\/?$/.test(usePathname() ?? "");
+  const path = usePathname() ?? "";
+  const debugClock = /\/clock\/?$/.test(path);
+  /* <template>/edge is an edge webinar's mix: the share fills the frame and the cameras sit
+   * over a corner (lib/composite-layout.ts). Recordings keep the side strip. */
+  const edgeLayout = isEdgeTemplatePath(path);
   let url = searchParams.get("url") || "";
   let token = searchParams.get("token") || "";
   if ((!url || !token) && typeof window !== "undefined") {
@@ -82,7 +87,7 @@ function RecorderTemplateInner() {
           connected and RoomAudioRenderer keeps playing, which is the difference
           between a recording with a broken stretch and no recording at all. */}
       <StageBoundary>
-        <ZoomRecordingStage />
+        <ZoomRecordingStage edgeLayout={edgeLayout} />
       </StageBoundary>
       {debugClock && <CompositeClock />}
     </LiveKitRoom>
@@ -116,7 +121,7 @@ class StageBoundary extends Component<
   }
 }
 
-function ZoomRecordingStage() {
+function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
   const room = useRoomContext();
   const [activeSpeakerId, setActiveSpeakerId] = useState<string>("");
   const startedRef = useRef(false);
@@ -209,16 +214,13 @@ function ZoomRecordingStage() {
     );
   }
 
+  const layout = compositeLayout({ edge: edgeLayout, sharing: Boolean(screenShareRef) });
+  const shownStrip = layout.maxTiles === undefined ? stripRefs : stripRefs.slice(0, layout.maxTiles);
+
   return (
-    <div className={`flex h-full w-full bg-black ${screenShareRef ? "flex-row" : "flex-col"}`}>
+    <div className={layout.root}>
       {/* Main area: the shared screen, or the active speaker. */}
-      <div
-        className={
-          screenShareRef
-            ? "relative flex-1 h-full min-w-0 flex items-center justify-center bg-black p-1 order-1"
-            : "flex-1 min-h-0 relative flex items-center justify-center p-3 bg-black order-2"
-        }
-      >
+      <div className={layout.main}>
         {screenShareRef ? (
           <VideoTrack trackRef={screenShareRef} className="size-full object-contain" />
         ) : primarySpeaker ? (
@@ -233,37 +235,25 @@ function ZoomRecordingStage() {
         ) : null}
       </div>
 
-      {/* Filmstrip: down the right while sharing, along the top otherwise. */}
+      {/* Filmstrip: down the right while sharing (over the corner for edge), along the top
+          otherwise. */}
       {(screenShareRef || stripRefs.length > 0) && (
-        <div
-          className={
-            screenShareRef
-              ? "w-[22%] min-w-[240px] max-w-[340px] h-full bg-zinc-950/90 border-l border-zinc-800/80 p-2 flex flex-col gap-2.5 overflow-hidden order-2"
-              : "h-28 shrink-0 flex items-center justify-center gap-2 px-3 py-1.5 bg-zinc-950/80 border-b border-zinc-800/60 order-1"
-          }
-        >
-          {stripRefs.length > 0 ? (
-            stripRefs.slice(0, screenShareRef ? undefined : 5).map((ref) => {
+        <div className={layout.strip}>
+          {shownStrip.length > 0 ? (
+            shownStrip.map((ref) => {
               const isSpeaking =
                 ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
               return (
-                <div
-                  key={ref.participant.identity}
-                  className={screenShareRef ? "w-full" : "h-full aspect-video"}
-                >
-                  <SpeakerTile
-                    trackRef={ref}
-                    isSpeaking={isSpeaking}
-                    compact={!screenShareRef}
-                  />
+                <div key={ref.participant.identity} className={layout.tile}>
+                  <SpeakerTile trackRef={ref} isSpeaking={isSpeaking} compact={layout.compactTiles} />
                 </div>
               );
             })
-          ) : (
+          ) : layout.emptyNote ? (
             <div className="flex flex-1 items-center justify-center text-xs text-zinc-600">
               No camera published
             </div>
-          )}
+          ) : null}
         </div>
       )}
     </div>

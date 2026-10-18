@@ -320,13 +320,15 @@ func (c *Client) Token(spec Spec) (string, error) {
 // connection. `known` is false only when the SFU answers AlreadyExists without a
 // body, in which case the caller has to ask.
 func (c *Client) EnsureRoom(
-	ctx context.Context, room string, maxParticipants, emptyTimeoutSec uint32, metadata string,
+	ctx context.Context, room string, maxParticipants, emptyTimeoutSec, departureTimeoutSec uint32, metadata string,
 ) (participants int, known bool, err error) {
+	// departureTimeoutSec 0 leaves the server's departure_timeout (livekit.yaml).
 	res, err := c.rooms.CreateRoom(ctx, &livekit.CreateRoomRequest{
-		Name:            room,
-		MaxParticipants: maxParticipants,
-		EmptyTimeout:    emptyTimeoutSec,
-		Metadata:        metadata,
+		Name:             room,
+		MaxParticipants:  maxParticipants,
+		EmptyTimeout:     emptyTimeoutSec,
+		DepartureTimeout: departureTimeoutSec,
+		Metadata:         metadata,
 	})
 	if err != nil {
 		if isAlreadyExists(err) {

@@ -2634,6 +2634,11 @@ export interface Webinar {
    */
   streamKeySaved?: boolean;
   /**
+   * StreamRefused is true when that destination refused the stream this session
+   * (a stale or mistyped key): the mix carries on without it. Host views only.
+   */
+  streamRefused?: boolean;
+  /**
    *  SFUProject is which LiveKit project this webinar's room lives on, once chosen.
    * 	 *
    * 	 * Empty until the first join picks one. Operator information — it is what answers "which
@@ -5919,6 +5924,12 @@ export interface JoinResponse {
    */
   debugClock?: boolean;
   /**
+   *  LowLatency says the playback URL is served close to viewers (a CDN pull zone), so the
+   * 	 * player may use LL-HLS from the first second. Without it the player starts on standard
+   * 	 * HLS and only moves to LL-HLS if it measures fast requests (EDGE_PLAYBACK_LOW_LATENCY).
+   */
+  lowLatency?: boolean;
+  /**
    * EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
    * viewer's browser knows that demotion returns them to the feed, not to the SFU.
    */
@@ -6617,6 +6628,12 @@ export interface WebinarStreamDestination {
   paused: boolean;
   streaming: boolean;
   hint?: string;
+  /**
+   * Refused is true when the platform refused this key during the session. The
+   * webinar's own stream carries on; this destination is skipped until the host
+   * saves a new key or resumes it.
+   */
+  refused?: boolean;
 }
 /**
  * SetWebinarStreamPausedRequest pauses or resumes one platform for one webinar.

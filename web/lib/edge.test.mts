@@ -4,24 +4,69 @@
  */
 
 import assert from "node:assert/strict";
-import { edgeHlsConfig, latencyLabel } from "./edge-hls.ts";
+import { ModeDecider, edgeHlsConfig, latencyLabel, median, modeLabel, retryDelayMs } from "./edge-hls.ts";
 import { routeEdgeEvent } from "./edge-route.ts";
 import { clockOffset, formatClock } from "./server-clock.ts";
 
-// LL mode must leave the count settings unset so hls.js honours PART-HOLD-BACK.
-const ll = edgeHlsConfig(true);
-assert.equal(ll.lowLatencyMode, true);
-assert.equal(ll.liveDurationInfinity, true);
-assert.equal(ll.maxBufferLength, 4);
-assert.equal(ll.maxLiveSyncPlaybackRate, 1.15);
-assert.equal("liveSyncDurationCount" in ll, false);
-assert.equal("liveMaxLatencyDurationCount" in ll, false);
-assert.equal("liveSyncDuration" in ll, false);
+// Neither mode may set the count settings: hls.js reads them from the constructor config and,
+// when present, ignores the playlist's hold-backs — and the mode is switched at runtime.
+for (const mode of ["low-latency", "standard"] as const) {
+  const c = edgeHlsConfig(mode);
+  assert.equal(c.lowLatencyMode, mode === "low-latency");
+  assert.equal(c.liveDurationInfinity, true);
+  assert.equal(c.maxLiveSyncPlaybackRate, 1.15);
+  assert.equal("liveSyncDurationCount" in c, false);
+  assert.equal("liveMaxLatencyDurationCount" in c, false);
+  assert.equal("liveSyncDuration" in c, false);
+}
+assert.equal(edgeHlsConfig("low-latency").maxBufferLength, 4);
+assert.equal(edgeHlsConfig("standard").maxBufferLength, 6);
 
-const plain = edgeHlsConfig(false);
-assert.equal(plain.lowLatencyMode, false);
-assert.equal(plain.liveSyncDurationCount, 2);
-assert.equal(plain.liveMaxLatencyDurationCount, 3);
+// Far from the origin (India → Germany, ~450ms per request): stays smooth.
+{
+  const d = new ModeDecider({ cdn: false, now: 0 });
+  assert.equal(d.mode, "standard");
+  for (let i = 0; i < 10; i++) assert.equal(d.fragmentLoaded(450, i * 1000), null);
+  assert.equal(d.mode, "standard");
+}
+// Close to it (a CDN edge): moves up to low latency once it has enough samples.
+{
+  const d = new ModeDecider({ cdn: false, now: 0 });
+  const changes = [40, 60, 55, 70, 45, 50].map((ms, i) => d.fragmentLoaded(ms, i * 500));
+  assert.deepEqual(changes, [null, null, null, null, null, "low-latency"]);
+  assert.equal(d.mode, "low-latency");
+  assert.equal(Math.round(d.medianTtfb() ?? 0), 53);
+}
+// The decision is taken once: later fast samples do not flip a slow start.
+{
+  const d = new ModeDecider({ cdn: false, now: 0 });
+  for (let i = 0; i < 6; i++) d.fragmentLoaded(400, i * 1000);
+  for (let i = 0; i < 20; i++) assert.equal(d.fragmentLoaded(30, 10_000 + i * 100), null);
+  assert.equal(d.mode, "standard");
+}
+// A CDN start is low latency at once, and repeated stalls drop it back for good.
+{
+  const d = new ModeDecider({ cdn: true, now: 0 });
+  assert.equal(d.mode, "low-latency");
+  assert.equal(d.stalled(1000), null);
+  assert.equal(d.stalled(5000), null);
+  assert.equal(d.stalled(9000), "standard");
+  assert.equal(d.mode, "standard");
+  for (let i = 0; i < 10; i++) assert.equal(d.fragmentLoaded(20, 20_000 + i * 100), null);
+  assert.equal(d.mode, "standard");
+}
+// Stalls spread out over minutes are not "repeated".
+{
+  const d = new ModeDecider({ cdn: true, now: 0 });
+  assert.equal(d.stalled(0), null);
+  assert.equal(d.stalled(40_000), null);
+  assert.equal(d.stalled(80_000), null);
+  assert.equal(d.mode, "low-latency");
+}
+assert.equal(median([3, 1, 2]), 2);
+assert.equal(median([]), null);
+assert.deepEqual([0, 1, 2, 3, 4, 9].map(retryDelayMs), [1000, 2000, 4000, 8000, 10_000, 10_000]);
+assert.equal(modeLabel("standard"), "Smooth");
 
 assert.equal(latencyLabel(2.345), "2.3s");
 assert.equal(latencyLabel(12.6), "13s");

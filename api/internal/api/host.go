@@ -157,6 +157,9 @@ func (s *Server) handleHostWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "host webinar", err)
 		return
 	}
+	if own, on, err := s.store.WebinarStreamIngest(r.Context(), wb.ID); err == nil && on {
+		wb.StreamRefused = destFailures.platformFailed(wb.ID, "stream", own, time.Now())
+	}
 	httpx.JSON(w, http.StatusOK, wb)
 }
 
@@ -1289,6 +1292,9 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if sfu, err := s.sfuFor(ctx, wb); err == nil {
 		s.stopBroadcastIfActive(ctx, slug, sfu)
 	}
+	// The session is over: a key refused today gets a fresh try next time.
+	destFailures.clear(slug)
+	forgetMixRestarts(slug)
 	/* The broadcast being ended, read before StopWebinarStream forgets which one
 	 * it was. It is ended further down, once the push is actually down. */
 	ending, _ := s.store.WebinarYouTubeBroadcast(ctx, slug)

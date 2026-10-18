@@ -187,7 +187,9 @@ export function usePlatformStream(platform: StreamPlatform): PlatformStream {
     ? ""
     : li.paused
       ? "Paused for this webinar"
-      : li.streaming
+      : li.refused
+        ? `${info.name} refused this stream key. Your webinar carries on; paste a new key, or pause and resume to try again.`
+        : li.streaming
         ? `Sending to ${info.name} · press Go live there when the preview shows`
         : "Starts sending when the webinar is live";
 

@@ -1,24 +1,43 @@
 "use client";
 
-/* The Edge-delivery audience player: the stage mix as LL-HLS, from the live origin or a CDN
- * pull zone in front of it (docs/edge-delivery.md).
+/* The Edge-delivery audience player: the stage mix as HLS, from the live origin or a CDN pull
+ * zone in front of it (docs/edge-delivery.md).
  *
- * hls.js settings come from lib/edge-hls.ts — in low-latency mode it must not be given the
- * sync counts, or it ignores the playlist's PART-HOLD-BACK. Safari plays the playlist natively.
- * On top of the shared player chrome (volume, fullscreen, Live badge) this adds what testing
- * edge needs: how far behind live the picture is, a Jump to live button when it drifts, an
- * edge_latency telemetry sample, and, with the debug clock on, the server-synced clock that
- * the composite draws too, so glass-to-glass latency can be read off a screenshot. */
+ * Adaptive: it starts in standard (smooth) HLS unless the server says the playback URL is a
+ * CDN close to the viewer, measures its own fragment requests, and moves up to LL-HLS only
+ * when they are fast — dropping back for good if LL-HLS then stalls. The policy is
+ * lib/edge-hls.ts (ModeDecider); this file only wires it to hls.js. The mode is switched with
+ * hls.lowLatencyMode on the one instance, never by rebuilding the player, because rebuilding
+ * detaches the video and that is a black frame.
+ *
+ * A stall or a recovery never leaves the picture black either: the last frame is held on a
+ * canvas over the video with a small "Reconnecting" badge until playback resumes. Fatal
+ * network errors retry with backoff; media errors go through hls.js's own recovery.
+ *
+ * Safari plays the playlist natively (no mode switch there). On top of the shared player
+ * chrome this adds the latency readout with the mode, Jump to live, an edge_latency telemetry
+ * sample, and, with the debug clock on, the server-synced clock the composite draws too. */
 
 import Hls from "hls.js";
 import { useEffect, useRef, useState } from "react";
-import { BEHIND_LIVE_SECONDS, edgeHlsConfig, latencyLabel } from "@/lib/edge-hls";
+import {
+  BEHIND_LIVE_SECONDS,
+  MODE_BUFFER,
+  ModeDecider,
+  edgeHlsConfig,
+  latencyLabel,
+  modeLabel,
+  retryDelayMs,
+  type PlaybackMode,
+} from "@/lib/edge-hls";
 import { trackEvent } from "@/lib/telemetry";
 import { useAppConfig } from "../providers";
 import { StagePlayerChrome } from "./cdn-attendee-room";
 import { EdgeClock } from "./edge-clock";
 
 const TELEMETRY_EVERY_MS = 30_000;
+// A wait shorter than this is a hiccup, not worth a badge.
+const RECONNECTING_AFTER_MS = 800;
 
 export function EdgePlayer({
   playbackUrl,
@@ -27,6 +46,7 @@ export function EdgePlayer({
   slug,
   debugClock,
   clockOffsetMs,
+  lowLatency = false,
 }: {
   playbackUrl: string;
   coverUrl?: string;
@@ -34,35 +54,96 @@ export function EdgePlayer({
   slug: string;
   debugClock?: boolean;
   clockOffsetMs: number;
+  /** The playback URL is a CDN close to viewers: start in LL-HLS (JoinResponse.lowLatency). */
+  lowLatency?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const deciderRef = useRef<ModeDecider | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(true);
   const [latency, setLatency] = useState<number | null>(null);
   const [native, setNative] = useState(false);
+  const [mode, setMode] = useState<PlaybackMode>(lowLatency ? "low-latency" : "standard");
+  const [reconnecting, setReconnecting] = useState(false);
+  const [frozen, setFrozen] = useState(false);
   const { telemetryEnabled } = useAppConfig();
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !playbackUrl) return;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    let waitTimer: ReturnType<typeof setTimeout> | undefined;
     let hls: Hls | null = null;
+    let played = false;
+    let netAttempts = 0;
+    let mediaRecoveries = 0;
+
+    const decider = new ModeDecider({ cdn: lowLatency, now: Date.now() });
+    deciderRef.current = decider;
+    setMode(decider.mode);
 
     const tryPlay = () => {
       video.playsInline = true;
-      video.muted = true;
-      setIsMuted(true);
+      // Muted until the viewer turns sound on: autoplay with sound is blocked.
+      if (!played) {
+        video.muted = true;
+        setIsMuted(true);
+      }
       video.play().catch(() => {});
     };
     const ready = () => {
       setLoading(false);
       setError(null);
     };
+    const resumed = () => {
+      clearTimeout(waitTimer);
+      setReconnecting(false);
+      setFrozen(false);
+      netAttempts = 0;
+    };
+    /* Hold the current picture on the canvas before anything that resets the media element.
+     * Drawing a cross-origin frame taints the canvas, which only stops reading pixels back —
+     * it still shows them, and showing them is all this is for. */
+    const freezeFrame = () => {
+      const canvas = canvasRef.current;
+      if (!canvas || !played || video.videoWidth === 0) return;
+      try {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        setFrozen(true);
+      } catch {
+        // Nothing to hold; the badge still shows.
+      }
+    };
+    const applyMode = (next: PlaybackMode) => {
+      if (!hls) return;
+      hls.lowLatencyMode = next === "low-latency";
+      hls.config.maxBufferLength = MODE_BUFFER[next];
+      setMode(next);
+    };
+
+    const onPlaying = () => {
+      played = true;
+      resumed();
+    };
+    const onWaiting = () => {
+      if (!played) return;
+      clearTimeout(waitTimer);
+      waitTimer = setTimeout(() => setReconnecting(true), RECONNECTING_AFTER_MS);
+    };
+    video.addEventListener("playing", onPlaying);
+    video.addEventListener("waiting", onWaiting);
+    const detachVideo = () => {
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("waiting", onWaiting);
+    };
 
     if (Hls.isSupported()) {
-      hls = new Hls(edgeHlsConfig(true));
+      hls = new Hls(edgeHlsConfig(decider.mode));
       hlsRef.current = hls;
       hls.loadSource(playbackUrl);
       hls.attachMedia(video);
@@ -73,17 +154,38 @@ export function EdgePlayer({
       hls.on(Hls.Events.FRAG_BUFFERED, () => {
         ready();
         if (video.paused) tryPlay();
+        if (!video.paused) resumed();
+      });
+      hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
+        const t = (data.part ?? data.frag).stats.loading;
+        if (!t || !t.first || !t.start) return;
+        const next = decider.fragmentLoaded(t.first - t.start, Date.now());
+        if (next) applyMode(next);
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (!data.fatal) return;
+        if (!data.fatal) {
+          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+            const next = decider.stalled(Date.now());
+            if (next) applyMode(next);
+          }
+          return;
+        }
+        if (played) {
+          freezeFrame();
+          setReconnecting(true);
+        }
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          mediaRecoveries += 1;
+          if (mediaRecoveries > 1) hls?.swapAudioCodec();
           hls?.recoverMediaError();
           return;
         }
-        // The origin 404s until the egress has booted and pushed: wait, do not fail.
-        setError("Waiting for the broadcast to start...");
+        // The origin 404s until the egress has booted and pushed, and a restarting mix is a
+        // gap of seconds: wait and retry, with backoff, rather than fail.
+        if (!played) setError("Waiting for the broadcast to start...");
         clearTimeout(retry);
-        retry = setTimeout(() => hls?.startLoad(), 1500);
+        retry = setTimeout(() => hls?.startLoad(), retryDelayMs(netAttempts));
+        netAttempts += 1;
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       setNative(true);
@@ -93,17 +195,26 @@ export function EdgePlayer({
         tryPlay();
       };
       const onErr = () => {
-        setError("Waiting for the broadcast to start...");
+        if (played) {
+          freezeFrame();
+          setReconnecting(true);
+        } else {
+          setError("Waiting for the broadcast to start...");
+        }
         clearTimeout(retry);
         retry = setTimeout(() => {
           video.src = playbackUrl;
           video.load();
-        }, 1500);
+          tryPlay();
+        }, retryDelayMs(netAttempts));
+        netAttempts += 1;
       };
       video.addEventListener("loadedmetadata", onMeta);
       video.addEventListener("error", onErr);
       return () => {
         clearTimeout(retry);
+        clearTimeout(waitTimer);
+        detachVideo();
         video.removeEventListener("loadedmetadata", onMeta);
         video.removeEventListener("error", onErr);
         video.removeAttribute("src");
@@ -115,10 +226,12 @@ export function EdgePlayer({
 
     return () => {
       clearTimeout(retry);
+      clearTimeout(waitTimer);
+      detachVideo();
       hls?.destroy();
       hlsRef.current = null;
     };
-  }, [playbackUrl]);
+  }, [playbackUrl, lowLatency]);
 
   // Latency: hls.js knows it; natively it is the distance to the end of the seekable range.
   useEffect(() => {
@@ -135,19 +248,26 @@ export function EdgePlayer({
   }, []);
 
   const latencyRef = useRef(latency);
+  const modeRef = useRef(mode);
   useEffect(() => {
     latencyRef.current = latency;
-  }, [latency]);
+    modeRef.current = mode;
+  }, [latency, mode]);
   useEffect(() => {
     if (!telemetryEnabled) return;
     const timer = setInterval(() => {
       const value = latencyRef.current;
       if (value == null) return;
       const hls = hlsRef.current;
+      const decider = deciderRef.current;
+      const ttfb = decider?.medianTtfb();
       trackEvent("edge_latency", { userId: identity, roomName: slug }, {
         latencySec: Math.round(value * 100) / 100,
         targetSec: hls?.targetLatency ?? null,
         native,
+        mode: modeRef.current,
+        stalls: decider?.stallCount(Date.now()) ?? 0,
+        medianTtfbMs: ttfb == null ? null : Math.round(ttfb),
         bandwidthKbps: hls ? Math.round(hls.bandwidthEstimate / 1000) : null,
       });
     }, TELEMETRY_EVERY_MS);
@@ -164,7 +284,7 @@ export function EdgePlayer({
     void video.play().catch(() => {});
   };
 
-  const behind = latency != null && latency > BEHIND_LIVE_SECONDS;
+  const behind = latency != null && latency > BEHIND_LIVE_SECONDS[mode];
 
   return (
     <div className="relative h-full w-full">
@@ -194,14 +314,36 @@ export function EdgePlayer({
           if (!v.muted) void v.play();
         }}
       />
+      {/* The last good frame, held while the stream reconnects, so a gap is a still picture
+          and not a black screen. */}
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain ${
+          frozen ? "" : "hidden"
+        }`}
+      />
+      {reconnecting && !loading && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center">
+          <span className="rounded-full bg-black/70 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
+            Reconnecting…
+          </span>
+        </div>
+      )}
       {!loading && (
         <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-2">
           {debugClock && <EdgeClock offsetMs={clockOffsetMs} />}
           <span
             className="rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/85 backdrop-blur"
-            title="How far behind live this picture is"
+            title={
+              native
+                ? "How far behind live this picture is"
+                : mode === "low-latency"
+                  ? "How far behind live this picture is. Low latency: your connection to the stream is fast."
+                  : "How far behind live this picture is. Smooth mode: plays a little further behind so it doesn't stutter."
+            }
           >
-            {latencyLabel(latency)} behind
+            {latencyLabel(latency)} behind{native ? "" : ` · ${modeLabel(mode)}`}
           </span>
           {behind && (
             <button

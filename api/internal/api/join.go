@@ -22,6 +22,27 @@ import (
 // everyone still connected.
 const emptyTimeoutSec = 300
 
+/* edgeDepartureTimeoutSec is how long an edge webinar's room outlives its last participant.
+ *
+ * The server default (livekit.yaml departure_timeout, 20s) closes a room twenty seconds after
+ * the last person leaves, and egress does not count as a person. In a standard webinar the
+ * audience keeps the room open; in an edge one the audience is not in the room at all, so a
+ * host whose laptop drops or who refreshes for half a minute emptied it — the room closed,
+ * the compositor ended ("Source closed"), and every viewer saw black until the host came back
+ * and a new mix booted (production, 2026-10-18). Three minutes covers a reconnect, a refresh
+ * and a browser restart; a webinar the host really walked out of is still ended by the
+ * empty-room sweep. */
+const edgeDepartureTimeoutSec = 180
+
+// departureFor is the departure timeout to create this webinar's room with; 0 is the
+// server's default.
+func departureFor(wb types.Webinar) uint32 {
+	if wb.Delivery == types.DeliveryEdge {
+		return edgeDepartureTimeoutSec
+	}
+	return 0
+}
+
 // stageHeadroom is how many seats above the attendee limit exist for the host
 // and panelists, so a full audience never locks the presenter out of their own
 // webinar.
@@ -554,7 +575,7 @@ func (s *Server) ensureRoom(
 	}
 	size := uint32(limit + stageHeadroom) // #nosec G115 -- attendee cap plus a small headroom, far below 2^32
 
-	count, known, err := sfu.EnsureRoom(ctx, room, size, emptyTimeoutSec, meta)
+	count, known, err := sfu.EnsureRoom(ctx, room, size, emptyTimeoutSec, departureFor(wb), meta)
 	if err == nil {
 		return sfu, count, known, nil
 	}
@@ -601,7 +622,7 @@ func (s *Server) ensureRoom(
 		if getErr != nil {
 			return nil, 0, false, err
 		}
-		count, known, retryErr := moved.EnsureRoom(ctx, room, size, emptyTimeoutSec, meta)
+		count, known, retryErr := moved.EnsureRoom(ctx, room, size, emptyTimeoutSec, departureFor(wb), meta)
 		if retryErr != nil {
 			return nil, 0, false, err
 		}
@@ -618,7 +639,7 @@ func (s *Server) ensureRoom(
 		if getErr != nil {
 			continue
 		}
-		altCount, altKnown, altErr := alt.EnsureRoom(ctx, room, size, emptyTimeoutSec, meta)
+		altCount, altKnown, altErr := alt.EnsureRoom(ctx, room, size, emptyTimeoutSec, departureFor(wb), meta)
 		if altErr != nil {
 			s.log.Warn("livekit project also refused the room, trying the next",
 				"slug", wb.ID, "project", next, "error", altErr)
