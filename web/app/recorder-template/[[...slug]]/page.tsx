@@ -1,7 +1,9 @@
 "use client";
 
 import { Component, Suspense, useEffect, useState, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { EdgeClock } from "@/components/room/edge-clock";
+import { useServerClockOffset } from "@/lib/edge-events";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -37,6 +39,10 @@ function RecorderTemplateInner() {
    * template has produced), so a wasted round trip before connecting is not
    * free. */
   const searchParams = useSearchParams();
+  /* <template>/clock is the edge latency aid (EDGE_DEBUG_CLOCK, docs/edge-delivery.md): the
+   * server sends edge webinars' egress here, and this page draws a server-synced clock that
+   * the edge player shows too. A path segment because LiveKit appends its own query. */
+  const debugClock = /\/clock\/?$/.test(usePathname() ?? "");
   let url = searchParams.get("url") || "";
   let token = searchParams.get("token") || "";
   if ((!url || !token) && typeof window !== "undefined") {
@@ -78,6 +84,7 @@ function RecorderTemplateInner() {
       <StageBoundary>
         <ZoomRecordingStage />
       </StageBoundary>
+      {debugClock && <CompositeClock />}
     </LiveKitRoom>
   );
 }
@@ -349,5 +356,15 @@ function MutedMicIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 16 16" fill="currentColor" className={className} aria-hidden="true">
       <path d="M12.5 7.5a.75.75 0 0 0-1.5 0 4.5 4.5 0 0 1-1.1 2.94l1.08 1.08A5.97 5.97 0 0 0 12.5 7.5ZM8 1a2.5 2.5 0 0 0-2.5 2.5v1.38l4.98 4.98A2.5 2.5 0 0 0 10.5 7.5v-4A2.5 2.5 0 0 0 8 1ZM2.03 1.97a.75.75 0 0 0-1.06 1.06l13 13a.75.75 0 1 0 1.06-1.06l-2.01-2.01A5.98 5.98 0 0 0 14 7.5a.75.75 0 0 0-1.5 0 4.48 4.48 0 0 1-.58 2.2l-1.1-1.1V7.5a2.5 2.5 0 0 0-.27-1.12l-1.8-1.8V3.5a2.5 2.5 0 0 0-.25-1.08L2.03 1.97ZM3.5 7.5a4.48 4.48 0 0 0 .58 2.2l1.1-1.1A2.5 2.5 0 0 1 5.5 7.5V5.92L4.03 4.45A5.97 5.97 0 0 0 3.5 7.5Zm3.75 5.95V14.75a.75.75 0 0 0 1.5 0v-1.3c.73-.07 1.42-.28 2.05-.6l-1.13-1.13a4.5 4.5 0 0 1-.92.23Z" />
     </svg>
+  );
+}
+
+/** The server-synced clock in the composite's corner, for reading glass-to-glass latency. */
+function CompositeClock() {
+  const offset = useServerClockOffset(true);
+  return (
+    <div className="pointer-events-none fixed bottom-3 right-3 z-50">
+      <EdgeClock offsetMs={offset} />
+    </div>
   );
 }

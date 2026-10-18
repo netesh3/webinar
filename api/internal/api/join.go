@@ -135,7 +135,12 @@ func (s *Server) joinAsAttendee(
 	// The number normally arrives with the room above, so this second call to the
 	// SFU is a fallback rather than the path. It is the difference between one and
 	// two round trips on every join, and a full audience arrives all at once.
-	if !known {
+	if wb.Delivery == types.DeliveryEdge {
+		/* An edge audience is not on the video server, so the server's count is only the
+		 * stage. The viewers are the open event streams (edgeOccupancy). Counted the same
+		 * way for someone being let back onto the stage, which errs towards admitting. */
+		count, err = s.edgeOccupancy(r.Context(), slug)
+	} else if !known {
 		count, err = sfu.ParticipantCount(r.Context(), room)
 	}
 	if err != nil {
@@ -167,6 +172,21 @@ func (s *Server) joinAsAttendee(
 		grant = store.StageGrant{}
 	} else if grant.Granted {
 		role = types.RolePanelist
+	}
+
+	/* Edge delivery: no LiveKit token at all for the audience, only the LL-HLS playlist and
+	 * the event-stream token (edge.go). Someone the host has put on the stage falls through
+	 * to the ordinary token below; on demotion their browser joins again and lands here. */
+	if playback, edge := s.edgeAudience(r.Context(), wb, grant.Granted); edge {
+		s.setRejoinCookie(w, wb, reg)
+		if s.issueEdgeAudience(w, r, wb, identity, display, playback) {
+			_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
+			if wb.Status == types.StatusLive {
+				go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
+			}
+			s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
+		}
+		return
 	}
 
 	// Check if host has CDN broadcast capability enabled
@@ -728,6 +748,7 @@ func (s *Server) issueToken(
 		CdnBroadcast:   cdnBroadcast,
 		CdnStreamURL:   cdnStreamURL,
 		CdnLowLatency:  cdnLowLatency,
+		EdgeWebinar:    wb.Delivery == types.DeliveryEdge,
 	})
 	return true
 }

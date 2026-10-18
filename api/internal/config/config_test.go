@@ -456,10 +456,59 @@ func setEnv(t *testing.T, env map[string]string) {
 		"BROADCAST_RTMP_BASE", "BROADCAST_HLS_BASE",
 		"META_APP_ID", "META_APP_SECRET", "META_WHATSAPP_CONFIG_ID",
 		"META_WEBHOOK_VERIFY_TOKEN", "WHATSAPP_GRAPH_URL",
+		"EDGE_PLAYBACK_BASE", "EDGE_DEBUG_CLOCK", "EDGE_ENCODING_WIDTH", "EDGE_ENCODING_HEIGHT",
+		"EDGE_ENCODING_FPS", "EDGE_VIDEO_BITRATE_KBPS", "EDGE_H264_PROFILE",
 	} {
 		t.Setenv(key, "")
 	}
 	for k, v := range env {
 		t.Setenv(k, v)
+	}
+}
+
+func TestEdgeEncodingDefaultsAndValidation(t *testing.T) {
+	setEnv(t, map[string]string{})
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.EdgeEncodingWidth != 1280 || c.EdgeEncodingHeight != 720 || c.EdgeEncodingFPS != 30 ||
+		c.EdgeVideoBitrateKbps != 1700 || c.EdgeH264Profile != "baseline" {
+		t.Errorf("defaults = %dx%d@%d %dkbps %s, want today's 720p baseline", c.EdgeEncodingWidth,
+			c.EdgeEncodingHeight, c.EdgeEncodingFPS, c.EdgeVideoBitrateKbps, c.EdgeH264Profile)
+	}
+
+	setEnv(t, map[string]string{"EDGE_ENCODING_WIDTH": "1920", "EDGE_ENCODING_HEIGHT": "1080",
+		"EDGE_VIDEO_BITRATE_KBPS": "4500", "EDGE_H264_PROFILE": "High"})
+	if c, err = Load(); err != nil || c.EdgeH264Profile != "high" || c.EdgeEncodingWidth != 1920 {
+		t.Errorf("1080p high: %+v %v", c.EdgeH264Profile, err)
+	}
+
+	for key, bad := range map[string]string{
+		"EDGE_ENCODING_WIDTH":     "wide",
+		"EDGE_ENCODING_HEIGHT":    "1081",
+		"EDGE_ENCODING_FPS":       "120",
+		"EDGE_VIDEO_BITRATE_KBPS": "50",
+		"EDGE_H264_PROFILE":       "ultra",
+	} {
+		setEnv(t, map[string]string{key: bad})
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), key) {
+			t.Errorf("%s=%q: error = %v, want one naming it", key, bad, err)
+		}
+	}
+}
+
+func TestEdgePlaybackURL(t *testing.T) {
+	c := Config{BroadcastHLSBase: "https://live.example/live"}
+	if got := c.EdgePlaybackURLFor("", "w1"); got != "" {
+		t.Errorf("no RTMP origin: %q, want empty", got)
+	}
+	c.BroadcastRTMPBase = "rtmp://127.0.0.1:1935/live"
+	if got := c.EdgePlaybackURLFor("", "w1"); got != "https://live.example/live/w1/index.m3u8" {
+		t.Errorf("origin: %q", got)
+	}
+	c.EdgePlaybackBase = "https://cdn.example/live"
+	if got := c.EdgePlaybackURLFor("", "w1"); got != "https://cdn.example/live/w1/index.m3u8" {
+		t.Errorf("cdn: %q", got)
 	}
 }

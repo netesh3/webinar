@@ -617,10 +617,14 @@ export function useSessionControls(
   useEffect(() => {
     if (!room) return;
 
-    const read = () => {
-      if (!room.metadata) return;
+    /* The string the event carries when there is one, else the room's own copy. The
+     * same thing for a LiveKit room; for an edge viewer's room, which never connects
+     * and so has no metadata of its own, the event is the only copy (lib/edge-events.ts). */
+    const read = (fromEvent?: unknown) => {
+      const raw = typeof fromEvent === "string" && fromEvent ? fromEvent : room.metadata;
+      if (!raw) return;
       try {
-        const parsed = JSON.parse(room.metadata) as RoomMeta;
+        const parsed = JSON.parse(raw) as RoomMeta;
         if (parsed && typeof parsed === "object" && parsed.controls) {
           setMeta(parsed);
         }
@@ -629,12 +633,13 @@ export function useSessionControls(
       }
     };
 
+    const onConnected = () => read();
     read();
     room.on(RoomEvent.RoomMetadataChanged, read);
-    room.on(RoomEvent.Connected, read);
+    room.on(RoomEvent.Connected, onConnected);
     return () => {
       room.off(RoomEvent.RoomMetadataChanged, read);
-      room.off(RoomEvent.Connected, read);
+      room.off(RoomEvent.Connected, onConnected);
     };
   }, [room]);
 

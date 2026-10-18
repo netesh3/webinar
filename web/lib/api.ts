@@ -86,6 +86,8 @@ import type {
   IntegrationsResponse,
   Webinar,
   WebinarInput,
+  EdgeStatus,
+  ServerTime,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 
@@ -340,6 +342,17 @@ export const api = {
   /** The room's Q&A as this participant may see it, with their own upvotes — what a
    *  rejoin or a reconnect reads back. Hidden questions come back to the audience as
    *  ids only. */
+  /** Edge delivery: the event stream URL an edge viewer opens with EventSource (the
+   *  token is a query parameter because EventSource cannot send headers). */
+  edgeEventsUrl: (slug: string, token: string) =>
+    `${API_BASE}/api/webinars/${seg(slug)}/events?t=${encodeURIComponent(token)}`,
+
+  /** The host's view of edge delivery for one webinar: on or off, and how many watch. */
+  hostEdgeStatus: (slug: string) => request<EdgeStatus>(`/api/host/webinars/${seg(slug)}/edge`, fresh),
+
+  /** The server's clock, for the edge latency overlay. */
+  serverTime: () => request<ServerTime>("/api/time", fresh),
+
   roomQuestions: (slug: string, joinKey?: string) =>
     request<RoomQuestions>(
       `/api/webinars/${seg(slug)}/questions${joinKey ? `?joinKey=${seg(joinKey)}` : ""}`,

@@ -2654,6 +2654,14 @@ export interface Webinar {
   venue?: string;
   zoomId?: string;
   /**
+   *  Delivery is how the audience receives the session: DeliveryStandard (everyone on
+   * 	 * the SFU, or the WHEP mix for CDN-broadcast hosts — today's behaviour) or
+   * 	 * DeliveryEdge (the audience watches LL-HLS and gets chat, polls and controls over
+   * 	 * the SSE event stream, never connecting to LiveKit). Edge is opt-in per webinar,
+   * 	 * behind FeatureEdgeDelivery. See docs/edge-delivery.md.
+   */
+  delivery?: string;
+  /**
    *  ZoomNotice is set on a save Zoom's plan refused. Not stored.
    */
   zoomNotice?: string;
@@ -2786,6 +2794,11 @@ export interface WebinarInput {
    *  Venue is app, zoom_meeting, or zoom_webinar. Empty means this app.
    */
   venue?: string;
+  /**
+   *  Delivery is standard or edge (Webinar.Delivery). Empty keeps what is saved,
+   * 	 * or standard on a create, so a client that never heard of it changes nothing.
+   */
+  delivery?: string;
   /**
    *  Recurrence is set when this save creates a series, or when a following
    * 	 * edit changes the schedule. SeriesScope is "this" or "following" on an
@@ -2968,6 +2981,24 @@ export const FeatureZoom = "zoom";
  * 	 * everyone in their session; see JoinResponse.Whiteboard.
  */
 export const FeatureWhiteboard = "whiteboard";
+/**
+ *  FeatureEdgeDelivery lets a host choose Edge delivery for a webinar: the stage
+ * 	 * stays on WebRTC and the audience watches a low-latency HLS feed, with chat,
+ * 	 * polls and controls over the SSE event stream instead of LiveKit.
+ * 	 *
+ * 	 * Off — the default for every account, because absent means off — means the
+ * 	 * choice is not offered and a save asking for it is refused. Beta. See
+ * 	 * docs/edge-delivery.md.
+ */
+export const FeatureEdgeDelivery = "edge_delivery";
+/**
+ * Delivery modes (Webinar.Delivery).
+ */
+export const DeliveryStandard = "standard";
+/**
+ * Delivery modes (Webinar.Delivery).
+ */
+export const DeliveryEdge = "edge";
 /**
  *  Feature is one switch as the admin screen renders it.
  *  *
@@ -5874,6 +5905,40 @@ export interface JoinResponse {
    * so the player can sit close to the live edge. False for simulive.
    */
   cdnLowLatency?: boolean;
+  /**
+   *  Delivery is "edge" when this caller is an edge-delivery viewer (Webinar.Delivery): Token
+   * 	 * and URL are empty, the browser plays PlaybackURL with hls.js, and reads session events
+   * 	 * from GET /api/webinars/{slug}/events?t=EventsToken instead of the LiveKit data channel.
+   * 	 * Empty for everyone else, including someone on an edge webinar's stage.
+   */
+  delivery?: string;
+  playbackUrl?: string;
+  eventsToken?: string;
+  /**
+   * DebugClock asks the edge player to show its server-synced clock (EDGE_DEBUG_CLOCK).
+   */
+  debugClock?: boolean;
+  /**
+   * EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
+   * viewer's browser knows that demotion returns them to the feed, not to the SFU.
+   */
+  edgeWebinar?: boolean;
+}
+/**
+ * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
+ * latency clock overlay.
+ */
+export interface ServerTime {
+  now: number /* int64 */;
+}
+/**
+ *  EdgeStatus is the host's view of a webinar's delivery: whether the audience is on edge,
+ *  * how many are watching the feed right now (open event streams), and what they play.
+ */
+export interface EdgeStatus {
+  delivery: string;
+  viewers: number /* int */;
+  playbackUrl?: string;
 }
 export interface SetUserMaxDurationRequest {
   maxDurationMin?: number /* int */;

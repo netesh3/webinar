@@ -1244,6 +1244,39 @@ func (c *Client) StartBroadcastEgress(
 	return c.egress.StartRoomCompositeEgress(ctx, req)
 }
 
+/* StartBroadcastEgressEncoded is StartBroadcastEgress with an explicit encoding instead of a
+ * preset. Used for edge webinars only, whose mix encoding is configurable (EDGE_ENCODING_*). */
+func (c *Client) StartBroadcastEgressEncoded(
+	ctx context.Context,
+	roomName string,
+	templateURL string,
+	enc BroadcastEncoding,
+	rtmpURL string,
+	extraURLs []string,
+) (*livekit.EgressInfo, error) {
+	if c.egress == nil {
+		return nil, errors.New("egress is not configured on this client")
+	}
+	urls := compactRTMP(rtmpURL, extraURLs)
+	if len(urls) == 0 {
+		return nil, errors.New("broadcast egress needs an RTMP URL: it has no other output")
+	}
+	req := &livekit.RoomCompositeEgressRequest{
+		RoomName: roomName,
+		StreamOutputs: []*livekit.StreamOutput{
+			{Protocol: livekit.StreamProtocol_RTMP, Urls: urls},
+		},
+		Options: &livekit.RoomCompositeEgressRequest_Advanced{Advanced: enc.options()},
+	}
+	if templateURL != "" {
+		req.CustomBaseUrl = templateURL
+		req.Layout = "custom"
+	} else {
+		req.Layout = "speaker"
+	}
+	return c.egress.StartRoomCompositeEgress(ctx, req)
+}
+
 /* StartCombinedEgress writes the recording file and feeds the attendee mix from
  * a single compositor.
  *
@@ -1369,6 +1402,30 @@ func compactRTMP(origin string, extra []string) []string {
  * KeyFrameInterval pins a 1s GOP, so an attendee joining mid-session waits at
  * most a second for the keyframe their decoder needs before showing anything,
  * rather than however long the encoder felt like. */
+/* BroadcastEncoding is an explicit mix encoding, for edge webinars (config EDGE_ENCODING_*).
+ * The audio settings and the 1s keyframe interval are the broadcast's and are not options. */
+type BroadcastEncoding struct {
+	Width, Height, FPS, BitrateKbps int
+	// Profile is baseline, main or high. Baseline is what WHEP can take; high compresses
+	// screen-share text better once only HLS consumes the mix.
+	Profile string
+}
+
+func (e BroadcastEncoding) options() *livekit.EncodingOptions {
+	opts := broadcastEncodingOptions(livekit.EncodingOptionsPreset_H264_720P_30)
+	opts.Width, opts.Height = int32(e.Width), int32(e.Height)              // #nosec G115 -- validated at config load (<= 3840)
+	opts.Framerate, opts.VideoBitrate = int32(e.FPS), int32(e.BitrateKbps) // #nosec G115 -- validated at config load
+	switch e.Profile {
+	case "main":
+		opts.VideoCodec = livekit.VideoCodec_H264_MAIN
+	case "high":
+		opts.VideoCodec = livekit.VideoCodec_H264_HIGH
+	default:
+		opts.VideoCodec = livekit.VideoCodec_H264_BASELINE
+	}
+	return opts
+}
+
 func broadcastEncodingOptions(preset livekit.EncodingOptionsPreset) *livekit.EncodingOptions {
 	opts := encodingOptionsFor(preset)
 	opts.VideoCodec = livekit.VideoCodec_H264_BASELINE

@@ -69,6 +69,7 @@ export function scheduleSummary(
   if (duration) parts.push(duration);
   if (form.venue === "zoom_meeting") parts.push("Zoom meeting");
   if (form.venue === "zoom_webinar") parts.push("Zoom webinar");
+  if (form.venue === "app" && form.delivery === "edge") parts.push("Edge delivery");
   parts.push(
     form.registrationRequired
       ? form.approval === "manual"

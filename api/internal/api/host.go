@@ -208,6 +208,11 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
 		return types.Webinar{}, false
 	}
+	delivery, deliveryFields := s.resolveDelivery(r.Context(), user.ID, in, "")
+	if len(deliveryFields) > 0 {
+		httpx.Fields(w, deliveryFields)
+		return types.Webinar{}, false
+	}
 	savedZoom, venueFields, err := s.resolveZoom(r.Context(), user.ID, "", &in)
 	if len(venueFields) > 0 {
 		httpx.Fields(w, venueFields)
@@ -250,6 +255,13 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 		s.fail(w, r, "create webinar: zoom save", err)
 		return types.Webinar{}, false
 	}
+	if delivery != types.DeliveryStandard {
+		if err := s.saveDelivery(r.Context(), wb.ID, delivery); err != nil {
+			s.fail(w, r, "create webinar: delivery", err)
+			return types.Webinar{}, false
+		}
+	}
+	wb.Delivery = delivery
 	if savedZoom.ZoomID != "" || savedZoom.Notice != "" {
 		wb, err = s.store.WebinarBySlug(r.Context(), wb.ID)
 		if err != nil {
@@ -361,6 +373,19 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		httpx.Fields(w, venueFields)
 		return
 	}
+	// Checked against a copy so nothing here changes what the update itself saves.
+	check := in
+	if hasPrev && check.Kind == "" {
+		check.Kind = prev.Kind
+	}
+	if hasPrev && prev.SeriesID != "" && check.Delivery == "" {
+		check.Delivery = types.DeliveryStandard
+	}
+	delivery, deliveryFields := s.resolveDelivery(r.Context(), hostID, check, prev.Delivery)
+	if len(deliveryFields) > 0 {
+		httpx.Fields(w, deliveryFields)
+		return
+	}
 	if errors.Is(err, errZoomFeatureOff) {
 		httpx.Error(w, http.StatusForbidden, "feature_off",
 			featureLabel(types.FeatureZoom)+" isn't switched on for this account.")
@@ -432,6 +457,12 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if err := s.persistZoom(r.Context(), wb.ID, savedZoom); err != nil {
 		s.fail(w, r, "update webinar: zoom save", err)
 		return
+	}
+	if delivery != prev.Delivery {
+		if err := s.saveDelivery(r.Context(), wb.ID, delivery); err != nil {
+			s.fail(w, r, "update webinar: delivery", err)
+			return
+		}
 	}
 	wb, err = s.store.WebinarBySlug(r.Context(), wb.ID)
 	if err != nil {
@@ -1911,7 +1942,24 @@ func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.
 		MutedByHost: false,
 		Promoted:    promoting,
 	}); err != nil {
-		return err
+		/* An edge viewer is watching LL-HLS and is not in the room, so there is no
+		 * participant to change. The grant below is the whole promotion for them: the
+		 * stage-granted packet tells their browser to join again, and that join reads
+		 * the grant and returns a stage token. A demotion of someone already back on
+		 * the feed only has to clear the grant. */
+		if !errors.Is(err, lk.ErrNotInRoom) || wb.Delivery != types.DeliveryEdge {
+			return err
+		}
+		kind := "stage-granted"
+		if !promoting {
+			kind = "stage-revoked"
+		}
+		defer func() {
+			_ = s.sendRoomPacket(ctx, sfu, slug, []string{identity}, map[string]any{
+				"kind": kind, "identity": identity, "audioOnly": audioOnly,
+				"at": time.Now().UnixMilli(),
+			})
+		}()
 	}
 
 	var err error
@@ -1939,6 +1987,13 @@ func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := sfu.RemoveParticipant(r.Context(), lk.RoomName(slug), identity); err != nil {
+		if errors.Is(err, lk.ErrNotInRoom) && s.isEdge(r.Context(), slug) {
+			// An edge viewer is never in the room. Record the removal so they cannot
+			// join again, and tell their event stream, which ends it (edge.go).
+			s.removeEdgeViewer(r.Context(), sfu, slug, identity)
+			httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
+			return
+		}
 		if errors.Is(err, lk.ErrNotInRoom) {
 			// Already gone is the requested end state.
 			httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})

@@ -141,6 +141,26 @@ type Config struct {
 	 * watch, and a WHEP URL without RTMP would 404 forever. */
 	BroadcastRTMPBase string
 	BroadcastHLSBase  string
+	/* EdgePlaybackBase is where an Edge-delivery audience plays the LL-HLS feed:
+	 * <base>/<slug>/index.m3u8. Empty derives it from the same origin as the WHEP feed
+	 * (the per-project or global BroadcastHLSBase, whose /live/* route MediaMTX's LL-HLS
+	 * already sits behind). Point it at a CDN pull zone that mirrors that origin (Bunny)
+	 * and nothing else changes. See docs/edge-delivery.md. */
+	EdgePlaybackBase string
+	/* EdgeDebugClock overlays a server-synced wall clock on an edge webinar's composite
+	 * (the egress loads the template at <template>/clock) and on the edge player, so
+	 * glass-to-glass latency can be read off a screenshot. Off by default; a test aid. */
+	EdgeDebugClock bool
+	/* EdgeEncoding is the mix encoding for edge webinars' egress only: EDGE_ENCODING_WIDTH /
+	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (30), EDGE_VIDEO_BITRATE_KBPS (1700) and
+	 * EDGE_H264_PROFILE (baseline|main|high, default baseline). The keyframe interval stays
+	 * 1s. Defaults are exactly today's broadcast encoding; raise them only where the egress
+	 * box can carry it (docs/edge-delivery.md). Validated at load. */
+	EdgeEncodingWidth    int
+	EdgeEncodingHeight   int
+	EdgeEncodingFPS      int
+	EdgeVideoBitrateKbps int
+	EdgeH264Profile      string
 
 	// Branding and public URLs are served to the frontend over /api/config so
 	// the bundle carries no build-time constants for things an operator sets.
@@ -480,6 +500,13 @@ func Load() (Config, error) {
 		RecordingsCDNBaseURL:        strings.TrimRight(env("RECORDINGS_CDN_BASE_URL", ""), "/"),
 		BroadcastRTMPBase:           strings.TrimRight(env("BROADCAST_RTMP_BASE", ""), "/"),
 		BroadcastHLSBase:            strings.TrimRight(env("BROADCAST_HLS_BASE", ""), "/"),
+		EdgePlaybackBase:            strings.TrimRight(env("EDGE_PLAYBACK_BASE", ""), "/"),
+		EdgeDebugClock:              strings.EqualFold(strings.TrimSpace(env("EDGE_DEBUG_CLOCK", "")), "true"),
+		EdgeEncodingWidth:           envIntStrict("EDGE_ENCODING_WIDTH", 1280),
+		EdgeEncodingHeight:          envIntStrict("EDGE_ENCODING_HEIGHT", 720),
+		EdgeEncodingFPS:             envIntStrict("EDGE_ENCODING_FPS", 30),
+		EdgeVideoBitrateKbps:        envIntStrict("EDGE_VIDEO_BITRATE_KBPS", 1700),
+		EdgeH264Profile:             strings.ToLower(strings.TrimSpace(env("EDGE_H264_PROFILE", "baseline"))),
 	}
 	if c.RecordingsMode == "" {
 		if c.RecordingsBackend == "s3" {
@@ -730,6 +757,7 @@ func (c Config) validate() error {
 	if c.MinPasswordLength < 1 {
 		errs = append(errs, errors.New("MIN_PASSWORD_LENGTH must be >= 1"))
 	}
+	errs = append(errs, c.edgeEncodingErrors()...)
 
 	if !c.IsDev() {
 		// A relaxed floor is a development convenience. Letting it reach production
@@ -786,6 +814,44 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+/* envIntStrict is envInt for a value that must not fall back silently: anything set but not a
+ * whole number reads as -1, which the validation rejects with the variable's name. */
+func envIntStrict(key string, def int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+// edgeEncodingErrors checks the edge egress encoding is something an H.264 encoder accepts.
+func (c Config) edgeEncodingErrors() []error {
+	var errs []error
+	check := func(name string, v, lo, hi int, even bool) {
+		if v < lo || v > hi || (even && v%2 != 0) {
+			msg := fmt.Sprintf("%s must be a whole number from %d to %d", name, lo, hi)
+			if even {
+				msg += ", and even"
+			}
+			errs = append(errs, fmt.Errorf("%s (got %d)", msg, v))
+		}
+	}
+	check("EDGE_ENCODING_WIDTH", c.EdgeEncodingWidth, 320, 3840, true)
+	check("EDGE_ENCODING_HEIGHT", c.EdgeEncodingHeight, 180, 2160, true)
+	check("EDGE_ENCODING_FPS", c.EdgeEncodingFPS, 10, 60, false)
+	check("EDGE_VIDEO_BITRATE_KBPS", c.EdgeVideoBitrateKbps, 300, 20000, false)
+	switch c.EdgeH264Profile {
+	case "baseline", "main", "high":
+	default:
+		errs = append(errs, fmt.Errorf("EDGE_H264_PROFILE must be baseline, main or high: %q", c.EdgeH264Profile))
+	}
+	return errs
 }
 
 func envBool(key string, def bool) bool {
@@ -849,6 +915,29 @@ func (c Config) BroadcastHLSURLFor(projectID, slug string) string {
 		return p.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
 	}
 	return c.BroadcastHLSURL(slug)
+}
+
+/* EdgePlaybackURLFor is the LL-HLS playlist an Edge-delivery audience plays.
+ *
+ * Empty when there is no live origin (no BROADCAST_RTMP_BASE): the egress has nowhere to
+ * push, so there is nothing to play, and join keeps the audience on standard delivery. */
+func (c Config) EdgePlaybackURLFor(projectID, slug string) string {
+	slug = strings.TrimSpace(slug)
+	if c.BroadcastRTMPBase == "" || slug == "" {
+		return ""
+	}
+	base := c.EdgePlaybackBase
+	if base == "" {
+		if p, ok := c.liveKitProject(projectID); ok && p.BroadcastHLSBase != "" {
+			base = p.BroadcastHLSBase
+		} else {
+			base = c.BroadcastHLSBase
+		}
+	}
+	if base == "" {
+		return ""
+	}
+	return base + "/" + slug + "/index.m3u8"
 }
 
 func (c Config) liveKitProject(id string) (LiveKitProject, bool) {
