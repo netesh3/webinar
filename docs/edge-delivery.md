@@ -77,6 +77,11 @@ both can run side by side on the same deployment and be compared.
     `liveSyncDurationCount` / `liveMaxLatencyDurationCount` / `liveSyncDuration`: hls.js reads
     those from the constructor config and, when set, ignores the playlist's `PART-HOLD-BACK`
     (see 6ffc2e2). Smooth mode lands on hls.js's default 3 × target duration.
+  - **Catching up.** hls.js only speeds up toward its target in low-latency mode, so in smooth
+    mode each stall used to add a second for good (3s drifting to 6–8s from India). The
+    player now plays at 1.1× while more than 1s past the target with 1.5s buffered ahead,
+    back to 1× within 0.3s of it, and jumps to live in either mode past 6s over
+    (`catchUp` in `lib/edge-hls.ts`).
   - A stall or a recovery never shows black: the last frame is held on a canvas with a
     "Reconnecting…" badge until playback resumes. Fatal network errors retry with backoff
     (1, 2, 4, 8, 10s); media errors use hls.js's recovery.

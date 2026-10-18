@@ -4,7 +4,17 @@
  */
 
 import assert from "node:assert/strict";
-import { ModeDecider, edgeHlsConfig, latencyLabel, median, modeLabel, retryDelayMs } from "./edge-hls.ts";
+import {
+  CATCH_UP,
+  ModeDecider,
+  bufferedAhead,
+  catchUp,
+  edgeHlsConfig,
+  latencyLabel,
+  median,
+  modeLabel,
+  retryDelayMs,
+} from "./edge-hls.ts";
 import { routeEdgeEvent } from "./edge-route.ts";
 import { clockOffset, formatClock } from "./server-clock.ts";
 
@@ -21,6 +31,30 @@ for (const mode of ["low-latency", "standard"] as const) {
 }
 assert.equal(edgeHlsConfig("low-latency").maxBufferLength, 4);
 assert.equal(edgeHlsConfig("standard").maxBufferLength, 6);
+
+// Standard mode catches up, since hls.js only does in low-latency mode.
+{
+  const at = (latency: number, rate = 1, bufferAhead = 4) => catchUp({ latency, target: 3, bufferAhead, rate });
+  // Near the target: normal speed.
+  assert.deepEqual(at(3.5), { rate: 1 });
+  // The edge test's 6–8s: faster, until close to the target again (hysteresis).
+  assert.deepEqual(at(7), { rate: CATCH_UP.rate });
+  assert.deepEqual(at(3.6, CATCH_UP.rate), { rate: CATCH_UP.rate });
+  assert.deepEqual(at(3.2, CATCH_UP.rate), { rate: 1 });
+  // Never at the cost of the buffer: that would cause the stall it recovers from.
+  assert.deepEqual(at(7, CATCH_UP.rate, 1), { rate: 1 });
+  // Far behind: jump, buffer or not.
+  assert.equal(at(9.5, 1, 0), "jump");
+  // Nothing to go on: leave it alone.
+  assert.deepEqual(catchUp({ latency: NaN, target: 3, bufferAhead: 4, rate: 1.1 }), { rate: 1 });
+  assert.deepEqual(catchUp({ latency: 7, target: 0, bufferAhead: 4, rate: 1 }), { rate: 1 });
+}
+{
+  const ranges = (r: [number, number][]) => ({ length: r.length, start: (i: number) => r[i][0], end: (i: number) => r[i][1] });
+  assert.equal(bufferedAhead(ranges([[0, 5], [6, 12]]), 8), 4);
+  assert.equal(bufferedAhead(ranges([[0, 5]]), 5), 0);
+  assert.equal(bufferedAhead(ranges([]), 1), 0);
+}
 
 // Far from the origin (India → Germany, ~450ms per request): stays smooth.
 {

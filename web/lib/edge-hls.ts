@@ -137,6 +137,55 @@ export class ModeDecider {
   }
 }
 
+/* Catching up in standard mode.
+ *
+ * hls.js only speeds playback toward its target latency in low-latency mode (its latency
+ * controller returns early otherwise), and nothing seeks back to live either. So in standard
+ * mode every stall adds a second that is never won back: a viewer far from the origin starts
+ * 3s behind and drifts to 6–8s within minutes (edge test, 2026-10-18). This plays a little
+ * faster while there is buffer to spare, and jumps to live once it is far behind.
+ *
+ * Hysteresis on both ends, so the rate does not flicker: speed up past START_ABOVE, return to
+ * normal within STOP_WITHIN of the target or once the buffer ahead runs thin, so catching up
+ * never causes the stall it is recovering from. */
+export const CATCH_UP = {
+  /** Seconds past the target latency before speeding up. */
+  startAbove: 1,
+  /** Back to normal speed this close to the target. */
+  stopWithin: 0.3,
+  /** Barely audible; browsers keep the pitch. */
+  rate: 1.1,
+  /** Seconds buffered ahead of the playhead needed to keep playing faster. */
+  minBuffer: 1.5,
+  /** Seconds past the target where catching up at CATCH_UP.rate would take too long: jump. */
+  jumpAbove: 6,
+} as const;
+
+export type CatchUp = { rate: number } | "jump";
+
+/** What to do about the distance from live, given the current playback rate. */
+export function catchUp(o: {
+  latency: number;
+  target: number;
+  bufferAhead: number;
+  rate: number;
+}): CatchUp {
+  if (!Number.isFinite(o.latency) || !Number.isFinite(o.target) || o.target <= 0) return { rate: 1 };
+  const over = o.latency - o.target;
+  if (over > CATCH_UP.jumpAbove) return "jump";
+  if (o.bufferAhead < CATCH_UP.minBuffer || over <= CATCH_UP.stopWithin) return { rate: 1 };
+  if (o.rate > 1 || over > CATCH_UP.startAbove) return { rate: CATCH_UP.rate };
+  return { rate: 1 };
+}
+
+/** Seconds of media buffered ahead of `time`, from a video element's buffered ranges. */
+export function bufferedAhead(ranges: { length: number; start(i: number): number; end(i: number): number }, time: number): number {
+  for (let i = 0; i < ranges.length; i++) {
+    if (ranges.start(i) <= time + 0.1 && time < ranges.end(i)) return ranges.end(i) - time;
+  }
+  return 0;
+}
+
 /** Delay before retrying after a fatal network error: 1s, 2s, 4s, capped at 10s. */
 export function retryDelayMs(attempt: number): number {
   return Math.min(10_000, 1000 * 2 ** Math.max(0, attempt));

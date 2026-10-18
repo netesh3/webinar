@@ -24,6 +24,8 @@ import {
   BEHIND_LIVE_SECONDS,
   MODE_BUFFER,
   ModeDecider,
+  bufferedAhead,
+  catchUp,
   edgeHlsConfig,
   latencyLabel,
   modeLabel,
@@ -233,13 +235,39 @@ export function EdgePlayer({
     };
   }, [playbackUrl, lowLatency]);
 
-  // Latency: hls.js knows it; natively it is the distance to the end of the seekable range.
+  const latencyRef = useRef(latency);
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    latencyRef.current = latency;
+    modeRef.current = mode;
+  }, [latency, mode]);
+
+  /* Latency: hls.js knows it; natively it is the distance to the end of the seekable range.
+   * The same tick keeps hls.js near live: it only does that itself in low-latency mode, so
+   * standard mode plays slightly faster while behind, and either mode jumps when far behind
+   * (lib/edge-hls.ts catchUp). Safari's native player keeps its own distance. */
   useEffect(() => {
     const timer = setInterval(() => {
       const hls = hlsRef.current;
       const video = videoRef.current;
       if (hls && Number.isFinite(hls.latency) && hls.latency > 0) {
         setLatency(hls.latency);
+        const target = hls.targetLatency;
+        if (video && !video.paused && target != null) {
+          const next = catchUp({
+            latency: hls.latency,
+            target,
+            bufferAhead: bufferedAhead(video.buffered, video.currentTime),
+            rate: video.playbackRate,
+          });
+          const live = hls.liveSyncPosition;
+          if (next === "jump") {
+            if (live != null && Number.isFinite(live)) video.currentTime = live;
+            video.playbackRate = 1;
+          } else if (modeRef.current === "standard" && video.playbackRate !== next.rate) {
+            video.playbackRate = next.rate;
+          }
+        }
       } else if (video && video.seekable.length > 0) {
         setLatency(Math.max(0, video.seekable.end(video.seekable.length - 1) - video.currentTime));
       }
@@ -247,12 +275,6 @@ export function EdgePlayer({
     return () => clearInterval(timer);
   }, []);
 
-  const latencyRef = useRef(latency);
-  const modeRef = useRef(mode);
-  useEffect(() => {
-    latencyRef.current = latency;
-    modeRef.current = mode;
-  }, [latency, mode]);
   useEffect(() => {
     if (!telemetryEnabled) return;
     const timer = setInterval(() => {
