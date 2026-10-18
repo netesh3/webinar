@@ -1521,6 +1521,33 @@ func (s *Server) handleParticipants(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.TouchAttendanceMany(r.Context(), slug, seen)
 	}
 
+	// Edge viewers watch the feed and are never on the video server, so they are listed
+	// from their open event streams. A promoted viewer is on both until their stream
+	// closes; the video server's row wins.
+	if wb.Delivery == types.DeliveryEdge {
+		viewers, err := s.store.OpenEdgeViewers(r.Context(), slug)
+		if err != nil {
+			s.log.Warn("participants: edge viewers", "slug", slug, "error", err)
+		}
+		inRoom := make(map[string]bool, len(list))
+		for _, p := range list {
+			inRoom[p.Identity] = true
+		}
+		for _, v := range viewers {
+			if inRoom[v.Identity] {
+				continue
+			}
+			list = append(list, types.LiveParticipant{
+				Identity:   v.Identity,
+				Name:       v.Name,
+				Role:       types.RoleAttendee,
+				JoinedAt:   v.JoinedAt.UTC().Format(time.RFC3339),
+				Publishing: []string{},
+			})
+			attendees++
+		}
+	}
+
 	httpx.JSON(w, http.StatusOK, types.LiveRoom{
 		Room:         lk.RoomName(slug),
 		Status:       wb.Status,
