@@ -4,7 +4,7 @@ import { Component, Suspense, useEffect, useState, useMemo, useRef } from "react
 import { usePathname, useSearchParams } from "next/navigation";
 import { EdgeClock } from "@/components/room/edge-clock";
 import { useServerClockOffset } from "@/lib/edge-events";
-import { compositeLayout, isEdgeTemplatePath } from "@/lib/composite-layout";
+import { cameraIsOn, compositeLayout, isEdgeTemplatePath } from "@/lib/composite-layout";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -215,7 +215,9 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
   }
 
   const layout = compositeLayout({ edge: edgeLayout, sharing: Boolean(screenShareRef) });
-  const shownStrip = layout.maxTiles === undefined ? stripRefs : stripRefs.slice(0, layout.maxTiles);
+  const stripCandidates = layout.camerasOnly ? stripRefs.filter(cameraIsOn) : stripRefs;
+  const shownStrip =
+    layout.maxTiles === undefined ? stripCandidates : stripCandidates.slice(0, layout.maxTiles);
 
   return (
     <div className={layout.root}>

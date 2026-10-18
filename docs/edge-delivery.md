@@ -91,7 +91,8 @@ both can run side by side on the same deployment and be compared.
     carries the latency, mode, stall count and median TTFB.
 - **Layout.** Edge webinars' egress loads the composite at `<template>/edge`. While someone
   shares their screen the share fills the **whole frame** and up to three camera tiles sit
-  small over the bottom-right corner (`lib/composite-layout.ts`). Next to the standard 22%
+  small over the bottom-right corner (`lib/composite-layout.ts`), for cameras that are on only:
+  someone with their camera off gets no initials tile over the slides. Next to the standard 22%
   camera strip a share got only ~1000×560 of a 1280×720 frame, which made slide text
   unreadable. Recordings and the CDN broadcast keep the standard layout.
 - **A bad destination no longer takes the mix down.** The compositor starts on our origin
