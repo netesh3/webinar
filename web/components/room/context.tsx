@@ -58,6 +58,10 @@ export type RoomUI = {
    *  in the room sees this, which is the whole point: being recorded without being
    *  told is not something to leave to the client that pressed the button. */
   recording: boolean;
+  /** When the recording in progress started (RFC3339), from the server. Drives the
+   *  REC clock for every browser that did not press Record itself, including one that
+   *  rejoined mid-recording. Optional so rooms with no server recording need not set it. */
+  recordingStartedAt?: string | null;
 
   isHost: boolean;
   /** Live publish permissions, from the connection rather than the join response.

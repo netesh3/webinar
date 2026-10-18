@@ -643,7 +643,16 @@ function ConnectedRoom({
    * open board is still watched like everybody else watches it. */
   const canWhiteboard = join.whiteboard === true && liveRole !== "attendee";
 
-  const { controls, topic, recording, startedAt, endedAt, status, maxDurationMin } = useSessionControls(
+  const {
+    controls,
+    topic,
+    recording,
+    recordingStartedAt,
+    startedAt,
+    endedAt,
+    status,
+    maxDurationMin,
+  } = useSessionControls(
     room,
     join.controls,
     join.maxDurationMin,
@@ -1353,6 +1362,7 @@ function ConnectedRoom({
       status,
       maxDurationMin,
       recording,
+      recordingStartedAt,
       isHost,
       permissions,
       me,
@@ -1400,6 +1410,7 @@ function ConnectedRoom({
       status,
       maxDurationMin,
       recording,
+      recordingStartedAt,
       isHost,
       permissions,
       me,

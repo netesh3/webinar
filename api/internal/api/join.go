@@ -629,21 +629,26 @@ func (s *Server) ensureRoom(
 // them ends up publishing "not recording" over a room that is. One indexed lookup
 // on a path that runs when a host changes a control is not worth optimising away.
 func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, error) {
-	recording, err := s.store.ActiveRecording(ctx, wb.ID)
+	recording, recordingSince, err := s.store.ActiveRecording(ctx, wb.ID)
 	if err != nil {
 		// Better to under-claim than to over-claim: a missing indicator is a bug,
 		// a false one tells people they are being recorded when they are not.
 		s.log.Warn("room metadata: could not read recording state",
 			"slug", wb.ID, "error", err)
 	}
+	recordingStartedAt := ""
+	if recording && !recordingSince.IsZero() {
+		recordingStartedAt = recordingSince.UTC().Format(time.RFC3339Nano)
+	}
 	b, err := json.Marshal(types.RoomMeta{
-		Controls:       wb.Controls,
-		Status:         wb.Status,
-		Topic:          wb.Topic,
-		StartedAt:      wb.StartedAt,
-		EndedAt:        wb.EndedAt,
-		Recording:      recording,
-		MaxDurationMin: wb.MaxDurationMin,
+		Controls:           wb.Controls,
+		Status:             wb.Status,
+		Topic:              wb.Topic,
+		StartedAt:          wb.StartedAt,
+		EndedAt:            wb.EndedAt,
+		Recording:          recording,
+		RecordingStartedAt: recordingStartedAt,
+		MaxDurationMin:     wb.MaxDurationMin,
 	})
 	if err != nil {
 		return "", err

@@ -384,23 +384,31 @@ func (s *Store) FinishActiveRecordings(ctx context.Context, slug string) error {
 	return err
 }
 
-// ActiveRecording reports whether a webinar is being recorded right now.
+// ActiveRecording reports whether a webinar is being recorded right now, and when
+// the recording in progress started.
 //
 // Used to build the room metadata every client reads, so the "recording"
 // indicator is the server's answer rather than each browser's guess. A recording
 // whose uploader vanished does not count.
-func (s *Store) ActiveRecording(ctx context.Context, slug string) (bool, error) {
-	var live bool
+//
+// The start is the newest live take's created_at — after a stop and a restart the
+// REC timer counts from the restart, which is what is being captured now. Zero when
+// nothing is recording. It is what lets somebody who joins (or rejoins) mid-way
+// see the same REC time as the host, instead of the time since their own page loaded.
+func (s *Store) ActiveRecording(ctx context.Context, slug string) (bool, time.Time, error) {
+	var started *time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT EXISTS (
-		  SELECT 1 FROM recordings r JOIN webinars w ON w.id = r.webinar_id
-		   WHERE (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'
-		     AND (r.egress_id IS NOT NULL OR r.last_chunk_at > now() - $2::interval))`,
-		slug, staleAfter.String()).Scan(&live)
+		SELECT MAX(r.created_at) FROM recordings r JOIN webinars w ON w.id = r.webinar_id
+		 WHERE (w.slug = $1 OR w.id::text = $1) AND r.status = 'recording'
+		   AND (r.egress_id IS NOT NULL OR r.last_chunk_at > now() - $2::interval)`,
+		slug, staleAfter.String()).Scan(&started)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return false, err
+		return false, time.Time{}, err
 	}
-	return live, nil
+	if started == nil {
+		return false, time.Time{}, nil
+	}
+	return true, *started, nil
 }
 
 // Recordings lists a webinar's recording sessions, newest first.

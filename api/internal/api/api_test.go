@@ -2623,6 +2623,12 @@ func TestRecordingLifecycle(t *testing.T) {
 	if meta := h.rooms.roomMeta(t, lk.RoomName(wb.ID)); !meta.Recording {
 		t.Error("room metadata does not say the session is being recorded")
 	}
+	// And when it started, so somebody who joins or rejoins mid-recording shows the
+	// host's REC time rather than counting from their own page load.
+	firstStart := recordingStartedAt(t, h.rooms.roomMeta(t, lk.RoomName(wb.ID)))
+	if d := time.Since(firstStart); d < -time.Minute || d > time.Minute {
+		t.Errorf("recordingStartedAt = %s, want about now", firstStart)
+	}
 
 	// One at a time, enforced by the database rather than by a check-then-insert.
 	res, _ = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recordings",
@@ -2669,6 +2675,8 @@ func TestRecordingLifecycle(t *testing.T) {
 	waitRecordingReady(t, h, wb.ID, rec.ID)
 	if meta := h.rooms.roomMeta(t, lk.RoomName(wb.ID)); meta.Recording {
 		t.Error("the room still says it is being recorded after the recording finished")
+	} else if meta.RecordingStartedAt != "" {
+		t.Errorf("recordingStartedAt = %q after the recording finished, want empty", meta.RecordingStartedAt)
 	}
 
 	// A late chunk must not extend a finished file.
@@ -2719,6 +2727,10 @@ func TestRecordingLifecycle(t *testing.T) {
 	if res, raw := h.doRaw(http.MethodPost, chunkPath2, "application/octet-stream", []byte("take-two"), nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("second take chunk: status %d body %s", res.StatusCode, raw)
 	}
+	// The REC clock counts from this take, not the first: it is what is being captured now.
+	if takeStart := recordingStartedAt(t, h.rooms.roomMeta(t, lk.RoomName(wb.ID))); !takeStart.After(firstStart) {
+		t.Errorf("second take recordingStartedAt = %s, want after the first take's %s", takeStart, firstStart)
+	}
 	if res, raw := h.do(http.MethodPost,
 		"/api/host/webinars/"+wb.ID+"/recordings/"+take.ID+"/complete?durationMs=4000", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("second take complete: status %d body %s", res.StatusCode, raw)
@@ -2743,6 +2755,20 @@ func TestRecordingLifecycle(t *testing.T) {
 	if res, _ := h.doRaw(http.MethodGet, filePath, "", nil, nil); res.StatusCode != http.StatusNotFound {
 		t.Errorf("download after delete: status %d, want 404", res.StatusCode)
 	}
+}
+
+// recordingStartedAt reads RoomMeta.RecordingStartedAt, failing the test if it is
+// missing or unparseable — a recording with no start time is the bug under test.
+func recordingStartedAt(t *testing.T, meta types.RoomMeta) time.Time {
+	t.Helper()
+	if !meta.Recording {
+		t.Fatal("room metadata does not say the session is being recorded")
+	}
+	at, err := time.Parse(time.RFC3339Nano, meta.RecordingStartedAt)
+	if err != nil {
+		t.Fatalf("recordingStartedAt = %q: %v", meta.RecordingStartedAt, err)
+	}
+	return at
 }
 
 // Recording is a publishing act, so it follows the same line as publishing: the

@@ -605,6 +605,10 @@ export function useSessionControls(
   /** Whether the session is being recorded. From the server, not from whoever
    *  pressed the button, so every browser in the room agrees. */
   recording: boolean;
+  /** When the recording in progress started (RFC3339), from the server, so a browser
+   *  that joined or rejoined mid-recording shows the same REC time as the host.
+   *  Null when not recording, or before metadata arrives. */
+  recordingStartedAt: string | null;
   /** The maximum meeting duration in minutes for this session. */
   maxDurationMin: number | null;
 } {
@@ -642,6 +646,7 @@ export function useSessionControls(
       startedAt: meta?.startedAt || null,
       endedAt: meta?.endedAt || null,
       recording: meta?.recording === true,
+      recordingStartedAt: meta?.recording === true ? meta.recordingStartedAt || null : null,
       maxDurationMin: meta?.maxDurationMin ?? joinMaxDurationMin ?? null,
     }),
     [meta, fallback, joinMaxDurationMin],

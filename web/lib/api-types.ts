@@ -5990,6 +5990,12 @@ export interface RoomMeta {
    */
   recording: boolean;
   /**
+   * RecordingStartedAt is when the recording in progress started (RFC3339), so every
+   * client — including one that joined or rejoined mid-way — shows the same REC
+   * time. Empty when nothing is being recorded.
+   */
+  recordingStartedAt?: string;
+  /**
    * MaxDurationMin is the maximum allowed duration for this session in minutes.
    */
   maxDurationMin?: number /* int */;

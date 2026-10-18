@@ -102,8 +102,16 @@ export function CdnAttendeeRoom({
   }, [onPromoted]);
 
   // Session controls & metadata
-  const { controls, topic, recording, startedAt, endedAt, status, maxDurationMin } =
-    useSessionControls(room, join.controls, join.maxDurationMin);
+  const {
+    controls,
+    topic,
+    recording,
+    recordingStartedAt,
+    startedAt,
+    endedAt,
+    status,
+    maxDurationMin,
+  } = useSessionControls(room, join.controls, join.maxDurationMin);
 
   // Live roles & permissions
   const liveRole = useLiveRole(room, join.role);
@@ -319,6 +327,7 @@ export function CdnAttendeeRoom({
       status,
       maxDurationMin: maxDurationMin ?? join.maxDurationMin,
       recording,
+      recordingStartedAt,
       isHost: false,
       permissions,
       me,
@@ -354,6 +363,7 @@ export function CdnAttendeeRoom({
       status,
       maxDurationMin,
       recording,
+      recordingStartedAt,
       permissions,
       me,
       realtime,

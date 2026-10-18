@@ -78,6 +78,16 @@ function suggestedFileName(topic: string): string {
   return `${safe || "webinar"} — ${date}`;
 }
 
+/* When the room's recording started, as the server says — for every browser that did
+ * not press Record itself: an attendee, a co-host, or the host after a rejoin, whose
+ * own recorder state started over with the page. Without it those clocks counted from
+ * when the page mounted, so a rejoin read 0:00 over a recording ten minutes in. */
+function serverSince(recording: boolean, startedAt: string | null | undefined): number | null {
+  if (!recording || !startedAt) return null;
+  const ms = Date.parse(startedAt);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 export type RecorderContextValue = {
   state: RecorderState;
   bytes: number;
@@ -133,7 +143,7 @@ function useRecorder(): RecorderContextValue {
   const [destination, setDestination] = useState<"cloud" | "local" | null>(null);
 
   const [stoppedRecently, setStoppedRecently] = useState(false);
-  const { recording: serverRecording } = useRoomUI();
+  const { recording: serverRecording, recordingStartedAt: serverStartedAt } = useRoomUI();
 
   // Cleared when the server stops reporting a recording — on that edge, during
   // render, rather than in an effect after it. Only the edge: stop() raising the
@@ -382,7 +392,7 @@ function useRecorder(): RecorderContextValue {
 
   const mine = !stoppedRecently && (state === "recording" || state === "stopping" || state === "starting");
 
-  return { state, bytes, startedAt, destination, start, stop, mine, isEgress };
+  return { state, bytes, startedAt: startedAt ?? serverSince(serverRecording, serverStartedAt), destination, start, stop, mine, isEgress };
 }
 
 /** The control bar's record button: a split button — the main half records or
@@ -823,14 +833,25 @@ function RecordingPill({
 
 /** Top recording banner displayed prominently when recording is active. */
 export function RecordingBanner() {
-  const { recording: serverRecording, isHost, join } = useRoomUI();
-  const { state, startedAt, destination, stop, mine } = useRoomRecorder();
-  const [minimized, setMinimized] = useState(false);
-
+  const { recording: serverRecording } = useRoomUI();
+  const { state } = useRoomRecorder();
   const isRecordingActive =
     serverRecording || state === "recording" || state === "starting" || state === "stopping";
 
   if (!isRecordingActive) return null;
+  return <ActiveRecordingBanner />;
+}
+
+/* Mounted for exactly as long as a recording is on, so `shownSince` — the clock's
+ * last-resort start when neither this browser nor the server knows the real one — is
+ * fixed once per recording. It used to live in Elapsed, which the expand/collapse
+ * toggle remounts, so every toggle reset the clock to 0:00. */
+function ActiveRecordingBanner() {
+  const { isHost, join } = useRoomUI();
+  const { state, startedAt: knownStart, destination, stop, mine } = useRoomRecorder();
+  const [minimized, setMinimized] = useState(false);
+  const [shownSince] = useState(() => Date.now());
+  const startedAt = knownStart ?? shownSince;
 
   const isLocal = destination === "local";
   const canControl = isHost || join.canRecord || mine;
