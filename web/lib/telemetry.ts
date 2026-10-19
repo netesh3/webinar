@@ -13,7 +13,17 @@ import {
 } from "livekit-client";
 import type { TelemetryEvent } from "./api-types";
 import { API_BASE } from "./api";
-import { INITIAL_FLOW, watchFlow, type FlowEvent, type FlowSample, type FlowState } from "./audio-watch";
+import {
+  INITIAL_FLOW,
+  LEVEL_MIN_TALKING,
+  intervalLevelDb,
+  summarizeLevels,
+  watchFlow,
+  type FlowEvent,
+  type FlowSample,
+  type FlowState,
+  type LevelCounters,
+} from "./audio-watch";
 
 /* A temporary telemetry path for one performance-test window — see
  * api/internal/api/telemetry.go for the backend half and why it logs the
@@ -41,6 +51,8 @@ const FLUSH_MS = 10_000;
 // Faster than the quality poll: a stall is judged over seconds (see lib/audio-watch.ts),
 // and each look is one getStats() per microphone, of which there are only the speakers'.
 const AUDIO_WATCH_MS = 3_000;
+// How many of those looks make one report of how loud each voice was: thirty seconds.
+const LEVEL_REPORT_TICKS = 10;
 const MAX_BATCH = 50;
 // Jitter/loss thresholds live server-side, in severityFor — the client only
 // ever reports raw numbers, so there is exactly one place a WARNING is
@@ -339,6 +351,43 @@ function startAudioWatch(room: Room): () => void {
     return events;
   };
 
+  /* How loud each voice is (the level section of lib/audio-watch.ts): one interval level per
+   * look, from the cumulative energy counters, summarised every LEVEL_REPORT_TICKS as
+   * speaker_level (this participant's own microphone, as it leaves) or remote_level (another
+   * speaker, as it arrives here). Muted intervals are left out. */
+  const levelCounters = new Map<string, LevelCounters>();
+  const levelWindows = new Map<
+    string,
+    { event: "speaker_level" | "remote_level"; levels: number[]; describe: () => Record<string, unknown> }
+  >();
+  let ticksSinceLevels = 0;
+
+  const sampleLevel = (
+    key: string,
+    report: Record<string, unknown> | undefined,
+    muted: boolean,
+    event: "speaker_level" | "remote_level",
+    describe: () => Record<string, unknown>,
+  ) => {
+    const energy = num(report?.totalAudioEnergy);
+    const duration = num(report?.totalSamplesDuration);
+    const db = intervalLevelDb(levelCounters.get(key) ?? {}, energy, duration);
+    levelCounters.set(key, { energy, duration });
+    if (muted || db === undefined) return;
+    const window = levelWindows.get(key) ?? { event, levels: [], describe };
+    window.levels.push(db);
+    window.describe = describe;
+    levelWindows.set(key, window);
+  };
+
+  const reportLevels = () => {
+    for (const { event, levels, describe } of levelWindows.values()) {
+      const summary = summarizeLevels(levels);
+      if (summary.talking >= LEVEL_MIN_TALKING) push(event, { ...describe(), ...summary });
+    }
+    levelWindows.clear();
+  };
+
   const watchOwnMicrophone = async (at: number, seen: Set<string>): Promise<boolean> => {
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
     const track = pub?.track as LocalTrack | undefined;
@@ -378,11 +427,20 @@ function startAudioWatch(room: Room): () => void {
         connectionState: room.state,
       });
     }
+    sampleLevel(`local:${pub.trackSid}`, source, pub.isMuted, "speaker_level", () => ({
+      trackSid: pub.trackSid,
+      // The leveller's gain and the speech level it measured, when the processor reports them.
+      processor: processorState(track),
+    }));
     return reported || events.length > 0;
   };
 
   const watchSpeakers = async (at: number, seen: Set<string>): Promise<boolean> => {
     let reported = false;
+    // How loud others arrive is reported only from the stage — the host and the people
+    // speaking with them. Every attendee reporting every speaker every 30 s would be a
+    // hundred copies of the same number.
+    const onStage = room.localParticipant.permissions?.canPublish === true;
     for (const participant of room.remoteParticipants.values()) {
       const pub = participant.getTrackPublication(Track.Source.Microphone);
       const track = pub?.track as RemoteTrack | undefined;
@@ -405,6 +463,13 @@ function startAudioWatch(room: Room): () => void {
           connectionState: room.state,
         });
       }
+      if (onStage) {
+        const key = `remote:${participant.identity}:${pub.trackSid}`;
+        sampleLevel(key, inb, pub.isMuted, "remote_level", () => ({
+          identity: participant.identity,
+          trackSid: pub.trackSid,
+        }));
+      }
       reported ||= events.length > 0;
     }
     return reported;
@@ -421,6 +486,12 @@ function startAudioWatch(room: Room): () => void {
       if (stopped) return;
       // A track that has gone takes its history with it.
       for (const key of flows.keys()) if (!seen.has(key)) flows.delete(key);
+      for (const key of levelCounters.keys()) if (!seen.has(key)) levelCounters.delete(key);
+      ticksSinceLevels += 1;
+      if (ticksSinceLevels >= LEVEL_REPORT_TICKS) {
+        ticksSinceLevels = 0;
+        reportLevels();
+      }
       if (own || remote) flush();
     } catch {
       // Best-effort — see the file comment on why telemetry never throws.
