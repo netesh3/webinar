@@ -102,13 +102,21 @@ export function judgeWorklet(
  *     LEVEL_TARGET_DB.
  *   - It never goes below MAKEUP_GAIN, so nobody comes out quieter than the fixed boost
  *     gave them; a speaker who was fine is left exactly as they were.
- *   - It never goes above LEVEL_MAX_GAIN, and the limiter after it (softLimitCurve) keeps
- *     whatever it does under full scale.
- *   - It only moves while somebody is talking. In a pause it holds, so the room's residual
- *     noise is not turned up into the silence — the pumping a naive AGC is known for.
- *   - It moves slowly (LEVEL_RISE_DB_PER_S up, LEVEL_FALL_DB_PER_S down — down faster, so a
- *     shout after a whisper is caught quickly) and waits LEVEL_WARMUP_MS of speech before
- *     moving at all, so a cough is not a verdict on somebody's voice. */
+ *   - It never goes above LEVEL_MAX_GAIN, nor so far that the room — what is there once the
+ *     speaker has been quiet for PAUSE_AFTER_MS — comes out louder than PAUSE_CEILING_DB: a
+ *     "silence" that is a television or a colleague is not turned up into.
+ *   - It learns the speaker from the median of their first LEVEL_WARMUP_MS, so one loud
+ *     first word is not who they are; after that, sound more than SPEAKER_RANGE_DB below
+ *     them is not them — a voice across the room, what echo cancellation left of the other
+ *     people, typing — and does not move the estimate, so the gain does not climb while the
+ *     host is listening.
+ *   - The estimate moves slowly (LEVEL_SMOOTHING, a step at most LEVEL_OUTLIER_DB off taken
+ *     into account), so a laugh or a cough is not a verdict on anybody's voice.
+ *   - The gain rises at most LEVEL_RISE_DB_PER_S and normally falls at LEVEL_FALL_DB_PER_S —
+ *     but any moment that would come out more than HOT_MARGIN_DB over the target is cut at
+ *     HOT_FALL_DB_PER_S at once, warm-up or not, and speech that is mostly that loud for
+ *     REANCHOR_MS (a louder person on the microphone, or the same one leaning in) becomes
+ *     the new estimate. */
 
 /** Speech RMS after the gain, in dBFS, that the leveller aims for. Comfortably conversational
  *  for a WebRTC speech track; a speaker whose RNNoise output already sits above
@@ -125,30 +133,65 @@ export const LEVEL_MAX_GAIN = 4;
  *  ordinary speech, and a soft roll-off for anything up to the most the leveller can add. */
 export const LIMIT_HEADROOM = LEVEL_MAX_GAIN;
 
-/** RNNoise's output RMS above which a moment counts as speech. Its output in a pause sits
- *  far below this — that is its job — so the gate does not need to adapt. */
+/** RNNoise's output RMS above which a moment counts as sound at all. Its output in a quiet
+ *  pause sits far below this — that is its job. */
 export const SPEECH_GATE_DB = -50;
 
-/** Speech needed before the first adjustment. */
+/** Once the speaker is known, sound more than this far below them is not them. */
+export const SPEAKER_RANGE_DB = 10;
+
+/** The room, as it comes out, must stay under this. */
+export const PAUSE_CEILING_DB = -45;
+
+/** Quiet this long before what is heard counts as the room. The gaps between somebody's own
+ *  words are shorter, and are not the room. */
+export const PAUSE_AFTER_MS = 1000;
+
+/** Speech heard before the first adjustment, and the median of which is the first estimate. */
 export const LEVEL_WARMUP_MS = 1500;
 
 export const LEVEL_RISE_DB_PER_S = 3;
 export const LEVEL_FALL_DB_PER_S = 6;
 
-/** How fast the speech-level estimate follows a louder or a quieter moment, per update. */
-const LEVEL_ATTACK = 0.3;
-const LEVEL_RELEASE = 0.05;
+/** A moment more than this over the target is too hot to wait for the estimate. */
+export const HOT_MARGIN_DB = 6;
+export const HOT_FALL_DB_PER_S = 30;
+
+/** Speech mostly too hot for this long becomes the estimate. A laugh does not last it. */
+export const REANCHOR_MS = 2500;
+
+/** The estimate's smoothing per update, and how far off a reading is taken into account:
+ *  a reading 30 dB louder moves it no further than one 6 dB louder. */
+const LEVEL_SMOOTHING = 0.05;
+export const LEVEL_OUTLIER_DB = 6;
+const PAUSE_SMOOTHING = 0.05;
 
 export type LevelState = {
   /** The gain to apply now, as a factor. */
   gain: number;
-  /** The speaker's speech level so far, after RNNoise and before the gain. Null until heard. */
+  /** The speaker's speech level, after RNNoise and before the gain. Null until learned. */
   levelDb: number | null;
-  /** How much speech has been heard, in ms. */
+  /** Readings of the speaker collected before levelDb is known. */
+  warmup: readonly number[];
+  /** How much of the speaker has been heard, in ms. */
   speechMs: number;
+  /** The level of the room. Null until the speaker has been quiet long enough to hear it. */
+  pauseDb: number | null;
+  /** How long since the speaker was last heard, in ms. */
+  quietMs: number;
+  /** Time spent too hot, less half the time between, since the speaker last paused. */
+  hotMs: number;
 };
 
-export const INITIAL_LEVEL: LevelState = { gain: MAKEUP_GAIN, levelDb: null, speechMs: 0 };
+export const INITIAL_LEVEL: LevelState = {
+  gain: MAKEUP_GAIN,
+  levelDb: null,
+  warmup: [],
+  speechMs: 0,
+  pauseDb: null,
+  quietMs: 0,
+  hotMs: 0,
+};
 
 /** RMS of a block of samples, in dBFS. Silence comes out as a very large negative number
  *  rather than -Infinity, so it compares and averages like any other quiet value. */
@@ -161,27 +204,66 @@ export function rmsDb(samples: ArrayLike<number>): number {
 
 const toDb = (gain: number) => 20 * Math.log10(gain);
 const fromDb = (db: number) => 10 ** (db / 20);
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)];
+}
 
 /** One update of the leveller: the RMS of RNNoise's latest output, and the ms since the
  *  last update. */
 export function nextLevel(prev: LevelState, inputDb: number, dtMs: number): LevelState {
-  if (!(inputDb > SPEECH_GATE_DB) || dtMs <= 0) return prev;
+  if (!Number.isFinite(inputDb) || !(dtMs > 0)) return prev;
+  const seconds = dtMs / 1000;
+  const floorDb = toDb(MAKEUP_GAIN);
+  const maxDb = toDb(LEVEL_MAX_GAIN);
+  let gainDb = toDb(prev.gain);
+  let { levelDb, warmup, speechMs, pauseDb, quietMs, hotMs } = prev;
 
-  const levelDb =
-    prev.levelDb === null
-      ? inputDb
-      : prev.levelDb + (inputDb > prev.levelDb ? LEVEL_ATTACK : LEVEL_RELEASE) * (inputDb - prev.levelDb);
-  const speechMs = prev.speechMs + dtMs;
-  if (speechMs < LEVEL_WARMUP_MS) return { gain: prev.gain, levelDb, speechMs };
+  const sound = inputDb > SPEECH_GATE_DB;
+  const speaker = sound && (levelDb === null || inputDb > levelDb - SPEAKER_RANGE_DB);
+  const hot = sound && inputDb + gainDb > LEVEL_TARGET_DB + HOT_MARGIN_DB;
 
-  const wantDb = Math.min(
-    Math.max(LEVEL_TARGET_DB - levelDb, toDb(MAKEUP_GAIN)),
-    toDb(LEVEL_MAX_GAIN),
-  );
-  const nowDb = toDb(prev.gain);
-  const step = Math.min(
-    Math.max(wantDb - nowDb, -LEVEL_FALL_DB_PER_S * (dtMs / 1000)),
-    LEVEL_RISE_DB_PER_S * (dtMs / 1000),
-  );
-  return { gain: fromDb(nowDb + step), levelDb, speechMs };
+  if (speaker) {
+    speechMs += dtMs;
+    quietMs = 0;
+    if (levelDb === null) {
+      warmup = [...warmup, inputDb];
+      if (speechMs >= LEVEL_WARMUP_MS) {
+        levelDb = median(warmup);
+        warmup = [];
+      }
+    } else {
+      levelDb += LEVEL_SMOOTHING * clamp(inputDb - levelDb, -LEVEL_OUTLIER_DB, LEVEL_OUTLIER_DB);
+    }
+  } else {
+    quietMs += dtMs;
+    if (quietMs >= PAUSE_AFTER_MS) {
+      pauseDb = pauseDb === null ? inputDb : pauseDb + PAUSE_SMOOTHING * (inputDb - pauseDb);
+    }
+  }
+
+  if (quietMs >= PAUSE_AFTER_MS) hotMs = 0;
+  else if (hot) hotMs += dtMs;
+  else if (sound) hotMs = Math.max(0, hotMs - dtMs / 2);
+  if (hot && levelDb !== null && hotMs >= REANCHOR_MS) {
+    levelDb = inputDb;
+    hotMs = 0;
+  }
+
+  const capDb = pauseDb === null ? maxDb : clamp(PAUSE_CEILING_DB - pauseDb, floorDb, maxDb);
+  if (speaker && levelDb !== null) {
+    const wantDb = clamp(LEVEL_TARGET_DB - levelDb, floorDb, capDb);
+    gainDb += clamp(wantDb - gainDb, -LEVEL_FALL_DB_PER_S * seconds, LEVEL_RISE_DB_PER_S * seconds);
+  } else if (gainDb > capDb) {
+    gainDb = Math.max(capDb, gainDb - LEVEL_FALL_DB_PER_S * seconds);
+  }
+
+  if (hot) {
+    const hotDb = Math.max(LEVEL_TARGET_DB + HOT_MARGIN_DB - inputDb, floorDb);
+    if (gainDb > hotDb) gainDb = Math.max(hotDb, gainDb - HOT_FALL_DB_PER_S * seconds);
+  }
+
+  return { gain: fromDb(gainDb), levelDb, warmup, speechMs, pauseDb, quietMs, hotMs };
 }

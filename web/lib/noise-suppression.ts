@@ -354,6 +354,10 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
       this.connectSource(next);
       this.source?.disconnect();
       this.source = next;
+      // A different microphone is a different level: what the leveller learned of a laptop
+      // microphone at arm's length would make a headset's first words far too loud.
+      this.levelState = INITIAL_LEVEL;
+      this.level?.gain.setTargetAtTime(MAKEUP_GAIN / LIMIT_HEADROOM, ctx.currentTime, 0.02);
     } catch (err) {
       console.warn("[noise suppression] could not move to the new microphone", err);
       this.giveUp("restart failed");
@@ -419,7 +423,8 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
     const outputMeter = ctx.createAnalyser();
     outputMeter.fftSize = 2048;
     const levelMeter = ctx.createAnalyser();
-    levelMeter.fftSize = 2048;
+    // About 85 ms of every 100 ms update, so one reading is a moment of speech, not a syllable.
+    levelMeter.fftSize = 4096;
 
     node.connect(wet);
     wet.connect(level);
