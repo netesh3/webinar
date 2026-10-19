@@ -28,6 +28,7 @@ for (const mode of ["low-latency", "standard"] as const) {
   assert.equal(c.lowLatencyMode, mode === "low-latency");
   assert.equal(c.liveDurationInfinity, true);
   assert.equal(c.maxLiveSyncPlaybackRate, 1.15);
+  assert.equal(c.liveSyncOnStallIncrease, 0.25);
   assert.equal("liveSyncDurationCount" in c, false);
   assert.equal("liveMaxLatencyDurationCount" in c, false);
   assert.equal("liveSyncDuration" in c, false);

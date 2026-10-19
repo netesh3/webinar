@@ -30,6 +30,7 @@ export type EdgeHlsConfig = {
   maxBufferLength: number;
   backBufferLength: number;
   maxLiveSyncPlaybackRate: number;
+  liveSyncOnStallIncrease: number;
   enableWorker: boolean;
   manifestLoadingMaxRetry: number;
   manifestLoadingRetryDelay: number;
@@ -50,6 +51,11 @@ export function edgeHlsConfig(mode: PlaybackMode): EdgeHlsConfig {
     maxBufferLength: MODE_BUFFER[mode],
     backBufferLength: 10,
     maxLiveSyncPlaybackRate: 1.15,
+    // hls.js adds this to its target latency for every stall, up to one target duration (2s
+    // against MediaMTX), and never takes it back. At its default of 1s the two stalls of a
+    // normal join left a viewer at 3.3s for the whole session where the playlist asks for
+    // 1.3s (edge test, 2026-10-19). A connection that keeps stalling still reaches the cap.
+    liveSyncOnStallIncrease: 0.25,
     enableWorker: true,
     // The origin 404s for the first seconds of a broadcast while the egress boots.
     manifestLoadingMaxRetry: 120,
