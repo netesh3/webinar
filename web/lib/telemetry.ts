@@ -8,10 +8,12 @@ import {
   RoomEvent,
   Track,
   type LocalTrack,
+  type RemoteParticipant,
   type RemoteTrack,
 } from "livekit-client";
 import type { TelemetryEvent } from "./api-types";
 import { API_BASE } from "./api";
+import { INITIAL_FLOW, watchFlow, type FlowEvent, type FlowSample, type FlowState } from "./audio-watch";
 
 /* A temporary telemetry path for one performance-test window — see
  * api/internal/api/telemetry.go for the backend half and why it logs the
@@ -36,6 +38,9 @@ import { API_BASE } from "./api";
 
 const QUALITY_POLL_MS = 10_000;
 const FLUSH_MS = 10_000;
+// Faster than the quality poll: a stall is judged over seconds (see lib/audio-watch.ts),
+// and each look is one getStats() per microphone, of which there are only the speakers'.
+const AUDIO_WATCH_MS = 3_000;
 const MAX_BATCH = 50;
 // Jitter/loss thresholds live server-side, in severityFor — the client only
 // ever reports raw numbers, so there is exactly one place a WARNING is
@@ -245,6 +250,205 @@ async function sampleQuality(room: Room): Promise<void> {
   }
 }
 
+/* A microphone that looks live but carries nothing — see lib/audio-watch.ts for the rule.
+ *
+ * Two ends of the same question, so a log of one webinar can say where the sound stopped:
+ *   speaker_audio_*   this participant's own microphone: is it leaving this browser, and
+ *                     is there anything in it? With the processor's own account of itself
+ *                     (noise suppression's phase, its context) and the capture underneath.
+ *   remote_audio_*    every speaker this participant is subscribed to: is anything
+ *                     arriving? A speaker everyone reports stalled is not sending; one only
+ *                     some report is a path problem.
+ * Each is reported once when it starts and once when it clears, and flushed straight away
+ * rather than waiting for the next batch. */
+
+type ProcessorWithDiagnostics = { name?: string; getDiagnostics?: () => Record<string, unknown> };
+
+/** Noise suppression's account of itself, if the processor on the track gives one. Read by
+ *  duck-typing so this file depends on nothing of lib/noise-suppression.ts. */
+function processorState(track: LocalTrack): Record<string, unknown> | null {
+  const processor = track.getProcessor() as ProcessorWithDiagnostics | undefined;
+  if (!processor) return null;
+  if (typeof processor.getDiagnostics === "function") {
+    try {
+      return { name: processor.name, ...processor.getDiagnostics() };
+    } catch {
+      return { name: processor.name, phase: "unknown" };
+    }
+  }
+  return { name: processor.name, phase: "unknown" };
+}
+
+function describeTrack(t: MediaStreamTrack | undefined): Record<string, unknown> | null {
+  if (!t) return null;
+  return { readyState: t.readyState, enabled: t.enabled, muted: t.muted };
+}
+
+/** The capture underneath a processor: `mediaStreamTrack` is the processed track once one
+ *  is on. Settings without deviceId or label — which microphone it is is not needed here. */
+function describeCapture(track: LocalTrack): Record<string, unknown> | null {
+  const capture = track.mediaStream?.getAudioTracks()[0];
+  if (!capture) return null;
+  const s = capture.getSettings();
+  return {
+    ...describeTrack(capture),
+    sampleRate: s.sampleRate ?? null,
+    channelCount: s.channelCount ?? null,
+    echoCancellation: s.echoCancellation ?? null,
+    noiseSuppression: s.noiseSuppression ?? null,
+    autoGainControl: s.autoGainControl ?? null,
+  };
+}
+
+/** Like readStats, but tells "no stats to be had" (null: no sender or receiver yet, or
+ *  getStats threw) apart from a report with no RTP stream in it. The second is not missing
+ *  data: the stats spec only creates outbound-rtp/inbound-rtp once a packet has moved, so a
+ *  microphone that never sent one — the case worth catching most — looks exactly like it. */
+async function readStatsOrNull(
+  target: RTCRtpSender | RTCRtpReceiver | undefined,
+): Promise<StatsMap | null> {
+  if (!target) return null;
+  try {
+    const report = await target.getStats();
+    const out: StatsMap = new Map();
+    report.forEach((r) => out.set(r.type, r as Record<string, unknown>));
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** Cumulative bytes from a report: 0 when it has no RTP stream (see readStatsOrNull). */
+function bytesFrom(stats: StatsMap | null, type: string, field: string): number | undefined {
+  if (!stats) return undefined;
+  return num(stats.get(type)?.[field]) ?? 0;
+}
+
+function startAudioWatch(room: Room): () => void {
+  const flows = new Map<string, FlowState>();
+  const failuresReported = new Set<string>();
+  let lastPhase: string | null = null;
+  let busy = false;
+  // A look already awaiting getStats() when the room goes must not report into the next one.
+  let stopped = false;
+
+  const step = (key: string, sample: FlowSample, seen: Set<string>): FlowEvent[] => {
+    seen.add(key);
+    const { next, events } = watchFlow(flows.get(key) ?? INITIAL_FLOW, sample);
+    flows.set(key, next);
+    return events;
+  };
+
+  const watchOwnMicrophone = async (at: number, seen: Set<string>): Promise<boolean> => {
+    const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+    const track = pub?.track as LocalTrack | undefined;
+    if (!pub || !track) return false;
+
+    const processor = processorState(track);
+    const phase = typeof processor?.phase === "string" ? processor.phase : processor ? "unknown" : "off";
+    let reported = false;
+    if (phase !== lastPhase) {
+      // Not the first look at a microphone with nothing on it: that is the normal case.
+      if (lastPhase !== null || phase !== "off") {
+        push("noise_suppression_state", { trackSid: pub.trackSid, phase, processor });
+        reported = phase === "bypassed" || phase === "broken";
+      }
+      lastPhase = phase;
+    }
+
+    const stats = await readStatsOrNull(track.sender);
+    if (stopped) return false;
+    const out = stats?.get("outbound-rtp");
+    const source = stats?.get("media-source");
+    const events = step(`local:${pub.trackSid}`, {
+      at,
+      muted: pub.isMuted,
+      bytes: bytesFrom(stats, "outbound-rtp", "bytesSent"),
+      energy: num(source?.totalAudioEnergy),
+    }, seen);
+    for (const event of events) {
+      push(`speaker_audio_${event}`, {
+        trackSid: pub.trackSid,
+        bytesSent: num(out?.bytesSent),
+        packetsSent: num(out?.packetsSent),
+        totalAudioEnergy: num(source?.totalAudioEnergy),
+        capture: describeCapture(track),
+        sending: describeTrack(track.mediaStreamTrack),
+        processor,
+        connectionState: room.state,
+      });
+    }
+    return reported || events.length > 0;
+  };
+
+  const watchSpeakers = async (at: number, seen: Set<string>): Promise<boolean> => {
+    let reported = false;
+    for (const participant of room.remoteParticipants.values()) {
+      const pub = participant.getTrackPublication(Track.Source.Microphone);
+      const track = pub?.track as RemoteTrack | undefined;
+      if (!pub || !track) continue;
+      const stats = await readStatsOrNull(track.receiver);
+      if (stopped) return reported;
+      const inb = stats?.get("inbound-rtp");
+      const events = step(`remote:${participant.identity}:${pub.trackSid}`, {
+        at,
+        muted: pub.isMuted,
+        bytes: bytesFrom(stats, "inbound-rtp", "bytesReceived"),
+      }, seen);
+      for (const event of events) {
+        push(`remote_audio_${event}`, {
+          identity: participant.identity,
+          trackSid: pub.trackSid,
+          bytesReceived: num(inb?.bytesReceived),
+          packetsReceived: num(inb?.packetsReceived),
+          packetsLost: num(inb?.packetsLost),
+          connectionState: room.state,
+        });
+      }
+      reported ||= events.length > 0;
+    }
+    return reported;
+  };
+
+  const tick = async () => {
+    if (busy || stopped) return;
+    busy = true;
+    try {
+      const at = Date.now();
+      const seen = new Set<string>();
+      const own = await watchOwnMicrophone(at, seen);
+      const remote = await watchSpeakers(at, seen);
+      if (stopped) return;
+      // A track that has gone takes its history with it.
+      for (const key of flows.keys()) if (!seen.has(key)) flows.delete(key);
+      if (own || remote) flush();
+    } catch {
+      // Best-effort — see the file comment on why telemetry never throws.
+    } finally {
+      busy = false;
+    }
+  };
+
+  const onSubscriptionFailed = (trackSid: string, participant: RemoteParticipant, reason?: unknown) => {
+    const code = typeof reason === "number" ? reason : null;
+    // Once per track and reason: the SFU retries, and a hundred clients reporting every retry
+    // would be a flood against the endpoint's rate limit for no new information.
+    const key = `${trackSid}:${code}`;
+    if (stopped || failuresReported.has(key)) return;
+    failuresReported.add(key);
+    push("track_subscription_failed", { identity: participant.identity, trackSid, reason: code });
+    flush();
+  };
+
+  const timer = setInterval(() => void tick(), AUDIO_WATCH_MS);
+  room.on(RoomEvent.TrackSubscriptionFailed, onSubscriptionFailed);
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+    room.off(RoomEvent.TrackSubscriptionFailed, onSubscriptionFailed);
+  };
+}
+
 /** Attached once per room session. Gate this on AppConfig.telemetryEnabled at
  *  the call site — see webinar-room.tsx — rather than here, so a disabled
  *  flag means this hook is never even called, not called-and-no-oping. */
@@ -312,6 +516,7 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
 
     const qualityTimer = setInterval(() => void sampleQuality(room), QUALITY_POLL_MS);
     const flushTimer = setInterval(() => flush(), FLUSH_MS);
+    const stopAudioWatch = startAudioWatch(room);
     const onBeforeUnload = () => flush(true);
     window.addEventListener("beforeunload", onBeforeUnload);
 
@@ -322,6 +527,7 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
       room.off(RoomEvent.Disconnected, onDisconnected);
       clearInterval(qualityTimer);
       clearInterval(flushTimer);
+      stopAudioWatch();
       window.removeEventListener("beforeunload", onBeforeUnload);
       flush(true);
     };
