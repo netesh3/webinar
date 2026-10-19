@@ -570,6 +570,10 @@ type harness struct {
 	// holdVerification leaves a new registration waiting on the email link.
 	// The default opens that link, so tests about the room see a finished registration.
 	holdVerification bool
+	// The configuration and storage the server was built with, so a test can boot a second
+	// instance of it on the same database — what Cloud Run does once one is not enough.
+	cfg        config.Config
+	recordings *media.Disk
 }
 
 // newHarness builds a server against the test database. `tweak` adjusts the
@@ -771,6 +775,7 @@ func newHarnessWith(
 		t: t, srv: srv, handler: handler, server: server, engage: crm, rooms: rooms, pool: pool,
 		client: &http.Client{Jar: jar}, store: st, crm: crmstore.New(st),
 		recordingsDir: recordingsDir,
+		cfg:           cfg, recordings: recordings,
 	}
 }
 

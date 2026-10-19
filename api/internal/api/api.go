@@ -157,9 +157,6 @@ type Server struct {
 	// background tracks after-response work (the welcome email's send). See inBackground.
 	background sync.WaitGroup
 
-	invitesMu sync.Mutex
-	invites   map[string]pendingStage
-
 	// engage is the WhatsApp CRM, or NoEngage. See engage.go; set by UseEngage.
 	engage Engage
 
@@ -256,7 +253,6 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		emailResend:   httpx.NewRateLimiter(3, 15*time.Minute),
 		passwordReset: httpx.NewRateLimiter(3, 15*time.Minute),
 		mail:          mail,
-		invites:       map[string]pendingStage{},
 		engage:        NoEngage{},
 		ai:            newAIChain(cfg, log),
 		// Ten new chats a minute per IP covers an office behind one address; twelve
