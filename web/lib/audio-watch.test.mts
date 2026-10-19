@@ -12,7 +12,8 @@ import {
   QUIET_DB,
   SILENT_MS,
   STALL_MS,
-  TALKING_DB,
+  TALKING_FLOOR_DB,
+  VOICE_DB,
   intervalLevelDb,
   summarizeLevels,
   watchFlow,
@@ -160,7 +161,7 @@ function series(
 // ---------------------------------------------------------------- how loud a voice is
 
 {
-  // Three seconds at a steady 100 ms peak of 0.1: energy 0.01 × 3, so −20 dBFS.
+  // Three seconds at a steady level of 0.1: energy 0.01 × 3, so −20 dB.
   const db = intervalLevelDb({ energy: 1, duration: 10 }, 1 + 0.01 * 3, 13);
   ok(db !== undefined && Math.abs(db + 20) < 1e-6, "the level of an interval comes from the counters' deltas", `got ${db}`);
   ok(intervalLevelDb({}, 1, 10) === undefined, "no earlier reading, no interval");
@@ -170,34 +171,55 @@ function series(
   ok(silent !== undefined && silent < -100, "exact silence is very quiet, not -Infinity", `got ${silent}`);
 }
 
+/* Readings in WebRTC's units (see the file's level section): a close speaker with automatic
+ * gain control reads about −4 while talking; one 12 dB quieter, about −16; a room's noise
+ * floor, about −43; typing, about −30. */
+
 {
   eq(summarizeLevels([]), { speakingDb: null, loudestDb: null, talking: 0, quiet: false }, "nothing heard, nothing said");
-  const pauses = summarizeLevels([-70, -80, TALKING_DB - 1]);
-  ok(pauses.talking === 0 && !pauses.quiet, "intervals of silence are not talking, and not quiet talking");
 }
 
 {
-  // Somebody talking normally, with pauses in between.
-  const s = summarizeLevels([-14, -70, -16, -12, -80, -15, -13]);
-  ok(s.talking === 5 && !s.quiet, "a normal speaker is not quiet", JSON.stringify(s));
-  ok(s.speakingDb !== null && s.speakingDb > QUIET_DB, "and their usual level is reported", JSON.stringify(s));
-  ok(s.loudestDb === -12, "with their loudest moment");
+  // The reviewer's case: someone unmuted and silent in a noisy room used to be reported as a
+  // quiet speaker every thirty seconds.
+  const room = summarizeLevels([-43, -44, -42, -43, -45, -43, -44, -42, -43, -44]);
+  ok(room.talking === 0 && !room.quiet, "a noisy room with nobody talking is not a quiet speaker", JSON.stringify(room));
+  const typing = summarizeLevels([-30, -43, -29, -44, -31, -42, -30, -43, -28, -44]);
+  ok(typing.talking === 0 && !typing.quiet, "nor is somebody typing", JSON.stringify(typing));
 }
 
 {
-  const s = summarizeLevels([-33, -70, -31, -35, -30, -80]);
-  ok(s.quiet && s.talking === 4, "a speaker who talks well under QUIET_DB is quiet", JSON.stringify(s));
+  // A close speaker with pauses between sentences.
+  const s = summarizeLevels([-4, -43, -6, -3, -42, -5, -4, -7, -44, -5]);
+  ok(s.talking === 7 && !s.quiet, "a normal speaker is not quiet", JSON.stringify(s));
+  ok(s.speakingDb === -5 && s.loudestDb === -3, "and their usual level is the median of their talking, not their peak", JSON.stringify(s));
 }
 
 {
-  const short = summarizeLevels(Array.from({ length: LEVEL_MIN_TALKING - 1 }, () => -35));
+  // The reviewer's other case: a speaker 12 dB quieter than the room used to read as normal.
+  const s = summarizeLevels([-16, -43, -18, -15, -19, -44, -17, -16]);
+  ok(s.quiet && s.talking === 6, "a speaker some 12 dB under the others is quiet", JSON.stringify(s));
+}
+
+{
+  // Quiet, and only just above the floor — still a voice, still talking.
+  const s = summarizeLevels([-25, -44, -27, -24, -28, -26]);
+  ok(s.quiet && s.talking >= 4, "a very quiet voice is talking, and quiet", JSON.stringify(s));
+}
+
+{
+  const short = summarizeLevels(Array.from({ length: LEVEL_MIN_TALKING - 1 }, () => -20));
   ok(!short.quiet, "too little talking for a verdict");
 }
 
 {
   // Mostly normal, one quiet aside: the usual level decides, not the quietest moment.
-  const s = summarizeLevels([-14, -15, -13, -16, -34]);
+  const s = summarizeLevels([-4, -5, -3, -6, -17]);
   ok(!s.quiet, "one quiet moment does not make a quiet speaker", JSON.stringify(s));
+}
+
+{
+  ok(TALKING_FLOOR_DB < QUIET_DB && VOICE_DB < QUIET_DB, "the thresholds are in order");
 }
 
 if (failures) {
