@@ -1917,7 +1917,10 @@ func (s *Server) handleSetStage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !already {
-			s.putInvite(slug, identity, audioOnly)
+			if err := s.putInvite(r.Context(), slug, identity, audioOnly); err != nil {
+				s.fail(w, r, "stage invite", err)
+				return
+			}
 			rec := wb.Status == types.StatusLive
 			if err := s.sendRoomPacket(r.Context(), sfu, slug, []string{identity}, map[string]any{
 				"kind":      "stage-invite",

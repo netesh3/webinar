@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,44 +15,68 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-type pendingStage struct {
-	audioOnly bool
-	timer     *time.Timer
-}
+// stageInviteTTL is how long an attendee has to answer "come on stage".
+const stageInviteTTL = 60 * time.Second
 
-func inviteKey(slug, identity string) string { return slug + "\x00" + identity }
-
-func (s *Server) putInvite(slug, identity string, audioOnly bool) {
-	s.invitesMu.Lock()
-	defer s.invitesMu.Unlock()
-	if s.invites == nil {
-		s.invites = map[string]pendingStage{}
+/* putInvite records a stage invite and arranges for it to expire.
+ *
+ * The invite is in the database (store.PutStageInvite), not in this process: the host's
+ * click and the attendee's answer are two requests, and Cloud Run sends them to whichever
+ * instance is free. It used to be a map here, which worked while a webinar fitted on one
+ * instance and failed — "That invite is no longer open" — as soon as it needed two.
+ *
+ * The expiry still runs here, on the instance that made the invite, because its job is
+ * to tell the attendee the offer has gone (stage-invite-clear). It removes only this
+ * invite, by its token: one already answered on another instance, or replaced by a
+ * newer invite, is left alone and nothing is sent. If this instance goes away first, the
+ * stored expires_at still closes the invite on time. */
+func (s *Server) putInvite(ctx context.Context, slug, identity string, audioOnly bool) error {
+	token, err := inviteToken()
+	if err != nil {
+		return err
 	}
-	key := inviteKey(slug, identity)
-	if prev, ok := s.invites[key]; ok && prev.timer != nil {
-		prev.timer.Stop()
+	if err := s.store.PutStageInvite(ctx, slug, identity, token, audioOnly, stageInviteTTL); err != nil {
+		return err
 	}
-	t := time.AfterFunc(60*time.Second, func() {
+	time.AfterFunc(stageInviteTTL, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
-		_ = s.finishInvite(ctx, slug, identity, false)
+		s.expireInvite(ctx, slug, identity, token)
 	})
-	s.invites[key] = pendingStage{audioOnly: audioOnly, timer: t}
+	return nil
 }
 
-func (s *Server) takeInvite(slug, identity string) (pendingStage, bool) {
-	s.invitesMu.Lock()
-	defer s.invitesMu.Unlock()
-	key := inviteKey(slug, identity)
-	inv, ok := s.invites[key]
-	if !ok {
-		return pendingStage{}, false
+func inviteToken() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
 	}
-	if inv.timer != nil {
-		inv.timer.Stop()
+	return hex.EncodeToString(b[:]), nil
+}
+
+// expireInvite withdraws one invite that nobody answered in time and tells its attendee.
+func (s *Server) expireInvite(ctx context.Context, slug, identity, token string) {
+	removed, err := s.store.WithdrawStageInvite(ctx, slug, identity, token)
+	if err != nil {
+		s.log.Warn("stage invite: could not expire", "slug", slug, "identity", identity, "error", err)
+		return
 	}
-	delete(s.invites, key)
-	return inv, true
+	if !removed {
+		return
+	}
+	wb, err := s.store.WebinarBySlug(ctx, slug)
+	if err != nil {
+		return
+	}
+	sfu, err := s.sfuFor(ctx, wb)
+	if err != nil {
+		return
+	}
+	_ = s.sendRoomPacket(ctx, sfu, slug, []string{identity}, map[string]any{
+		"kind":     "stage-invite-clear",
+		"identity": identity,
+		"at":       time.Now().UnixMilli(),
+	})
 }
 
 func (s *Server) sendRoomPacket(ctx context.Context, sfu RoomManager, slug string, to []string, packet map[string]any) error {
@@ -62,8 +88,11 @@ func (s *Server) sendRoomPacket(ctx context.Context, sfu RoomManager, slug strin
 }
 
 func (s *Server) finishInvite(ctx context.Context, slug, identity string, accept bool) error {
-	inv, ok := s.takeInvite(slug, identity)
-	if !ok {
+	inv, open, err := s.store.TakeStageInvite(ctx, slug, identity)
+	if err != nil {
+		return err
+	}
+	if !open {
 		return errNoInvite
 	}
 
@@ -85,7 +114,7 @@ func (s *Server) finishInvite(ctx context.Context, slug, identity string, accept
 	if !accept {
 		return nil
 	}
-	return s.applyStageGrant(ctx, sfu, wb, identity, true, inv.audioOnly)
+	return s.applyStageGrant(ctx, sfu, wb, identity, true, inv.AudioOnly)
 }
 
 var errNoInvite = errors.New("no pending stage invite")
