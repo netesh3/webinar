@@ -62,6 +62,11 @@ assert.deepEqual(catchUp({ latency: 6, target: liveTarget("standard", 6)!, buffe
 // A jump lands on the target, not on hls.js's liveSyncPosition; never backwards.
 assert.equal(seekToTarget({ currentTime: 100, latency: 10, target: 3 }), 107);
 assert.equal(seekToTarget({ currentTime: 100, latency: 2, target: 3 }), 100);
+// An automatic jump stays inside the buffer: the edge test's start sat on black after jumping
+// from 0 (latency read as the whole window) to 7.96 with only 1.1–4.1 buffered.
+assert.ok(Math.abs(seekToTarget({ currentTime: 0, latency: 10, target: 4, bufferedEnd: 4.1 }) - 3.1) < 1e-9);
+assert.equal(seekToTarget({ currentTime: 100, latency: 12, target: 4, bufferedEnd: 110 }), 108);
+assert.equal(seekToTarget({ currentTime: 100, latency: 12, target: 4, bufferedEnd: 100.5 }), 100);
 {
   const ranges = (r: [number, number][]) => ({ length: r.length, start: (i: number) => r[i][0], end: (i: number) => r[i][1] });
   assert.equal(bufferedAhead(ranges([[0, 5], [6, 12]]), 8), 4);

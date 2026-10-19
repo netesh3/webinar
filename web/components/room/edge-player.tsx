@@ -65,6 +65,9 @@ export function EdgePlayer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const deciderRef = useRef<ModeDecider | null>(null);
+  // Playback has started. Until then currentTime is 0, hls.latency reads as the whole
+  // window, and the catch-up jumped past the buffer: a black start (edge test, 2026-10-19).
+  const playingRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(true);
@@ -82,6 +85,7 @@ export function EdgePlayer({
     let waitTimer: ReturnType<typeof setTimeout> | undefined;
     let hls: Hls | null = null;
     let played = false;
+    playingRef.current = false;
     let netAttempts = 0;
     let mediaRecoveries = 0;
 
@@ -132,6 +136,7 @@ export function EdgePlayer({
 
     const onPlaying = () => {
       played = true;
+      playingRef.current = true;
       resumed();
     };
     const onWaiting = () => {
@@ -262,7 +267,7 @@ export function EdgePlayer({
       if (hls && Number.isFinite(hls.latency) && hls.latency > 0) {
         setLatency(hls.latency);
         const target = liveTarget(modeRef.current, hls.targetLatency);
-        if (video && !video.paused && target != null) {
+        if (video && !video.paused && playingRef.current && target != null) {
           const next = catchUp({
             latency: hls.latency,
             target,
@@ -270,7 +275,12 @@ export function EdgePlayer({
             rate: video.playbackRate,
           });
           if (next === "jump") {
-            video.currentTime = seekToTarget({ currentTime: video.currentTime, latency: hls.latency, target });
+            video.currentTime = seekToTarget({
+              currentTime: video.currentTime,
+              latency: hls.latency,
+              target,
+              bufferedEnd: video.currentTime + bufferedAhead(video.buffered, video.currentTime),
+            });
             video.playbackRate = 1;
           } else if (modeRef.current === "standard" && video.playbackRate !== next.rate) {
             video.playbackRate = next.rate;

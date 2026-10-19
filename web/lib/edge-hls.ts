@@ -164,14 +164,18 @@ export const CATCH_UP = {
 
 export type CatchUp = { rate: number } | "jump";
 
-/* The latency standard mode aims for, in seconds: three 1s segments.
+/* The latency standard mode aims for, in seconds.
  *
  * Not hls.targetLatency. MediaMTX's LL-HLS playlist carries PART-HOLD-BACK but no HOLD-BACK,
  * so outside low-latency mode hls.js falls back to 3 × TARGETDURATION, and TARGETDURATION is
  * the longest segment rounded up: 1s segments that run a little over make it 2, the target
  * 6s, and up to 8s once stalls add to it. Measured against that, a viewer sitting 6s behind
- * was "on target", so standard mode never caught up (edge test, 2026-10-19). */
-export const STANDARD_TARGET_SECONDS = 3;
+ * was "on target", so standard mode never caught up (edge test, 2026-10-19).
+ *
+ * Four, not three: the playlist's edge includes the parts of the segment still being written,
+ * but standard mode only loads whole segments, so at 3s the next one was often not ready and
+ * the buffer ahead sat at 0–1s — stutter, and a black wait after every jump (same test). */
+export const STANDARD_TARGET_SECONDS = 4;
 
 /** The target latency the catch-up and Jump to live aim for in each mode. */
 export function liveTarget(mode: PlaybackMode, hlsTarget: number | null | undefined): number | null {
@@ -179,10 +183,17 @@ export function liveTarget(mode: PlaybackMode, hlsTarget: number | null | undefi
   return hlsTarget != null && Number.isFinite(hlsTarget) ? hlsTarget : null;
 }
 
-/** Where to seek to sit `target` seconds behind live, given the current distance from live. */
-export function seekToTarget(o: { currentTime: number; latency: number; target: number }): number {
-  return o.currentTime + Math.max(0, o.latency - o.target);
+/** Where to seek to sit `target` seconds behind live, given the current distance from live.
+ * With `bufferedEnd`, never past what is buffered (less a margin): a seek past the buffer
+ * waits on a fragment that may not exist yet, and the wait is a black frame. */
+export function seekToTarget(o: { currentTime: number; latency: number; target: number; bufferedEnd?: number }): number {
+  const want = o.currentTime + Math.max(0, o.latency - o.target);
+  if (o.bufferedEnd == null) return want;
+  return Math.max(o.currentTime, Math.min(want, o.bufferedEnd - SEEK_MARGIN_SECONDS));
 }
+
+/** How far short of the buffered end an automatic jump lands. */
+export const SEEK_MARGIN_SECONDS = 1;
 
 /** What to do about the distance from live, given the current playback rate. */
 export function catchUp(o: {
