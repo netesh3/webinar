@@ -5,8 +5,8 @@
  *
  *  - standard: whole 1s segments, about three behind live. Few requests, so it plays
  *    smoothly even when every request is a long round trip.
- *  - low-latency: LL-HLS parts with blocking playlist reloads, about 0.5–1s behind the
- *    origin. Five or more requests a second, so it only works when requests are fast.
+ *  - low-latency: LL-HLS 500ms parts with blocking playlist reloads, about 1.5–2.5s behind
+ *    the origin. Several requests a second, so it only works when requests are fast.
  *
  * Measured from India against the Germany origin through Cloudflare (2026-10-18): ~0.4–0.5s
  * to first byte per request, ~0.9s for a 200ms part. LL-HLS cannot keep up with that: the
@@ -70,6 +70,10 @@ export const DECIDE_WINDOW_MS = 15_000;
 /** More than this many stalls inside the window drops low-latency back to standard. */
 export const MAX_LL_STALLS = 2;
 export const STALL_WINDOW_MS = 30_000;
+/** Stalls this soon after the player starts never drop low-latency. Joining stalls while the
+ * buffer first fills and hls.js settles on its target; counted, those alone sent a viewer to
+ * standard for the whole session within seconds of joining (edge test, 2026-10-19). */
+export const STARTUP_GRACE_MS = 15_000;
 
 export function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
@@ -126,6 +130,7 @@ export class ModeDecider {
 
   /** The video stalled waiting for data. Returns "standard" when low-latency should give up. */
   stalled(now: number): PlaybackMode | null {
+    if (now - this.startedAt < STARTUP_GRACE_MS) return null;
     this.stalls.push(now);
     this.stalls = this.stalls.filter((t) => now - t <= STALL_WINDOW_MS);
     if (this.mode === "low-latency" && this.stalls.length > MAX_LL_STALLS) {

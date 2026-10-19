@@ -10,7 +10,7 @@ both can run side by side on the same deployment and be compared.
                                                 │ RTMP
                                                 ▼
                                     MediaMTX on the SFU box: LL-HLS
-                                    (1s segments, 200ms parts, blocking reload)
+                                    (1s segments, 500ms parts, blocking reload)
                                                 │  /live/<slug>/index.m3u8
                                                 ▼
                                     Phase 2: Bunny pull zone (CDN) ──▶ hls.js player

@@ -100,12 +100,19 @@ assert.equal(seekToTarget({ currentTime: 100, latency: 12, target: 4, bufferedEn
 {
   const d = new ModeDecider({ cdn: true, now: 0 });
   assert.equal(d.mode, "low-latency");
-  assert.equal(d.stalled(1000), null);
-  assert.equal(d.stalled(5000), null);
-  assert.equal(d.stalled(9000), "standard");
+  assert.equal(d.stalled(16_000), null);
+  assert.equal(d.stalled(20_000), null);
+  assert.equal(d.stalled(24_000), "standard");
   assert.equal(d.mode, "standard");
   for (let i = 0; i < 10; i++) assert.equal(d.fragmentLoaded(20, 20_000 + i * 100), null);
   assert.equal(d.mode, "standard");
+}
+// Stalls while the player is starting up do not count.
+{
+  const d = new ModeDecider({ cdn: true, now: 0 });
+  for (const t of [1000, 3000, 5000, 7000, 14_000]) assert.equal(d.stalled(t), null);
+  assert.equal(d.mode, "low-latency");
+  assert.equal(d.stallCount(14_000), 0);
 }
 // Stalls spread out over minutes are not "repeated".
 {
