@@ -73,6 +73,19 @@ hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 hlsPartDuration: 200ms
 hlsMuxerCloseAfter: 60s
+# Every HLS request reaches MediaMTX through Caddy, which sets this as
+# `Authorization: Bearer` (see the Caddyfile). Without it MediaMTX treats each
+# viewer as its own session: the first playlist request is a 302 to
+# ?cookieCheck=1, every playlist and part URL carries that viewer's
+# session=<token>, and responses are no-cache. Behind the Bunny pull zone that
+# made every viewer's URLs unique, so nothing was shared from the CDN cache and
+# every LL-HLS request went to this box: ~0.7s each from India, which LL-HLS
+# cannot keep up with (6-8s behind, 2026-10-19). With it, one shared session
+# and the same URLs for everyone.
+#
+# Not a credential: MediaMTX listens on localhost only, read is open to anyone
+# anyway, and Caddy overwrites whatever Authorization a client sends.
+hlsCDNSecret: webinarliv-origin
 webrtc: true
 webrtcAddress: 127.0.0.1:8889
 webrtcEncryption: false

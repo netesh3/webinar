@@ -40,6 +40,9 @@
 	handle /live/* {
 		reverse_proxy 127.0.0.1:8888 {
 			flush_interval -1
+			# MediaMTX's hlsCDNSecret: one shared session and cacheable URLs instead of a
+			# cookieCheck redirect and a session token per viewer (mediamtx.yml.template).
+			header_up Authorization "Bearer webinarliv-origin"
 		}
 
 		# `>` defers the header until MediaMTX has answered, so it replaces MediaMTX's own
