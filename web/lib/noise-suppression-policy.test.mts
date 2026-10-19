@@ -14,12 +14,23 @@
 
 import {
   INITIAL_HEALTH,
+  INITIAL_LEVEL,
+  LEVEL_MAX_GAIN,
+  LEVEL_RISE_DB_PER_S,
+  LEVEL_TARGET_DB,
+  LEVEL_WARMUP_MS,
+  LIMIT_CEILING,
+  LIMIT_HEADROOM,
   LIMIT_KNEE,
   MAKEUP_GAIN,
   SOUND_FLOOR,
+  SPEECH_GATE_DB,
   STARVED_CHECKS,
   judgeWorklet,
+  nextLevel,
+  rmsDb,
   softLimitCurve,
+  type LevelState,
   type WorkletHealth,
 } from "./noise-suppression-policy.ts";
 
@@ -145,6 +156,112 @@ const quiet = SOUND_FLOOR / 10;
 {
   const h = run([[talking, 1e-9]]);
   ok(h.verdict === "pending" && h.starved === 1, "denormal noise out counts as nothing out");
+}
+
+// ---------------------------------------------------------------- the limiter at headroom
+
+{
+  // How the processor runs it: the leveller's gain divided by LIMIT_HEADROOM going in, the
+  // curve multiplying it back. Same gain on ordinary speech, soft over the whole range the
+  // leveller can reach.
+  const curve = softLimitCurve(LIMIT_HEADROOM);
+  const n = curve.length;
+  const through = (signal: number, gain: number) => {
+    const x = Math.max(-1, Math.min(1, (signal * gain) / LIMIT_HEADROOM));
+    const pos = ((x + 1) / 2) * (n - 1);
+    const i = Math.floor(pos);
+    const f = pos - i;
+    return i >= n - 1 ? curve[n - 1] : curve[i] * (1 - f) + curve[i + 1] * f;
+  };
+  near(through(0.2, MAKEUP_GAIN), 0.3, "at the old 1.5×, ordinary speech is exactly 1.5× louder", 1e-4);
+  near(through(0.1, LEVEL_MAX_GAIN), 0.4, "at the most the leveller adds, quiet speech is exactly 4×", 1e-4);
+  const shout = through(0.9, LEVEL_MAX_GAIN);
+  ok(shout > LIMIT_KNEE && shout <= LIMIT_CEILING, "a shout at 4× is rolled off, not clipped", `got ${shout}`);
+  let max = 0;
+  for (let i = 0; i < n; i++) max = Math.max(max, Math.abs(curve[i]));
+  ok(max <= LIMIT_CEILING && max < 1, "never full scale, however far over", `max ${max}`);
+}
+
+// ---------------------------------------------------------------- the leveller
+
+near(rmsDb(new Float32Array(256).fill(0.1)), -20, "rmsDb of a steady 0.1 is −20 dBFS", 1e-6);
+ok(rmsDb(new Float32Array(256)) < -150, "silence is very quiet, not -Infinity");
+
+/** Feeds the leveller `seconds` of one level, in 100 ms updates. */
+function level(state: LevelState, db: number, seconds: number): LevelState {
+  let s = state;
+  for (let t = 0; t < seconds * 1000; t += 100) s = nextLevel(s, db, 100);
+  return s;
+}
+const dbOf = (gain: number) => 20 * Math.log10(gain);
+
+{
+  const s = level(INITIAL_LEVEL, -80, 60);
+  near(s.gain, MAKEUP_GAIN, "a silent minute leaves the gain where it was");
+  ok(s.levelDb === null, "and nothing has been heard");
+}
+
+{
+  const s = level(INITIAL_LEVEL, -45, (LEVEL_WARMUP_MS - 200) / 1000);
+  near(s.gain, MAKEUP_GAIN, "no adjustment before LEVEL_WARMUP_MS of speech");
+}
+
+{
+  // Speech at -45 dBFS after RNNoise: 25 dB short of the target, so it wants more than the
+  // most the leveller will give.
+  const s = level(INITIAL_LEVEL, -45, 20);
+  near(s.gain, LEVEL_MAX_GAIN, "a quiet speaker is brought up to the most it allows", 1e-6);
+}
+
+{
+  const after = level(INITIAL_LEVEL, -45, LEVEL_WARMUP_MS / 1000 + 1);
+  const risen = dbOf(after.gain) - dbOf(MAKEUP_GAIN);
+  ok(risen <= LEVEL_RISE_DB_PER_S + 0.31, "and it gets there slowly, not in a jump", `rose ${risen} dB in 1 s`);
+}
+
+{
+  // A speaker already at the target needs only a little — less than the old 1.5× — and
+  // keeps the 1.5× they had.
+  const s = level(INITIAL_LEVEL, LEVEL_TARGET_DB - 1, 20);
+  near(s.gain, MAKEUP_GAIN, "a speaker who was fine is left exactly as they were");
+  const loud = level(INITIAL_LEVEL, -10, 20);
+  near(loud.gain, MAKEUP_GAIN, "a loud one is never turned below the old boost");
+}
+
+{
+  // Halfway: wants LEVEL_TARGET_DB - (-30) = 10 dB.
+  const s = level(INITIAL_LEVEL, -30, 20);
+  near(dbOf(s.gain), 10, "in between, the gain is what brings them to the target", 0.05);
+}
+
+{
+  // Brought up, then a long pause: the gain holds through it.
+  const up = level(INITIAL_LEVEL, -45, 20);
+  const paused = level(up, -75, 30);
+  near(paused.gain, up.gain, "a pause does not move the gain, so the silence is not turned up");
+}
+
+{
+  // Brought up, then they lean in and shout: it comes back down, faster than it went up.
+  const up = level(INITIAL_LEVEL, -45, 20);
+  const down = level(up, -8, 1);
+  const fell = dbOf(up.gain) - dbOf(down.gain);
+  ok(fell > LEVEL_RISE_DB_PER_S, "a sudden loud speaker is caught quickly", `fell ${fell} dB in 1 s`);
+  const settled = level(down, -8, 10);
+  near(settled.gain, MAKEUP_GAIN, "and settles back at the floor");
+}
+
+{
+  // A cough in a quiet room: one loud moment, then silence. Nowhere near the warm-up.
+  let s = nextLevel(INITIAL_LEVEL, -12, 100);
+  s = level(s, -80, 10);
+  near(s.gain, MAKEUP_GAIN, "a single cough is not a verdict on anybody's voice");
+}
+
+{
+  ok(nextLevel(INITIAL_LEVEL, SPEECH_GATE_DB, 100) === INITIAL_LEVEL, "exactly at the gate is not speech");
+  ok(nextLevel(INITIAL_LEVEL, -30, 0) === INITIAL_LEVEL, "no time passed, nothing changes");
+  ok(nextLevel(INITIAL_LEVEL, Number.NaN, 100) === INITIAL_LEVEL, "a NaN reading changes nothing");
 }
 
 if (failures) {
