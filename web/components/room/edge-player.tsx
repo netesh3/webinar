@@ -28,8 +28,10 @@ import {
   catchUp,
   edgeHlsConfig,
   latencyLabel,
+  liveTarget,
   modeLabel,
   retryDelayMs,
+  seekToTarget,
   type PlaybackMode,
 } from "@/lib/edge-hls";
 import { trackEvent } from "@/lib/telemetry";
@@ -243,7 +245,7 @@ export function EdgePlayer({
   }, [latency, mode]);
 
   /* Latency: hls.js knows it; natively it is the distance to the end of the seekable range.
-   * The same tick keeps hls.js near live: it only does that itself in low-latency mode, so
+   * The same tick keeps hls.js near live (lib/edge-hls.ts liveTarget): it only does that itself in low-latency mode, so
    * standard mode plays slightly faster while behind, and either mode jumps when far behind
    * (lib/edge-hls.ts catchUp). Safari's native player keeps its own distance. */
   useEffect(() => {
@@ -252,7 +254,7 @@ export function EdgePlayer({
       const video = videoRef.current;
       if (hls && Number.isFinite(hls.latency) && hls.latency > 0) {
         setLatency(hls.latency);
-        const target = hls.targetLatency;
+        const target = liveTarget(modeRef.current, hls.targetLatency);
         if (video && !video.paused && target != null) {
           const next = catchUp({
             latency: hls.latency,
@@ -260,9 +262,8 @@ export function EdgePlayer({
             bufferAhead: bufferedAhead(video.buffered, video.currentTime),
             rate: video.playbackRate,
           });
-          const live = hls.liveSyncPosition;
           if (next === "jump") {
-            if (live != null && Number.isFinite(live)) video.currentTime = live;
+            video.currentTime = seekToTarget({ currentTime: video.currentTime, latency: hls.latency, target });
             video.playbackRate = 1;
           } else if (modeRef.current === "standard" && video.playbackRate !== next.rate) {
             video.playbackRate = next.rate;
@@ -300,8 +301,10 @@ export function EdgePlayer({
     const video = videoRef.current;
     if (!video) return;
     const hls = hlsRef.current;
-    const edge = hls?.liveSyncPosition ??
-      (video.seekable.length > 0 ? video.seekable.end(video.seekable.length - 1) - 1 : null);
+    const target = hls ? liveTarget(modeRef.current, hls.targetLatency) : null;
+    const edge = hls && target != null && Number.isFinite(hls.latency) && hls.latency > 0
+      ? seekToTarget({ currentTime: video.currentTime, latency: hls.latency, target })
+      : video.seekable.length > 0 ? video.seekable.end(video.seekable.length - 1) - 1 : null;
     if (edge != null && Number.isFinite(edge)) video.currentTime = edge;
     void video.play().catch(() => {});
   };

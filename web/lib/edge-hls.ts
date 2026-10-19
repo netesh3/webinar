@@ -19,7 +19,8 @@
  * hls.js honours the playlist's PART-HOLD-BACK only when the caller left those unset (it
  * checks the user config, not the live one — see 6ffc2e2), and the mode is switched at
  * runtime with hls.lowLatencyMode so the video element is never torn down (that is black).
- * Without them standard mode lands on hls.js's default of 3 × target duration = 3s. */
+ * Without them standard mode lands on hls.js's 3 × target duration, which against MediaMTX
+ * is often 6s, so the player aims for its own target there (STANDARD_TARGET_SECONDS). */
 
 export type PlaybackMode = "standard" | "low-latency";
 
@@ -163,6 +164,26 @@ export const CATCH_UP = {
 
 export type CatchUp = { rate: number } | "jump";
 
+/* The latency standard mode aims for, in seconds: three 1s segments.
+ *
+ * Not hls.targetLatency. MediaMTX's LL-HLS playlist carries PART-HOLD-BACK but no HOLD-BACK,
+ * so outside low-latency mode hls.js falls back to 3 × TARGETDURATION, and TARGETDURATION is
+ * the longest segment rounded up: 1s segments that run a little over make it 2, the target
+ * 6s, and up to 8s once stalls add to it. Measured against that, a viewer sitting 6s behind
+ * was "on target", so standard mode never caught up (edge test, 2026-10-19). */
+export const STANDARD_TARGET_SECONDS = 3;
+
+/** The target latency the catch-up and Jump to live aim for in each mode. */
+export function liveTarget(mode: PlaybackMode, hlsTarget: number | null | undefined): number | null {
+  if (mode === "standard") return STANDARD_TARGET_SECONDS;
+  return hlsTarget != null && Number.isFinite(hlsTarget) ? hlsTarget : null;
+}
+
+/** Where to seek to sit `target` seconds behind live, given the current distance from live. */
+export function seekToTarget(o: { currentTime: number; latency: number; target: number }): number {
+  return o.currentTime + Math.max(0, o.latency - o.target);
+}
+
 /** What to do about the distance from live, given the current playback rate. */
 export function catchUp(o: {
   latency: number;
@@ -192,7 +213,7 @@ export function retryDelayMs(attempt: number): number {
 }
 
 /** How far behind live counts as "behind" enough to offer Jump to live, in seconds. */
-export const BEHIND_LIVE_SECONDS: Record<PlaybackMode, number> = { standard: 6, "low-latency": 4 };
+export const BEHIND_LIVE_SECONDS: Record<PlaybackMode, number> = { standard: 5, "low-latency": 4 };
 
 /** The latency readout: one decimal under ten seconds, whole seconds above. */
 export function latencyLabel(seconds: number | null | undefined): string {
