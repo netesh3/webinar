@@ -356,6 +356,9 @@ function paint(
 
 // -------------------------------------------------------------- audio mixing
 
+/** How often the mixer looks again for a track swapped with no room event. */
+const MIXER_RESYNC_MS = 1000;
+
 /**
  * Mixes every audio track in the room into one stream.
  *
@@ -366,7 +369,13 @@ function paint(
 export class AudioMixer {
   private ctx: AudioContext;
   private dest: MediaStreamAudioDestinationNode;
-  private nodes = new Map<string, MediaStreamAudioSourceNode>();
+  /* The track each node was made from, not just the node: a key can stay the same while
+   * the track under it changes. Turning noise suppression on or off swaps the local
+   * microphone between the raw and the processed track and stops the old one — and LiveKit
+   * reports that only on the track, with no room event — so the node went on reading a
+   * stopped track and the host fell silent in the recording until they muted and unmuted. */
+  private nodes = new Map<string, { node: MediaStreamAudioSourceNode; track: MediaStreamTrack }>();
+  private lastSync = 0;
 
   constructor(private room: Room) {
     this.ctx = new AudioContext();
@@ -386,6 +395,7 @@ export class AudioMixer {
   }
 
   sync(): void {
+    this.lastSync = performance.now();
     const wanted = new Map<string, MediaStreamTrack>();
     /* Microphones AND the audio of anything being shared.
      *
@@ -411,9 +421,10 @@ export class AudioMixer {
 
     // `key` rather than `identity`: it is now identity:source, because one person can be
     // both a microphone and a shared video and each needs its own node.
-    for (const [key, node] of this.nodes) {
-      if (!wanted.has(key)) {
-        node.disconnect();
+    // Gone, or a different track under the same key now: either way this node is done.
+    for (const [key, entry] of this.nodes) {
+      if (wanted.get(key) !== entry.track) {
+        entry.node.disconnect();
         this.nodes.delete(key);
       }
     }
@@ -421,8 +432,15 @@ export class AudioMixer {
       if (this.nodes.has(key)) continue;
       const node = this.ctx.createMediaStreamSource(new MediaStream([track]));
       node.connect(this.dest);
-      this.nodes.set(key, node);
+      this.nodes.set(key, { node, track });
     }
+  }
+
+  /** The swap described at `nodes` fires no room event, so the recording's audio clock —
+   *  which keeps running in a hidden tab, where timers are throttled — looks again about
+   *  once a second. */
+  private maybeResync(): void {
+    if (performance.now() - this.lastSync >= MIXER_RESYNC_MS) this.sync();
   }
 
   /** Browsers start an AudioContext suspended until a gesture; pressing record is
@@ -431,6 +449,7 @@ export class AudioMixer {
     try {
       const scriptNode = this.ctx.createScriptProcessor(1024, 1, 1);
       scriptNode.onaudioprocess = () => {
+        this.maybeResync();
         onTick();
       };
       const dummyGain = this.ctx.createGain();
@@ -458,7 +477,7 @@ export class AudioMixer {
     for (const ev of RECORDER_EVENTS) {
       this.room.off(ev, this.onRoomChange);
     }
-    for (const node of this.nodes.values()) node.disconnect();
+    for (const { node } of this.nodes.values()) node.disconnect();
     this.nodes.clear();
     await this.ctx.close().catch(() => {});
   }
