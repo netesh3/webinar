@@ -114,6 +114,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And what that ladder puts back once it reconnects, for the same reason plus a worse
 	# one: getting it wrong in the generous direction republishes somebody's screen.
 	cd web && node --experimental-strip-types --no-warnings lib/republish.test.mts
+	# And when a microphone that looks live is reported as carrying nothing, which a
+	# browser cannot show you in the moment and a missed or false report both cost.
+	cd web && node --experimental-strip-types --no-warnings lib/audio-watch.test.mts
 	# And one screen share at a time: who keeps the stage, who may take it over, and
 	# when your own share stops. The API runs the same rule (share_lock.go), so a
 	# disagreement here is two people each told they won.
