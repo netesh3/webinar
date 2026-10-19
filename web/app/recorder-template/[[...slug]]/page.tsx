@@ -232,7 +232,8 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
               primarySpeaker.participant.identity === activeSpeakerId ||
               primarySpeaker.participant.isSpeaking
             }
-            className="size-full max-w-7xl max-h-full"
+            className="size-full"
+            fit="contain"
           />
         ) : null}
       </div>
@@ -268,12 +269,18 @@ function SpeakerTile({
   aspect = "aspect-video",
   className = "",
   compact = false,
+  fit = "cover",
 }: {
   trackRef: TrackReferenceOrPlaceholder;
   isSpeaking: boolean;
   aspect?: string;
   className?: string;
   compact?: boolean;
+  /* The main speaker is "contain": its box fills the main area, whatever shape that is (about
+   * 1280×1056 at 1080p before, with max-w-7xl), so "cover" cut a third off a 16:9 camera and
+   * the audience saw a zoomed, cropped picture of what the host sees whole. Strip tiles are
+   * 16:9 boxes, where "cover" only trims a camera that is not 16:9. */
+  fit?: "cover" | "contain";
 }) {
   const { participant, publication } = trackRef;
   const hasVideo = publication?.isSubscribed && !publication?.isMuted && publication?.track;
@@ -290,7 +297,10 @@ function SpeakerTile({
       } ${className}`}
     >
       {hasVideo && isTrackReference(trackRef) ? (
-        <VideoTrack trackRef={trackRef} className="size-full object-cover" />
+        <VideoTrack
+          trackRef={trackRef}
+          className={`size-full ${fit === "contain" ? "object-contain" : "object-cover"}`}
+        />
       ) : (
         <div className="size-full flex flex-col items-center justify-center bg-gradient-to-b from-zinc-800 to-zinc-900">
           <div
