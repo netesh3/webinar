@@ -1881,7 +1881,12 @@ type Credential = () => Promise<{ url: string; token: string } | "ended" | null>
  *   own "Stop sharing" bar rather than from ours.
  */
 function isCapturing(track: LocalTrack): boolean {
-  return track.mediaStreamTrack?.readyState === "live";
+  // The capture itself, not `mediaStreamTrack`: with a processor on (noise suppression, a
+  // background) that is the processed track, which stays live whatever happened to the
+  // device underneath it — and a microphone that ended during the drop would come back
+  // published, unmuted and silent.
+  const capture = track.mediaStream?.getTracks()[0] ?? track.mediaStreamTrack;
+  return capture?.readyState === "live";
 }
 
 /* How a restored track has to be published.
