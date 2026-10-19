@@ -31,7 +31,7 @@ hlsAlwaysRemux: false
 hlsVariant: lowLatency
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
-hlsPartDuration: 200ms
+hlsPartDuration: 500ms
 hlsMuxerCloseAfter: 60s
 # Caddy sends this on every HLS request — see the template for why.
 hlsCDNSecret: webinarliv-origin
