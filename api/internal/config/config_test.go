@@ -511,4 +511,20 @@ func TestEdgePlaybackURL(t *testing.T) {
 	if got := c.EdgePlaybackURLFor("", "w1"); got != "https://cdn.example/live/w1/index.m3u8" {
 		t.Errorf("cdn: %q", got)
 	}
+	// A project's own edge base beats the global pull zone, which mirrors another box.
+	c.LiveKitProjects = []LiveKitProject{
+		{ID: "default"},
+		{ID: "india", BroadcastHLSBase: "https://in.example/live", EdgePlaybackBase: "https://in-cdn.example/live"},
+		{ID: "two", BroadcastHLSBase: "https://two.example/live"},
+	}
+	if got := c.EdgePlaybackURLFor("india", "w1"); got != "https://in-cdn.example/live/w1/index.m3u8" {
+		t.Errorf("project edge base: %q", got)
+	}
+	if got := c.EdgePlaybackURLFor("default", "w1"); got != "https://cdn.example/live/w1/index.m3u8" {
+		t.Errorf("default project keeps the global pull zone: %q", got)
+	}
+	// Unchanged: with a global pull zone, a project without its own edge base uses it.
+	if got := c.EdgePlaybackURLFor("two", "w1"); got != "https://cdn.example/live/w1/index.m3u8" {
+		t.Errorf("project without edge base: %q", got)
+	}
 }

@@ -93,6 +93,15 @@ type LiveKitProject struct {
 	 * BROADCAST_HLS_BASE, which is right while there is one SFU. */
 	BroadcastHLSBase string `json:"broadcastHlsBase,omitempty"`
 
+	/* EdgePlaybackBase is where an Edge-delivery audience plays this project's LL-HLS,
+	 * overriding EDGE_PLAYBACK_BASE for rooms on this project.
+	 *
+	 * EDGE_PLAYBACK_BASE is one CDN pull zone, and a pull zone mirrors one origin. A room on
+	 * another SFU publishes to the MediaMTX on that box, so its viewers have to be sent there
+	 * (or to a pull zone of its own), not to the first box's mirror. Empty uses
+	 * EDGE_PLAYBACK_BASE, then this project's broadcastHlsBase, then BROADCAST_HLS_BASE. */
+	EdgePlaybackBase string `json:"edgePlaybackBase,omitempty"`
+
 	// Label is the human name shown in the admin "Video server" select. Defaults to the id.
 	Label string `json:"label,omitempty"`
 }
@@ -168,6 +177,7 @@ func normaliseLiveKitProjects(list []LiveKitProject) []LiveKitProject {
 		p.Secret = strings.TrimSpace(p.Secret)
 		p.HTTPURL = strings.TrimSpace(p.HTTPURL)
 		p.BroadcastHLSBase = strings.TrimRight(strings.TrimSpace(p.BroadcastHLSBase), "/")
+		p.EdgePlaybackBase = strings.TrimRight(strings.TrimSpace(p.EdgePlaybackBase), "/")
 		p.Label = strings.TrimSpace(p.Label)
 		if p.HTTPURL == "" {
 			p.HTTPURL = httpFromWS(p.URL)
@@ -238,6 +248,13 @@ func validateLiveKitProjects(list []LiveKitProject, dev bool) error {
 			!(dev && strings.HasPrefix(b, "http://")) {
 			errs = append(errs, fmt.Errorf(
 				"%s: broadcastHlsBase must begin with https:// (it is the WHEP URL attendees open): %q",
+				where, b))
+		}
+
+		if b := p.EdgePlaybackBase; b != "" && !strings.HasPrefix(b, "https://") &&
+			!(dev && strings.HasPrefix(b, "http://")) {
+			errs = append(errs, fmt.Errorf(
+				"%s: edgePlaybackBase must begin with https:// (it is the playlist URL viewers open): %q",
 				where, b))
 		}
 
