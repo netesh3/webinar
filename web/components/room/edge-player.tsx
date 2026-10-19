@@ -188,7 +188,14 @@ export function EdgePlayer({
         // gap of seconds: wait and retry, with backoff, rather than fail.
         if (!played) setError("Waiting for the broadcast to start...");
         clearTimeout(retry);
-        retry = setTimeout(() => hls?.startLoad(), retryDelayMs(netAttempts));
+        /* Before the playlist has parsed, startLoad has nothing to load: hls.js only requests
+         * the manifest from loadSource, and it does not retry a 404 on its own. So the first
+         * viewer, arriving while MediaMTX starts the muxer, sat on black until a refresh. */
+        const reload = !hls?.levels?.length;
+        retry = setTimeout(() => {
+          if (reload) hls?.loadSource(playbackUrl);
+          else hls?.startLoad();
+        }, retryDelayMs(netAttempts));
         netAttempts += 1;
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
