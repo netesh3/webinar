@@ -9,6 +9,9 @@ import {
   ModeDecider,
   bufferedAhead,
   catchUp,
+  liveTarget,
+  seekToTarget,
+  STANDARD_TARGET_SECONDS,
   edgeHlsConfig,
   latencyLabel,
   median,
@@ -49,6 +52,16 @@ assert.equal(edgeHlsConfig("standard").maxBufferLength, 6);
   assert.deepEqual(catchUp({ latency: NaN, target: 3, bufferAhead: 4, rate: 1.1 }), { rate: 1 });
   assert.deepEqual(catchUp({ latency: 7, target: 0, bufferAhead: 4, rate: 1 }), { rate: 1 });
 }
+// Standard mode aims for its own target, not hls.js's 3 × TARGETDURATION (6s+ on MediaMTX).
+assert.equal(liveTarget("standard", 6), STANDARD_TARGET_SECONDS);
+assert.equal(liveTarget("standard", null), STANDARD_TARGET_SECONDS);
+assert.equal(liveTarget("low-latency", 1.2), 1.2);
+assert.equal(liveTarget("low-latency", null), null);
+// Sitting at hls.js's 6s counts as behind, so it catches up.
+assert.deepEqual(catchUp({ latency: 6, target: liveTarget("standard", 6)!, bufferAhead: 4, rate: 1 }), { rate: CATCH_UP.rate });
+// A jump lands on the target, not on hls.js's liveSyncPosition; never backwards.
+assert.equal(seekToTarget({ currentTime: 100, latency: 10, target: 3 }), 107);
+assert.equal(seekToTarget({ currentTime: 100, latency: 2, target: 3 }), 100);
 {
   const ranges = (r: [number, number][]) => ({ length: r.length, start: (i: number) => r[i][0], end: (i: number) => r[i][1] });
   assert.equal(bufferedAhead(ranges([[0, 5], [6, 12]]), 8), 4);
