@@ -371,9 +371,11 @@ function startAudioWatch(room: Room): () => void {
   ) => {
     const energy = num(report?.totalAudioEnergy);
     const duration = num(report?.totalSamplesDuration);
-    const db = intervalLevelDb(levelCounters.get(key) ?? {}, energy, duration);
-    levelCounters.set(key, { energy, duration });
-    if (muted || db === undefined) return;
+    const prev = levelCounters.get(key) ?? {};
+    const db = intervalLevelDb(prev, energy, duration);
+    levelCounters.set(key, { energy, duration, muted });
+    // An interval that started muted is partly a silence somebody chose, and would read low.
+    if (muted || prev.muted || db === undefined) return;
     const window = levelWindows.get(key) ?? { event, levels: [], describe };
     window.levels.push(db);
     window.describe = describe;
@@ -463,12 +465,16 @@ function startAudioWatch(room: Room): () => void {
           connectionState: room.state,
         });
       }
+      const levelKey = `remote:${participant.identity}:${pub.trackSid}`;
       if (onStage) {
-        const key = `remote:${participant.identity}:${pub.trackSid}`;
-        sampleLevel(key, inb, pub.isMuted, "remote_level", () => ({
+        sampleLevel(levelKey, inb, pub.isMuted, "remote_level", () => ({
           identity: participant.identity,
           trackSid: pub.trackSid,
         }));
+      } else {
+        // Off the stage nothing is reported; nor must the first interval back average over
+        // all the time away.
+        levelCounters.delete(levelKey);
       }
       reported ||= events.length > 0;
     }

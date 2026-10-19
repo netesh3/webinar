@@ -107,25 +107,40 @@ export function watchFlow(
  * "The host's voice is very low," from some listeners. Nothing measured how loud anybody
  * was, so a complaint could not be told apart from one listener's volume knob. WebRTC
  * already keeps the numbers, on the sending side (media-source) and the receiving side
- * (inbound-rtp): its audio level is the peak of each 100 ms, 0..1, and the counters
- * accumulate totalAudioEnergy = Σ level² × seconds over totalSamplesDuration seconds.
- * The decision about them lives here; telemetry.ts samples them. */
+ * (inbound-rtp): totalAudioEnergy accumulates level² × seconds over totalSamplesDuration.
+ *
+ * Its "level" is not an RMS. libwebrtc holds each frame's peak for about 110 ms and lets it
+ * decay, so the power mean of it over an interval of speech reads some 15–18 dB above that
+ * speech's RMS: speech at −30 dBFS RMS reads about −13, and a steady room noise at −55
+ * reads about −43. The thresholds below are in those units. The decision lives here;
+ * telemetry.ts samples the counters. */
 
-/** An interval louder than this had somebody talking in it (dBFS, of 100 ms peaks). */
-export const TALKING_DB = -45;
+/** Nothing quieter than this is talking, however quiet the person. In WebRTC's units —
+ *  about −50 dBFS RMS: above a quiet room's noise floor. */
+export const TALKING_FLOOR_DB = -35;
 
-/** A speaker whose talking intervals sit mostly below this is quiet: well under the level
- *  a close microphone with automatic gain control gives. Advisory — the numbers are
- *  reported with it, so the threshold can be judged against real sessions. */
-export const QUIET_DB = -26;
+/** Within this far below their own loudest interval, an interval is them talking; further
+ *  down it is the room, or typing, between their words. */
+export const TALKING_RANGE_DB = 15;
+
+/** A window whose loudest interval is under this had no voice in it at all — someone sitting
+ *  unmuted in a noisy room, or typing — and says nothing about how loud anybody is. About
+ *  −40 dBFS RMS. */
+export const VOICE_DB = -26;
+
+/** A speaker whose usual talking level is under this is quiet: about −31 dBFS RMS, some
+ *  11 dB under a speaker close to their microphone with automatic gain control — more than
+ *  the ordinary spread between voices. Advisory — the numbers go with it, so the threshold
+ *  can be judged against real sessions. */
+export const QUIET_DB = -15;
 
 /** Talking intervals needed before a summary says anything. */
 export const LEVEL_MIN_TALKING = 3;
 
-export type LevelCounters = { energy?: number; duration?: number };
+export type LevelCounters = { energy?: number; duration?: number; muted?: boolean };
 
-/** The level of the interval between two readings of the cumulative counters, in dBFS.
- *  Undefined when either reading is missing or no audio passed in between. */
+/** The level of the interval between two readings of the cumulative counters, in dB of
+ *  WebRTC's level. Undefined when either reading is missing or no audio passed in between. */
 export function intervalLevelDb(
   prev: LevelCounters,
   energy: number | undefined,
@@ -144,7 +159,7 @@ export function intervalLevelDb(
 }
 
 export type LevelSummary = {
-  /** The level they usually talk at: the 75th percentile of the talking intervals. */
+  /** The level they usually talk at: the median of their talking intervals. */
   speakingDb: number | null;
   loudestDb: number | null;
   /** How many intervals had them talking. */
@@ -153,14 +168,19 @@ export type LevelSummary = {
 };
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
+const NOTHING: LevelSummary = { speakingDb: null, loudestDb: null, talking: 0, quiet: false };
 
 export function summarizeLevels(levels: number[]): LevelSummary {
-  const talking = levels.filter((l) => l > TALKING_DB).sort((a, b) => a - b);
-  if (talking.length === 0) return { speakingDb: null, loudestDb: null, talking: 0, quiet: false };
-  const speaking = talking[Math.min(talking.length - 1, Math.floor(talking.length * 0.75))];
+  if (levels.length === 0) return NOTHING;
+  const loudest = Math.max(...levels);
+  if (loudest < VOICE_DB) return NOTHING;
+  const floor = Math.max(TALKING_FLOOR_DB, loudest - TALKING_RANGE_DB);
+  const talking = levels.filter((l) => l > floor).sort((a, b) => a - b);
+  if (talking.length === 0) return NOTHING;
+  const speaking = talking[Math.floor((talking.length - 1) / 2)];
   return {
     speakingDb: round1(speaking),
-    loudestDb: round1(talking[talking.length - 1]),
+    loudestDb: round1(loudest),
     talking: talking.length,
     quiet: talking.length >= LEVEL_MIN_TALKING && speaking < QUIET_DB,
   };
