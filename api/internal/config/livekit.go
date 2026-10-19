@@ -142,6 +142,12 @@ var projectID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
  * LIVEKIT_PROJECTS wins when both are set, and the legacy values are then ignored rather than
  * merged. Merging would ask what a bare LIVEKIT_URL means when the list already has three
  * entries, and there is no answer to that which an operator would predict.
+ *
+ * With one exception the operator asks for by name: a "default" entry that leaves out its url,
+ * httpUrl, key or secret takes them from the legacy variables. So adding a second SFU is
+ * `[{"id":"default"},{"id":"india",…}]`, and the first box's credentials stay in the three
+ * secrets they already live in — nobody has to copy them into the list, or know them to change
+ * the second entry. Only an entry called "default" is filled, and only the fields it omits.
  */
 func loadLiveKitProjects() ([]LiveKitProject, error) {
 	raw := strings.TrimSpace(os.Getenv("LIVEKIT_PROJECTS"))
@@ -163,6 +169,21 @@ func loadLiveKitProjects() ([]LiveKitProject, error) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&list); err != nil {
 		return nil, fmt.Errorf("LIVEKIT_PROJECTS is not a valid JSON array of projects: %w", err)
+	}
+	for i := range list {
+		p := &list[i]
+		if strings.ToLower(strings.TrimSpace(p.ID)) != legacyProjectID {
+			continue
+		}
+		fill := func(field *string, name string) {
+			if strings.TrimSpace(*field) == "" {
+				*field = os.Getenv(name)
+			}
+		}
+		fill(&p.URL, "LIVEKIT_URL")
+		fill(&p.HTTPURL, "LIVEKIT_HTTP_URL")
+		fill(&p.Key, "LIVEKIT_API_KEY")
+		fill(&p.Secret, "LIVEKIT_API_SECRET")
 	}
 	return list, nil
 }

@@ -87,6 +87,51 @@ func TestLiveKitProjectsWinsOverTheLegacyVariables(t *testing.T) {
 	}
 }
 
+// A "default" entry without credentials takes them from the legacy variables, so a second SFU
+// can be added without copying the first box's key and secret into the list.
+func TestADefaultEntryFillsFromTheLegacyVariables(t *testing.T) {
+	c := load(t, projectsEnv(`[
+	  {"id":"default","label":"Hetzner"},
+	  {"id":"india","url":"wss://in.example.com","key":"API2","secret":"s2"}
+	]`, map[string]string{
+		"LIVEKIT_URL":        "wss://sfu.example.com",
+		"LIVEKIT_API_KEY":    "APILEGACY",
+		"LIVEKIT_API_SECRET": "legacy-secret",
+	}))
+	if len(c.LiveKitProjects) != 2 {
+		t.Fatalf("got %d projects, want 2", len(c.LiveKitProjects))
+	}
+	d := c.LiveKitProjects[0]
+	if d.ID != "default" || d.URL != "wss://sfu.example.com" || d.Key != "APILEGACY" ||
+		d.Secret != "legacy-secret" || d.Label != "Hetzner" {
+		t.Errorf("default = %+v, want the legacy url/key/secret and its own label", d)
+	}
+	if in := c.LiveKitProjects[1]; in.URL != "wss://in.example.com" || in.Key != "API2" {
+		t.Errorf("india = %+v, want its own values untouched", in)
+	}
+}
+
+// Only what the default entry leaves out is filled; what it states wins.
+func TestADefaultEntryKeepsWhatItStates(t *testing.T) {
+	c := load(t, projectsEnv(`[{"id":"default","url":"wss://mine.example.com","key":"MINE","secret":"mine"}]`,
+		map[string]string{
+			"LIVEKIT_URL":        "wss://legacy.example.com",
+			"LIVEKIT_API_KEY":    "LEGACY",
+			"LIVEKIT_API_SECRET": "legacy",
+		}))
+	if d := c.LiveKitProjects[0]; d.URL != "wss://mine.example.com" || d.Key != "MINE" || d.Secret != "mine" {
+		t.Errorf("default = %+v, want its own values", d)
+	}
+}
+
+// Without the legacy variables, a bare default entry is still refused at boot.
+func TestABareDefaultWithoutLegacyVariablesIsRefused(t *testing.T) {
+	err := loadErr(t, projectsEnv(`[{"id":"default"}]`, nil))
+	if !strings.Contains(err.Error(), "LIVEKIT_PROJECTS[0]") {
+		t.Errorf("error = %v, want it to name LIVEKIT_PROJECTS[0]", err)
+	}
+}
+
 func TestEnabledLiveKitProjectsSkipsTheDisabledOnes(t *testing.T) {
 	c := load(t, projectsEnv(`[
 	  {"id":"spent","url":"wss://a.livekit.cloud","key":"A","secret":"a","disabled":true},

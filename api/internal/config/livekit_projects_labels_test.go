@@ -25,9 +25,13 @@ func TestTheAddingAnSFUTemplateLoads(t *testing.T) {
 	// Placeholders stand for the keys and secrets.
 	block = regexp.MustCompile(`"<[^"]*>"`).ReplaceAllString(block, `"placeholder-value-0123456789abcdef"`)
 
+	// The default entry takes its url/key/secret from the legacy three, which stay set.
 	c := load(t, projectsEnv(block, map[string]string{
 		"BROADCAST_RTMP_BASE": "rtmp://127.0.0.1:1935/live",
 		"BROADCAST_HLS_BASE":  "https://live.webinarliv.com/live",
+		"LIVEKIT_URL":         "wss://88.198.141.104.sslip.io",
+		"LIVEKIT_API_KEY":     "APIlegacykey0123",
+		"LIVEKIT_API_SECRET":  "legacy-secret-0123456789abcdef0123456789abcdef",
 	}))
 	if len(c.LiveKitProjects) != 2 {
 		t.Fatalf("got %d projects, want default and edge2", len(c.LiveKitProjects))
