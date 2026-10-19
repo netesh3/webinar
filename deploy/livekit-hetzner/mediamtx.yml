@@ -33,6 +33,8 @@ hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 hlsPartDuration: 200ms
 hlsMuxerCloseAfter: 60s
+# Caddy sends this on every HLS request — see the template for why.
+hlsCDNSecret: webinarliv-origin
 webrtc: true
 webrtcAddress: 127.0.0.1:8889
 webrtcEncryption: false

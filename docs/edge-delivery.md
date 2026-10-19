@@ -187,6 +187,11 @@ mirrors the existing origin, and viewers fetch from the edge.
    - **Segments and parts (`*.m4s`, `*.mp4`):** cache long (immutable names; minutes to an
      hour is fine). Query strings are not needed.
    - Respect the origin's `Cache-Control` (Caddy already sends `max-age=1` for playlists).
+   - Nothing to set for MediaMTX's viewer sessions: Caddy sends MediaMTX's `hlsCDNSecret` on
+     every `/live/*` request, so all viewers share one session and the same URLs. Without it
+     each viewer got a `cookieCheck` redirect and a `session=<token>` on every playlist and
+     part URL, so the pull zone cached nothing across viewers and every LL-HLS request went
+     to the origin (~0.7s each from India: 6–8s behind on a Bunny-fronted test, 2026-10-19).
 3. Set `EDGE_PLAYBACK_BASE=https://<zone>.b-cdn.net/live` (or a custom hostname) and redeploy
    the API. Nothing else changes.
 
