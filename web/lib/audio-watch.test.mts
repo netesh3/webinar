@@ -8,8 +8,13 @@
 
 import {
   INITIAL_FLOW,
+  LEVEL_MIN_TALKING,
+  QUIET_DB,
   SILENT_MS,
   STALL_MS,
+  TALKING_DB,
+  intervalLevelDb,
+  summarizeLevels,
   watchFlow,
   type FlowEvent,
   type FlowSample,
@@ -150,6 +155,49 @@ function series(
     () => 2,
   ));
   eq(events.map((e) => e.event), ["stalled", "silent"], "a cleared stall over a dead source is not 'flowing'");
+}
+
+// ---------------------------------------------------------------- how loud a voice is
+
+{
+  // Three seconds at a steady 100 ms peak of 0.1: energy 0.01 × 3, so −20 dBFS.
+  const db = intervalLevelDb({ energy: 1, duration: 10 }, 1 + 0.01 * 3, 13);
+  ok(db !== undefined && Math.abs(db + 20) < 1e-6, "the level of an interval comes from the counters' deltas", `got ${db}`);
+  ok(intervalLevelDb({}, 1, 10) === undefined, "no earlier reading, no interval");
+  ok(intervalLevelDb({ energy: 1, duration: 10 }, 1, 10) === undefined, "no audio in between, no level");
+  ok(intervalLevelDb({ energy: 2, duration: 10 }, 1, 13) === undefined, "counters that went backwards are not trusted");
+  const silent = intervalLevelDb({ energy: 1, duration: 10 }, 1, 13);
+  ok(silent !== undefined && silent < -100, "exact silence is very quiet, not -Infinity", `got ${silent}`);
+}
+
+{
+  eq(summarizeLevels([]), { speakingDb: null, loudestDb: null, talking: 0, quiet: false }, "nothing heard, nothing said");
+  const pauses = summarizeLevels([-70, -80, TALKING_DB - 1]);
+  ok(pauses.talking === 0 && !pauses.quiet, "intervals of silence are not talking, and not quiet talking");
+}
+
+{
+  // Somebody talking normally, with pauses in between.
+  const s = summarizeLevels([-14, -70, -16, -12, -80, -15, -13]);
+  ok(s.talking === 5 && !s.quiet, "a normal speaker is not quiet", JSON.stringify(s));
+  ok(s.speakingDb !== null && s.speakingDb > QUIET_DB, "and their usual level is reported", JSON.stringify(s));
+  ok(s.loudestDb === -12, "with their loudest moment");
+}
+
+{
+  const s = summarizeLevels([-33, -70, -31, -35, -30, -80]);
+  ok(s.quiet && s.talking === 4, "a speaker who talks well under QUIET_DB is quiet", JSON.stringify(s));
+}
+
+{
+  const short = summarizeLevels(Array.from({ length: LEVEL_MIN_TALKING - 1 }, () => -35));
+  ok(!short.quiet, "too little talking for a verdict");
+}
+
+{
+  // Mostly normal, one quiet aside: the usual level decides, not the quietest moment.
+  const s = summarizeLevels([-14, -15, -13, -16, -34]);
+  ok(!s.quiet, "one quiet moment does not make a quiet speaker", JSON.stringify(s));
 }
 
 if (failures) {

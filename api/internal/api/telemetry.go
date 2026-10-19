@@ -118,6 +118,13 @@ func severityFor(ev types.TelemetryEvent) string {
 			return "WARNING"
 		}
 	}
+	// A voice the client measured as quiet (web/lib/audio-watch.ts, QUIET_DB): the "host is
+	// very low" complaint, with a number on it.
+	if lower == "speaker_level" || lower == "remote_level" {
+		if quiet, ok := ev.Payload["quiet"].(bool); ok && quiet {
+			return "WARNING"
+		}
+	}
 	if jitterMs, ok := numberField(ev.Payload, "jitter"); ok && jitterMs > 30 {
 		return "WARNING"
 	}
