@@ -42,10 +42,13 @@
 			flush_interval -1
 		}
 
+		# `>` defers the header until MediaMTX has answered, so it replaces MediaMTX's own
+		# "private, no-cache" instead of being sent beside it. With both, the CDN pull zone
+		# honoured the private one and cached nothing: every viewer went to the origin.
 		@playlist path *.m3u8
-		header @playlist Cache-Control "max-age=1, s-maxage=1, public"
+		header @playlist >Cache-Control "max-age=1, s-maxage=1, public"
 		@part path *.m4s *.mp4 *.ts
-		header @part Cache-Control "public, max-age=30, s-maxage=60"
+		header @part >Cache-Control "public, max-age=30, s-maxage=60"
 	}
 }
 
