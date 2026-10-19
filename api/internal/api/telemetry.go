@@ -108,6 +108,16 @@ func severityFor(ev types.TelemetryEvent) string {
 	if strings.Contains(lower, "reconnect") {
 		return "WARNING"
 	}
+	// A microphone that looks live and carries nothing (web/lib/audio-watch.ts), or noise
+	// suppression that had to give up: either way somebody may be hearing silence.
+	if strings.Contains(lower, "stalled") || strings.Contains(lower, "silent") {
+		return "WARNING"
+	}
+	if lower == "noise_suppression_state" {
+		if phase, ok := stringField(ev.Payload, "phase"); ok && (phase == "bypassed" || phase == "broken") {
+			return "WARNING"
+		}
+	}
 	if jitterMs, ok := numberField(ev.Payload, "jitter"); ok && jitterMs > 30 {
 		return "WARNING"
 	}
