@@ -5,9 +5,14 @@ import { Track } from "livekit-client";
 import { useEffect, useState } from "react";
 import {
   INITIAL_HEALTH,
+  INITIAL_LEVEL,
+  LIMIT_HEADROOM,
   MAKEUP_GAIN,
   judgeWorklet,
+  nextLevel,
+  rmsDb,
   softLimitCurve,
+  type LevelState,
   type WorkletHealth,
 } from "./noise-suppression-policy";
 
@@ -33,8 +38,8 @@ import {
  *
  * The graph, in an AudioContext this processor owns:
  *
- *   mic → RnnoiseWorkletNode → wet → WaveShaper (MAKEUP_GAIN + limiter) ─┐
- *     └─────────────────→ dry (silent unless RNNoise has to be bypassed) ─┴→ destination
+ *   mic → RnnoiseWorkletNode → wet → level (the leveller) → WaveShaper (limiter) ─┐
+ *     └──────────────────────→ dry (silent unless RNNoise has to be bypassed) ─────┴→ destination
  *
  * and the destination's track is what gets published. AudioWorkletNode runs on the
  * render thread's own high-priority worklet thread, not the main thread.
@@ -73,12 +78,14 @@ import {
  * unity gain even on frames it correctly recognises as speech — reported directly
  * as "when noise suppression is on, audio volume is also getting reduced," and a
  * well-known property of this exact model family (the same makeup-gain fix is
- * standard practice in, for example, the RNNoise plugin for OBS). MAKEUP_GAIN is a
- * fixed heuristic rather than a measured one: comparing input and output RMS in
- * real time to correct it exactly would need its own AnalyserNode pass every frame
- * for a gain a fixed constant already gets close enough to. It goes through a
- * WaveShaper that also limits (softLimitCurve): a plain 1.5× pushed loud syllables
- * past full scale, and the WebRTC sender hard-clips those.
+ * standard practice in, for example, the RNNoise plugin for OBS). It was a fixed 1.5×,
+ * and a fixed gain is right for somebody close to a good microphone and not enough for
+ * somebody at arm's length from a laptop's — "the host's voice is very low," from
+ * exactly those. So it is a leveller now (see nextLevel in lib/noise-suppression-policy.ts):
+ * it measures the speaker's speech after RNNoise, brings a quiet one up by as much as
+ * 12 dB, never goes below the old 1.5×, and only moves while they are talking, so the
+ * pauses are not turned up. A WaveShaper after it limits (softLimitCurve): a plain gain
+ * pushed loud syllables past full scale, and the WebRTC sender hard-clips those.
  *
  * This replaces the constraint entirely rather than layering under it: two noise
  * suppressors in series (the browser's spectral one, then RNNoise) fight each other
@@ -115,6 +122,16 @@ const CONTEXT_RESUME_GRACE_MS = 1500;
 /** How often the watchdog compares what goes into the worklet with what comes out. */
 const WATCHDOG_INTERVAL_MS = 500;
 
+/** How often the leveller looks at the speaker's level and adjusts. */
+const LEVEL_INTERVAL_MS = 100;
+
+/** The longest gap one adjustment is allowed to account for. A hidden tab's timers can be
+ *  throttled to once a minute, and one reading must not justify a minute's worth of change. */
+const LEVEL_MAX_STEP_MS = 500;
+
+/** Time constant of each gain change, so an adjustment is a glide rather than a step. */
+const LEVEL_SMOOTHING_S = 0.1;
+
 /** Whether this browser can run it at all — AudioWorklet is the hard requirement. */
 export function noiseSuppressionSupported(): boolean {
   if (typeof window === "undefined") return false;
@@ -141,6 +158,11 @@ export type NoiseSuppressionDiagnostics = {
   phase: "starting" | "running" | "bypassed" | "broken" | "destroyed";
   contextState: string;
   sampleRate: number;
+  /** The leveller's gain right now, in dB (+3.5 is the old fixed 1.5×). */
+  levelGainDb: number;
+  /** The speaker's speech level after RNNoise and before the gain, in dBFS; null until
+   *  they have been heard. */
+  speechLevelDb: number | null;
 };
 
 // The WASM binary is the same bytes for every track this participant ever publishes —
@@ -276,6 +298,10 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
   private destination?: MediaStreamAudioDestinationNode;
   private inputMeter?: AnalyserNode;
   private outputMeter?: AnalyserNode;
+  private level?: GainNode;
+  private levelMeter?: AnalyserNode;
+  private leveler?: ReturnType<typeof setInterval>;
+  private levelState: LevelState = INITIAL_LEVEL;
   private watchdog?: ReturnType<typeof setInterval>;
   private onVisible?: () => void;
   private phase: NoiseSuppressionDiagnostics["phase"] = "starting";
@@ -328,6 +354,10 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
       this.connectSource(next);
       this.source?.disconnect();
       this.source = next;
+      // A different microphone is a different level: what the leveller learned of a laptop
+      // microphone at arm's length would make a headset's first words far too loud.
+      this.levelState = INITIAL_LEVEL;
+      this.level?.gain.setTargetAtTime(MAKEUP_GAIN / LIMIT_HEADROOM, ctx.currentTime, 0.02);
     } catch (err) {
       console.warn("[noise suppression] could not move to the new microphone", err);
       this.giveUp("restart failed");
@@ -347,6 +377,9 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
       phase: this.phase,
       contextState: this.ctx?.state ?? "none",
       sampleRate: this.ctx?.sampleRate ?? 0,
+      levelGainDb: Math.round(20 * Math.log10(this.levelState.gain) * 10) / 10,
+      speechLevelDb:
+        this.levelState.levelDb === null ? null : Math.round(this.levelState.levelDb * 10) / 10,
     };
   }
 
@@ -376,28 +409,40 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
     const wet = ctx.createGain();
     const dry = ctx.createGain();
     dry.gain.value = 0;
+    // The leveller's gain goes in divided by LIMIT_HEADROOM and the limiter's curve
+    // multiplies it back, so the curve can shape an over up to the most the leveller adds
+    // instead of clamping it. Starts at the old fixed 1.5×.
+    const level = ctx.createGain();
+    level.gain.value = MAKEUP_GAIN / LIMIT_HEADROOM;
     const shaper = ctx.createWaveShaper();
-    shaper.curve = softLimitCurve(MAKEUP_GAIN);
+    shaper.curve = softLimitCurve(LIMIT_HEADROOM);
     const destination = ctx.createMediaStreamDestination();
     destination.channelCount = 1;
     const inputMeter = ctx.createAnalyser();
     inputMeter.fftSize = 2048;
     const outputMeter = ctx.createAnalyser();
     outputMeter.fftSize = 2048;
+    const levelMeter = ctx.createAnalyser();
+    // About 85 ms of every 100 ms update, so one reading is a moment of speech, not a syllable.
+    levelMeter.fftSize = 4096;
 
     node.connect(wet);
-    wet.connect(shaper);
+    wet.connect(level);
+    level.connect(shaper);
     shaper.connect(destination);
     dry.connect(destination);
     node.connect(outputMeter);
+    node.connect(levelMeter);
 
     this.node = node;
     this.wet = wet;
     this.dry = dry;
+    this.level = level;
     this.shaper = shaper;
     this.destination = destination;
     this.inputMeter = inputMeter;
     this.outputMeter = outputMeter;
+    this.levelMeter = levelMeter;
     this.connectSource(source);
     this.source = source;
     this.processedTrack = destination.stream.getAudioTracks()[0];
@@ -408,6 +453,45 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
     ctx.addEventListener("statechange", this.onContextState);
     this.phase = "running";
     this.startWatchdog();
+    this.startLeveler();
+  }
+
+  /** Follows the speaker's level and moves the gain toward it. See nextLevel. A timer on
+   *  the main thread rather than a worklet of its own: it only ever sets a target the
+   *  GainNode glides to, so a slow or throttled tick costs adaptation speed, never audio. */
+  private startLeveler(): void {
+    const meter = this.levelMeter;
+    const gain = this.level;
+    const ctx = this.ctx;
+    if (!meter || !gain || !ctx) return;
+    const buf = new Float32Array(meter.fftSize);
+    let last = performance.now();
+
+    this.leveler = setInterval(() => {
+      const now = performance.now();
+      const dt = Math.min(now - last, LEVEL_MAX_STEP_MS);
+      last = now;
+      if (this.destroyed || this.bypassed || ctx.state !== "running") return;
+      meter.getFloatTimeDomainData(buf);
+      const next = nextLevel(this.levelState, rmsDb(buf), dt);
+      if (next.gain !== this.levelState.gain) {
+        gain.gain.setTargetAtTime(next.gain / LIMIT_HEADROOM, ctx.currentTime, LEVEL_SMOOTHING_S);
+      }
+      this.levelState = next;
+    }, LEVEL_INTERVAL_MS);
+  }
+
+  private stopLeveler(): void {
+    if (this.leveler !== undefined) clearInterval(this.leveler);
+    this.leveler = undefined;
+    if (this.levelMeter) {
+      try {
+        this.node?.disconnect(this.levelMeter);
+      } catch {
+        // Not connected; nothing to undo.
+      }
+    }
+    this.levelMeter = undefined;
   }
 
   private connectSource(source: MediaStreamAudioSourceNode): void {
@@ -466,6 +550,7 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
   private bypass(reason: string): void {
     if (this.bypassed || !this.wet || !this.dry) return;
     this.stopWatchdog();
+    this.stopLeveler();
     this.bypassed = true;
     this.phase = "bypassed";
     console.warn(`[noise suppression] ${reason}; sending the microphone unprocessed`);
@@ -546,6 +631,7 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
 
   private teardownGraph(): void {
     this.stopWatchdog();
+    this.stopLeveler();
     this.stopWaitingForVisible();
     this.ctx?.removeEventListener("statechange", this.onContextState);
     this.source?.disconnect();
@@ -553,11 +639,13 @@ class RnnoiseProcessor implements TrackProcessor<Track.Kind.Audio, AudioProcesso
     this.node?.destroy();
     this.wet?.disconnect();
     this.dry?.disconnect();
+    this.level?.disconnect();
     this.shaper?.disconnect();
     this.destination?.disconnect();
     this.processedTrack?.stop();
     this.source = undefined;
     this.node = undefined;
+    this.level = undefined;
     this.wet = undefined;
     this.dry = undefined;
     this.shaper = undefined;
