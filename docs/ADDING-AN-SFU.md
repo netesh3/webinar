@@ -33,10 +33,7 @@ to keep everyone on Hetzner and only send assigned hosts to the new project.
 [
   {
     "id": "default",
-    "label": "Hetzner (default)",
-    "url": "wss://88.198.141.104.sslip.io",
-    "key": "<current LIVEKIT_API_KEY>",
-    "secret": "<current LIVEKIT_API_SECRET>"
+    "label": "Hetzner (default)"
   },
   {
     "id": "edge2",
@@ -50,8 +47,9 @@ to keep everyone on Hetzner and only send assigned hosts to the new project.
 ```
 <!-- LIVEKIT_PROJECTS template: end -->
 
-- If `LIVEKIT_HTTP_URL` is set today, add it to `default` as
-  `"httpUrl"`. Ids are stored in the database: add and disable freely, **never rename**.
+- `default` leaves out `url`, `key` and `secret` (and `httpUrl`): it takes them from
+  `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (and `LIVEKIT_HTTP_URL`), so keep those
+  three secrets set and never copy them into the list. Anything it does state wins. Ids are stored in the database: add and disable freely, **never rename**.
 - Set it as the `LIVEKIT_PROJECTS` GitHub secret and re-run **Deploy API (Cloud Run)**. While it
   is set the legacy trio is ignored; deleting it falls back to the legacy trio.
 - `api/internal/config` test `TestTheAddingAnSFUTemplateLoads` parses this exact block.
