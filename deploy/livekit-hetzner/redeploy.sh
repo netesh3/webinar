@@ -110,6 +110,26 @@ if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active
   ufw allow 8189/udp >/dev/null
 fi
 
+# TCP for the HLS origin. The Bunny pull zone fetches each new segment and part
+# over a long round trip, and with Ubuntu's defaults every request started again
+# from a small window: CUBIC resets to slow start whenever a connection has sat
+# idle for one RTO, which between two LL-HLS requests it always has. A 230KB
+# segment then took 0.9-1.4s on a cache miss against 50-75ms on a hit, slower
+# than real time, so viewers stalled and fell back to 6-8s (2026-10-19). Keep the
+# window across idle gaps and use BBR, which does not read one lost packet on a
+# long path as congestion. Only TCP: LiveKit's media is UDP and is not affected.
+if modprobe tcp_bbr 2>/dev/null || grep -qw bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+  cat >/etc/sysctl.d/90-webinarliv-origin.conf <<'SYSCTL'
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_slow_start_after_idle = 0
+SYSCTL
+else
+  echo "tcp_bbr unavailable; keeping the default congestion control" >&2
+  echo "net.ipv4.tcp_slow_start_after_idle = 0" >/etc/sysctl.d/90-webinarliv-origin.conf
+fi
+sysctl -q -p /etc/sysctl.d/90-webinarliv-origin.conf || echo "sysctl: could not apply origin TCP settings" >&2
+
 if [[ -f mediamtx.yml.template ]]; then
   extra="[]"
   if [[ -n "${PRESERVE_NODE_IP}" ]]; then
