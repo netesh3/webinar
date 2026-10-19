@@ -74,6 +74,9 @@ public IPv4 the box itself sees, ≥4 vCPU / 8 GB). Inbound ports: 22, 80, 443, 
    `live2.webinarliv.com`, via the **Live origin DNS** workflow) and set the project's
    `broadcastHlsBase`. Caddy on the box serves the WHEP path on its own `DOMAIN` too, and the
    `live.webinarliv.com` block in the Caddyfile would need that box's hostname instead.
+   - **Edge delivery** for rooms on that box: `EDGE_PLAYBACK_BASE` is one pull zone mirroring
+     one origin, so give the project its own `"edgePlaybackBase"` — the box's `/live` (e.g.
+     `https://<ip>.sslip.io/live`) or a pull zone of its own. It wins over `EDGE_PLAYBACK_BASE`.
 4. Automatic redeploys: the **Deploy LiveKit (Hetzner)** workflow only targets the Hetzner box.
    Add a matrix entry (its own SSH secrets) when the second box should be redeployed by CI.
 

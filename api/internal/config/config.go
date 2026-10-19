@@ -932,13 +932,17 @@ func (c Config) EdgePlaybackURLFor(projectID, slug string) string {
 	if c.BroadcastRTMPBase == "" || slug == "" {
 		return ""
 	}
-	base := c.EdgePlaybackBase
-	if base == "" {
-		if p, ok := c.liveKitProject(projectID); ok && p.BroadcastHLSBase != "" {
-			base = p.BroadcastHLSBase
-		} else {
-			base = c.BroadcastHLSBase
-		}
+	p, ok := c.liveKitProject(projectID)
+	base := ""
+	switch {
+	case ok && p.EdgePlaybackBase != "":
+		base = p.EdgePlaybackBase
+	case c.EdgePlaybackBase != "":
+		base = c.EdgePlaybackBase
+	case ok && p.BroadcastHLSBase != "":
+		base = p.BroadcastHLSBase
+	default:
+		base = c.BroadcastHLSBase
 	}
 	if base == "" {
 		return ""
