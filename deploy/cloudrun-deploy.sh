@@ -128,14 +128,14 @@ ENV_VARS=(
   "SESSION_SECRET=${SESSION_SECRET}"
 )
 
-if [[ -n "${LIVEKIT_PROJECTS:-}" ]]; then
-  ENV_VARS+=("LIVEKIT_PROJECTS=${LIVEKIT_PROJECTS}")
-else
-  ENV_VARS+=("LIVEKIT_URL=${LIVEKIT_URL}")
-  ENV_VARS+=("LIVEKIT_API_KEY=${LIVEKIT_API_KEY}")
-  ENV_VARS+=("LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}")
-  [[ -n "${LIVEKIT_HTTP_URL:-}" ]] && ENV_VARS+=("LIVEKIT_HTTP_URL=${LIVEKIT_HTTP_URL}")
-fi
+# The legacy trio goes through whenever it is set, LIVEKIT_PROJECTS or not: a "default" entry
+# in the list that leaves out url/key/secret takes them from these (api/internal/config).
+# Passing only the list made that entry boot-fail with "url is required" (2026-10-19).
+[[ -n "${LIVEKIT_PROJECTS:-}" ]] && ENV_VARS+=("LIVEKIT_PROJECTS=${LIVEKIT_PROJECTS}")
+[[ -n "${LIVEKIT_URL:-}" ]] && ENV_VARS+=("LIVEKIT_URL=${LIVEKIT_URL}")
+[[ -n "${LIVEKIT_API_KEY:-}" ]] && ENV_VARS+=("LIVEKIT_API_KEY=${LIVEKIT_API_KEY}")
+[[ -n "${LIVEKIT_API_SECRET:-}" ]] && ENV_VARS+=("LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}")
+[[ -n "${LIVEKIT_HTTP_URL:-}" ]] && ENV_VARS+=("LIVEKIT_HTTP_URL=${LIVEKIT_HTTP_URL}")
 
 [[ -n "${CORS_ORIGINS:-}" ]] && ENV_VARS+=("CORS_ORIGINS=${CORS_ORIGINS}")
 [[ -n "${WEB_BASE_URL:-}" ]] && ENV_VARS+=("WEB_BASE_URL=${WEB_BASE_URL}")
