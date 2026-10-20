@@ -74,14 +74,16 @@ hlsAlwaysRemux: false
 hlsVariant: lowLatency
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
-# 500ms, not 200ms. Every part is one request per track (video and audio are
-# separate renditions), and from India each takes ~0.3-0.4s through the pull
-# zone even when the part is ready. At 200ms (267ms at 15fps, since parts end on
-# frames) that was ~7 requests a second, each slower than the media it carried:
-# the buffer drained to 0.1s and LL-HLS stalled (2026-10-19). 500ms halves the
-# requests and leaves each one inside its own duration; PART-HOLD-BACK becomes
-# ~1.5s instead of ~0.7s.
-hlsPartDuration: 500ms
+# Per box: HLS_PART_DURATION in /opt/livekit/.env, 500ms when unset (redeploy.sh).
+#
+# 500ms for an origin far from its viewers (Hetzner, Germany, for India): every part is one
+# request per track, and at 200ms (267ms at 15fps) those requests were slower than the media
+# they carried, so LL-HLS stalled (2026-10-19).
+#
+# 250ms where viewers are close (the Mumbai box behind Bunny's India edge): requests take
+# ~170-230ms, and the player holds ~2.5s glass-to-glass with no stalls, against ~3s at 500ms
+# (2026-10-20). The player aims for at least 1.5s either way (LL_MIN_TARGET_SECONDS).
+hlsPartDuration: __HLS_PART_DURATION__
 hlsMuxerCloseAfter: 60s
 # Every HLS request reaches MediaMTX through Caddy, which sets this as
 # `Authorization: Bearer` (see the Caddyfile). Without it MediaMTX treats each

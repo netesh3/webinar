@@ -79,6 +79,10 @@ fi
 env_value() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true; }
 EGRESS_REMOTE="$(env_value EGRESS_REMOTE)"
 EGRESS_VPC_CIDR="$(env_value EGRESS_VPC_CIDR)"
+# LL-HLS part length, per box (see mediamtx.yml.template). A Go duration MediaMTX accepts.
+HLS_PART_DURATION="$(env_value HLS_PART_DURATION)"
+HLS_PART_DURATION="${HLS_PART_DURATION:-500ms}"
+[[ "$HLS_PART_DURATION" =~ ^[0-9]+ms$ ]] || { echo "HLS_PART_DURATION must look like 250ms, got $HLS_PART_DURATION" >&2; exit 1; }
 REDIS_BIND="127.0.0.1 -::1"
 REDIS_PASSWORD_VALUE=""
 PUBLISH_IPS='["127.0.0.1", "::1"]'
@@ -183,6 +187,7 @@ if [[ -f mediamtx.yml.template ]]; then
   sed -e "s/__WEBRTC_ADDITIONAL_HOSTS__/${extra}/g" \
       -e "s|__PUBLISH_IPS__|${PUBLISH_IPS}|g" \
       -e "s/__RTMP_ADDRESS__/${RTMP_ADDRESS}/g" \
+      -e "s/__HLS_PART_DURATION__/${HLS_PART_DURATION}/g" \
       mediamtx.yml.template > mediamtx.yml
 fi
 

@@ -10,7 +10,7 @@ both can run side by side on the same deployment and be compared.
                                                 │ RTMP
                                                 ▼
                                     MediaMTX on the SFU box: LL-HLS
-                                    (1s segments, 500ms parts, blocking reload)
+                                    (1s segments, 250–500ms parts, blocking reload)
                                                 │  /live/<slug>/index.m3u8
                                                 ▼
                                     Phase 2: Bunny pull zone (CDN) ──▶ hls.js player
@@ -119,6 +119,13 @@ both can run side by side on the same deployment and be compared.
 - **Host.** The room header shows **Edge · N watching**, which is open streams, from
   `GET /api/host/webinars/{slug}/edge`. The participant list still shows only the stage,
   because viewers are not in the video room.
+
+## Per-box settings (`/opt/livekit/.env` on the SFU box, applied by `redeploy.sh`)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HLS_PART_DURATION` | `500ms` | LL-HLS part length. `500ms` for an origin far from its viewers (Hetzner → India); `250ms` where viewers are close (the Mumbai box behind Bunny's India edge): ~2.5s glass-to-glass, no stalls. |
+| `EGRESS_REMOTE` / `EGRESS_VPC_CIDR` | unset | Remote-egress mode: composites run on egress worker VMs (`deploy/egress-worker`), not on the box. |
 
 ## Environment
 
