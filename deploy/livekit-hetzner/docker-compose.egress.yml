@@ -1,4 +1,4 @@
-# LiveKit Egress, Redis, and MediaMTX (live WHEP origin).
+# LiveKit Egress, Redis, and MediaMTX (the Edge LL-HLS origin).
 # Extends the base livekit-hetzner deployment.
 #
 # Usage:
@@ -17,15 +17,11 @@ services:
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
 
-  # Live origin: RTMP ingest from egress, WHEP for attendees (HLS kept for debug).
+  # Live origin for Edge delivery: RTMP ingest from egress, LL-HLS out through Caddy.
   # Host network like everything else here so egress can push rtmp://127.0.0.1.
-  #
-  # The -ffmpeg image variant, not the plain one: the WHEP path transcodes the
-  # ingest's AAC to Opus through ffmpeg, and the slim image has no ffmpeg to run
-  # (runOnAvailable would fail silently per stream). 1.21 is the floor for that
-  # variant, and it renamed runOnReady to runOnAvailable — see mediamtx.yml.
+  # The plain image: the -ffmpeg variant was for the WHEP audio transcode, now gone.
   mediamtx:
-    image: bluenviron/mediamtx:1.21.0-ffmpeg
+    image: bluenviron/mediamtx:1.21.0
     network_mode: host
     restart: unless-stopped
     volumes:

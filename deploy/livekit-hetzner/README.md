@@ -118,46 +118,21 @@ over days/weeks" is just the existing `livekit_participant_total` panel with
 a wider time range / a `max_over_time(...)` query in Grafana — no separate
 tracking needed once the dashboard above is live.
 
-## Live attendee origin (WHEP)
+## Live origin (Edge delivery)
 
-CDN-broadcast attendees (the existing host switch) watch a mixed program, not
-SFU tracks. Egress composites the room, pushes RTMP to MediaMTX, and attendees
-play that mix over **WHEP** (~1–3s). One mix bitrate times viewers, not full
-SFU fan-out. HLS remains on MediaMTX for debugging; join does not hand it out.
+Edge webinars' audiences watch a mixed program, not SFU tracks. Egress composites the room
+(on this box, or on egress workers in remote-egress mode) and pushes RTMP to MediaMTX, which
+repackages it as **LL-HLS** without re-encoding. Caddy serves it on `/live/<slug>/index.m3u8`,
+and viewers play it through a CDN pull zone (Bunny) or directly. See `docs/edge-delivery.md`.
 
 | Piece | Where |
 |---|---|
-| MediaMTX | `docker-compose.egress.yml` · `127.0.0.1:1935` RTMP, `:8889` WHEP, `:8554` RTSP (loopback), UDP `:8189` ICE |
-| Public WHEP | `{BROADCAST_HLS_BASE}/<slug>/whep` |
-| ICE | public IPv4 of this box (same as LiveKit `node_ip`) |
+| MediaMTX | `docker-compose.egress.yml` · `:1935` RTMP in, `127.0.0.1:8888` LL-HLS out (behind Caddy) |
+| Public origin | `{BROADCAST_HLS_BASE}/<slug>/index.m3u8`, or the project's `edgePlaybackBase` |
 
-The ingest is not what attendees read. RTMP cannot carry Opus and WebRTC will
-not take AAC, so the mix lands on `live/<slug>` and MediaMTX runs ffmpeg to
-republish it as `wrtc/<slug>` with the video copied and the audio re-encoded to
-Opus. Copying the video is only legal because the egress is pinned to H.264
-Baseline — WebRTC refuses B-frames, which Main profile emits, and MediaMTX
-rejects the track outright rather than dropping them (`WebRTC doesn't support
-H264 streams with B-frames`, with attendees left on a spinner while the stream
-publishes fine). Caddy maps the one public URL onto `wrtc/`; the two path names
-never leave this box. This is also why MediaMTX runs the `-ffmpeg` image tag.
-
-`BROADCAST_RTMP_BASE` and `BROADCAST_HLS_BASE` are repo secrets. Clearing either
-sends CDN-broadcast attendees back to the SFU. Env names are unchanged.
-
-WHEP cannot be cached. Signaling may use `live.webinarliv.com` (Cloudflare HTTPS)
-or `https://88.198.141.104.sslip.io/live` (direct, already has a public cert).
-Media always goes UDP to the origin on **8189** — open that on ufw *and* on
-`webcast-livekit-fw` if the cloud firewall is in use.
-
-What is configured, should any of it need rebuilding:
-
-1. DNS: `live.webinarliv.com` → `88.198.141.104`, **proxied** (orange cloud) if
-   that hostname is `BROADCAST_HLS_BASE`. Zone SSL mode Full + Caddy
-   `tls internal`. Bypass cache for `/live/*/whep*`.
-2. Repo secrets `BROADCAST_RTMP_BASE=rtmp://127.0.0.1:1935/live` and
-   `BROADCAST_HLS_BASE=https://live.webinarliv.com/live` (or the sslip.io
-   equivalent).
-3. Host firewall: `ufw allow 8189/udp` (`redeploy.sh` applies this).
+Until 2026-10-20 this box was also the **WHEP** origin of the CDN Broadcast mode (WebRTC on
+UDP 8189, plus an ffmpeg per live mix re-encoding the audio to Opus). That mode was retired;
+`redeploy.sh` closes 8189 on boxes that still had it open.
 
 ## Stop paying
 

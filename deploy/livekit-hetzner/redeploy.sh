@@ -147,11 +147,10 @@ umask 077
 mv "$tmp" livekit.yaml
 trap - EXIT
 
-# MediaMTX WHEP: advertise the same public IPv4 LiveKit uses, then restart.
-# ufw on an already-installed host never re-runs install.sh, so the ICE mux
-# has to be opened here or an upgraded box would signal WHEP and drop media.
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
-  ufw allow 8189/udp >/dev/null
+  # 8189/udp was MediaMTX's WHEP ICE port; WHEP is gone (2026-10-20), so close it again on
+  # boxes installed before. No-op where it was never opened.
+  ufw delete allow 8189/udp >/dev/null 2>&1 || true
   # Redis and RTMP for the egress workers: the VPC only, never the internet.
   if [[ "$EGRESS_REMOTE" == "true" ]]; then
     ufw allow from "$EGRESS_VPC_CIDR" to any port 6379 proto tcp >/dev/null
@@ -180,12 +179,7 @@ fi
 sysctl -q -p /etc/sysctl.d/90-webinarliv-origin.conf || echo "sysctl: could not apply origin TCP settings" >&2
 
 if [[ -f mediamtx.yml.template ]]; then
-  extra="[]"
-  if [[ -n "${PRESERVE_NODE_IP}" ]]; then
-    extra="[${PRESERVE_NODE_IP}]"
-  fi
-  sed -e "s/__WEBRTC_ADDITIONAL_HOSTS__/${extra}/g" \
-      -e "s|__PUBLISH_IPS__|${PUBLISH_IPS}|g" \
+  sed -e "s|__PUBLISH_IPS__|${PUBLISH_IPS}|g" \
       -e "s/__RTMP_ADDRESS__/${RTMP_ADDRESS}/g" \
       -e "s/__HLS_PART_DURATION__/${HLS_PART_DURATION}/g" \
       mediamtx.yml.template > mediamtx.yml
