@@ -11,6 +11,8 @@
 #   lk-api-key        that SFU's LiveKit key and secret
 #   lk-api-secret
 #   redis-password    REDIS_PASSWORD from the SFU box's /opt/livekit/.env.keys
+#   sfu-public-ip     (optional) the SFU box's public IP: traffic to it is sent to
+#                     sfu-private-ip instead, so it stays on the VPC
 #
 # The first boot installs Docker and pulls the image (a few minutes); later boots only rewrite
 # the config and start the container, about a minute from power-on to taking a job.
@@ -22,6 +24,17 @@ SFU_PRIVATE_IP="$(md sfu-private-ip)"
 LK_API_KEY="$(md lk-api-key)"
 LK_API_SECRET="$(md lk-api-secret)"
 REDIS_PASSWORD="$(md redis-password)"
+SFU_PUBLIC_IP="$(md sfu-public-ip 2>/dev/null || true)"
+
+# Talk to the SFU over the VPC, not its public IP. LiveKit tells every client, this worker
+# included, to send media to node_ip (public), and the signalling hostname resolves there
+# too, so worker <-> SFU traffic left through Google's edge and came back — billable, for
+# what is a hop inside one zone. Rewriting that destination to the private IP keeps it all
+# internal; conntrack translates the replies back, so ICE and TLS see what they expect.
+if [[ -n "$SFU_PUBLIC_IP" ]]; then
+  iptables -t nat -C OUTPUT -d "$SFU_PUBLIC_IP" -j DNAT --to-destination "$SFU_PRIVATE_IP" 2>/dev/null \
+    || iptables -t nat -A OUTPUT -d "$SFU_PUBLIC_IP" -j DNAT --to-destination "$SFU_PRIVATE_IP"
+fi
 
 if ! command -v docker >/dev/null; then
   export DEBIAN_FRONTEND=noninteractive
