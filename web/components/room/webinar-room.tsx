@@ -102,7 +102,7 @@ import { useStageLayout } from "@/lib/layout";
 import { trackEvent, useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { useLockScreenAudio } from "./lock-screen-audio";
-import { MeetingLimitBanner } from "./meeting-limit-banner";
+import { MeetingLimitBanner, endedByLimit } from "./meeting-limit-banner";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 import { EdgeAudienceRoom } from "./edge-audience-room";
 import { EdgeBadge } from "./edge-badge";
@@ -1560,7 +1560,12 @@ function ConnectedRoom({
                   <MeetingLimitBanner
                     startedAt={startedAt}
                     maxDurationMin={maxDurationMin}
-                    endedByLimit={status === "ended" && Boolean(startedAt) && Boolean(maxDurationMin)}
+                    endedByLimit={endedByLimit({
+                      status,
+                      startedAt,
+                      endedAt: endedAt ?? join.endedAt ?? null,
+                      maxDurationMin,
+                    })}
                   />
                   <RecordingBanner />
                   {/* Chat that arrived while the panel was shut, said once rather than

@@ -57,7 +57,7 @@ import { ToolWindows } from "./tool-windows";
 import { ActiveSpeakerProvider } from "./active-speaker";
 import { RecorderProvider, RecordingBanner } from "./recording";
 import { FileShareBar } from "./file-share-bar";
-import { MeetingLimitBanner } from "./meeting-limit-banner";
+import { MeetingLimitBanner, endedByLimit } from "./meeting-limit-banner";
 import { RoomHeader } from "./webinar-room";
 
 function resolveBroadcastUrl(path: string): string {
@@ -459,7 +459,12 @@ export function CdnAttendeeRoom({
                     <MeetingLimitBanner
                       startedAt={startedAt}
                       maxDurationMin={maxDurationMin}
-                      endedByLimit={status === "ended" && Boolean(startedAt) && Boolean(maxDurationMin)}
+                      endedByLimit={endedByLimit({
+                      status,
+                      startedAt,
+                      endedAt: endedAt ?? join.endedAt ?? null,
+                      maxDurationMin,
+                    })}
                     />
                     <RecordingBanner />
                     <ChatNotifications chatVisible={chatVisible} />

@@ -11,6 +11,8 @@ interface Props {
 
 const WARNING_MS = 15 * 60 * 1000;
 
+export { endedByLimit } from "@/lib/meeting-limit";
+
 function formatCountdown(ms: number): string {
   if (ms <= 0) return "0s";
   const totalSec = Math.ceil(ms / 1000);
