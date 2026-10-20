@@ -15,7 +15,7 @@
  * network errors retry with backoff; media errors go through hls.js's own recovery.
  *
  * Safari plays the playlist natively (no mode switch there). On top of the shared player
- * chrome this adds the latency readout with the mode, Jump to live, an edge_latency telemetry
+ * chrome this adds a LIVE badge, Back to live when far behind, an edge_latency telemetry
  * sample, and, with the debug clock on, the server-synced clock the composite draws too. */
 
 import Hls from "hls.js";
@@ -30,9 +30,7 @@ import {
   STANDARD_TARGET_SECONDS,
   JUMP_COOLDOWN_MS,
   edgeHlsConfig,
-  latencyLabel,
   liveTarget,
-  modeLabel,
   retryDelayMs,
   seekToTarget,
   SEEK_MARGIN_SECONDS,
@@ -485,17 +483,11 @@ export function EdgePlayer({
       {!loading && (
         <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-2">
           {debugClock && <EdgeClock offsetMs={clockOffsetMs} />}
-          <span
-            className="rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/85 backdrop-blur"
-            title={
-              native
-                ? "How far behind live this picture is"
-                : mode === "low-latency"
-                  ? "How far behind live this picture is. Low latency: your connection to the stream is fast."
-                  : "How far behind live this picture is. Smooth mode: plays a little further behind so it doesn't stutter."
-            }
-          >
-            {latencyLabel(latency)} behind{native ? "" : ` · ${modeLabel(mode)}`}
+          {/* No delay readout or mode for viewers: those were for tuning, and the delay is
+              still measured (edge_latency telemetry). Just that this is live. */}
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white/90 backdrop-blur">
+            <span aria-hidden="true" className="inline-block size-1.5 rounded-full bg-red-500" />
+            LIVE
           </span>
           {behind && (
             <button
@@ -503,7 +495,7 @@ export function EdgePlayer({
               onClick={jumpToLive}
               className="pointer-events-auto rounded-full bg-brand px-3 py-1 text-[11.5px] font-semibold text-white shadow-lg hover:bg-brand-hover"
             >
-              Jump to live
+              Back to live
             </button>
           )}
         </div>
