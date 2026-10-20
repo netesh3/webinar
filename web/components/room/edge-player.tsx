@@ -35,6 +35,8 @@ import {
   modeLabel,
   retryDelayMs,
   seekToTarget,
+  SEEK_MARGIN_SECONDS,
+  STARTUP_GRACE_MS,
   type PlaybackMode,
 } from "@/lib/edge-hls";
 import { trackEvent } from "@/lib/telemetry";
@@ -95,6 +97,7 @@ export function EdgePlayer({
     let netAttempts = 0;
     let mediaRecoveries = 0;
     let llTargetSet = false;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
     let llTarget = LL_MIN_TARGET_SECONDS;
 
     const decider = new ModeDecider({ cdn: lowLatency, now: Date.now() });
@@ -184,7 +187,27 @@ export function EdgePlayer({
       setMode(next);
     };
 
+    /* After startup, settle. hls.js adds liveSyncOnStallIncrease to its target for every stall
+     * and keeps it, and a fresh stream stalls a few times while it fills (our own fallback
+     * ignores those: STARTUP_GRACE_MS). Five of them left a viewer at a 2.75s target and 3.6s
+     * behind for the whole session, against the 1.5s it was set to (2026-10-20). So when the
+     * grace ends: put the target back (the setter also clears hls.js's stall count), and skip
+     * once to it, inside the buffer so it is a jump in the picture and not a wait. */
+    const settle = () => {
+      if (!hls || !hls.lowLatencyMode || !llTargetSet) return;
+      hls.targetLatency = llTarget;
+      const ahead = bufferedAhead(video.buffered, video.currentTime);
+      if (Number.isFinite(hls.latency) && hls.latency > llTarget + 0.5 && ahead > SEEK_MARGIN_SECONDS) {
+        video.currentTime = seekToTarget({
+          currentTime: video.currentTime,
+          latency: hls.latency,
+          target: llTarget,
+          bufferedEnd: video.currentTime + ahead,
+        });
+      }
+    };
     const onPlaying = () => {
+      if (!played) settleTimer = setTimeout(settle, STARTUP_GRACE_MS);
       decider.played(Date.now());
       played = true;
       playingRef.current = true;
@@ -308,6 +331,7 @@ export function EdgePlayer({
 
     return () => {
       for (const g of gestures) document.removeEventListener(g, unmuteOnGesture, true);
+      clearTimeout(settleTimer);
       clearTimeout(retry);
       clearTimeout(waitTimer);
       detachVideo();
