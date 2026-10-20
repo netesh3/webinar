@@ -106,6 +106,7 @@ import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 import { EdgeAudienceRoom } from "./edge-audience-room";
 import { EdgeBadge } from "./edge-badge";
+import { JoinTap } from "./join-tap";
 
 /* The webinar room.
  *
@@ -1626,6 +1627,9 @@ function ConnectedRoom({
             className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white shadow-lg"
           />
           <AutoStartAudio room={room} />
+          {/* For an attendee the browser would keep silent: "Join webinar" over the room,
+              whose tap is what starts the sound. See join-tap.tsx. */}
+          <JoinTap room={room} publisher={join.canPublish} />
           </ActiveSpeakerProvider>
         </RecorderProvider>
         </HostSurveyProvider>
@@ -1673,15 +1677,17 @@ function AutoStartAudio({ room }: { room: Room }) {
     //
     // Keeps retrying on every interaction until playback is actually
     // confirmed unlocked, instead of giving up after one attempt.
+    //
+    // Which is why start() does not consult canPlaybackAudio either. Gating on
+    // it there had the same flaw as gating at mount, one step later: a tap
+    // before the host's audio had arrived found the optimistic `true`, stopped
+    // listening for good, and unlocked nothing. A startAudio that succeeds is
+    // the confirmation; until one does, every interaction tries again.
     const start = () => {
-      if (room.canPlaybackAudio) {
-        stop();
-        return;
-      }
-      void room.startAudio().catch(() => {});
+      void room.startAudio().then(stop, () => {});
     };
     const stop = () => {
-      window.removeEventListener("pointerdown", start);
+      window.removeEventListener("pointerup", start);
       window.removeEventListener("keydown", start);
       room.off(RoomEvent.AudioPlaybackStatusChanged, onStatusChange);
     };
@@ -1689,7 +1695,12 @@ function AutoStartAudio({ room }: { room: Room }) {
       if (room.canPlaybackAudio) stop();
     };
 
-    window.addEventListener("pointerdown", start);
+    /* pointerup, not pointerdown. A finger going down is not a user activation:
+     * the HTML standard counts a touch only when it lifts (for a mouse, the press
+     * itself counts). So on a phone, startAudio ran in pointerdown before the tap
+     * had counted, was refused, and it took a second tap to hear anything. By
+     * pointerup a tap has counted, and a mouse click already did on the press. */
+    window.addEventListener("pointerup", start);
     window.addEventListener("keydown", start);
     room.on(RoomEvent.AudioPlaybackStatusChanged, onStatusChange);
     return stop;
