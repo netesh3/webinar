@@ -24,6 +24,7 @@ import {
   type FlowState,
   type LevelCounters,
 } from "./audio-watch";
+import { isAndroid, lockScreenState, type LockScreenState } from "./lock-screen-audio";
 
 /* A temporary telemetry path for one performance-test window — see
  * api/internal/api/telemetry.go for the backend half and why it logs the
@@ -53,6 +54,9 @@ const FLUSH_MS = 10_000;
 const AUDIO_WATCH_MS = 3_000;
 // How many of those looks make one report of how loud each voice was: thirty seconds.
 const LEVEL_REPORT_TICKS = 10;
+// The shortest stretch with the page hidden that is reported as background_audio. A glance at
+// a notification is not a locked screen.
+const BACKGROUND_MIN_MS = 5_000;
 const MAX_BATCH = 50;
 // Jitter/loss thresholds live server-side, in severityFor — the client only
 // ever reports raw numbers, so there is exactly one place a WARNING is
@@ -390,6 +394,79 @@ function startAudioWatch(room: Room): () => void {
     levelWindows.clear();
   };
 
+  /* What a hidden page does to the sound, on Android (lib/lock-screen-audio.ts).
+   *
+   * The looks are timers, which Chrome slows or stops in a hidden page, so what happened is
+   * read off the counters on the way back. totalSamplesDuration grows only while a track is
+   * being played out — concealment and comfort noise included, so a speaker's pause does not
+   * stop it — and packetsReceived while its packets arrive. Across a stretch hidden: about as
+   * much played as time went by, and the sound kept going; about the hidden time missing, and
+   * Chrome stopped playing it; packets missing as well, and the connection stopped too. One
+   * report per stretch of at least BACKGROUND_MIN_MS, from the last look before it to the first
+   * look started after it. */
+  const watchBackground = typeof navigator !== "undefined" && isAndroid(navigator.userAgent);
+  type Look = { at: number; tracks: Map<string, { played: number; packets: number }> };
+  type Away = { hiddenAt: number; before: Look; looks: number; keepAlive: LockScreenState };
+  let lastLook: Look | null = null;
+  let away: Away | null = null;
+  let returned: (Away & { returnedAt: number }) | null = null;
+
+  const noteLook = (look: Look) => {
+    if (document.hidden) {
+      if (away) away.looks += 1;
+      return;
+    }
+    if (returned && look.at >= returned.returnedAt) {
+      reportBackground(returned, look);
+      returned = null;
+    }
+    lastLook = look;
+  };
+
+  const reportBackground = (r: Away & { returnedAt: number }, look: Look) => {
+    let played = 0;
+    let packets = 0;
+    let tracks = 0;
+    for (const [key, after] of look.tracks) {
+      const before = r.before.tracks.get(key);
+      if (!before) continue;
+      played += after.played - before.played;
+      packets += after.packets - before.packets;
+      tracks += 1;
+    }
+    push("background_audio", {
+      hiddenMs: r.returnedAt - r.hiddenAt,
+      windowMs: look.at - r.before.at,
+      // Per track, averaged. No track on both sides means the room was rebuilt while hidden.
+      playedMs: tracks ? Math.round((played / tracks) * 1000) : null,
+      packets: tracks ? Math.round(packets / tracks) : null,
+      tracks,
+      // Looks that ran while hidden. None: Chrome stopped this page's timers as well.
+      looksWhileHidden: r.looks,
+      keepAlive: r.keepAlive,
+      connectionState: room.state,
+      userAgent: navigator.userAgent,
+    });
+    flush();
+  };
+
+  const onVisibility = () => {
+    const now = Date.now();
+    if (document.hidden) {
+      away =
+        lastLook && lastLook.tracks.size > 0
+          ? { hiddenAt: now, before: lastLook, looks: 0, keepAlive: lockScreenState() }
+          : null;
+      return;
+    }
+    if (away && now - away.hiddenAt >= BACKGROUND_MIN_MS) {
+      returned = { ...away, returnedAt: now };
+      // The first look after it now, rather than up to AUDIO_WATCH_MS from now.
+      void tick();
+    }
+    away = null;
+  };
+
   const watchOwnMicrophone = async (at: number, seen: Set<string>): Promise<boolean> => {
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
     const track = pub?.track as LocalTrack | undefined;
@@ -437,7 +514,11 @@ function startAudioWatch(room: Room): () => void {
     return reported || events.length > 0;
   };
 
-  const watchSpeakers = async (at: number, seen: Set<string>): Promise<boolean> => {
+  const watchSpeakers = async (
+    at: number,
+    seen: Set<string>,
+    look: Look["tracks"],
+  ): Promise<boolean> => {
     let reported = false;
     // How loud others arrive is reported only from the stage — the host and the people
     // speaking with them. Every attendee reporting every speaker every 30 s would be a
@@ -450,6 +531,13 @@ function startAudioWatch(room: Room): () => void {
       const stats = await readStatsOrNull(track.receiver);
       if (stopped) return reported;
       const inb = stats?.get("inbound-rtp");
+      const played = num(inb?.totalSamplesDuration);
+      if (played !== undefined) {
+        look.set(`${participant.identity}:${pub.trackSid}`, {
+          played,
+          packets: num(inb?.packetsReceived) ?? 0,
+        });
+      }
       const events = step(`remote:${participant.identity}:${pub.trackSid}`, {
         at,
         muted: pub.isMuted,
@@ -487,9 +575,11 @@ function startAudioWatch(room: Room): () => void {
     try {
       const at = Date.now();
       const seen = new Set<string>();
+      const look: Look = { at, tracks: new Map() };
       const own = await watchOwnMicrophone(at, seen);
-      const remote = await watchSpeakers(at, seen);
+      const remote = await watchSpeakers(at, seen, look.tracks);
       if (stopped) return;
+      if (watchBackground) noteLook(look);
       // A track that has gone takes its history with it.
       for (const key of flows.keys()) if (!seen.has(key)) flows.delete(key);
       for (const key of levelCounters.keys()) if (!seen.has(key)) levelCounters.delete(key);
@@ -519,10 +609,12 @@ function startAudioWatch(room: Room): () => void {
 
   const timer = setInterval(() => void tick(), AUDIO_WATCH_MS);
   room.on(RoomEvent.TrackSubscriptionFailed, onSubscriptionFailed);
+  if (watchBackground) document.addEventListener("visibilitychange", onVisibility);
   return () => {
     stopped = true;
     clearInterval(timer);
     room.off(RoomEvent.TrackSubscriptionFailed, onSubscriptionFailed);
+    document.removeEventListener("visibilitychange", onVisibility);
   };
 }
 
