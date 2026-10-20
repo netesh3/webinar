@@ -6,7 +6,8 @@
 # .github/workflows/egress-pool.yml sets:
 #
 #   sfu-domain        public hostname of the SFU box, for ws_url (wss://<domain>)
-#   sfu-private-ip    the SFU box on the VPC: Redis :6379 and MediaMTX RTMP :1935
+#   sfu-private-ip    the SFU box on the VPC: Redis :6379, and MediaMTX RTMP :1935 (forwarded
+#                     from the worker's own 127.0.0.1:1935, where the API tells egress to push)
 #   lk-api-key        that SFU's LiveKit key and secret
 #   lk-api-secret
 #   redis-password    REDIS_PASSWORD from the SFU box's /opt/livekit/.env.keys
@@ -65,8 +66,17 @@ services:
     volumes:
       - ./egress.yaml:/etc/egress.yaml:ro
       - /dev/shm:/dev/shm
+  # The API hands every egress BROADCAST_RTMP_BASE (rtmp://127.0.0.1:1935/live), which is
+  # right on an SFU box with MediaMTX beside it. Here 127.0.0.1 is the worker, so forward that
+  # port to the SFU box's MediaMTX over the VPC: the API needs no per-worker address.
+  rtmp-forward:
+    image: alpine/socat:1.8.0.3
+    network_mode: host
+    restart: unless-stopped
+    command: ["TCP-LISTEN:1935,bind=127.0.0.1,fork,reuseaddr", "TCP:__SFU_PRIVATE_IP__:1935"]
 YAML
+sed -i "s/__SFU_PRIVATE_IP__/${SFU_PRIVATE_IP}/" docker-compose.yml
 
 docker compose pull --quiet
 docker compose up -d --force-recreate
-echo "egress worker up: wss://${SFU_DOMAIN}, redis ${SFU_PRIVATE_IP}:6379"
+echo "egress worker up: wss://${SFU_DOMAIN}, redis ${SFU_PRIVATE_IP}:6379, rtmp 127.0.0.1:1935 -> ${SFU_PRIVATE_IP}:1935"
