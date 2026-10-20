@@ -196,6 +196,9 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 		in.StartsAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	in, fields := s.normalizeWebinarInput(in, true, "", s.attendeeCeiling(user.Plan))
+	if msg := panelistCapField(in.PanelistEmails, types.PlanStageCap(user.Plan)); msg != "" {
+		fields["panelistEmails"] = msg
+	}
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return types.Webinar{}, false
@@ -302,11 +305,16 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	prevLead := ""
 	// The owner's plan, not the editor's: a panelist editing does not change the cap.
 	ceiling := s.attendeeCeiling("")
+	stageCap := types.PlanStageCap("")
 	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 		prevLead = prev.StartsAt
 		ceiling = s.ceilingForHost(r.Context(), prev.Host.ID)
+		stageCap = s.stageCapForHost(r.Context(), prev.Host.ID)
 	}
 	in, fields := s.normalizeWebinarInput(in, false, prevLead, ceiling)
+	if msg := panelistCapField(in.PanelistEmails, stageCap); msg != "" {
+		fields["panelistEmails"] = msg
+	}
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return
@@ -1634,6 +1642,9 @@ func (s *Server) handleAllowAllToSpeak(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.bulkStageFits(w, r, sfu, wb) {
+		return
+	}
 	granted, err := sfu.AllowAllToSpeak(r.Context(), lk.RoomName(slug), wb.Controls.HideAttendees)
 	if err != nil {
 		// A partial result is still worth reporting — see handleMuteAll's own
@@ -1682,6 +1693,9 @@ func (s *Server) handleBringAllOnStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.bulkStageFits(w, r, sfu, wb) {
+		return
+	}
 	granted, err := sfu.BringAllOnStage(r.Context(), lk.RoomName(slug), wb.Controls.HideAttendees)
 	if err != nil {
 		// A partial result is still worth reporting — see handleMuteAll's own
@@ -1917,6 +1931,10 @@ func (s *Server) handleSetStage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !already {
+			if ok, capacity := s.stageHasRoom(r.Context(), sfu, wb, identity); !ok {
+				writeStageFull(w, capacity)
+				return
+			}
 			if err := s.putInvite(r.Context(), slug, identity, audioOnly); err != nil {
 				s.fail(w, r, "stage invite", err)
 				return
@@ -2382,6 +2400,16 @@ func (s *Server) handleAddPanelist(w http.ResponseWriter, r *http.Request) {
 	if _, err := mail.ParseAddress(email); err != nil {
 		httpx.Fields(w, map[string]string{"email": "That doesn't look like an email address."})
 		return
+	}
+
+	// The host plus every panelist must fit on the stage together.
+	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+		if ids, err := s.store.PanelistIDs(r.Context(), slug); err == nil {
+			if capacity := s.stageCapForHost(r.Context(), wb.Host.ID); len(ids)+1 >= capacity {
+				httpx.Fields(w, map[string]string{"email": panelistCapMessage(capacity)})
+				return
+			}
+		}
 	}
 
 	person, err := s.store.AddPanelist(r.Context(), slug, email)

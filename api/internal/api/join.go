@@ -515,6 +515,14 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 	if role == types.RolePanelist && isRejoin(r) && s.refuseRemoved(w, r, slug, identity) {
 		return
 	}
+	// A scheduled panelist arriving at a stage already filled by promoted attendees waits
+	// for a seat. Never the host, and never someone already on stage (a reconnect).
+	if role == types.RolePanelist {
+		if ok, capacity := s.stageHasRoom(r.Context(), sfu, wb, identity); !ok {
+			writeStageFull(w, capacity)
+			return
+		}
+	}
 
 	// A panelist the host muted comes back muted, and a panelist the host made
 	// co-host comes back co-host — a dropped connection must not be a way to

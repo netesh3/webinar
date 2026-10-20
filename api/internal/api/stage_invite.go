@@ -114,10 +114,20 @@ func (s *Server) finishInvite(ctx context.Context, slug, identity string, accept
 	if !accept {
 		return nil
 	}
+	// The stage had room when the host invited; someone else may have taken the seat since.
+	if ok, capacity := s.stageHasRoom(ctx, sfu, wb, identity); !ok {
+		return stageFullError{capacity: capacity}
+	}
 	return s.applyStageGrant(ctx, sfu, wb, identity, true, inv.AudioOnly)
 }
 
 var errNoInvite = errors.New("no pending stage invite")
+
+// stageFullError is errStageFull with the cap it hit, for the message.
+type stageFullError struct{ capacity int }
+
+func (e stageFullError) Error() string { return errStageFull.Error() }
+func (e stageFullError) Unwrap() error { return errStageFull }
 
 func (s *Server) handleStageInviteRespond(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
@@ -137,6 +147,12 @@ func (s *Server) handleStageInviteRespond(w http.ResponseWriter, r *http.Request
 	if err := s.finishInvite(r.Context(), slug, from.Identity, req.Accept); err != nil {
 		if errors.Is(err, errNoInvite) {
 			httpx.Error(w, http.StatusConflict, "no_invite", "That invite is no longer open.")
+			return
+		}
+		var full stageFullError
+		if errors.As(err, &full) {
+			httpx.Error(w, http.StatusConflict, "stage_full",
+				"The stage filled up before you joined it. The host can bring you on once a seat is free.")
 			return
 		}
 		s.fail(w, r, "stage invite", err)

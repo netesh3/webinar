@@ -3483,6 +3483,24 @@ func PlanAttendeeCap(p Plan) int {
 	}
 }
 
+/* PlanStageCap is the most people on a webinar's stage at once — host, co-hosts, panelists
+ * and promoted attendees together — on a plan. Matches the pricing page.
+ *
+ * The stage, not the audience, is what costs: every stage member receives every other
+ * one, so SFU traffic grows with the square of the stage (a 10-person stage sends ~70-200
+ * Mbps, against ~5-15 for 3; edge audiences are on the CDN and do not count). No plan is
+ * the Professional number, as for attendees. */
+func PlanStageCap(p Plan) int {
+	switch p {
+	case PlanBusiness:
+		return 5
+	case PlanEnterprise:
+		return 10
+	default:
+		return 3
+	}
+}
+
 // Valid is true for a paid plan.
 func (p Plan) Valid() bool {
 	return p == PlanProfessional || p == PlanBusiness || p == PlanEnterprise
