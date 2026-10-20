@@ -575,6 +575,11 @@ func (s *Server) ensureRoom(
 	if err != nil {
 		return nil, 0, false, err
 	}
+	// A stopped SFU box is started here and the caller told to retry — before any call to
+	// it, so the failover below never mistakes a box that is booting for one that refused.
+	if err := s.sfuReady(ctx, project); err != nil {
+		return nil, 0, false, err
+	}
 
 	limit := min(wb.AttendeeLimit, s.ceilingForHost(ctx, wb.Host.ID))
 	meta, err := s.roomMetadata(ctx, wb)

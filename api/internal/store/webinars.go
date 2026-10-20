@@ -1902,6 +1902,25 @@ func newImageVersion() string {
 // LiveWebinarsPastStart lists live webinars whose scheduled start has passed —
 // the candidates for the empty-room sweep. A host who opens the room early and
 // waits for an audience is deliberately not one of them.
+/* SFUDemand is what keeps a project's SFU VM up: webinars live on it, and scheduled ones
+ * starting within `within` that will land on it — pinned to it, or unpinned with a host
+ * assigned to it, or (isDefault) unpinned with a host assigned nowhere. Scheduled webinars
+ * whose start passed more than six hours ago without starting are not counted. */
+func (s *Store) SFUDemand(ctx context.Context, project string, within time.Duration, isDefault bool) (live, soon int, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT
+		  (SELECT count(*) FROM webinars WHERE status = 'live' AND sfu_project = $1),
+		  (SELECT count(*) FROM webinars w JOIN users u ON u.id = w.host_id
+		    WHERE w.status = 'scheduled'
+		      AND w.starts_at <= now() + make_interval(secs => $2)
+		      AND w.starts_at >= now() - interval '6 hours'
+		      AND (w.sfu_project = $1
+		           OR (w.sfu_project = '' AND (coalesce(u.sfu_project, '') = $1
+		                                       OR ($3 AND coalesce(u.sfu_project, '') = '')))))`,
+		project, within.Seconds(), isDefault).Scan(&live, &soon)
+	return live, soon, err
+}
+
 /* LiveEdgeWebinarsOn is the live Edge-delivery webinars pinned to a LiveKit project: how
  * many egress workers that project's pool needs up. */
 func (s *Store) LiveEdgeWebinarsOn(ctx context.Context, project string) ([]string, error) {

@@ -47,6 +47,17 @@ export function AttendeeRoomGate({
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [openingZoom, setOpeningZoom] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  /* The webinar's video server was paused while nothing ran on it and is booting (about a
+   * minute): ask again every few seconds instead of waiting for a "Try again" click. */
+  const serverStarting = error?.code === "sfu_starting";
+  useEffect(() => {
+    if (!serverStarting) return;
+    const t = setTimeout(() => {
+      setError(null);
+      setAttempt((n) => n + 1);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [serverStarting]);
   // Pressing Leave (or "Back to webinars") lands on the way-out screen, which offers the
   // post-event survey when there is one to answer and otherwise goes straight on.
   const [left, setLeft] = useState(false);

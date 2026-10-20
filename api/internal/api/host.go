@@ -1077,6 +1077,14 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 
 	room := lk.RoomName(slug)
 	sfu, _, _, err := s.ensureRoom(r.Context(), wb, room)
+	if errors.Is(err, errSFUStarting) {
+		/* The webinar is live and its server is booting. That is a successful Start: the
+		 * host's room waits on "getting the video server ready" and joins once it is up,
+		 * which creates the room, and the sweeper starts the mix then. */
+		s.log.Info("webinar started, video server booting", "slug", slug)
+		httpx.JSON(w, http.StatusOK, wb)
+		return
+	}
 	if err != nil {
 		s.failSFU(w, r, wb, err)
 		return

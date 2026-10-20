@@ -27,10 +27,15 @@ export function HostRoomGate({ slug }: { slug: string }) {
   const hydrated = useHydrated();
   const [arrival] = useState<Arrival>(() => detectArrival(slug));
   const rejoin = arrival === "rejoin";
+  /* A video server stopped to save money answers sfu_starting while it boots (about a
+   * minute): wait on it and ask again, rather than show "Can't start". */
+  const [serverStarting, setServerStarting] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!hydrated) return;
     let active = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
 
     api
       .hostJoin(slug, { rejoin })
@@ -48,18 +53,26 @@ export function HostRoomGate({ slug }: { slug: string }) {
           window.location.assign(res.zoomStartUrl);
           return;
         }
+        setServerStarting(false);
         setJoin(res);
       })
       .catch((e: unknown) => {
         if (!active) return;
+        if (e instanceof ApiError && e.code === "sfu_starting") {
+          setServerStarting(true);
+          retry = setTimeout(() => setAttempt((n) => n + 1), 5000);
+          return;
+        }
+        setServerStarting(false);
         if (e instanceof ApiError) setError({ code: e.code, message: e.message });
         else setError({ code: "unknown", message: "Could not start the webinar." });
       });
 
     return () => {
       active = false;
+      clearTimeout(retry);
     };
-  }, [slug, hydrated, rejoin, telemetryEnabled]);
+  }, [slug, hydrated, rejoin, telemetryEnabled, attempt]);
 
   /* Being on this stage is a fact about the webinar, not something a retry can change —
    * offering "Try again" would just repeat the same 403. */
@@ -96,6 +109,26 @@ export function HostRoomGate({ slug }: { slug: string }) {
   }
 
   const signInNeeded = error?.code === "unauthenticated";
+
+  if (serverStarting && !error) {
+    return (
+      <main className="grid min-h-dvh place-items-center p-6">
+        <Card className="w-full max-w-md p-6 text-center">
+          <div role="status" aria-live="polite">
+          <span
+            aria-hidden="true"
+            className="mx-auto mb-3 block size-6 animate-spin rounded-full border-2 border-brand/30 border-t-brand"
+          />
+          <h1 className="text-[17px] font-semibold">Getting the video server ready…</h1>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
+            It was paused while no webinars were running. This takes about a minute, and you&apos;ll
+            go straight into your room when it&apos;s up.
+          </p>
+          </div>
+        </Card>
+      </main>
+    );
+  }
 
   return (
     <main className="grid min-h-dvh place-items-center p-6">

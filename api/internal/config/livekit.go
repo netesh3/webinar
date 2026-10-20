@@ -107,8 +107,20 @@ type LiveKitProject struct {
 	 * clicks Start and stops when nothing is live. Nil runs them on the SFU box, as before. */
 	EgressPool *EgressPool `json:"egressPool,omitempty"`
 
+	/* SfuVM names the GCP VM this project's SFU runs on, when the API may stop it while no
+	 * webinar needs it and start it again before one does. Nil leaves the box alone. */
+	SfuVM *SfuVM `json:"sfuVm,omitempty"`
+
 	// Label is the human name shown in the admin "Video server" select. Defaults to the id.
 	Label string `json:"label,omitempty"`
+}
+
+// SfuVM is one VM by name.
+type SfuVM struct {
+	// GCPProject defaults to the project the API runs in.
+	GCPProject string `json:"gcpProject,omitempty"`
+	Zone       string `json:"zone"`
+	Name       string `json:"name"`
 }
 
 // EgressPool names a project's worker VMs: those labelled egress-pool=<Label> in Zone.
@@ -292,6 +304,9 @@ func validateLiveKitProjects(list []LiveKitProject, dev bool) error {
 				where, b))
 		}
 
+		if v := p.SfuVM; v != nil && (strings.TrimSpace(v.Zone) == "" || strings.TrimSpace(v.Name) == "") {
+			errs = append(errs, fmt.Errorf("%s: sfuVm needs a zone and a name", where))
+		}
 		if ep := p.EgressPool; ep != nil && (strings.TrimSpace(ep.Zone) == "" || strings.TrimSpace(ep.Label) == "") {
 			errs = append(errs, fmt.Errorf("%s: egressPool needs a zone and a label", where))
 		}

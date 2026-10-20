@@ -200,6 +200,7 @@ func (s *Server) runRealtime(ctx context.Context) bool {
 	s.sweepEmptyWebinars(ctx)
 	s.sweepBroadcasts(ctx)
 	s.sweepEgressPools(ctx)
+	s.sweepSFUVMs(ctx)
 	s.sweepSimulive(ctx)
 	s.sweepDueSurveys(ctx)
 	mailCtx, mailCancel := context.WithTimeout(ctx, mailFlushBudget)
