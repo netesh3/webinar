@@ -276,6 +276,14 @@ DEPLOY_ARGS=(
   # instances * DB_MAX_CONNS stays under that ceiling.
   --min-instances "${MIN_INSTANCES:-0}"
   --max-instances "${MAX_INSTANCES:-3}"
+  # 500 requests at once per instance, not Cloud Run's default 80. Every Edge viewer holds
+  # one request open for the whole webinar (the event stream: chat, Q&A, polls), so at 80
+  # the three instances above stopped at ~240 viewers and everything after — their streams
+  # and every other API call — queued. An open stream is an idle goroutine, so one instance
+  # holds hundreds; 3 × 500 is room for 1,500 viewers. Concurrency, not instances: more
+  # instances would need more of Supabase's 15 database clients, which these 3 already use
+  # (4 pooled + 1 LISTEN each).
+  --concurrency "${CONCURRENCY:-500}"
   --env-vars-file "$ENV_YAML"
 )
 
