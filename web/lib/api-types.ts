@@ -5959,7 +5959,16 @@ export interface EdgeStatus {
   delivery: string;
   viewers: number /* int */;
   playbackUrl?: string;
+  /**
+   *  AudienceStream is, while an Edge webinar is live, whether its audience has a picture:
+   * 	 * "preparing" until the mix's egress is active (an egress worker may be booting, about a
+   * 	 * minute), then "live". Empty when not live or not Edge. The host room shows "getting your
+   * 	 * webinar ready" while it is preparing.
+   */
+  audienceStream?: string;
 }
+export const AudienceStreamPreparing = "preparing";
+export const AudienceStreamLive = "live";
 /**
  * SetUserStageCapRequest is PATCH /api/admin/users/{id}/stage-cap. Null goes back to the plan.
  */

@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/livekit/protocol/livekit"
 
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
@@ -432,8 +433,31 @@ func (s *Server) handleHostEdgeStatus(w http.ResponseWriter, r *http.Request) {
 			s.log.Warn("edge status: occupancy", "slug", slug, "error", err)
 		}
 		out.Viewers = n
+		if wb.Status == types.StatusLive {
+			out.AudienceStream = s.audienceStream(r.Context(), wb)
+		}
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+/* audienceStream asks LiveKit, not this process's memory, whether the webinar's mix is
+ * encoding: the instance answering the poll is often not the one that started it. A failed
+ * read says "live", so a LiveKit blip never puts a "getting ready" popup over a running show. */
+func (s *Server) audienceStream(ctx context.Context, wb types.Webinar) string {
+	sfu, err := s.sfuFor(ctx, wb)
+	if err != nil {
+		return types.AudienceStreamLive
+	}
+	infos, err := sfu.ListEgress(ctx, lk.RoomName(wb.ID))
+	if err != nil {
+		return types.AudienceStreamLive
+	}
+	for _, info := range infos {
+		if len(info.GetStreamResults()) > 0 && info.GetStatus() == livekit.EgressStatus_EGRESS_ACTIVE {
+			return types.AudienceStreamLive
+		}
+	}
+	return types.AudienceStreamPreparing
 }
 
 // deliveryCacheMap is the type behind Server.deliveryCache.

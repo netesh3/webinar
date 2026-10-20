@@ -50,7 +50,12 @@ export function edgeHlsConfig(mode: PlaybackMode): EdgeHlsConfig {
     liveDurationInfinity: true,
     maxBufferLength: MODE_BUFFER[mode],
     backBufferLength: 10,
-    maxLiveSyncPlaybackRate: 1.15,
+    /* 1: hls.js never changes the playback speed. It sped up to 1.15× and back whenever the
+     * latency was over its target, and with 250ms parts the target (PART-HOLD-BACK, ~0.67s)
+     * is below what fetching parts allows, so it chased it all the time — and the browser's
+     * time-stretching made speech and shared music warble and "cut out" (2026-10-20). Drift
+     * is corrected by skipping forward inside the buffer instead (CATCH_UP.jumpAbove). */
+    maxLiveSyncPlaybackRate: 1,
     // hls.js adds this to its target latency for every stall, up to one target duration (2s
     // against MediaMTX), and never takes it back. At its default of 1s the two stalls of a
     // normal join left a viewer at 3.3s for the whole session where the playlist asks for
@@ -177,8 +182,10 @@ export const CATCH_UP = {
   startAbove: 1,
   /** Back to normal speed this close to the target. */
   stopWithin: 0.3,
-  /** Barely audible; browsers keep the pitch. */
-  rate: 1.1,
+  /** 1: never faster than real time, for the same reason as maxLiveSyncPlaybackRate — a
+   * changing rate is time-stretched audio, which listeners hear as jitter. The jump does the
+   * catching up. */
+  rate: 1,
   /** Seconds buffered ahead of the playhead needed to keep playing faster. */
   minBuffer: 1.5,
   /** Seconds past the target where catching up at CATCH_UP.rate would take too long: jump.
