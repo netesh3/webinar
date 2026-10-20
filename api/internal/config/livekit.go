@@ -102,8 +102,21 @@ type LiveKitProject struct {
 	 * EDGE_PLAYBACK_BASE, then this project's broadcastHlsBase, then BROADCAST_HLS_BASE. */
 	EdgePlaybackBase string `json:"edgePlaybackBase,omitempty"`
 
+	/* EgressPool is set when this project's SFU box runs in remote-egress mode: Edge
+	 * composites run on worker VMs (deploy/egress-worker) that the API starts when a host
+	 * clicks Start and stops when nothing is live. Nil runs them on the SFU box, as before. */
+	EgressPool *EgressPool `json:"egressPool,omitempty"`
+
 	// Label is the human name shown in the admin "Video server" select. Defaults to the id.
 	Label string `json:"label,omitempty"`
+}
+
+// EgressPool names a project's worker VMs: those labelled egress-pool=<Label> in Zone.
+type EgressPool struct {
+	// GCPProject defaults to the project the API runs in.
+	GCPProject string `json:"gcpProject,omitempty"`
+	Zone       string `json:"zone"`
+	Label      string `json:"label"`
 }
 
 // DisplayLabel is Label, or the id when no label was given.
@@ -277,6 +290,10 @@ func validateLiveKitProjects(list []LiveKitProject, dev bool) error {
 			errs = append(errs, fmt.Errorf(
 				"%s: edgePlaybackBase must begin with https:// (it is the playlist URL viewers open): %q",
 				where, b))
+		}
+
+		if ep := p.EgressPool; ep != nil && (strings.TrimSpace(ep.Zone) == "" || strings.TrimSpace(ep.Label) == "") {
+			errs = append(errs, fmt.Errorf("%s: egressPool needs a zone and a label", where))
 		}
 
 		if p.Enabled() {

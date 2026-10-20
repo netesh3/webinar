@@ -156,6 +156,7 @@ jobs:
       EMPTY_ROOM_CLOSE_MIN: ${{ vars.EMPTY_ROOM_CLOSE_MIN || '10' }}
       # Edge delivery (docs/edge-delivery.md). Unset keeps the API's defaults.
       EDGE_PLAYBACK_BASE: ${{ vars.EDGE_PLAYBACK_BASE }}
+      OPS_ALERT_EMAILS: ${{ vars.OPS_ALERT_EMAILS }}
       EDGE_PLAYBACK_LOW_LATENCY: ${{ vars.EDGE_PLAYBACK_LOW_LATENCY }}
       EDGE_DEBUG_CLOCK: ${{ vars.EDGE_DEBUG_CLOCK }}
       EDGE_ENCODING_WIDTH: ${{ vars.EDGE_ENCODING_WIDTH }}

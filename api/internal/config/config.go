@@ -147,6 +147,9 @@ type Config struct {
 	 * already sits behind). Point it at a CDN pull zone that mirrors that origin (Bunny)
 	 * and nothing else changes. See docs/edge-delivery.md. */
 	EdgePlaybackBase string
+	/* OpsAlertEmails get operator alerts that need a person: the Edge egress pool is full,
+	 * or GCP could not start a worker. Empty sends them to the admin accounts. */
+	OpsAlertEmails []string
 	/* EdgeDebugClock overlays a server-synced wall clock on an edge webinar's composite
 	 * (the egress loads the template at <template>/clock) and on the edge player, so
 	 * glass-to-glass latency can be read off a screenshot. Off by default; a test aid. */
@@ -506,6 +509,7 @@ func Load() (Config, error) {
 		BroadcastRTMPBase:           strings.TrimRight(env("BROADCAST_RTMP_BASE", ""), "/"),
 		BroadcastHLSBase:            strings.TrimRight(env("BROADCAST_HLS_BASE", ""), "/"),
 		EdgePlaybackBase:            strings.TrimRight(env("EDGE_PLAYBACK_BASE", ""), "/"),
+		OpsAlertEmails:              splitAndTrim(env("OPS_ALERT_EMAILS", "")),
 		EdgeDebugClock:              strings.EqualFold(strings.TrimSpace(env("EDGE_DEBUG_CLOCK", "")), "true"),
 		EdgePlaybackLowLatency:      strings.EqualFold(strings.TrimSpace(env("EDGE_PLAYBACK_LOW_LATENCY", "")), "true"),
 		EdgeEncodingWidth:           envIntStrict("EDGE_ENCODING_WIDTH", 1280),
@@ -949,6 +953,9 @@ func (c Config) EdgePlaybackURLFor(projectID, slug string) string {
 	}
 	return base + "/" + slug + "/index.m3u8"
 }
+
+// LiveKitProjectByID is the configured project with that id.
+func (c Config) LiveKitProjectByID(id string) (LiveKitProject, bool) { return c.liveKitProject(id) }
 
 func (c Config) liveKitProject(id string) (LiveKitProject, bool) {
 	for _, p := range c.LiveKitProjects {
