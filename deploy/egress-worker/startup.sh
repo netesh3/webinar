@@ -31,6 +31,9 @@ if ! command -v docker >/dev/null; then
 fi
 systemctl enable --now docker
 
+CPUS="$(nproc)"
+if (( CPUS >= 4 )); then COMPOSITE_COST=2.5; else COMPOSITE_COST=1.5; fi
+
 mkdir -p /opt/egress
 cd /opt/egress
 umask 077
@@ -47,13 +50,14 @@ redis:
   password: "${REDIS_PASSWORD}"
 log_level: info
 health_port: 8080
-# One composite per worker: a 1080p30 mix needs most of a 4-vCPU box, and a second one would
-# make both stutter. Reserving 2.5 CPUs per composite under a 90% ceiling admits the first job
-# on 4 vCPUs and refuses the next, so LiveKit hands it to another worker instead.
+# One composite per worker, sized from the machine: a cost a bit over half the usable CPU
+# admits the first job and refuses the next, so LiveKit hands it to another worker. Measured
+# 1080p/20fps: ~1.1 cores (egress ~73%, Chrome ~30%) — so 2 vCPU carries one (2026-10-20).
+# On 2 vCPU that is 1.5 under 1.8 usable; on 4, 2.5 under 3.6.
 cpu_cost:
   max_cpu_utilization: 0.9
-  room_composite_cpu_cost: 2.5
-  web_cpu_cost: 2.5
+  room_composite_cpu_cost: ${COMPOSITE_COST}
+  web_cpu_cost: ${COMPOSITE_COST}
 YAML
 chmod 644 egress.yaml.new
 
