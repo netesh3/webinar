@@ -5433,6 +5433,15 @@ export interface AdminUser {
    */
   maxDurationMin?: number /* int */;
   /**
+   * StageCap is an admin's override of the plan's stage cap (PlanStageCap); nil uses the plan.
+   */
+  stageCap?: number /* int */;
+  /**
+   * PlanStageSeats is the plan's stage cap; StageSeats is what applies (override or plan).
+   */
+  planStageSeats: number /* int */;
+  stageSeats: number /* int */;
+  /**
    * Plan is the paid tier, empty for the launch default.
    */
   plan?: Plan;
@@ -5951,6 +5960,16 @@ export interface EdgeStatus {
   viewers: number /* int */;
   playbackUrl?: string;
 }
+/**
+ * SetUserStageCapRequest is PATCH /api/admin/users/{id}/stage-cap. Null goes back to the plan.
+ */
+export interface SetUserStageCapRequest {
+  stageCap?: number /* int */;
+}
+/**
+ * MaxStageCapOverride is the largest stage an admin may allow one account.
+ */
+export const MaxStageCapOverride = 25;
 export interface SetUserMaxDurationRequest {
   maxDurationMin?: number /* int */;
 }

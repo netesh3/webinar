@@ -12,6 +12,7 @@ import {
   type AccountFeatureRow,
   type OverrideState,
 } from "@/lib/admin-account-features";
+import { COSTS, FEATURE_COSTS, stageCostText } from "@/lib/admin-costs";
 import {
   DefaultMediaQuotaMB,
   FeatureInstantWebinar,
@@ -324,6 +325,39 @@ function AdminAccounts() {
           : `${u.name || u.email} is back on the launch default.`,
         "ok",
       );
+      load(); // the plan sets the stage seats too; the server computes them
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /* A bigger stage is the costliest switch here (traffic grows with its square), so raising
+   * it above the plan says what it costs and asks first. */
+  async function setStageCap(u: AdminUser, stageCap: number | null) {
+    const next = stageCap ?? u.planStageSeats;
+    if (next > u.planStageSeats &&
+        !window.confirm(
+          `Allow ${next} people on stage for ${u.name || u.email}? Their plan allows ${u.planStageSeats}.\n\n` +
+          stageCostText(next) + "\n\nThis applies to every webinar they run.",
+        )) {
+      return;
+    }
+    setBusy(u.id);
+    try {
+      await api.setUserStageCap(u.id, stageCap);
+      setUsers((prev) =>
+        (prev ?? []).map((row) =>
+          row.id === u.id ? { ...row, stageCap: stageCap ?? undefined, stageSeats: next } : row,
+        ),
+      );
+      notify(
+        stageCap === null
+          ? `${u.name || u.email} is back on the plan's stage (${u.planStageSeats} people).`
+          : `${u.name || u.email} may have ${stageCap} people on stage.`,
+        "ok",
+      );
     } catch (e) {
       notify(e instanceof Error ? e.message : "That didn't work.", "error");
     } finally {
@@ -626,13 +660,14 @@ function AdminAccounts() {
                         disabled={isSelf && u.canHost}
                         onChange={(next) => void setHost(u, next)}
                         label="Can host"
+                        description={`Cost: ${COSTS.canHost}`}
                       />
 
                       {/* Max meeting duration — only shown for hosts */}
                       {u.canHost && (
                         <select
                           aria-label="Max meeting duration"
-                          title="Max meeting duration"
+                          title={`Max meeting duration. Cost: ${COSTS.maxDuration}`}
                           value={u.maxDurationMin ?? ""}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -663,7 +698,7 @@ function AdminAccounts() {
                       {u.canHost && (
                         <select
                           aria-label="Plan"
-                          title="Plan (sets the attendee cap)"
+                          title={`Plan (sets the attendee and stage caps). Cost: ${COSTS.plan}`}
                           value={u.plan ?? ""}
                           onChange={(e) => void setPlan(u, e.target.value as Plan | "")}
                           className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
@@ -677,12 +712,33 @@ function AdminAccounts() {
                         </select>
                       )}
 
+                      {u.canHost && (
+                        <select
+                          aria-label="People on stage"
+                          title={`People on stage at once, host included. Cost: ${stageCostText(u.stageSeats)}`}
+                          value={u.stageCap ?? ""}
+                          disabled={busy === u.id}
+                          onChange={(e) =>
+                            void setStageCap(u, e.target.value === "" ? null : Number(e.target.value))
+                          }
+                          className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+                        >
+                          <option value="">Stage: plan ({u.planStageSeats})</option>
+                          {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25].map((n) => (
+                            <option key={n} value={n}>
+                              Stage: {n}
+                              {n > u.planStageSeats ? " (over plan)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
                       {/* Only with a second video server configured; webinars already
                        * pinned to a server never move, so this only steers new ones. */}
                       {u.canHost && sfuProjects.length > 1 && (
                         <select
                           aria-label="Video server"
-                          title="Video server for this host's new webinars"
+                          title={`Video server for this host's new webinars. Cost: ${COSTS.videoServer}`}
                           value={u.sfuProject ?? ""}
                           onChange={(e) => void setVideoServer(u, e.target.value)}
                           className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
@@ -763,6 +819,7 @@ function AdminAccounts() {
                         )
                       }
                     />
+                    {u.canHost && <AccountCosts user={u} />}
                   </div>}
                 </div>
               );
@@ -940,7 +997,7 @@ function FeatureToggle({
         disabled={disabled}
         onChange={(next) => void onCdnBroadcast(next)}
         label={row.label}
-        description={row.description}
+        description={`${row.description} Cost: ${COSTS.cdnBroadcast}`}
       />
     );
   }
@@ -961,6 +1018,11 @@ function FeatureToggle({
           </span>
         </div>
         <p className="mt-0.5 text-[12px] leading-relaxed text-ink-2">{row.description}</p>
+        {FEATURE_COSTS[row.id] && (
+          <p className="mt-0.5 text-[12px] leading-relaxed text-ink-3">
+            Cost: {FEATURE_COSTS[row.id]}
+          </p>
+        )}
       </div>
       <select
         aria-label={`${row.label} for this account`}
@@ -974,6 +1036,42 @@ function FeatureToggle({
         <option value="off">Always off</option>
       </select>
     </div>
+  );
+}
+
+/* What this account's settings cost us, in one place, so whoever changes one of them sees the
+ * bill it can run up. The numbers live in lib/admin-costs.ts. */
+function AccountCosts({ user }: { user: AdminUser }) {
+  const { featureCatalogue } = useAppConfig();
+  const on = (key: string) => (user.features ?? []).includes(key);
+  const label = (key: string) => featureCatalogue.find((f) => f.key === key)?.label ?? key;
+  const rows: [string, string][] = [
+    ["Hosting", COSTS.canHost],
+    [`People on stage: ${user.stageSeats}${user.stageCap ? " (custom)" : ""}`, stageCostText(user.stageSeats)],
+    [`Plan: ${user.plan ? PLAN_LABEL[user.plan] : "launch default"}`, COSTS.plan],
+    ["Video server", COSTS.videoServer],
+    ["Max meeting duration", COSTS.maxDuration],
+    ["Media storage", COSTS.mediaQuota],
+  ];
+  if (user.canCdnBroadcast) rows.push(["CDN broadcast (on)", COSTS.cdnBroadcast]);
+  for (const [key, text] of Object.entries(FEATURE_COSTS)) {
+    if (on(key)) rows.push([`${label(key)} (on)`, text]);
+  }
+  return (
+    <Disclosure summary="Cost of these settings">
+      <p className="text-[12px] text-ink-3">
+        Estimates of what this account can cost us, at list prices. Turning a setting up applies to
+        every webinar this host runs.
+      </p>
+      <dl className="mt-2 space-y-1.5">
+        {rows.map(([label, text]) => (
+          <div key={label}>
+            <dt className="text-[12px] font-medium text-ink-1">{label}</dt>
+            <dd className="text-[12px] leading-relaxed text-ink-2">{text}</dd>
+          </div>
+        ))}
+      </dl>
+    </Disclosure>
   );
 }
 

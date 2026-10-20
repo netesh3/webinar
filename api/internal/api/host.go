@@ -196,7 +196,7 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 		in.StartsAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	in, fields := s.normalizeWebinarInput(in, true, "", s.attendeeCeiling(user.Plan))
-	if msg := panelistCapField(in.PanelistEmails, types.PlanStageCap(user.Plan)); msg != "" {
+	if msg := panelistCapField(in.PanelistEmails, s.stageCapForHost(r.Context(), user.ID)); msg != "" {
 		fields["panelistEmails"] = msg
 	}
 	if len(fields) > 0 {
