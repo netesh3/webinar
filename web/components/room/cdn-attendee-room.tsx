@@ -59,6 +59,7 @@ import { RecorderProvider, RecordingBanner } from "./recording";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingLimitBanner, endedByLimit } from "./meeting-limit-banner";
 import { RoomHeader } from "./webinar-room";
+import { useScreenWakeLock } from "@/lib/wake-lock";
 
 function resolveBroadcastUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
@@ -84,6 +85,8 @@ export function CdnAttendeeRoom({
   onPromoted: () => void;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
+  // A phone left to watch must not auto-lock mid-webinar (lib/wake-lock.ts).
+  useScreenWakeLock();
 
   const [room] = useState(() => new Room());
 

@@ -5725,6 +5725,12 @@ export interface RegisterRequest {
    * 	 *  one gate every attendee passes through — a join key is only issued here.
    */
   passcode?: string;
+  /**
+   * * Set by the form when it runs inside an app's WebView (Instagram, Facebook…).
+   * 	 *  Google refuses OAuth there, so a Gmail address registers through the email
+   * 	 *  verification link instead of being sent to Google sign-in.
+   */
+  embeddedBrowser?: boolean;
 }
 export interface Registration {
   id?: string;

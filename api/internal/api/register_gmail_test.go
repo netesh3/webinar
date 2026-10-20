@@ -137,3 +137,26 @@ func TestRegisterGmailUsesEmailVerifyWhenGoogleAuthOff(t *testing.T) {
 		t.Fatalf("registration = %+v", held)
 	}
 }
+
+/* Inside Instagram / Facebook's WebView Google refuses OAuth, so the form flags
+ * the request and a Gmail address takes the verification mail instead of the
+ * redirect — the same path any other domain takes. */
+func TestRegisterGmailFromEmbeddedBrowserUsesEmailVerify(t *testing.T) {
+	h := newHarness(t, withSupabaseAuth)
+	h.holdVerification = true
+	body := registerBody("webview@gmail.com")
+	body.EmbeddedBrowser = true
+	res, raw := h.do(http.MethodPost, "/api/webinars/"+gmailWebinar+"/register", body)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status %d body %s", res.StatusCode, raw)
+	}
+	var held types.Registration
+	h.decode(raw, &held)
+	if held.State != types.RegUnverified || held.JoinKey != "" || !held.NeedsEmailVerification {
+		t.Fatalf("registration = %+v", held)
+	}
+	if countRows(t, h, `
+		SELECT count(*) FROM notifications WHERE kind = 'email_verify' AND email = $1`, "webview@gmail.com") != 1 {
+		t.Fatal("embedded-browser gmail did not get the verification mail")
+	}
+}

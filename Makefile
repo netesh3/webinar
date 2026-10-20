@@ -102,6 +102,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# paging, sorting, filtering and the subscription budget — which is where the
 	# 300-participant behaviour lives and the one place a browser cannot check it.
 	cd web && node --experimental-strip-types --no-warnings lib/layout.test.mts
+	# In-app browser (Instagram/Facebook WebView) and phone detection.
+	cd web && node --experimental-strip-types --no-warnings lib/device.test.mts
 	# And whether an empty stage means the host hasn't started. It doesn't, once
 	# a host or panelist is in the room — camera off and mic muted still count.
 	cd web && node --experimental-strip-types --no-warnings lib/stage-presence.test.mts

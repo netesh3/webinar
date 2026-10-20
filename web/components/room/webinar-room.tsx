@@ -103,6 +103,7 @@ import { trackEvent, useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { useLockScreenAudio } from "./lock-screen-audio";
 import { MeetingLimitBanner, endedByLimit } from "./meeting-limit-banner";
+import { KeepScreenOn } from "@/lib/wake-lock";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 import { EdgeAudienceRoom } from "./edge-audience-room";
 import { EdgeBadge } from "./edge-badge";
@@ -1635,6 +1636,10 @@ function ConnectedRoom({
           {/* For an attendee the browser would keep silent: "Join webinar" over the room,
               whose tap is what starts the sound. See join-tap.tsx. */}
           <JoinTap room={room} publisher={join.canPublish} />
+          {/* A phone left to watch must not auto-lock: on iOS that suspends the
+              page and the host's audio with it (lib/wake-lock.ts). Off while the
+              Android lock-screen experiment (?bg=1) runs: that person means to lock. */}
+          <KeepScreenOn active={lockScreenVolume === undefined} />
           </ActiveSpeakerProvider>
         </RecorderProvider>
         </HostSurveyProvider>
@@ -1707,8 +1712,10 @@ function AutoStartAudio({ room }: { room: Room }) {
      * pointerup a tap has counted, and a mouse click already did on the press. */
     window.addEventListener("pointerup", start);
     window.addEventListener("keydown", start);
-    room.on(RoomEvent.AudioPlaybackStatusChanged, onStatusChange);
-    return stop;
+    return () => {
+      window.removeEventListener("pointerdown", start);
+      window.removeEventListener("keydown", start);
+    };
   }, [room]);
 
   return null;
