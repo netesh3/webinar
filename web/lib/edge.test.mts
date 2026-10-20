@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import {
   CATCH_UP,
   ModeDecider,
+  LL_RETRIES,
+  LL_RETRY_AFTER_MS,
   bufferedAhead,
   catchUp,
   liveTarget,
@@ -139,6 +141,32 @@ assert.equal(seekToTarget({ currentTime: 100, latency: 12, target: 4, bufferedEn
   assert.equal(d.stalled(40_000), null);
   assert.equal(d.stalled(80_000), null);
   assert.equal(d.mode, "low-latency");
+}
+
+// A drop to standard is not for good: after LL_RETRY_AFTER_MS of standard with no stall it
+// tries low latency again, at most LL_RETRIES times; a stall in standard restarts the wait.
+{
+  const d = new ModeDecider({ cdn: true, now: 0 });
+  d.played(0);
+  for (const t of [20_000, 21_000, 22_000]) d.stalled(t);
+  assert.equal(d.mode, "standard");
+  assert.equal(d.tick(22_000 + LL_RETRY_AFTER_MS - 1), null);
+  d.stalled(60_000); // a stall in standard: wait again from here
+  assert.equal(d.tick(22_000 + LL_RETRY_AFTER_MS), null);
+  assert.equal(d.tick(60_000 + LL_RETRY_AFTER_MS), "low-latency");
+  assert.equal(d.mode, "low-latency");
+  let at = 60_000 + LL_RETRY_AFTER_MS;
+  for (let round = 1; round < LL_RETRIES; round++) {
+    for (const t of [at + 1000, at + 2000, at + 3000]) d.stalled(t);
+    at += 3000;
+    assert.equal(d.mode, "standard");
+    assert.equal(d.tick(at + LL_RETRY_AFTER_MS), "low-latency");
+    at += LL_RETRY_AFTER_MS;
+  }
+  // Retries used up: the last drop stays.
+  for (const t of [at + 1000, at + 2000, at + 3000]) d.stalled(t);
+  assert.equal(d.mode, "standard");
+  assert.equal(d.tick(at + 10 * LL_RETRY_AFTER_MS), null);
 }
 assert.equal(median([3, 1, 2]), 2);
 assert.equal(median([]), null);

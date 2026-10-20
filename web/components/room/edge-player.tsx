@@ -250,6 +250,13 @@ export function EdgePlayer({
         if (!t || !t.first || !t.start) return;
         const next = decider.fragmentLoaded(t.first - t.start, Date.now());
         if (next) applyMode(next);
+        // Back up to low latency after a quiet spell in standard; settle once it has parts.
+        const back = decider.tick(Date.now());
+        if (back) {
+          applyMode(back);
+          clearTimeout(settleTimer);
+          settleTimer = setTimeout(settle, 5000);
+        }
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) {
