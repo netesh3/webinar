@@ -358,13 +358,14 @@ export function applyBudget(
  *  tiles at 132px do not benefit from a 1080p layer; they benefit from the tab not
  *  falling over.
  *
- *  With a 1080p HIGH layer, only 1–2 large tiles should request it. Three-to-nine
- *  equal tiles get MEDIUM (720p) — still sharp, without burning 1080 encode/egress
- *  on faces that are a few hundred CSS pixels wide. Filmstrips stay LOW (360p).
- *  Speaker/spotlight focus forces HIGH independently of this helper. */
+ *  1–2 large tiles get HIGH (1080p), 3 get MEDIUM (720p), and 4 or more get LOW (360p).
+ *  Four used to be MEDIUM too, but every viewer of a grid pulls every tile, so SFU traffic
+ *  grows with the square of the stage: at 4+, 360p tiles (a 2x2 grid is ~540p a tile, and
+ *  360p is what Zoom's gallery sends) halve it with faces that still read (2026-10-20).
+ *  Filmstrips stay LOW. Speaker/spotlight focus forces HIGH independently of this helper. */
 export function qualityFor(tileCount: number): VideoQuality {
   if (tileCount <= 2) return VideoQuality.HIGH;
-  if (tileCount <= 9) return VideoQuality.MEDIUM;
+  if (tileCount <= 3) return VideoQuality.MEDIUM;
   return VideoQuality.LOW;
 }
 
