@@ -41,13 +41,14 @@ assert.equal(edgeHlsConfig("standard").maxBufferLength, 6);
   const at = (latency: number, rate = 1, bufferAhead = 4) => catchUp({ latency, target: 3, bufferAhead, rate });
   // Near the target: normal speed.
   assert.deepEqual(at(3.5), { rate: 1 });
-  // The edge test's 6–8s: faster, until close to the target again (hysteresis).
-  assert.deepEqual(at(7), { rate: CATCH_UP.rate });
+  // A little behind: faster, until close to the target again (hysteresis).
+  assert.deepEqual(at(4.5), { rate: CATCH_UP.rate });
   assert.deepEqual(at(3.6, CATCH_UP.rate), { rate: CATCH_UP.rate });
   assert.deepEqual(at(3.2, CATCH_UP.rate), { rate: 1 });
   // Never at the cost of the buffer: that would cause the stall it recovers from.
-  assert.deepEqual(at(7, CATCH_UP.rate, 1), { rate: 1 });
-  // Far behind: jump, buffer or not.
+  assert.deepEqual(at(4.5, CATCH_UP.rate, 1), { rate: 1 });
+  // More than 2s behind the target (the edge test's 5–6s): jump, buffer or not.
+  assert.equal(at(5.5), "jump");
   assert.equal(at(9.5, 1, 0), "jump");
   // Nothing to go on: leave it alone.
   assert.deepEqual(catchUp({ latency: NaN, target: 3, bufferAhead: 4, rate: 1.1 }), { rate: 1 });
@@ -101,6 +102,7 @@ assert.equal(seekToTarget({ currentTime: 100, latency: 12, target: 4, bufferedEn
 {
   const d = new ModeDecider({ cdn: true, now: 0 });
   assert.equal(d.mode, "low-latency");
+  d.played(0);
   assert.equal(d.stalled(16_000), null);
   assert.equal(d.stalled(20_000), null);
   assert.equal(d.stalled(24_000), "standard");
@@ -111,13 +113,27 @@ assert.equal(seekToTarget({ currentTime: 100, latency: 12, target: 4, bufferedEn
 // Stalls while the player is starting up do not count.
 {
   const d = new ModeDecider({ cdn: true, now: 0 });
+  d.played(0);
   for (const t of [1000, 3000, 5000, 7000, 14_000]) assert.equal(d.stalled(t), null);
   assert.equal(d.mode, "low-latency");
   assert.equal(d.stallCount(14_000), 0);
 }
+// The grace runs from the first frame: a viewer who waited a minute for the mix to start
+// still gets it, and nothing before the first frame counts.
+{
+  const d = new ModeDecider({ cdn: true, now: 0 });
+  assert.equal(d.stalled(30_000), null); // no frame yet
+  d.played(60_000);
+  for (const t of [61_000, 64_000, 68_000, 74_000]) assert.equal(d.stalled(t), null);
+  assert.equal(d.mode, "low-latency");
+  assert.equal(d.stalled(80_000), null);
+  assert.equal(d.stalled(84_000), null);
+  assert.equal(d.stalled(88_000), "standard");
+}
 // Stalls spread out over minutes are not "repeated".
 {
   const d = new ModeDecider({ cdn: true, now: 0 });
+  d.played(0);
   assert.equal(d.stalled(0), null);
   assert.equal(d.stalled(40_000), null);
   assert.equal(d.stalled(80_000), null);

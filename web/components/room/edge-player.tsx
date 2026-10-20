@@ -26,6 +26,7 @@ import {
   ModeDecider,
   bufferedAhead,
   catchUp,
+  JUMP_COOLDOWN_MS,
   edgeHlsConfig,
   latencyLabel,
   liveTarget,
@@ -64,6 +65,7 @@ export function EdgePlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const lastJumpRef = useRef(0);
   const deciderRef = useRef<ModeDecider | null>(null);
   // Playback has started. Until then currentTime is 0, hls.latency reads as the whole
   // window, and the catch-up jumped past the buffer: a black start (edge test, 2026-10-19).
@@ -111,6 +113,7 @@ export function EdgePlayer({
       setReconnecting(false);
       setFrozen(false);
       netAttempts = 0;
+      mediaRecoveries = 0;
     };
     /* Hold the current picture on the canvas before anything that resets the media element.
      * Drawing a cross-origin frame taints the canvas, which only stops reading pixels back —
@@ -135,6 +138,7 @@ export function EdgePlayer({
     };
 
     const onPlaying = () => {
+      decider.played(Date.now());
       played = true;
       playingRef.current = true;
       resumed();
@@ -185,7 +189,12 @@ export function EdgePlayer({
         }
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           mediaRecoveries += 1;
-          if (mediaRecoveries > 1) hls?.swapAudioCodec();
+          /* swapAudioCodec only for a codec error, the case it exists for (HE-AAC detected as
+           * AAC or back). Our mix is plain AAC, and swapping on any second media error of the
+           * session made the audio undecodable: picture on, sound gone (2026-10-20). */
+          if (mediaRecoveries > 1 && data.details === Hls.ErrorDetails.BUFFER_ADD_CODEC_ERROR) {
+            hls?.swapAudioCodec();
+          }
           hls?.recoverMediaError();
           return;
         }
@@ -196,7 +205,10 @@ export function EdgePlayer({
         /* Before the playlist has parsed, startLoad has nothing to load: hls.js only requests
          * the manifest from loadSource, and it does not retry a 404 on its own. So the first
          * viewer, arriving while MediaMTX starts the muxer, sat on black until a refresh. */
-        const reload = !hls?.levels?.length;
+        /* startLoad resumes a stream that paused; after two that did not bring it back (a mix
+         * restarted under a new muxer, the low-latency playlist lost), reload it from the top,
+         * which is what a refresh did whenever a viewer sat on "Reconnecting" for good. */
+        const reload = !hls?.levels?.length || netAttempts >= 2;
         retry = setTimeout(() => {
           if (reload) hls?.loadSource(playbackUrl);
           else hls?.startLoad();
@@ -261,9 +273,19 @@ export function EdgePlayer({
    * standard mode plays slightly faster while behind, and either mode jumps when far behind
    * (lib/edge-hls.ts catchUp). Safari's native player keeps its own distance. */
   useEffect(() => {
+    let lastTime = -1;
     const timer = setInterval(() => {
       const hls = hlsRef.current;
       const video = videoRef.current;
+      /* The badge is cleared by playback events, and a recovery can resume playing without
+       * the one that clears it. Video that is moving is not reconnecting. */
+      if (video && !video.paused) {
+        if (lastTime >= 0 && video.currentTime > lastTime + 0.5) {
+          setReconnecting(false);
+          setFrozen(false);
+        }
+        lastTime = video.currentTime;
+      }
       if (hls && Number.isFinite(hls.latency) && hls.latency > 0) {
         setLatency(hls.latency);
         const target = liveTarget(modeRef.current, hls.targetLatency);
@@ -274,7 +296,8 @@ export function EdgePlayer({
             bufferAhead: bufferedAhead(video.buffered, video.currentTime),
             rate: video.playbackRate,
           });
-          if (next === "jump") {
+          if (next === "jump" && Date.now() - lastJumpRef.current >= JUMP_COOLDOWN_MS) {
+            lastJumpRef.current = Date.now();
             video.currentTime = seekToTarget({
               currentTime: video.currentTime,
               latency: hls.latency,
@@ -282,7 +305,7 @@ export function EdgePlayer({
               bufferedEnd: video.currentTime + bufferedAhead(video.buffered, video.currentTime),
             });
             video.playbackRate = 1;
-          } else if (modeRef.current === "standard" && video.playbackRate !== next.rate) {
+          } else if (next !== "jump" && modeRef.current === "standard" && video.playbackRate !== next.rate) {
             video.playbackRate = next.rate;
           }
         }

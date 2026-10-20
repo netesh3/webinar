@@ -34,7 +34,11 @@ systemctl enable --now docker
 mkdir -p /opt/egress
 cd /opt/egress
 umask 077
-cat >egress.yaml <<YAML
+# Written beside the live files and swapped in only when different. Docker restarts the
+# egress container on its own at boot, and it can take a webinar's job within seconds;
+# recreating it then (as this script used to on every boot) killed that mix mid-start
+# (2026-10-20). So the container is recreated only when its config really changed.
+cat >egress.yaml.new <<YAML
 api_key: ${LK_API_KEY}
 api_secret: ${LK_API_SECRET}
 ws_url: wss://${SFU_DOMAIN}
@@ -51,9 +55,9 @@ cpu_cost:
   room_composite_cpu_cost: 2.5
   web_cpu_cost: 2.5
 YAML
-chmod 644 egress.yaml
+chmod 644 egress.yaml.new
 
-cat >docker-compose.yml <<'YAML'
+cat >docker-compose.yml.new <<'YAML'
 services:
   egress:
     image: livekit/egress:v1.15.0
@@ -75,8 +79,19 @@ services:
     restart: unless-stopped
     command: ["TCP-LISTEN:1935,bind=127.0.0.1,fork,reuseaddr", "TCP:__SFU_PRIVATE_IP__:1935"]
 YAML
-sed -i "s/__SFU_PRIVATE_IP__/${SFU_PRIVATE_IP}/" docker-compose.yml
+sed -i "s/__SFU_PRIVATE_IP__/${SFU_PRIVATE_IP}/" docker-compose.yml.new
 
-docker compose pull --quiet
-docker compose up -d --force-recreate
+changed=0
+for f in egress.yaml docker-compose.yml; do
+  if ! cmp -s "$f.new" "$f"; then mv "$f.new" "$f"; changed=1; else rm -f "$f.new"; fi
+done
+
+# Pull only what is missing: a boot is about a minute from a webinar waiting on it.
+docker image inspect livekit/egress:v1.15.0 >/dev/null 2>&1 && docker image inspect alpine/socat:1.8.0.3 >/dev/null 2>&1 \
+  || docker compose pull --quiet
+if [[ "$changed" == 1 ]]; then
+  docker compose up -d --force-recreate
+else
+  docker compose up -d
+fi
 echo "egress worker up: wss://${SFU_DOMAIN}, redis ${SFU_PRIVATE_IP}:6379, rtmp 127.0.0.1:1935 -> ${SFU_PRIVATE_IP}:1935"

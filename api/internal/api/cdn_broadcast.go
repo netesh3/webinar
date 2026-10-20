@@ -14,6 +14,12 @@ import (
 var (
 	broadcastMu      sync.Mutex
 	activeBroadcasts = make(map[string]string) // slug -> egressID or "starting"
+	/* startOwner says which start attempt holds a "starting" mark, so a failed attempt clears
+	 * only its own. Without it, one attempt timing out deleted the mark of another still in
+	 * flight, the sweeper saw an empty slot and started more, and a worker pool with one free
+	 * worker got a stream of starts that could only time out (2026-10-20). */
+	startOwner   = make(map[string]uint64)
+	startCounter uint64
 )
 
 /* How long to wait before putting the mix back after a combined egress stops.
@@ -65,6 +71,9 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	}
 	// Mark as starting to prevent concurrent duplicate invocations
 	activeBroadcasts[wb.ID] = "starting"
+	startCounter++
+	attempt := startCounter
+	startOwner[wb.ID] = attempt
 	broadcastMu.Unlock()
 
 	/* 720p mix on purpose: this stream is copied once per attendee on the same
@@ -86,13 +95,17 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", redactErr(err, startURL))
 		broadcastMu.Lock()
-		delete(activeBroadcasts, wb.ID)
+		if startOwner[wb.ID] == attempt {
+			delete(activeBroadcasts, wb.ID)
+			delete(startOwner, wb.ID)
+		}
 		broadcastMu.Unlock()
 		return
 	}
 
 	broadcastMu.Lock()
 	activeBroadcasts[wb.ID] = info.EgressId
+	delete(startOwner, wb.ID)
 	broadcastMu.Unlock()
 	noteEgressStartDest(info.EgressId, startDest)
 
@@ -134,7 +147,18 @@ func (s *Server) broadcastEgressIDs(ctx context.Context, slug string, sfu RoomMa
 			continue
 		}
 		switch info.GetStatus() {
-		case livekit.EgressStatus_EGRESS_STARTING, livekit.EgressStatus_EGRESS_ACTIVE:
+		case livekit.EgressStatus_EGRESS_STARTING:
+			/* A start that never became active is a job whose worker died under it (a
+			 * restarted container, a stopped VM). LiveKit keeps it STARTING for good and
+			 * cannot stop it, so counting it as running would leave the room without a mix
+			 * forever; past egressStartingDead it is ignored and a new mix is started. */
+			if egressStartingTooLong(info, time.Now()) {
+				s.log.Warn("cdn broadcast: egress stuck starting, treating it as gone",
+					"slug", slug, "egress", info.GetEgressId())
+				continue
+			}
+			ids = append(ids, info.GetEgressId())
+		case livekit.EgressStatus_EGRESS_ACTIVE:
 			ids = append(ids, info.GetEgressId())
 		}
 	}
@@ -424,4 +448,16 @@ func (s *Server) syncStreamDest(ctx context.Context, wb types.Webinar, sfu RoomM
 			s.attachDestinations(ctx, wb.ID, sfu, id, []mixDest{{Platform: platform, URL: newURL}})
 		}
 	}
+}
+
+// egressStartingDead is how long an egress may sit in STARTING before it is presumed dead. A
+// healthy one goes ACTIVE in a few seconds, or ~40s when its worker VM is booting.
+const egressStartingDead = 90 * time.Second
+
+func egressStartingTooLong(info *livekit.EgressInfo, now time.Time) bool {
+	since := max(info.GetStartedAt(), info.GetUpdatedAt())
+	if since == 0 {
+		return false
+	}
+	return now.Sub(time.Unix(0, since)) > egressStartingDead
 }

@@ -2,6 +2,9 @@ package api
 
 import (
 	"testing"
+	"time"
+
+	"github.com/livekit/protocol/livekit"
 
 	"github.com/netkumar/webcast/api/types"
 )
@@ -43,5 +46,20 @@ func TestPanelistCapCountsTheHostAndDistinctEmails(t *testing.T) {
 	// Duplicates and blanks are not extra people.
 	if msg := panelistCapField([]string{"a@x.com", " A@x.com ", "", "b@x.com"}, 3); msg != "" {
 		t.Errorf("duplicates counted twice: %q", msg)
+	}
+}
+
+func TestEgressStuckStartingIsTreatedAsGone(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	fresh := &livekit.EgressInfo{StartedAt: now.Add(-30 * time.Second).UnixNano()}
+	stuck := &livekit.EgressInfo{StartedAt: now.Add(-3 * time.Minute).UnixNano()}
+	if egressStartingTooLong(fresh, now) {
+		t.Error("a 30s-old start (worker still booting) was treated as dead")
+	}
+	if !egressStartingTooLong(stuck, now) {
+		t.Error("a start stuck for 3 minutes was still counted as running")
+	}
+	if egressStartingTooLong(&livekit.EgressInfo{}, now) {
+		t.Error("an egress with no timestamps was treated as dead")
 	}
 }
