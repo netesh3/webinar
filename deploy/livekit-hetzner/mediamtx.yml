@@ -1,11 +1,22 @@
-# Generated on the box by redeploy.sh from mediamtx.yml.template.
-# Checked in so a local `docker compose` still has a valid default (no ICE IP).
+# Generated on the box by redeploy.sh from mediamtx.yml.template; checked in so a local
+# `docker compose` has a valid default. Values here are the template's defaults.
+
+# Live origin for Edge delivery.
+#
+# LiveKit Egress (on this box, or on egress workers in remote-egress mode) pushes RTMP to
+# :1935/live/{slug}. MediaMTX repackages it as LL-HLS — no re-encode — and Caddy serves it on
+# /live/{slug}/index.m3u8, where viewers play it through a CDN pull zone (Bunny) or directly.
+#
+# Until 2026-10-20 this was also the WHEP origin of the CDN Broadcast mode: WebRTC on :8189,
+# and an ffmpeg per live mix re-encoding the audio to Opus for it. That mode was retired, and
+# with it the transcode, which was running for every Edge webinar on the SFU box's CPU.
 
 logLevel: info
 logDestinations: [stdout]
 
 authMethod: internal
 authInternalUsers:
+  # Egress (local or from the VPC) and Caddy, which proxies every HLS request from 127.0.0.1.
   - user: any
     pass:
     ips: ["127.0.0.1", "::1"]
@@ -13,37 +24,52 @@ authInternalUsers:
       - action: publish
       - action: read
       - action: playback
-  # WHEP viewers arrive as their own address, not Caddy's — see the template.
-  - user: any
-    pass:
-    permissions:
-      - action: read
 
-rtsp: true
-rtspAddress: 127.0.0.1:8554
-rtspTransports: [tcp]
+# No RTSP: it was only the WHEP transcode's own loopback transport.
+rtsp: false
 rtmp: true
+# 127.0.0.1 normally. In remote-egress mode the egress workers push from the VPC, so it
+# listens on all interfaces; publishing is still limited to the IPs above (loopback plus the
+# VPC range), and neither the cloud firewall nor ufw opens 1935 to the internet.
 rtmpAddress: 127.0.0.1:1935
 hls: true
 hlsAddress: 127.0.0.1:8888
 hlsAllowOrigins: ["*"]
+# Off: a muxer is created on demand the moment a viewer (or the CDN) asks for a playlist,
+# so a mix nobody watches costs nothing; the first seconds of a new playlist are colder.
 hlsAlwaysRemux: false
 hlsVariant: lowLatency
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
+# Per box: HLS_PART_DURATION in /opt/livekit/.env, 500ms when unset (redeploy.sh).
+#
+# 500ms for an origin far from its viewers (Hetzner, Germany, for India): every part is one
+# request per track, and at 200ms (267ms at 15fps) those requests were slower than the media
+# they carried, so LL-HLS stalled (2026-10-19).
+#
+# 250ms where viewers are close (the Mumbai box behind Bunny's India edge): requests take
+# ~170-230ms, and the player holds ~2.5s glass-to-glass with no stalls, against ~3s at 500ms
+# (2026-10-20). The player aims for at least 1.5s either way (LL_MIN_TARGET_SECONDS).
 hlsPartDuration: 500ms
 hlsMuxerCloseAfter: 60s
-# Caddy sends this on every HLS request — see the template for why.
+# Every HLS request reaches MediaMTX through Caddy, which sets this as
+# `Authorization: Bearer` (see the Caddyfile). Without it MediaMTX treats each
+# viewer as its own session: the first playlist request is a 302 to
+# ?cookieCheck=1, every playlist and part URL carries that viewer's
+# session=<token>, and responses are no-cache. Behind the Bunny pull zone that
+# made every viewer's URLs unique, so nothing was shared from the CDN cache and
+# every LL-HLS request went to this box: ~0.7s each from India, which LL-HLS
+# cannot keep up with (6-8s behind, 2026-10-19). With it, one shared session
+# and the same URLs for everyone.
+#
+# Not a credential: MediaMTX listens on localhost only, read is open to anyone
+# anyway, and Caddy overwrites whatever Authorization a client sends.
 hlsCDNSecret: webinarliv-origin
-webrtc: true
-webrtcAddress: 127.0.0.1:8889
-webrtcEncryption: false
-webrtcAllowOrigins: ["*"]
-webrtcTrustedProxies: ["127.0.0.1"]
-webrtcLocalUDPAddress: :8189
-webrtcIPsFromInterfaces: true
-webrtcAdditionalHosts: []
+webrtc: false
 srt: false
+# MoQ is new in 1.21 and defaults to on, which is three more listeners (:8892
+# TCP and UDP, :8893 UDP) and a self-signed certificate generated at boot, for
+# a protocol nothing here speaks.
 moq: false
 api: false
 metrics: false
@@ -51,14 +77,4 @@ pprof: false
 playback: false
 
 paths:
-  # RTMP ingest, transcoded to wrtc/{slug} for WHEP — see the template for why.
-  "~^live/(.+)$":
-    runOnAvailable: >
-      ffmpeg -nostdin -hide_banner -loglevel warning
-      -rtsp_transport tcp -i rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
-      -map 0:v:0 -c:v copy
-      -map 0:a:0 -c:a libopus -b:a 96k -ar 48000 -ac 2 -application audio
-      -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$RTSP_PORT/wrtc/$G1
-    runOnAvailableRestart: true
-
   all_others:

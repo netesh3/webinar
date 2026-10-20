@@ -58,7 +58,7 @@ to keep everyone on Hetzner and only send assigned hosts to the new project.
 
 The stack in `deploy/livekit-hetzner/` is provider-agnostic (Ubuntu 22.04/24.04, root SSH, a
 public IPv4 the box itself sees, ≥4 vCPU / 8 GB). Inbound ports: 22, 80, 443, 7881/tcp,
-3478/udp+tcp, 50000–60000/udp, 8189/udp.
+3478/udp+tcp, 50000–60000/udp.
 
 1. Create the server and a DNS-only A record for its hostname (e.g. `sfu2.webinarliv.com`).
 2. Install once as root: copy `deploy/livekit-hetzner/` to `/opt/livekit` and run
@@ -67,11 +67,8 @@ public IPv4 the box itself sees, ≥4 vCPU / 8 GB). Inbound ports: 22, 80, 443, 
    - If the domain is not `<ip>.sslip.io`, pin the advertised IP: after install, set
      `rtc.node_ip: <public IPv4>` and `use_external_ip: false` in `/opt/livekit/livekit.yaml`
      (`redeploy.sh` preserves them), then `docker compose restart livekit`.
-3. CDN broadcast for rooms on that box: its Egress pushes to the MediaMTX on the same box, so
-   viewers must be sent to *that* box. Give it a proxied attendee origin (e.g.
-   `live2.webinarliv.com`, via the **Live origin DNS** workflow) and set the project's
-   `broadcastHlsBase`. Caddy on the box serves the WHEP path on its own `DOMAIN` too, and the
-   `live.webinarliv.com` block in the Caddyfile would need that box's hostname instead.
+3. Live origin for rooms on that box: its Egress pushes to the MediaMTX on the same box, so
+   viewers must be sent to *that* box. Caddy serves `/live/*` on the box's own `DOMAIN`.
    - **Edge delivery** for rooms on that box: `EDGE_PLAYBACK_BASE` is one pull zone mirroring
      one origin, so give the project its own `"edgePlaybackBase"` — the box's `/live` (e.g.
      `https://<ip>.sslip.io/live`) or a pull zone of its own. It wins over `EDGE_PLAYBACK_BASE`.

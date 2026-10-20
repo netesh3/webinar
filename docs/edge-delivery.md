@@ -1,7 +1,7 @@
 # Edge delivery (beta)
 
-A third way to run a webinar, beside **Standard** (everyone on the LiveKit SFU) and **CDN
-broadcast** (audience watches the WHEP mix from the SFU box). Edge is opt-in per webinar, so
+The second way to run a webinar, beside **Standard** (everyone on the LiveKit SFU). The old
+**CDN broadcast** mode (audience on a WHEP mix) was retired on 2026-10-20. Edge is opt-in per webinar, so
 both can run side by side on the same deployment and be compared.
 
 ```
@@ -24,7 +24,7 @@ both can run side by side on the same deployment and be compared.
 | | Standard | Edge |
 |---|---|---|
 | Host, panelists, promoted attendees | WebRTC stage | WebRTC stage (unchanged) |
-| Audience picture | SFU (or WHEP mix for CDN-broadcast hosts) | LL-HLS from the origin or a CDN |
+| Audience picture | SFU | LL-HLS from the origin or a CDN |
 | Audience chat/polls/controls | LiveKit data channel and room metadata | `GET /api/webinars/{slug}/events` (SSE) |
 | Audience on the SFU | Yes (full or data-only peers) | **No.** Not a participant, not counted against the room size |
 | Attendee limit | Live SFU participant count | Open event streams (attendance visits) |
@@ -138,7 +138,7 @@ both can run side by side on the same deployment and be compared.
 | `EDGE_ENCODING_WIDTH` / `EDGE_ENCODING_HEIGHT` | `1280` / `720` | Edge mix resolution (even, 320–3840 × 180–2160). |
 | `EDGE_ENCODING_FPS` | `30` | 10–60. |
 | `EDGE_VIDEO_BITRATE_KBPS` | `1700` | 300–20000. Use about **4500 for 1080p**. |
-| `EDGE_H264_PROFILE` | `baseline` | `baseline`, `main` or `high`. Baseline stays the default because the same mix still feeds WHEP for CDN-broadcast hosts, and WHEP cannot take B-frames. Once only HLS consumes the mix, **high** gives noticeably sharper screen-share text for the same bitrate. |
+| `EDGE_H264_PROFILE` | `baseline` | `baseline`, `main` or `high`. Baseline was the default while the mix also fed WHEP, which cannot take B-frames. With WHEP retired, **high** gives noticeably sharper screen-share text for the same bitrate. |
 
 **Recommended test encoding for screen-share legibility:** `EDGE_ENCODING_WIDTH=1920`,
 `EDGE_ENCODING_HEIGHT=1080`, `EDGE_ENCODING_FPS=20`, `EDGE_VIDEO_BITRATE_KBPS=3500`,
@@ -208,8 +208,7 @@ viewer does not wait for the muxer to start.
 **Dedicated egress box.** Room composite egress is a headless Chrome plus an x264 encode on
 the SFU box: about 2.3 cores at 720p Baseline. That competes with the SFU, which is what
 edge delivery is meant to relieve. Move egress (and MediaMTX) to its own machine, then raise
-`EDGE_ENCODING_*` to 1920×1080 at ~4500 kbps, profile high if no host on that box uses CDN
-broadcast (WHEP).
+`EDGE_ENCODING_*` to 1920×1080 at ~4500 kbps, profile high.
 
 **480p rendition for weak connections (not built).** ffmpeg on the egress box reads the mix
 from MediaMTX (`live/<slug>`), transcodes it to 854×480 at about 800 kbps, and publishes a

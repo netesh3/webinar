@@ -1,31 +1,19 @@
-# Live origin for CDN-broadcast attendees.
+# Live origin for Edge delivery.
 #
-# LiveKit Egress (host network) pushes RTMP to 127.0.0.1:1935/live/{slug}.
-# Attendees play that mix over WHEP (WebRTC). Signaling is HTTPS via Caddy
-# on /live/{slug}/whep, which Caddy rewrites onto wrtc/{slug} (see below);
-# media is UDP :8189 advertised as the box's public IP. HLS stays on for
-# debugging; it is not what join hands out.
+# LiveKit Egress (on this box, or on egress workers in remote-egress mode) pushes RTMP to
+# :1935/live/{slug}. MediaMTX repackages it as LL-HLS — no re-encode — and Caddy serves it on
+# /live/{slug}/index.m3u8, where viewers play it through a CDN pull zone (Bunny) or directly.
 #
-# What the RTMP ingest carries cannot be sent to a browser as-is: RTMP has no
-# Opus, so the audio arrives as AAC, which WebRTC does not accept. MediaMTX
-# does not transcode on its own, so the `live/` path below shells out to
-# ffmpeg and republishes as `wrtc/{slug}` with the video copied through and
-# the audio re-encoded. Video is copied rather than re-encoded because the
-# egress is pinned to H.264 Baseline (see StartBroadcastEgress) — no B-frames,
-# which is the other thing WebRTC refuses. Copying is also what keeps this
-# affordable: one 720p30 re-encode per concurrent webinar would not fit next
-# to the SFU and headless Chromium on this box.
-#
-# __WEBRTC_ADDITIONAL_HOSTS__ is filled by redeploy.sh (same IP as LiveKit
-# node_ip) so ICE candidates are the reachable IPv4, not a Cloudflare hostname
-# and not a docker bridge address.
+# Until 2026-10-20 this was also the WHEP origin of the CDN Broadcast mode: WebRTC on :8189,
+# and an ffmpeg per live mix re-encoding the audio to Opus for it. That mode was retired, and
+# with it the transcode, which was running for every Edge webinar on the SFU box's CPU.
 
 logLevel: info
 logDestinations: [stdout]
 
 authMethod: internal
 authInternalUsers:
-  # Egress, the ffmpeg transcode, and anything else on the box.
+  # Egress (local or from the VPC) and Caddy, which proxies every HLS request from 127.0.0.1.
   - user: any
     pass:
     ips: __PUBLISH_IPS__
@@ -33,30 +21,9 @@ authInternalUsers:
       - action: publish
       - action: read
       - action: playback
-  # WHEP viewers, read-only.
-  #
-  # webrtcTrustedProxies makes MediaMTX resolve the client from
-  # X-Forwarded-For, so an attendee is their own (or Cloudflare's) address
-  # here, never Caddy's 127.0.0.1 — the entry above cannot match them, and
-  # every SDP offer came back "authentication failed" while the stream was
-  # publishing perfectly. Publish stays localhost-only: Caddy routes just
-  # /whep, and :8889 is not in ufw's allow-list.
-  - user: any
-    pass:
-    permissions:
-      - action: read
 
-# RTSP is the transcode's own transport, localhost only: ffmpeg reads the
-# ingest and publishes the result back over it. Not reachable from outside —
-# it is not in ufw's allow-list and Caddy does not route to it.
-#
-# TCP-only transports because this is a loopback hop where UDP buys nothing,
-# and the default list ([udp, multicast, tcp]) opens RTP/RTCP listeners on
-# 0.0.0.0:8000-8001. On a host-network container that is two more ports facing
-# the internet, held shut by nothing but ufw.
-rtsp: true
-rtspAddress: 127.0.0.1:8554
-rtspTransports: [tcp]
+# No RTSP: it was only the WHEP transcode's own loopback transport.
+rtsp: false
 rtmp: true
 # 127.0.0.1 normally. In remote-egress mode the egress workers push from the VPC, so it
 # listens on all interfaces; publishing is still limited to the IPs above (loopback plus the
@@ -65,11 +32,8 @@ rtmpAddress: __RTMP_ADDRESS__
 hls: true
 hlsAddress: 127.0.0.1:8888
 hlsAllowOrigins: ["*"]
-# Off now that attendees are on WHEP: with it on, every broadcast built two
-# HLS muxers nobody read — one for the ingest and one for the transcode — on
-# the same box as the SFU and headless Chromium. A muxer is still created on
-# demand the moment someone actually requests a playlist, which is all the
-# debug path needs; the first few seconds of that playlist are just colder.
+# Off: a muxer is created on demand the moment a viewer (or the CDN) asks for a playlist,
+# so a mix nobody watches costs nothing; the first seconds of a new playlist are colder.
 hlsAlwaysRemux: false
 hlsVariant: lowLatency
 hlsSegmentCount: 7
@@ -98,14 +62,7 @@ hlsMuxerCloseAfter: 60s
 # Not a credential: MediaMTX listens on localhost only, read is open to anyone
 # anyway, and Caddy overwrites whatever Authorization a client sends.
 hlsCDNSecret: webinarliv-origin
-webrtc: true
-webrtcAddress: 127.0.0.1:8889
-webrtcEncryption: false
-webrtcAllowOrigins: ["*"]
-webrtcTrustedProxies: ["127.0.0.1"]
-webrtcLocalUDPAddress: :8189
-webrtcIPsFromInterfaces: true
-webrtcAdditionalHosts: __WEBRTC_ADDITIONAL_HOSTS__
+webrtc: false
 srt: false
 # MoQ is new in 1.21 and defaults to on, which is three more listeners (:8892
 # TCP and UDP, :8893 UDP) and a self-signed certificate generated at boot, for
@@ -117,25 +74,4 @@ pprof: false
 playback: false
 
 paths:
-  # The RTMP ingest, and the only path that transcodes.
-  #
-  # Two namespaces rather than one so this cannot feed itself: the ffmpeg
-  # below writes to `wrtc/`, which falls through to all_others and runs
-  # nothing. A single namespace would make the output match this rule again
-  # and fork a transcode of the transcode, forever.
-  #
-  # runOnAvailable (renamed from runOnReady in MediaMTX 1.13) fires when the
-  # egress starts publishing and is SIGINTed when it stops, so the ffmpeg's
-  # lifetime is the broadcast's. Restart is on because ffmpeg exiting while
-  # the ingest is still live — a decoder hiccup, an OOM — would otherwise
-  # leave attendees on a dead path until the host restarted the whole webinar.
-  "~^live/(.+)$":
-    runOnAvailable: >
-      ffmpeg -nostdin -hide_banner -loglevel warning
-      -rtsp_transport tcp -i rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
-      -map 0:v:0 -c:v copy
-      -map 0:a:0 -c:a libopus -b:a 96k -ar 48000 -ac 2 -application audio
-      -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$RTSP_PORT/wrtc/$G1
-    runOnAvailableRestart: true
-
   all_others:
