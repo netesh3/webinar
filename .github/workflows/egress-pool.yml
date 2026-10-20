@@ -16,6 +16,7 @@
 # Repo variables:
 #   EGRESS_INDIA_SFU_DOMAIN       e.g. 34.180.55.29.sslip.io
 #   EGRESS_INDIA_SFU_PRIVATE_IP   e.g. 10.160.0.2
+#   EGRESS_INDIA_SFU_PUBLIC_IP    e.g. 34.180.55.29 (keeps worker <-> SFU traffic on the VPC)
 
 name: "Egress pool: add workers"
 
@@ -60,6 +61,7 @@ jobs:
       LEAVE_RUNNING: ${{ inputs.leave_running }}
       SFU_DOMAIN: ${{ vars.EGRESS_INDIA_SFU_DOMAIN }}
       SFU_PRIVATE_IP: ${{ vars.EGRESS_INDIA_SFU_PRIVATE_IP }}
+      SFU_PUBLIC_IP: ${{ vars.EGRESS_INDIA_SFU_PUBLIC_IP }}
       LK_API_KEY: ${{ secrets.EGRESS_INDIA_LK_KEY }}
       LK_API_SECRET: ${{ secrets.EGRESS_INDIA_LK_SECRET }}
       REDIS_PASSWORD: ${{ secrets.EGRESS_INDIA_REDIS_PASSWORD }}
@@ -88,11 +90,12 @@ jobs:
           meta="$(mktemp -d)"
           printf %s "$SFU_DOMAIN" >"$meta/sfu-domain"
           printf %s "$SFU_PRIVATE_IP" >"$meta/sfu-private-ip"
+          printf %s "${SFU_PUBLIC_IP:-}" >"$meta/sfu-public-ip"
           printf %s "$LK_API_KEY" >"$meta/lk-api-key"
           printf %s "$LK_API_SECRET" >"$meta/lk-api-secret"
           printf %s "$REDIS_PASSWORD" >"$meta/redis-password"
           files="startup-script=deploy/egress-worker/startup.sh"
-          for k in sfu-domain sfu-private-ip lk-api-key lk-api-secret redis-password; do files="$files,$k=$meta/$k"; done
+          for k in sfu-domain sfu-private-ip sfu-public-ip lk-api-key lk-api-secret redis-password; do files="$files,$k=$meta/$k"; done
 
           existing="$(gcloud compute instances list --project "$PROJECT" \
             --filter="labels.egress-pool=$POOL" --format='value(name)')"
