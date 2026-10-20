@@ -48,6 +48,7 @@ keys:
 # Required when running docker-compose.egress.yml.
 redis:
   address: 127.0.0.1:6379
+  password: __REDIS_PASSWORD__
 
 # Webhook configuration: sends EGRESS_ENDED to Go API so recording row is finalized.
 webhook:

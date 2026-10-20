@@ -71,12 +71,52 @@ if [[ -z "$PRESERVE_NODE_IP" && "$DOMAIN" =~ ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\.
   PRESERVE_USE_EXTERNAL_IP="${PRESERVE_USE_EXTERNAL_IP:-false}"
 fi
 
+# Remote egress (EGRESS_REMOTE=true and EGRESS_VPC_CIDR=<range> in .env): the composite runs
+# on worker VMs in the same VPC (deploy/egress-worker), not on this box. Redis then also
+# listens on the private IP with a password, MediaMTX takes RTMP from the VPC, and the local
+# egress container is not run. There is deliberately no fallback to it: a mix on the SFU box
+# takes the SFU's CPU, which is what the workers exist to avoid. Unset, nothing changes.
+env_value() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true; }
+EGRESS_REMOTE="$(env_value EGRESS_REMOTE)"
+EGRESS_VPC_CIDR="$(env_value EGRESS_VPC_CIDR)"
+REDIS_BIND="127.0.0.1 -::1"
+REDIS_PASSWORD_VALUE=""
+PUBLISH_IPS='["127.0.0.1", "::1"]'
+RTMP_ADDRESS="127.0.0.1:1935"
+if [[ "$EGRESS_REMOTE" == "true" ]]; then
+  : "${EGRESS_VPC_CIDR:?EGRESS_REMOTE=true needs EGRESS_VPC_CIDR in .env (e.g. 10.160.0.0/20)}"
+  PRIVATE_IP="$(ip -4 route get 1.1.1.1 | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+  : "${PRIVATE_IP:?could not find the private IPv4 of this box}"
+  if [[ -z "${REDIS_PASSWORD:-}" ]]; then
+    # Hex only, so it is safe in sed, YAML and redis.conf. Persisted with the other keys and
+    # never rotated here: the workers carry the same value.
+    REDIS_PASSWORD="$(openssl rand -hex 24)"
+    echo "REDIS_PASSWORD=$REDIS_PASSWORD" >>.env.keys
+  fi
+  REDIS_BIND="127.0.0.1 -::1 ${PRIVATE_IP}"
+  REDIS_PASSWORD_VALUE="$REDIS_PASSWORD"
+  PUBLISH_IPS="[\"127.0.0.1\", \"::1\", \"${EGRESS_VPC_CIDR}\"]"
+  RTMP_ADDRESS=":1935"
+fi
+
+umask 077
+{
+  echo "bind ${REDIS_BIND}"
+  echo "protected-mode yes"
+  echo 'save ""'
+  echo "appendonly no"
+  [[ -n "$REDIS_PASSWORD_VALUE" ]] && echo "requirepass ${REDIS_PASSWORD_VALUE}"
+} >redis.conf
+chmod 644 redis.conf
+umask 022
+
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
 sed -e "s/__TURN_DOMAIN__/${DOMAIN}/g" \
     -e "s/__API_KEY__/${API_KEY}/g" \
     -e "s/__API_SECRET__/${API_SECRET}/g" \
+    -e "s/__REDIS_PASSWORD__/\"${REDIS_PASSWORD_VALUE}\"/g" \
     livekit.yaml.template >"$tmp"
 
 if [[ -n "${PRESERVE_NODE_IP}" || -n "${PRESERVE_USE_EXTERNAL_IP}" ]]; then
@@ -108,6 +148,11 @@ trap - EXIT
 # has to be opened here or an upgraded box would signal WHEP and drop media.
 if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
   ufw allow 8189/udp >/dev/null
+  # Redis and RTMP for the egress workers: the VPC only, never the internet.
+  if [[ "$EGRESS_REMOTE" == "true" ]]; then
+    ufw allow from "$EGRESS_VPC_CIDR" to any port 6379 proto tcp >/dev/null
+    ufw allow from "$EGRESS_VPC_CIDR" to any port 1935 proto tcp >/dev/null
+  fi
 fi
 
 # TCP for the HLS origin. The Bunny pull zone fetches each new segment and part
@@ -136,6 +181,8 @@ if [[ -f mediamtx.yml.template ]]; then
     extra="[${PRESERVE_NODE_IP}]"
   fi
   sed -e "s/__WEBRTC_ADDITIONAL_HOSTS__/${extra}/g" \
+      -e "s|__PUBLISH_IPS__|${PUBLISH_IPS}|g" \
+      -e "s/__RTMP_ADDRESS__/${RTMP_ADDRESS}/g" \
       mediamtx.yml.template > mediamtx.yml
 fi
 
@@ -144,21 +191,35 @@ if [[ -f egress.yaml.template ]]; then
   sed -e "s/__API_KEY__/${API_KEY}/g" \
       -e "s/__API_SECRET__/${API_SECRET}/g" \
       -e "s/__DOMAIN__/${DOMAIN}/g" \
+      -e "s/__REDIS_PASSWORD__/\"${REDIS_PASSWORD_VALUE}\"/g" \
       egress.yaml.template > egress.yaml
   chmod 644 egress.yaml
 fi
 
 COMPOSE_ARGS=("-f" "docker-compose.yml")
+LOCAL_EGRESS=0
 if [[ -f docker-compose.egress.yml && -f egress.yaml ]]; then
   COMPOSE_ARGS+=("-f" "docker-compose.egress.yml")
+  if [[ "$EGRESS_REMOTE" != "true" ]]; then
+    LOCAL_EGRESS=1
+    COMPOSE_ARGS=("--profile" "local-egress" "${COMPOSE_ARGS[@]}")
+  fi
+fi
+# Switching to remote egress leaves the old local container behind; remove it.
+if [[ "$EGRESS_REMOTE" == "true" ]]; then
+  docker ps -aq --filter label=com.docker.compose.service=egress | xargs -r docker rm -f >/dev/null
 fi
 
 docker compose "${COMPOSE_ARGS[@]}" pull
 docker compose "${COMPOSE_ARGS[@]}" up -d --remove-orphans
 # Restart livekit to ensure it connects to Redis if Redis was newly started
 docker compose "${COMPOSE_ARGS[@]}" restart livekit
-if [[ -f docker-compose.egress.yml && -f egress.yaml ]]; then
+if [[ "$LOCAL_EGRESS" == 1 ]]; then
   docker compose "${COMPOSE_ARGS[@]}" restart egress
+fi
+# redis.conf is bind-mounted and read at start only, like the Caddyfile below.
+if [[ -f docker-compose.egress.yml ]]; then
+  docker compose "${COMPOSE_ARGS[@]}" restart redis
 fi
 
 # Caddyfile is bind-mounted, so `up -d` alone does not make Caddy pick up

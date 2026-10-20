@@ -28,7 +28,7 @@ authInternalUsers:
   # Egress, the ffmpeg transcode, and anything else on the box.
   - user: any
     pass:
-    ips: ["127.0.0.1", "::1"]
+    ips: __PUBLISH_IPS__
     permissions:
       - action: publish
       - action: read
@@ -58,7 +58,10 @@ rtsp: true
 rtspAddress: 127.0.0.1:8554
 rtspTransports: [tcp]
 rtmp: true
-rtmpAddress: 127.0.0.1:1935
+# 127.0.0.1 normally. In remote-egress mode the egress workers push from the VPC, so it
+# listens on all interfaces; publishing is still limited to the IPs above (loopback plus the
+# VPC range), and neither the cloud firewall nor ufw opens 1935 to the internet.
+rtmpAddress: __RTMP_ADDRESS__
 hls: true
 hlsAddress: 127.0.0.1:8888
 hlsAllowOrigins: ["*"]

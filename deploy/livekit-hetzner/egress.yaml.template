@@ -17,6 +17,7 @@ ws_url: wss://__DOMAIN__
 
 redis:
   address: 127.0.0.1:6379
+  password: __REDIS_PASSWORD__
 
 log_level: info
 prom_port: 8088
