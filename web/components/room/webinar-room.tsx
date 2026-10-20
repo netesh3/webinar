@@ -1630,7 +1630,9 @@ function ConnectedRoom({
               way to fix it themselves. */}
           <StartAudio
             label="Tap to enable sound"
-            className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white shadow-lg"
+            // Full width on a phone, where a small centred pill was easy to miss;
+            // the original pill from sm up.
+            className="fixed inset-x-4 top-16 z-50 rounded-full bg-brand px-4 py-2.5 text-[14px] font-semibold text-white shadow-lg sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:py-2 sm:text-[13px] sm:font-medium"
           />
           <AutoStartAudio room={room} />
           {/* For an attendee the browser would keep silent: "Join webinar" over the room,
@@ -1712,10 +1714,8 @@ function AutoStartAudio({ room }: { room: Room }) {
      * pointerup a tap has counted, and a mouse click already did on the press. */
     window.addEventListener("pointerup", start);
     window.addEventListener("keydown", start);
-    return () => {
-      window.removeEventListener("pointerdown", start);
-      window.removeEventListener("keydown", start);
-    };
+    room.on(RoomEvent.AudioPlaybackStatusChanged, onStatusChange);
+    return stop;
   }, [room]);
 
   return null;

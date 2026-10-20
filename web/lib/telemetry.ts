@@ -25,6 +25,7 @@ import {
   type LevelCounters,
 } from "./audio-watch";
 import { isAndroid, lockScreenState, type LockScreenState } from "./lock-screen-audio";
+import { deviceSummary } from "./device";
 
 /* A temporary telemetry path for one performance-test window — see
  * api/internal/api/telemetry.go for the backend half and why it logs the
@@ -649,7 +650,40 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
     // screen started trying to join" available from outside the connect
     // effect in webinar-room.tsx — see the file comment on why this stays
     // a separate observer rather than reading connect()'s own timestamp.
-    push("join_attempt");
+    push("join_attempt", deviceSummary());
+
+    /* Mobile diagnosis (see lib/device.ts, lib/wake-lock.ts). Whether sound was
+     * blocked by autoplay and whether a tap cleared it; and how long the page had
+     * been hidden (phone locked, app switched) before a reconnect, which tells a
+     * locked-screen drop from a network one — on every platform, where background_audio
+     * above is Android only. Read-only, like the rest of this hook. */
+    let hiddenAt: number | null = null;
+    let lastHiddenMs: number | null = null;
+    let lastVisibleAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (hiddenAt != null) {
+        lastHiddenMs = Date.now() - hiddenAt;
+        lastVisibleAt = Date.now();
+        hiddenAt = null;
+      }
+    };
+    /** Hidden right now, or back within the last 15 s: a reconnect then is most
+     *  likely the lock screen / background, not the network. */
+    const visibilityContext = () => ({
+      visibility: document.visibilityState,
+      hiddenMs:
+        hiddenAt != null
+          ? Date.now() - hiddenAt
+          : Date.now() - lastVisibleAt < 15_000
+            ? lastHiddenMs
+            : null,
+    });
+    const onAudioPlayback = () => {
+      push("audio_playback", { allowed: room.canPlaybackAudio });
+      if (!room.canPlaybackAudio) flush();
+    };
 
     const onConnectionStateChanged = (state: ConnectionState) => {
       push("connection_state_changed", { state });
@@ -665,7 +699,7 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
     };
     const onReconnecting = () => {
       attempts.current += 1;
-      push("reconnecting", { attempt: attempts.current });
+      push("reconnecting", { attempt: attempts.current, ...visibilityContext() });
       flush();
     };
     const onReconnected = () => {
@@ -674,6 +708,7 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
     const onDisconnected = (reason?: DisconnectReason) => {
       push("disconnected", {
         reason: reason !== undefined ? DisconnectReason[reason] : "unknown",
+        ...visibilityContext(),
       });
       flush();
     };
@@ -682,6 +717,8 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
     room.on(RoomEvent.Reconnecting, onReconnecting);
     room.on(RoomEvent.Reconnected, onReconnected);
     room.on(RoomEvent.Disconnected, onDisconnected);
+    room.on(RoomEvent.AudioPlaybackStatusChanged, onAudioPlayback);
+    document.addEventListener("visibilitychange", onVisibility);
 
     const qualityTimer = setInterval(() => void sampleQuality(room), QUALITY_POLL_MS);
     const flushTimer = setInterval(() => flush(), FLUSH_MS);
@@ -694,6 +731,8 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
       room.off(RoomEvent.Reconnecting, onReconnecting);
       room.off(RoomEvent.Reconnected, onReconnected);
       room.off(RoomEvent.Disconnected, onDisconnected);
+      room.off(RoomEvent.AudioPlaybackStatusChanged, onAudioPlayback);
+      document.removeEventListener("visibilitychange", onVisibility);
       clearInterval(qualityTimer);
       clearInterval(flushTimer);
       stopAudioWatch();

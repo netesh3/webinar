@@ -1059,14 +1059,29 @@ export function StagePlayerChrome({
       )}
 
       {isMuted && !loading && (
-        <button
-          type="button"
-          onClick={unmute}
-          className="absolute bottom-16 left-6 z-20 flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-[13px] font-semibold text-white shadow-lg transition hover:bg-brand-hover"
-        >
-          <span className="inline-block size-2 rounded-full bg-white animate-pulse" />
-          Click to Unmute Broadcast
-        </button>
+        <>
+          {/* Autoplay has to start muted, and on a phone the pill alone was easy to
+            * miss: people watched in silence and assumed the host's mic was broken.
+            * So while muted, a tap ANYWHERE on the picture turns sound on (this
+            * layer sits under the controls, z-20, which stay clickable), and the
+            * pill is a full-width bar on small screens. */}
+          <button
+            type="button"
+            onClick={unmute}
+            aria-label="Turn on sound"
+            tabIndex={-1}
+            className="absolute inset-0 z-[15] cursor-pointer bg-transparent"
+          />
+          <button
+            type="button"
+            onClick={unmute}
+            className="absolute inset-x-4 bottom-16 z-20 flex items-center justify-center gap-2 rounded-full bg-brand px-4 py-2.5 text-[14px] font-semibold text-white shadow-lg transition hover:bg-brand-hover sm:inset-x-auto sm:left-6 sm:py-2 sm:text-[13px]"
+          >
+            <span className="inline-block size-2 rounded-full bg-white animate-pulse" />
+            <span className="sm:hidden">Tap anywhere for sound</span>
+            <span className="hidden sm:inline">Click to Unmute Broadcast</span>
+          </button>
+        </>
       )}
 
       {!loading && (

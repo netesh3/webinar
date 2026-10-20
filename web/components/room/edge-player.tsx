@@ -37,6 +37,7 @@ import {
   STARTUP_GRACE_MS,
   type PlaybackMode,
 } from "@/lib/edge-hls";
+import { deviceSummary } from "@/lib/device";
 import { trackEvent } from "@/lib/telemetry";
 import { useAppConfig } from "../providers";
 import { StagePlayerChrome } from "./cdn-attendee-room";
@@ -83,6 +84,12 @@ export function EdgePlayer({
   const [reconnecting, setReconnecting] = useState(false);
   const [frozen, setFrozen] = useState(false);
   const { telemetryEnabled } = useAppConfig();
+  // When the player mounted, and whether the first unmute was already reported.
+  const shownAt = useRef(0);
+  const unmuteReported = useRef(false);
+  useEffect(() => {
+    shownAt.current = Date.now();
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -454,6 +461,14 @@ export function EdgePlayer({
           v.muted = false;
           setIsMuted(false);
           void v.play();
+          // How long people sit in silence before finding the sound (mobile diagnosis).
+          if (telemetryEnabled && !unmuteReported.current) {
+            unmuteReported.current = true;
+            trackEvent("broadcast_unmuted", { userId: identity, roomName: slug }, {
+              afterMs: shownAt.current ? Date.now() - shownAt.current : null,
+              ...deviceSummary(),
+            });
+          }
         }}
         toggleMute={() => {
           const v = videoRef.current;

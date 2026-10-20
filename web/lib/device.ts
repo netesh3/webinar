@@ -78,3 +78,18 @@ export function currentIsMobile(): boolean {
 export function currentIsAndroid(): boolean {
   return isAndroid(ua());
 }
+
+/** What the telemetry join event records about the device: enough to split the
+ *  numbers by phone / in-app browser, no fingerprint. */
+export function deviceSummary(): {
+  mobile: boolean;
+  os: "ios" | "android" | "other";
+  inApp: string | null;
+} {
+  const agent = ua();
+  return {
+    mobile: isMobileUA(agent, touch()),
+    os: isIOS(agent, touch()) ? "ios" : isAndroid(agent) ? "android" : "other",
+    inApp: inAppBrowserName(agent),
+  };
+}
