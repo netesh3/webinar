@@ -121,6 +121,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# clipping, how far a quiet speaker is brought up, and when a silent worklet is given
 	# up on so the raw microphone goes out.
 	cd web && node --experimental-strip-types --no-warnings lib/noise-suppression-policy.test.mts
+	# And who is asked to tap "Join webinar" before the sound starts: an attendee who
+	# was never asked hears nothing, and a presenter must never be asked at all.
+	cd web && node --experimental-strip-types --no-warnings lib/join-tap.test.mts
 	# And one screen share at a time: who keeps the stage, who may take it over, and
 	# when your own share stops. The API runs the same rule (share_lock.go), so a
 	# disagreement here is two people each told they won.
