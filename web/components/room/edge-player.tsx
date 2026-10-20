@@ -95,14 +95,35 @@ export function EdgePlayer({
     deciderRef.current = decider;
     setMode(decider.mode);
 
+    /* Sound if the browser allows it, muted if not. Browsers block autoplay WITH sound until
+     * the person has interacted with the page — but an attendee has usually just clicked Join
+     * or Register here, and that click allows sound for the rest of the page. So try with
+     * sound once; if the browser refuses (a room link opened cold), fall back to muted and the
+     * "Tap to unmute" button, and do not ask again. */
+    let soundAllowed: boolean | null = null;
     const tryPlay = () => {
       video.playsInline = true;
-      // Muted until the viewer turns sound on: autoplay with sound is blocked.
-      if (!played) {
+      if (played || soundAllowed === true) {
+        video.play().catch(() => {});
+        return;
+      }
+      if (soundAllowed === false) {
         video.muted = true;
         setIsMuted(true);
+        video.play().catch(() => {});
+        return;
       }
-      video.play().catch(() => {});
+      soundAllowed = true;
+      video.muted = false;
+      video
+        .play()
+        .then(() => setIsMuted(false))
+        .catch(() => {
+          soundAllowed = false;
+          video.muted = true;
+          setIsMuted(true);
+          video.play().catch(() => {});
+        });
     };
     const ready = () => {
       setLoading(false);
