@@ -1,0 +1,146 @@
+# Add Edge egress workers to a pool, fast.
+#
+# An egress worker is a VM that runs one Edge webinar's composite (headless Chrome + encoder)
+# for a LiveKit project whose SFU box runs in remote-egress mode (EGRESS_REMOTE=true, see
+# deploy/livekit-hetzner/redeploy.sh). Workers are kept STOPPED and the API starts one when a
+# host clicks Start, so a stopped worker costs only its disk. The pool's size is simply how many
+# worker VMs exist: run this when the "egress pool full" alert email arrives.
+#
+# Each new worker boots once to install Docker and pull the egress image, then is stopped
+# (unless "leave_running"), so the next start is about a minute.
+#
+# Repo secrets (per pool; "india" today):
+#   GCP_SA_KEY                    deploy service account; needs roles/compute.instanceAdmin.v1
+#   EGRESS_INDIA_LK_KEY / _SECRET the India SFU's LiveKit key and secret
+#   EGRESS_INDIA_REDIS_PASSWORD   REDIS_PASSWORD from the India box's /opt/livekit/.env.keys
+# Repo variables:
+#   EGRESS_INDIA_SFU_DOMAIN       e.g. 34.180.55.29.sslip.io
+#   EGRESS_INDIA_SFU_PRIVATE_IP   e.g. 10.160.0.2
+
+name: "Egress pool: add workers"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pool:
+        description: "Pool (LiveKit project id)"
+        type: choice
+        options: [india]
+        default: india
+      count:
+        description: "How many workers to add"
+        type: number
+        default: 1
+      machine_type:
+        description: "Machine type (one 1080p30 webinar per worker)"
+        type: string
+        default: c2d-highcpu-4
+      leave_running:
+        description: "Leave the new workers running (for a webinar that is waiting right now)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: egress-pool-${{ inputs.pool }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT || 'selfreminder-rnix' }}
+      ZONE: asia-south1-a
+      POOL: ${{ inputs.pool }}
+      COUNT: ${{ inputs.count }}
+      MACHINE_TYPE: ${{ inputs.machine_type }}
+      LEAVE_RUNNING: ${{ inputs.leave_running }}
+      SFU_DOMAIN: ${{ vars.EGRESS_INDIA_SFU_DOMAIN }}
+      SFU_PRIVATE_IP: ${{ vars.EGRESS_INDIA_SFU_PRIVATE_IP }}
+      LK_API_KEY: ${{ secrets.EGRESS_INDIA_LK_KEY }}
+      LK_API_SECRET: ${{ secrets.EGRESS_INDIA_LK_SECRET }}
+      REDIS_PASSWORD: ${{ secrets.EGRESS_INDIA_REDIS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Check inputs
+        run: |
+          for v in SFU_DOMAIN SFU_PRIVATE_IP LK_API_KEY LK_API_SECRET REDIS_PASSWORD; do
+            [[ -n "${!v}" ]] || { echo "::error::$v is not set for pool $POOL"; exit 1; }
+          done
+          [[ "$COUNT" =~ ^[1-9][0-9]?$ && "$COUNT" -le 10 ]] || { echo "::error::count must be 1-10"; exit 1; }
+
+      - name: Create workers
+        run: |
+          set -euo pipefail
+          # Each metadata value goes through its own file, so the secrets never appear on a
+          # command line (and so in no process list or log).
+          umask 077
+          meta="$(mktemp -d)"
+          printf %s "$SFU_DOMAIN" >"$meta/sfu-domain"
+          printf %s "$SFU_PRIVATE_IP" >"$meta/sfu-private-ip"
+          printf %s "$LK_API_KEY" >"$meta/lk-api-key"
+          printf %s "$LK_API_SECRET" >"$meta/lk-api-secret"
+          printf %s "$REDIS_PASSWORD" >"$meta/redis-password"
+          files="startup-script=deploy/egress-worker/startup.sh"
+          for k in sfu-domain sfu-private-ip lk-api-key lk-api-secret redis-password; do files="$files,$k=$meta/$k"; done
+
+          existing="$(gcloud compute instances list --project "$PROJECT" \
+            --filter="labels.egress-pool=$POOL" --format='value(name)')"
+          next=1
+          while grep -qx "${POOL}-egress-${next}" <<<"$existing"; do next=$((next + 1)); done
+
+          names=()
+          for _ in $(seq 1 "$COUNT"); do
+            while grep -qx "${POOL}-egress-${next}" <<<"$existing"; do next=$((next + 1)); done
+            names+=("${POOL}-egress-${next}")
+            next=$((next + 1))
+          done
+          echo "Creating: ${names[*]}"
+
+          gcloud compute instances create "${names[@]}" --project "$PROJECT" --zone "$ZONE" \
+            --machine-type "$MACHINE_TYPE" \
+            --image-family ubuntu-2404-lts-amd64 --image-project ubuntu-os-cloud \
+            --boot-disk-size 20GB --boot-disk-type pd-balanced \
+            --labels "egress-pool=$POOL" --tags egress-worker \
+            --metadata-from-file "$files"
+          rm -rf "$meta"
+          printf '%s\n' "${names[@]}" >names.txt
+
+      - name: Wait until each worker has its egress up
+        run: |
+          set -euo pipefail
+          for name in $(cat names.txt); do
+            for i in $(seq 1 60); do
+              if gcloud compute instances get-serial-port-output "$name" --project "$PROJECT" --zone "$ZONE" 2>/dev/null \
+                   | grep -q "egress worker up"; then
+                echo "$name ready"; continue 2
+              fi
+              sleep 10
+            done
+            echo "::error::$name did not report ready within 10 minutes (see its serial console)"; exit 1
+          done
+
+      - name: Stop workers (the API starts them on demand)
+        if: ${{ !inputs.leave_running }}
+        run: gcloud compute instances stop $(cat names.txt) --project "$PROJECT" --zone "$ZONE"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Egress pool \`$POOL\`"
+            echo "Added: $(paste -sd' ' names.txt) ($MACHINE_TYPE)"
+            if [[ "$LEAVE_RUNNING" == "true" ]]; then echo "Left running."; else echo "Stopped; the API starts them when a host clicks Start."; fi
+            echo
+            gcloud compute instances list --project "$PROJECT" --filter="labels.egress-pool=$POOL" \
+              --format='table(name,status,machineType.basename())'
+          } >>"$GITHUB_STEP_SUMMARY"
