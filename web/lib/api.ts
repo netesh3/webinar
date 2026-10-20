@@ -1108,12 +1108,6 @@ export const api = {
   /** Clears an account's payment-method review flags. */
   clearTrialFlags: (userId: string) => del<StatusResponse>(`/api/admin/users/${seg(userId)}/trial-flags`),
 
-  /** Configure whether an account's webinars stream to audience attendees via CDN HLS. */
-  setCdnBroadcastCapability: (userId: string, canCdnBroadcast: boolean) =>
-    patch<Account>(`/api/admin/users/${seg(userId)}/cdn-broadcast`, {
-      canCdnBroadcast,
-    }),
-
   /** Deletes an account outright. Refused by the server for the caller's own
    *  account, and for one that still hosts webinars — those have to be
    *  deleted first, as their own explicit action. */

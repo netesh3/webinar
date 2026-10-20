@@ -1037,8 +1037,6 @@ type Account struct {
 	// attendee cap; the server's own ceiling (AppConfig.MaxAttendees) applies on top.
 	Plan        Plan `json:"plan,omitempty"`
 	AttendeeCap int  `json:"attendeeCap"`
-	// CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
-	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 	/* Features switched on for this account by an admin — the Feature constants, and
 	 * never anything else. Sent to the browser so a screen can leave out a tab the
 	 * server would refuse anyway; the server checks it again on every request, because
@@ -1054,7 +1052,7 @@ type Account struct {
 /* Per-account features, switched on and off by an admin.
  *
  * A list of keys on the account rather than a boolean column each, unlike CanHost
- * and CanCdnBroadcast. Those two are old enough to be part of what an account IS.
+ * (CanCdnBroadcast used to be the other). It is old enough to be part of what an account IS.
  * WhatsApp CRM is one switch for the whole host CRM surface — tags, notes, replay
  * links, number registration, sequences, and the contact tools those used to gate
  * one by one. The other keys are distinct product switches. One column, one
@@ -2930,11 +2928,6 @@ type HostGrant struct {
 	CanHost bool `json:"canHost"`
 }
 
-// CdnBroadcastGrant is an admin's grant allowing a host account to use CDN broadcast mode.
-type CdnBroadcastGrant struct {
-	CanCdnBroadcast bool `json:"canCdnBroadcast"`
-}
-
 /* FeatureGrant switches one feature on or off for one account.
  *
  * One feature per request, with the state it should end in rather than a verb, for the
@@ -3015,8 +3008,6 @@ type AdminUser struct {
 	// LastWebinarTopic the most recent of them; the audience list shows both.
 	RegistrationCount int    `json:"registrationCount"`
 	LastWebinarTopic  string `json:"lastWebinarTopic,omitempty"`
-	// CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
-	CanCdnBroadcast bool `json:"canCdnBroadcast"`
 	// Features are the switches in effect: the plan's, with this account's overrides
 	// applied. Always present, empty for an account with none.
 	Features []string `json:"features"`
@@ -3048,7 +3039,6 @@ type AdminStats struct {
 	Audience      int `json:"audience"`
 	Hosts         int `json:"hosts"`
 	Admins        int `json:"admins"`
-	CdnBroadcast  int `json:"cdnBroadcast"`
 	NewAccounts7d int `json:"newAccounts7d"`
 
 	Webinars  int `json:"webinars"`

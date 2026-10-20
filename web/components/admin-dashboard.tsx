@@ -111,15 +111,6 @@ export function AdminDashboard({
               note="Set with ADMIN_EMAILS"
             />
           </StatLink>
-          <StatLink onClick={onAccounts}>
-            <Stat
-              className="h-full transition-colors hover:border-brand-line"
-              label="CDN broadcast"
-              value={formatCount(stats.cdnBroadcast)}
-              note="May stream the audience over HLS"
-              tone={stats.cdnBroadcast > 0 ? "ok" : "neutral"}
-            />
-          </StatLink>
         </div>
       </div>
 

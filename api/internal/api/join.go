@@ -210,12 +210,12 @@ func (s *Server) joinAsAttendee(
 		return
 	}
 
-	// Check if host has CDN broadcast capability enabled
-	cdnBroadcast, err := s.store.HostCanCdnBroadcast(r.Context(), wb.Host.ID)
-	if err != nil {
-		s.log.Warn("join: host cdn broadcast lookup failed", "host", wb.Host.ID, "error", err)
-	}
-	isCdnAttendee := cdnBroadcast && !grant.Granted
+	/* A simulive attendee plays the recording (HLS or a file) in the broadcast room rather
+	 * than joining the SFU. That is the only "broadcast" attendee left: the per-account CDN
+	 * Broadcast mode, which sent live attendees a WHEP feed from the SFU box, was retired
+	 * (2026-10-20) — Edge delivery is the big-audience path — and its hosts are on standard. */
+	cdnBroadcast := false
+	isCdnAttendee := false
 	var cdnStreamURL string
 	var cdnLowLatency bool
 	if wb.Kind == types.KindSimulive {
@@ -223,24 +223,6 @@ func (s *Server) joinAsAttendee(
 			cdnBroadcast = true
 			isCdnAttendee = !grant.Granted
 			cdnStreamURL = u
-		}
-	} else if cdnBroadcast {
-		/* The live origin is the only attendee feed, so with no origin
-		 * configured CDN mode has nowhere to send anyone. Fall back to the SFU
-		 * rather than to a black video element.
-		 *
-		 * Hand out the WHEP URL even to someone currently on stage — demote
-		 * remounts the mix player from this join. */
-		live := s.broadcastWHEPURL(r.Context(), wb)
-		if live == "" {
-			cdnBroadcast = false
-			isCdnAttendee = false
-		} else {
-			cdnStreamURL = live
-			cdnLowLatency = true
-			if isCdnAttendee && wb.Status == types.StatusLive {
-				go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
-			}
 		}
 	}
 
@@ -820,15 +802,6 @@ func joinKeyFromIdentity(identity string) string {
 		return ""
 	}
 	return strings.TrimPrefix(identity, attendeePrefix)
-}
-
-/* broadcastWHEPURL is where an attendee of this webinar plays its CDN broadcast.
- *
- * Per project, because the stream lives on the MediaMTX beside the SFU the room is on (see
- * config.LiveKitProject.BroadcastHLSBase). Read from the store rather than from wb because
- * ensureRoom may have just pinned — or failed over — the room after wb was loaded. */
-func (s *Server) broadcastWHEPURL(ctx context.Context, wb types.Webinar) string {
-	return s.cfg.BroadcastHLSURLFor(s.pinnedProject(ctx, wb), wb.ID)
 }
 
 // pinnedProject is the project the webinar's room is on now, falling back to wb's copy

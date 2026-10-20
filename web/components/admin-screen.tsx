@@ -5,7 +5,6 @@ import { api } from "@/lib/api";
 import {
   accountFeatureRows,
   accountFeaturesOnCount,
-  CDN_BROADCAST_ROW_ID,
   overrideState,
   planIncludes,
   withOverride,
@@ -605,7 +604,6 @@ function AdminAccounts() {
                       </span>
                       {u.isAdmin && <Badge tone="brand">Admin</Badge>}
                       {!u.emailVerified && <Badge tone="warn">Email unverified</Badge>}
-                      {u.canCdnBroadcast && <Badge tone="ok">CDN Broadcast</Badge>}
                       {isSelf && <Badge>You</Badge>}
                     </div>
                     {/* How to reach this person, then what they've done with the
@@ -811,13 +809,6 @@ function AdminAccounts() {
                           ),
                         )
                       }
-                      onCdnBroadcast={(canCdnBroadcast) =>
-                        setUsers((prev) =>
-                          (prev ?? []).map((row) =>
-                            row.id === u.id ? { ...row, canCdnBroadcast } : row,
-                          ),
-                        )
-                      }
                     />
                     {u.canHost && <AccountCosts user={u} />}
                   </div>}
@@ -882,18 +873,15 @@ function AdminAccounts() {
  * toggle something back.
  *
  * Instant webinar is one of those catalogue switches, in the server's order.
- * CDN broadcast is not: it is still canCdnBroadcast, on its own patch.
  */
 function AccountFeatures({
   user,
   tiers,
   onFeatures,
-  onCdnBroadcast,
 }: {
   user: AdminUser;
   tiers: PlanFeatures[] | null;
   onFeatures: (features: string[], overrides: Record<string, boolean>) => void;
-  onCdnBroadcast: (canCdnBroadcast: boolean) => void;
 }) {
   const { featureCatalogue } = useAppConfig();
   const { notify } = useToast();
@@ -905,11 +893,7 @@ function AccountFeatures({
   const switches = accountFeatureRows(user.canHost, featureCatalogue);
   if (switches.length === 0) return null;
 
-  const onCount = accountFeaturesOnCount(
-    switches,
-    user.features,
-    user.canCdnBroadcast,
-  );
+  const onCount = accountFeaturesOnCount(switches, user.features);
 
   async function setFeature(key: string, state: OverrideState) {
     setBusy(key);
@@ -938,24 +922,6 @@ function AccountFeatures({
     }
   }
 
-  async function setCdnBroadcast(enabled: boolean) {
-    setBusy(CDN_BROADCAST_ROW_ID);
-    try {
-      await api.setCdnBroadcastCapability(user.id, enabled);
-      onCdnBroadcast(enabled);
-      notify(
-        enabled
-          ? `CDN broadcast mode enabled for ${user.name || user.email}.`
-          : `CDN broadcast mode disabled for ${user.name || user.email}.`,
-        "ok",
-      );
-    } catch (e) {
-      notify(e instanceof Error ? e.message : "That didn't work.", "error");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   return (
     <Disclosure summary={`Features · ${onCount} of ${switches.length} on`}>
       <div className="grid gap-2.5">
@@ -967,7 +933,6 @@ function AccountFeatures({
             tiers={tiers}
             disabled={busy !== null}
             onFeature={setFeature}
-            onCdnBroadcast={setCdnBroadcast}
           />
         ))}
       </div>
@@ -981,26 +946,13 @@ function FeatureToggle({
   tiers,
   disabled,
   onFeature,
-  onCdnBroadcast,
 }: {
   row: AccountFeatureRow;
   user: AdminUser;
   tiers: PlanFeatures[] | null;
   disabled: boolean;
   onFeature: (key: string, state: OverrideState) => Promise<void>;
-  onCdnBroadcast: (enabled: boolean) => Promise<void>;
 }) {
-  if (row.source === "cdn_broadcast") {
-    return (
-      <Toggle
-        checked={user.canCdnBroadcast}
-        disabled={disabled}
-        onChange={(next) => void onCdnBroadcast(next)}
-        label={row.label}
-        description={`${row.description} Cost: ${COSTS.cdnBroadcast}`}
-      />
-    );
-  }
   /* Plan, then this account's override: Inherit says what the plan gives, so an
    * admin can see whether forcing it on or off changes anything. */
   const state = overrideState(user.featureOverrides, row.id);
@@ -1053,7 +1005,6 @@ function AccountCosts({ user }: { user: AdminUser }) {
     ["Max meeting duration", COSTS.maxDuration],
     ["Media storage", COSTS.mediaQuota],
   ];
-  if (user.canCdnBroadcast) rows.push(["CDN broadcast (on)", COSTS.cdnBroadcast]);
   for (const [key, text] of Object.entries(FEATURE_COSTS)) {
     if (on(key)) rows.push([`${label(key)} (on)`, text]);
   }

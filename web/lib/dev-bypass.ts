@@ -37,7 +37,6 @@ export const DEV_BYPASS_ACCOUNT: Account = {
   hue: "#3B6EA5",
   canHost: true,
   isAdmin: true,
-  canCdnBroadcast: true,
   hasPassword: true,
   // The top plan, for the same reason every feature is on below.
   plan: "enterprise",

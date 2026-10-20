@@ -183,18 +183,6 @@ func (s *Store) SetUserMediaQuota(ctx context.Context, userID string, quotaBytes
 	return nil
 }
 
-/* SetCdnBroadcastCapability configures whether an account's webinars stream to attendees via CDN HLS.
- */
-func (s *Store) SetCdnBroadcastCapability(ctx context.Context, userID string, canCdnBroadcast bool) (User, error) {
-	u, err := scanUser(s.pool.QueryRow(ctx, `
-		UPDATE users SET can_cdn_broadcast = $2 WHERE id = $1
-		RETURNING `+userColumns, userID, canCdnBroadcast))
-	if noRows(err) {
-		return User{}, ErrNotFound
-	}
-	return u, err
-}
-
 /* SetFeature forces one feature on or off for this account, whatever its plan says.
  * See SetFeatureOverride. */
 func (s *Store) SetFeature(ctx context.Context, userID, feature string, enabled bool) (User, error) {
@@ -354,7 +342,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		SELECT u.id::text, u.email, u.name, u.title, u.org, u.phone, u.initials, u.hue,
 		       u.can_host, u.is_admin, u.created_at,
 		       (SELECT count(*) FROM webinars w WHERE w.host_id = u.id),
-		       u.max_duration_min, u.can_cdn_broadcast,
+		       u.max_duration_min,
 		       effective_features(effective_plan(u.id), u.features, u.features_off),
 		       (u.email_verified_at IS NOT NULL),
 		       effective_plan(u.id), u.features, u.features_off,
@@ -386,7 +374,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 			forcedOn, forcedOff []string
 		)
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Title, &u.Org, &u.Phone, &u.Initials,
-			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin, &u.CanCdnBroadcast,
+			&u.Hue, &u.CanHost, &u.IsAdmin, &createdAt, &u.WebinarCount, &u.MaxDurationMin,
 			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff,
 			&u.TrialFlag, &u.TrialExemption,
 			&u.AccountKind, &u.SFUProject, &u.RegistrationCount, &u.LastWebinarTopic,
@@ -453,7 +441,6 @@ func (s *Store) AdminStats(ctx context.Context) (types.AdminStats, error) {
 		  (SELECT count(*) FROM users),
 		  (SELECT count(*) FILTER (WHERE can_host) FROM users),
 		  (SELECT count(*) FILTER (WHERE is_admin) FROM users),
-		  (SELECT count(*) FILTER (WHERE can_cdn_broadcast) FROM users),
 		  (SELECT count(*) FILTER (WHERE created_at >= now() - interval '7 days') FROM users),
 		  (SELECT count(*) FROM webinars),
 		  (SELECT count(*) FILTER (WHERE status = 'live') FROM webinars),
@@ -466,7 +453,7 @@ func (s *Store) AdminStats(ctx context.Context) (types.AdminStats, error) {
 		  (SELECT count(*) FROM registrations WHERE state <> 'declined'),
 		  (SELECT count(*) FROM attendance WHERE starts_with(identity, 'att_'))
 	`).Scan(
-		&out.Accounts, &out.Hosts, &out.Admins, &out.CdnBroadcast, &out.NewAccounts7d,
+		&out.Accounts, &out.Hosts, &out.Admins, &out.NewAccounts7d,
 		&out.Webinars, &out.Live, &out.Scheduled, &out.Ended, &out.Drafts,
 		&out.KindLive, &out.KindSimulive, &out.KindRecurring,
 		&out.Registrants, &out.Attendees,

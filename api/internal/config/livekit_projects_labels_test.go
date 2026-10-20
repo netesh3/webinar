@@ -41,10 +41,10 @@ func TestTheAddingAnSFUTemplateLoads(t *testing.T) {
 	if def.ID != legacyProjectID || def.DisplayLabel() != "Hetzner (default)" {
 		t.Errorf("first project = %+v, want the legacy default box", def)
 	}
-	if got := c.BroadcastHLSURLFor("default", "s"); got != "https://live.webinarliv.com/live/s/whep" {
+	if got := c.EdgePlaybackURLFor("default", "s"); got != "https://live.webinarliv.com/live/s/index.m3u8" {
 		t.Errorf("default broadcast = %q", got)
 	}
-	if got := c.BroadcastHLSURLFor(edge.ID, "s"); got != "https://live2.webinarliv.com/live/s/whep" {
+	if got := c.EdgePlaybackURLFor(edge.ID, "s"); got != "https://live2.webinarliv.com/live/s/index.m3u8" {
 		t.Errorf("edge2 broadcast = %q", got)
 	}
 }
@@ -69,7 +69,7 @@ func TestAProjectWithoutItsOwnOriginUsesTheGlobalOne(t *testing.T) {
 		"BROADCAST_HLS_BASE":  "https://live.example.com/live",
 	}))
 	for _, id := range []string{"x", "unknown"} {
-		if got := c.BroadcastHLSURLFor(id, "s"); got != "https://live.example.com/live/s/whep" {
+		if got := c.EdgePlaybackURLFor(id, "s"); got != "https://live.example.com/live/s/index.m3u8" {
 			t.Errorf("%s broadcast = %q", id, got)
 		}
 	}

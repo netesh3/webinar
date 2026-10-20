@@ -103,16 +103,13 @@ func (r *destFailureRegistry) forget(slug, u string) {
 }
 
 /* mixPlan is everything this room's compositor should push to: our attendee
- * origin, when there is one, and the host's own destinations, each named.
+ * origin, for an Edge webinar, and the host's own destinations, each named.
  *
  * Refused destinations are left out — see destFailures. */
 func (s *Server) mixPlan(ctx context.Context, wb types.Webinar) (origin string, dests []mixDest) {
-	if can, err := s.store.HostCanCdnBroadcast(ctx, wb.Host.ID); err == nil && can {
-		origin = s.cfg.BroadcastRTMPURL(wb.ID)
-	}
-	/* An edge webinar's audience watches this same mix, as LL-HLS from the origin (or a CDN
-	 * pull zone in front of it), whether or not the host is on CDN broadcast. The origin is
-	 * the only push edge needs: a CDN mirrors it rather than taking a second ingest. */
+	/* An edge webinar's audience watches this mix, as LL-HLS from the origin (or a CDN pull
+	 * zone in front of it). The origin is the only push edge needs: a CDN mirrors it rather
+	 * than taking a second ingest. */
 	if wb.Delivery == types.DeliveryEdge {
 		origin = s.cfg.BroadcastRTMPURL(wb.ID)
 	}

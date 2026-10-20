@@ -56,9 +56,6 @@ export const COSTS = {
   videoServer:
     "Hetzner (default): traffic included. Mumbai (GCP): stage traffic ≈ $0.12/GB and an Edge " +
     "egress worker ≈ $0.18/hour per live Edge webinar; lower latency for Indian audiences.",
-  cdnBroadcast:
-    "Attendees stream from the video server box itself (~1.7 Mbps each): included in " +
-    "Hetzner's traffic up to its quota, ≈ $0.09 per attendee-hour on a GCP box.",
 } as const;
 
 /** Cost lines for the features in the catalogue, by key. */
