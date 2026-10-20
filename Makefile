@@ -117,6 +117,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And when a microphone that looks live is reported as carrying nothing, which a
 	# browser cannot show you in the moment and a missed or false report both cost.
 	cd web && node --experimental-strip-types --no-warnings lib/audio-watch.test.mts
+	# And the Android lock-screen experiment: a flag that does only what the link says,
+	# and a clip that plays as media and stays far below anything audible.
+	cd web && node --experimental-strip-types --no-warnings lib/lock-screen-audio.test.mts
 	# And noise suppression's judgements: how loud RNNoise's output is made without
 	# clipping, how far a quiet speaker is brought up, and when a silent worklet is given
 	# up on so the raw microphone goes out.

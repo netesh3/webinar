@@ -101,6 +101,7 @@ import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { trackEvent, useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
+import { useLockScreenAudio } from "./lock-screen-audio";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 import { EdgeAudienceRoom } from "./edge-audience-room";
@@ -1480,6 +1481,13 @@ function ConnectedRoom({
   useEffect(() => {
     if (shownExit === "removed" || shownExit === "ended") onDeparted(shownExit);
   }, [shownExit, onDeparted]);
+  // The lock-screen keep-alive on Android, while it is an experiment (?bg=1): undefined, and
+  // so no change to the room's audio at all, everywhere else. See lock-screen-audio.tsx.
+  const lockScreenVolume = useLockScreenAudio(
+    topic ?? initialTopic,
+    initialImageUrl,
+    !shownExit && !failure,
+  );
   const endView = afterWebinarEnd({
     role: liveRole,
     ended: shownExit === "ended",
@@ -1602,7 +1610,7 @@ function ConnectedRoom({
 
           {/* Renders every subscribed audio track. Without this you get video and
               silence, which is a genuinely confusing bug to chase. */}
-          <RoomAudioRenderer />
+          <RoomAudioRenderer volume={lockScreenVolume} />
           {/* AutoStartAudio (below) clears the browser's autoplay block silently
               on the first ordinary interaction, for the common case. But which
               gesture that ends up being — and how long it takes for a track to
