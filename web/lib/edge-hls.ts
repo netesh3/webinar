@@ -81,6 +81,12 @@ export const DECIDE_WINDOW_MS = 15_000;
 /** More than this many stalls inside the window drops low-latency back to standard. */
 export const MAX_LL_STALLS = 2;
 export const STALL_WINDOW_MS = 30_000;
+/* After a drop to standard, low latency is tried again once standard has played this long
+ * without a stall, at most LL_RETRIES times a session. The drop used to be for good: one
+ * network dip (six stalls in 30s, then none for the next fifteen minutes) kept a viewer at
+ * ~5.4s behind until the webinar ended (instant-webinar-9277, 2026-10-20). */
+export const LL_RETRY_AFTER_MS = 90_000;
+export const LL_RETRIES = 2;
 /** Stalls this soon after the first frame plays never drop low-latency. Joining stalls while
  * the buffer first fills and hls.js settles on its target; counted, those alone sent a viewer
  * to standard for the whole session within seconds of joining (edge test, 2026-10-19).
@@ -112,6 +118,9 @@ export class ModeDecider {
   private locked = false;
   /** When the first frame played; stalls before it, and for STARTUP_GRACE_MS after, are startup. */
   private firstFrameAt: number | null = null;
+  /** Set while in standard after a drop from low latency: when standard last stalled. */
+  private quietSince: number | null = null;
+  private retries = 0;
 
   constructor(opts: { cdn: boolean; now: number }) {
     this.mode = opts.cdn ? "low-latency" : "standard";
@@ -156,13 +165,26 @@ export class ModeDecider {
     if (this.firstFrameAt === null || now - this.firstFrameAt < STARTUP_GRACE_MS) return null;
     this.stalls.push(now);
     this.stalls = this.stalls.filter((t) => now - t <= STALL_WINDOW_MS);
+    if (this.mode === "standard" && this.quietSince !== null) this.quietSince = now;
     if (this.mode === "low-latency" && this.stalls.length > MAX_LL_STALLS) {
       this.mode = "standard";
       this.locked = true;
       this.decided = true;
+      this.quietSince = this.retries < LL_RETRIES ? now : null;
       return this.mode;
     }
     return null;
+  }
+
+  /** Called as playback goes on. Returns "low-latency" when it is time to try it again. */
+  tick(now: number): PlaybackMode | null {
+    if (this.mode !== "standard" || this.quietSince === null) return null;
+    if (now - this.quietSince < LL_RETRY_AFTER_MS) return null;
+    this.retries += 1;
+    this.quietSince = null;
+    this.stalls = [];
+    this.mode = "low-latency";
+    return this.mode;
   }
 }
 
