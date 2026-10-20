@@ -27,7 +27,8 @@ for (const mode of ["low-latency", "standard"] as const) {
   const c = edgeHlsConfig(mode);
   assert.equal(c.lowLatencyMode, mode === "low-latency");
   assert.equal(c.liveDurationInfinity, true);
-  assert.equal(c.maxLiveSyncPlaybackRate, 1.15);
+  // Audio is never time-stretched: no playback-rate catch-up, in either mode.
+  assert.equal(c.maxLiveSyncPlaybackRate, 1);
   assert.equal(c.liveSyncOnStallIncrease, 0.25);
   assert.equal("liveSyncDurationCount" in c, false);
   assert.equal("liveMaxLatencyDurationCount" in c, false);

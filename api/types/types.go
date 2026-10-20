@@ -3456,7 +3456,17 @@ type EdgeStatus struct {
 	Delivery    string `json:"delivery"`
 	Viewers     int    `json:"viewers"`
 	PlaybackURL string `json:"playbackUrl,omitempty"`
+	/* AudienceStream is, while an Edge webinar is live, whether its audience has a picture:
+	 * "preparing" until the mix's egress is active (an egress worker may be booting, about a
+	 * minute), then "live". Empty when not live or not Edge. The host room shows "getting your
+	 * webinar ready" while it is preparing. */
+	AudienceStream string `json:"audienceStream,omitempty"`
 }
+
+const (
+	AudienceStreamPreparing = "preparing"
+	AudienceStreamLive      = "live"
+)
 
 // SetUserStageCapRequest is PATCH /api/admin/users/{id}/stage-cap. Null goes back to the plan.
 type SetUserStageCapRequest struct {

@@ -227,7 +227,7 @@ export function EdgePlayer({
         }
         // The origin 404s until the egress has booted and pushed, and a restarting mix is a
         // gap of seconds: wait and retry, with backoff, rather than fail.
-        if (!played) setError("Waiting for the broadcast to start...");
+        if (!played) setError("The stream is starting, usually in under a minute…");
         clearTimeout(retry);
         /* Before the playlist has parsed, startLoad has nothing to load: hls.js only requests
          * the manifest from loadSource, and it does not retry a 404 on its own. So the first
@@ -254,7 +254,7 @@ export function EdgePlayer({
           freezeFrame();
           setReconnecting(true);
         } else {
-          setError("Waiting for the broadcast to start...");
+          setError("The stream is starting, usually in under a minute…");
         }
         clearTimeout(retry);
         retry = setTimeout(() => {
