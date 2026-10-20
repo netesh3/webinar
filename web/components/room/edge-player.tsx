@@ -26,6 +26,8 @@ import {
   ModeDecider,
   bufferedAhead,
   catchUp,
+  LL_MIN_TARGET_SECONDS,
+  STANDARD_TARGET_SECONDS,
   JUMP_COOLDOWN_MS,
   edgeHlsConfig,
   latencyLabel,
@@ -65,6 +67,8 @@ export function EdgePlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  // The viewer muted it themselves: never unmute behind their back.
+  const userMutedRef = useRef(false);
   const lastJumpRef = useRef(0);
   const deciderRef = useRef<ModeDecider | null>(null);
   // Playback has started. Until then currentTime is 0, hls.latency reads as the whole
@@ -90,6 +94,8 @@ export function EdgePlayer({
     playingRef.current = false;
     let netAttempts = 0;
     let mediaRecoveries = 0;
+    let llTargetSet = false;
+    let llTarget = LL_MIN_TARGET_SECONDS;
 
     const decider = new ModeDecider({ cdn: lowLatency, now: Date.now() });
     deciderRef.current = decider;
@@ -131,6 +137,18 @@ export function EdgePlayer({
           video.play().catch(() => {});
         });
     };
+    /* Muted only because the browser said so, not by the viewer: their next click, tap or key
+     * anywhere on the page is the permission the browser wanted, so take the sound back then.
+     * A speaker sent back from the stage had to find the unmute button again (2026-10-20). */
+    const unmuteOnGesture = () => {
+      if (soundAllowed !== false || userMutedRef.current || !video.muted) return;
+      soundAllowed = true;
+      video.muted = false;
+      setIsMuted(false);
+      video.play().catch(() => {});
+    };
+    const gestures = ["pointerdown", "keydown", "touchend"] as const;
+    for (const g of gestures) document.addEventListener(g, unmuteOnGesture, true);
     const ready = () => {
       setLoading(false);
       setError(null);
@@ -161,6 +179,8 @@ export function EdgePlayer({
       if (!hls) return;
       hls.lowLatencyMode = next === "low-latency";
       hls.config.maxBufferLength = MODE_BUFFER[next];
+      // The low-latency floor below is a liveSyncDuration; standard mode must not keep it.
+      if (llTargetSet) hls.targetLatency = next === "low-latency" ? llTarget : STANDARD_TARGET_SECONDS;
       setMode(next);
     };
 
@@ -187,6 +207,12 @@ export function EdgePlayer({
       hlsRef.current = hls;
       hls.loadSource(playbackUrl);
       hls.attachMedia(video);
+      hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+        if (llTargetSet || !hls?.lowLatencyMode || !data.details.live) return;
+        llTargetSet = true;
+        llTarget = Math.max(LL_MIN_TARGET_SECONDS, data.details.partHoldBack ?? 0);
+        hls.targetLatency = llTarget;
+      });
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         ready();
         tryPlay();
@@ -267,6 +293,7 @@ export function EdgePlayer({
       video.addEventListener("loadedmetadata", onMeta);
       video.addEventListener("error", onErr);
       return () => {
+        for (const g of gestures) document.removeEventListener(g, unmuteOnGesture, true);
         clearTimeout(retry);
         clearTimeout(waitTimer);
         detachVideo();
@@ -280,6 +307,7 @@ export function EdgePlayer({
     }
 
     return () => {
+      for (const g of gestures) document.removeEventListener(g, unmuteOnGesture, true);
       clearTimeout(retry);
       clearTimeout(waitTimer);
       detachVideo();
@@ -402,6 +430,7 @@ export function EdgePlayer({
           const v = videoRef.current;
           if (!v) return;
           v.muted = !v.muted;
+          userMutedRef.current = v.muted;
           setIsMuted(v.muted);
           if (!v.muted) void v.play();
         }}

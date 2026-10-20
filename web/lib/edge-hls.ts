@@ -211,6 +211,16 @@ export type CatchUp = { rate: number } | "jump";
  * the buffer ahead sat at 0–1s — stutter, and a black wait after every jump (same test). */
 export const STANDARD_TARGET_SECONDS = 4;
 
+/* The least latency low-latency mode aims for, in seconds.
+ *
+ * hls.js aims for the playlist's PART-HOLD-BACK, which with 250ms parts is ~0.67s: closer
+ * than fetching parts from the CDN allows. It started there, stalled (a cut in the audio
+ * each time), added 0.25s per stall, and only after ~2 minutes and four stalls settled at
+ * ~1.67s, 2.5s behind — where it then played cleanly (edge test, 2026-10-20). Starting at
+ * 1.5s skips those two minutes. Set at runtime (hls.targetLatency), once the live playlist
+ * has loaded, so the mode switch still works as described at the top of this file. */
+export const LL_MIN_TARGET_SECONDS = 1.5;
+
 /** The target latency the catch-up and Jump to live aim for in each mode. */
 export function liveTarget(mode: PlaybackMode, hlsTarget: number | null | undefined): number | null {
   if (mode === "standard") return STANDARD_TARGET_SECONDS;
