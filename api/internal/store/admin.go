@@ -366,7 +366,8 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		       coalesce((SELECT w.topic FROM registrations r JOIN webinars w ON w.id = r.webinar_id
 		                  WHERE r.user_id = u.id ORDER BY r.created_at DESC LIMIT 1), ''),
 		       u.media_quota_bytes,
-		       coalesce((SELECT sum(m.bytes) FROM crm_media_files m WHERE m.host_id = u.id), 0)::bigint
+		       coalesce((SELECT sum(m.bytes) FROM crm_media_files m WHERE m.host_id = u.id), 0)::bigint,
+		       u.stage_cap
 		  FROM users u
 		 WHERE (lower(u.email) LIKE $1 OR lower(u.name) LIKE $1)
 		   AND ($3 = '' OR u.account_kind = $3)
@@ -389,10 +390,15 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff,
 			&u.TrialFlag, &u.TrialExemption,
 			&u.AccountKind, &u.SFUProject, &u.RegistrationCount, &u.LastWebinarTopic,
-			&u.MediaQuotaBytes, &u.MediaUsedBytes); err != nil {
+			&u.MediaQuotaBytes, &u.MediaUsedBytes, &u.StageCap); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
+		u.PlanStageSeats = types.PlanStageCap(u.Plan)
+		u.StageSeats = u.PlanStageSeats
+		if u.StageCap != nil {
+			u.StageSeats = *u.StageCap
+		}
 		if u.Features == nil {
 			u.Features = []string{}
 		}
@@ -618,6 +624,30 @@ func (s *Store) SetUserPlan(ctx context.Context, userID string, plan types.Plan)
 }
 
 // PlanForUser is an account's plan, empty with no subscription.
+// StageCapForUser is the account's plan and its admin override of the stage cap (nil: none).
+func (s *Store) StageCapForUser(ctx context.Context, userID string) (types.Plan, *int, error) {
+	var plan string
+	var override *int
+	err := s.pool.QueryRow(ctx, `SELECT effective_plan(id), stage_cap FROM users WHERE id = $1::uuid`,
+		userID).Scan(&plan, &override)
+	if noRows(err) {
+		return "", nil, ErrNotFound
+	}
+	return types.Plan(plan), override, err
+}
+
+// SetUserStageCap sets or (nil) clears an account's stage cap override.
+func (s *Store) SetUserStageCap(ctx context.Context, userID string, capacity *int) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET stage_cap = $2 WHERE id = $1`, userID, capacity)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) PlanForUser(ctx context.Context, userID string) (types.Plan, error) {
 	var plan string
 	err := s.pool.QueryRow(ctx, `SELECT effective_plan($1::uuid)`, userID).Scan(&plan)

@@ -2993,6 +2993,11 @@ type AdminUser struct {
 	WebinarCount int `json:"webinarCount"`
 	// MaxDurationMin is an optional custom maximum meeting duration in minutes configured by an admin.
 	MaxDurationMin *int `json:"maxDurationMin,omitempty"`
+	// StageCap is an admin's override of the plan's stage cap (PlanStageCap); nil uses the plan.
+	StageCap *int `json:"stageCap,omitempty"`
+	// PlanStageSeats is the plan's stage cap; StageSeats is what applies (override or plan).
+	PlanStageSeats int `json:"planStageSeats"`
+	StageSeats     int `json:"stageSeats"`
 	// Plan is the paid tier, empty for the launch default.
 	Plan Plan `json:"plan,omitempty"`
 	// TrialFlag is set when this account's free trial matched an earlier trial's
@@ -3452,6 +3457,14 @@ type EdgeStatus struct {
 	Viewers     int    `json:"viewers"`
 	PlaybackURL string `json:"playbackUrl,omitempty"`
 }
+
+// SetUserStageCapRequest is PATCH /api/admin/users/{id}/stage-cap. Null goes back to the plan.
+type SetUserStageCapRequest struct {
+	StageCap *int `json:"stageCap"`
+}
+
+// MaxStageCapOverride is the largest stage an admin may allow one account.
+const MaxStageCapOverride = 25
 
 type SetUserMaxDurationRequest struct {
 	MaxDurationMin *int `json:"maxDurationMin"`

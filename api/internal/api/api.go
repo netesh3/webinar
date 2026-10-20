@@ -533,6 +533,7 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/users/{id}/kind", s.handleSetAccountKind)
 			r.Patch("/users/{id}/host", s.handleSetHostCapability)
 			r.Patch("/users/{id}/max-duration", s.handleSetUserMaxDuration)
+			r.Patch("/users/{id}/stage-cap", s.handleSetUserStageCap)
 			r.Patch("/users/{id}/media-quota", s.handleSetUserMediaQuota)
 			r.Patch("/users/{id}/plan", s.handleSetUserPlan)
 			r.Patch("/users/{id}/sfu", s.handleSetUserSFU)

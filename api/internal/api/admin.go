@@ -211,6 +211,34 @@ func (s *Server) handleSetUserMaxDuration(w http.ResponseWriter, r *http.Request
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
 
+/* handleSetUserStageCap is PATCH /api/admin/users/{id}/stage-cap: a custom number of people
+ * on stage for one account, over its plan's (types.PlanStageCap). Null goes back to the plan.
+ * Takes effect on the next person brought on stage; nobody already there is moved off. */
+func (s *Server) handleSetUserStageCap(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	targetID := chi.URLParam(r, "id")
+
+	var body types.SetUserStageCapRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if body.StageCap != nil && (*body.StageCap < 1 || *body.StageCap > types.MaxStageCapOverride) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_stage_cap",
+			fmt.Sprintf("A stage holds 1 to %d people, or null to use the plan.", types.MaxStageCapOverride))
+		return
+	}
+	if err := s.store.SetUserStageCap(r.Context(), targetID, body.StageCap); errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
+		return
+	} else if err != nil {
+		s.fail(w, r, "set user stage cap", err)
+		return
+	}
+	s.log.Info("user stage cap changed", "admin", admin.ID, "target", targetID, "stage_cap", body.StageCap)
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
+}
+
 /* handleSetCdnBroadcastCapability is PATCH /api/admin/users/{id}/cdn-broadcast.
  *
  * Configures whether an account's webinars stream to audience attendees via CDN HLS.
