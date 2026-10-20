@@ -1902,6 +1902,30 @@ func newImageVersion() string {
 // LiveWebinarsPastStart lists live webinars whose scheduled start has passed —
 // the candidates for the empty-room sweep. A host who opens the room early and
 // waits for an audience is deliberately not one of them.
+/* LiveEdgeWebinarsOn is the live Edge-delivery webinars pinned to a LiveKit project: how
+ * many egress workers that project's pool needs up. */
+func (s *Store) LiveEdgeWebinarsOn(ctx context.Context, project string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT slug
+		  FROM webinars
+		 WHERE status = 'live'
+		   AND delivery = 'edge'
+		   AND sfu_project = $1`, project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var slugs []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs, rows.Err()
+}
+
 func (s *Store) LiveWebinarsPastStart(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT slug

@@ -35,6 +35,8 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	if sfu == nil {
 		return
 	}
+	// On a project with an egress pool, the mix runs on a worker VM: make sure one is up.
+	s.ensureEgressWorker(ctx, wb)
 	origin, dests := s.mixPlan(ctx, wb)
 	startURL, startDest, rest := firstOutput(origin, dests)
 	if startURL == "" {
