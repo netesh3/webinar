@@ -16,6 +16,7 @@ import type {
   PlanFeatures,
   PlanFeaturesBody,
   SetUserMediaQuotaRequest,
+  SetUserStageCapRequest,
   SetUserPlanRequest,
   WebinarImageFromMediaRequest,
   SetUserSFURequest,
@@ -1065,6 +1066,12 @@ export const api = {
   /** Replaces the tier matrix whole. */
   setPlanFeatures: (tiers: PlanFeatures[]) =>
     put<PlanFeaturesBody>("/api/admin/plan-features", { tiers } satisfies PlanFeaturesBody),
+
+  /** Set a custom number of people on stage for an account; null goes back to its plan. */
+  setUserStageCap: (userId: string, stageCap: number | null) =>
+    patch<StatusResponse>(`/api/admin/users/${seg(userId)}/stage-cap`, {
+      stageCap: stageCap ?? undefined,
+    } satisfies SetUserStageCapRequest),
 
   /** Set a custom max meeting duration for a user in minutes. Pass null to reset to system default. */
   setUserMaxDuration: (userId: string, maxDurationMin: number | null) =>

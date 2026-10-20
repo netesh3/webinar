@@ -20,13 +20,16 @@ import (
 
 var errStageFull = errors.New("stage full")
 
-// stageCapForHost reads the host's plan. A failed read is the no-plan cap, so an
-// outage never allows more than a plan does.
+// stageCapForHost is the admin's override for this host if one is set, else the plan's cap.
+// A failed read is the no-plan cap, so an outage never allows more than a plan does.
 func (s *Server) stageCapForHost(ctx context.Context, hostID string) int {
-	plan, err := s.store.PlanForUser(ctx, hostID)
+	plan, override, err := s.store.StageCapForUser(ctx, hostID)
 	if err != nil {
 		s.log.Warn("stage cap: could not read plan", "host", hostID, "error", err)
-		plan = ""
+		return types.PlanStageCap("")
+	}
+	if override != nil && *override > 0 {
+		return *override
 	}
 	return types.PlanStageCap(plan)
 }
