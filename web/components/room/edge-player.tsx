@@ -26,6 +26,7 @@ import {
   ModeDecider,
   bufferedAhead,
   catchUp,
+  JUMP_COOLDOWN_MS,
   edgeHlsConfig,
   latencyLabel,
   liveTarget,
@@ -64,6 +65,7 @@ export function EdgePlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const lastJumpRef = useRef(0);
   const deciderRef = useRef<ModeDecider | null>(null);
   // Playback has started. Until then currentTime is 0, hls.latency reads as the whole
   // window, and the catch-up jumped past the buffer: a black start (edge test, 2026-10-19).
@@ -135,6 +137,7 @@ export function EdgePlayer({
     };
 
     const onPlaying = () => {
+      decider.played(Date.now());
       played = true;
       playingRef.current = true;
       resumed();
@@ -274,7 +277,8 @@ export function EdgePlayer({
             bufferAhead: bufferedAhead(video.buffered, video.currentTime),
             rate: video.playbackRate,
           });
-          if (next === "jump") {
+          if (next === "jump" && Date.now() - lastJumpRef.current >= JUMP_COOLDOWN_MS) {
+            lastJumpRef.current = Date.now();
             video.currentTime = seekToTarget({
               currentTime: video.currentTime,
               latency: hls.latency,
@@ -282,7 +286,7 @@ export function EdgePlayer({
               bufferedEnd: video.currentTime + bufferedAhead(video.buffered, video.currentTime),
             });
             video.playbackRate = 1;
-          } else if (modeRef.current === "standard" && video.playbackRate !== next.rate) {
+          } else if (next !== "jump" && modeRef.current === "standard" && video.playbackRate !== next.rate) {
             video.playbackRate = next.rate;
           }
         }

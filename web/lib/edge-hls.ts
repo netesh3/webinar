@@ -76,9 +76,14 @@ export const DECIDE_WINDOW_MS = 15_000;
 /** More than this many stalls inside the window drops low-latency back to standard. */
 export const MAX_LL_STALLS = 2;
 export const STALL_WINDOW_MS = 30_000;
-/** Stalls this soon after the player starts never drop low-latency. Joining stalls while the
- * buffer first fills and hls.js settles on its target; counted, those alone sent a viewer to
- * standard for the whole session within seconds of joining (edge test, 2026-10-19). */
+/** Stalls this soon after the first frame plays never drop low-latency. Joining stalls while
+ * the buffer first fills and hls.js settles on its target; counted, those alone sent a viewer
+ * to standard for the whole session within seconds of joining (edge test, 2026-10-19).
+ *
+ * From the first frame, not from the player opening: a viewer who arrives before the mix has
+ * started (the worker is still booting) waits a minute on "waiting for the broadcast", and a
+ * grace timed from then had run out before the first frame — so the startup stalls counted
+ * and the viewer sat in standard at ~4.5s for good (edge test, 2026-10-20). */
 export const STARTUP_GRACE_MS = 15_000;
 
 export function median(values: readonly number[]): number | null {
@@ -100,6 +105,8 @@ export class ModeDecider {
   private stalls: number[] = [];
   private decided: boolean;
   private locked = false;
+  /** When the first frame played; stalls before it, and for STARTUP_GRACE_MS after, are startup. */
+  private firstFrameAt: number | null = null;
 
   constructor(opts: { cdn: boolean; now: number }) {
     this.mode = opts.cdn ? "low-latency" : "standard";
@@ -134,9 +141,14 @@ export class ModeDecider {
     return null;
   }
 
+  /** The first frame played. Only the first call counts. */
+  played(now: number): void {
+    if (this.firstFrameAt === null) this.firstFrameAt = now;
+  }
+
   /** The video stalled waiting for data. Returns "standard" when low-latency should give up. */
   stalled(now: number): PlaybackMode | null {
-    if (now - this.startedAt < STARTUP_GRACE_MS) return null;
+    if (this.firstFrameAt === null || now - this.firstFrameAt < STARTUP_GRACE_MS) return null;
     this.stalls.push(now);
     this.stalls = this.stalls.filter((t) => now - t <= STALL_WINDOW_MS);
     if (this.mode === "low-latency" && this.stalls.length > MAX_LL_STALLS) {
@@ -169,8 +181,12 @@ export const CATCH_UP = {
   rate: 1.1,
   /** Seconds buffered ahead of the playhead needed to keep playing faster. */
   minBuffer: 1.5,
-  /** Seconds past the target where catching up at CATCH_UP.rate would take too long: jump. */
-  jumpAbove: 6,
+  /** Seconds past the target where catching up at CATCH_UP.rate would take too long: jump.
+   * 2, not the 6 it was: a viewer drifting to 5–6s behind (a stall or two, a slow phase) sat
+   * there for a minute at 1.1× (edge test, 2026-10-20). The jump lands inside what is already
+   * buffered (seekToTarget), so it is a skip, never a black wait, and the player spaces jumps
+   * at least JUMP_COOLDOWN_MS apart so it cannot thrash. */
+  jumpAbove: 2,
 } as const;
 
 export type CatchUp = { rate: number } | "jump";
@@ -202,6 +218,10 @@ export function seekToTarget(o: { currentTime: number; latency: number; target: 
   if (o.bufferedEnd == null) return want;
   return Math.max(o.currentTime, Math.min(want, o.bufferedEnd - SEEK_MARGIN_SECONDS));
 }
+
+/** The least time between two automatic jumps, so one that leaves a thin buffer cannot
+ * stall into another. */
+export const JUMP_COOLDOWN_MS = 15_000;
 
 /** How far short of the buffered end an automatic jump lands. */
 export const SEEK_MARGIN_SECONDS = 1;
