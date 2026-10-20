@@ -212,14 +212,15 @@ fi
 
 docker compose "${COMPOSE_ARGS[@]}" pull
 docker compose "${COMPOSE_ARGS[@]}" up -d --remove-orphans
+# redis.conf is bind-mounted and read at start only, like the Caddyfile below. Before
+# LiveKit, so LiveKit never comes up against a Redis with the old password.
+if [[ -f docker-compose.egress.yml ]]; then
+  docker compose "${COMPOSE_ARGS[@]}" restart redis
+fi
 # Restart livekit to ensure it connects to Redis if Redis was newly started
 docker compose "${COMPOSE_ARGS[@]}" restart livekit
 if [[ "$LOCAL_EGRESS" == 1 ]]; then
   docker compose "${COMPOSE_ARGS[@]}" restart egress
-fi
-# redis.conf is bind-mounted and read at start only, like the Caddyfile below.
-if [[ -f docker-compose.egress.yml ]]; then
-  docker compose "${COMPOSE_ARGS[@]}" restart redis
 fi
 
 # Caddyfile is bind-mounted, so `up -d` alone does not make Caddy pick up
