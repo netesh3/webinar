@@ -118,7 +118,13 @@ export function EdgePlayer({
       video
         .play()
         .then(() => setIsMuted(false))
-        .catch(() => {
+        .catch((err: unknown) => {
+          // Only NotAllowedError is the autoplay policy; anything else (no data yet, a
+          // reload) says nothing about sound, so ask again on the next try.
+          if (!(err instanceof DOMException && err.name === "NotAllowedError")) {
+            soundAllowed = null;
+            return;
+          }
           soundAllowed = false;
           video.muted = true;
           setIsMuted(true);
