@@ -89,9 +89,15 @@ func DiscountPercent(amount, list int64) int {
 // Attendees is the plan's enforced attendee cap.
 func (p Plan) Attendees() int { return types.PlanAttendeeCap(p.ID) }
 
-// AllFeatures is the pricing page's list: the attendee cap first, then the rest.
+// StageSeats is the plan's enforced cap on people on stage at once, the host included.
+func (p Plan) StageSeats() int { return types.PlanStageCap(p.ID) }
+
+// AllFeatures is the pricing page's list: the attendee and stage caps first, then the rest.
 func (p Plan) AllFeatures() []string {
-	return append([]string{fmt.Sprintf("Up to %d attendees", p.Attendees())}, p.Features...)
+	return append([]string{
+		fmt.Sprintf("Up to %d attendees", p.Attendees()),
+		fmt.Sprintf("Up to %d people on stage", p.StageSeats()),
+	}, p.Features...)
 }
 
 /* Plans is the price list, in display order.
