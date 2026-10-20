@@ -2909,10 +2909,6 @@ export interface Account {
   plan?: Plan;
   attendeeCap: number /* int */;
   /**
-   * CanCdnBroadcast allows this host's webinars to broadcast to audience via CDN HLS.
-   */
-  canCdnBroadcast: boolean;
-  /**
    *  Features switched on for this account by an admin — the Feature constants, and
    * 	 * never anything else. Sent to the browser so a screen can leave out a tab the
    * 	 * server would refuse anyway; the server checks it again on every request, because
@@ -5352,12 +5348,6 @@ export interface HostGrant {
   canHost: boolean;
 }
 /**
- * CdnBroadcastGrant is an admin's grant allowing a host account to use CDN broadcast mode.
- */
-export interface CdnBroadcastGrant {
-  canCdnBroadcast: boolean;
-}
-/**
  *  FeatureGrant switches one feature on or off for one account.
  *  *
  *  * One feature per request, with the state it should end in rather than a verb, for the
@@ -5471,10 +5461,6 @@ export interface AdminUser {
   registrationCount: number /* int */;
   lastWebinarTopic?: string;
   /**
-   * CanCdnBroadcast reports whether this user is enabled for CDN broadcast webinars.
-   */
-  canCdnBroadcast: boolean;
-  /**
    * Features are the switches in effect: the plan's, with this account's overrides
    * applied. Always present, empty for an account with none.
    */
@@ -5513,7 +5499,6 @@ export interface AdminStats {
   audience: number /* int */;
   hosts: number /* int */;
   admins: number /* int */;
-  cdnBroadcast: number /* int */;
   newAccounts7d: number /* int */;
   webinars: number /* int */;
   live: number /* int */;

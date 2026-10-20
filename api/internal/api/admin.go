@@ -239,36 +239,6 @@ func (s *Server) handleSetUserStageCap(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
 }
 
-/* handleSetCdnBroadcastCapability is PATCH /api/admin/users/{id}/cdn-broadcast.
- *
- * Configures whether an account's webinars stream to audience attendees via CDN HLS.
- */
-func (s *Server) handleSetCdnBroadcastCapability(w http.ResponseWriter, r *http.Request) {
-	admin := userFromContext(r.Context())
-	targetID := chi.URLParam(r, "id")
-
-	var body types.CdnBroadcastGrant
-	if err := httpx.DecodeJSON(w, r, &body); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
-		return
-	}
-
-	updated, err := s.store.SetCdnBroadcastCapability(r.Context(), targetID, body.CanCdnBroadcast)
-	if errors.Is(err, store.ErrNotFound) {
-		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
-		return
-	}
-	if err != nil {
-		s.fail(w, r, "set cdn broadcast capability", err)
-		return
-	}
-
-	s.log.Info("cdn broadcast capability changed",
-		"admin", admin.ID, "target", updated.ID, "can_cdn_broadcast", updated.CanCdnBroadcast)
-
-	httpx.JSON(w, http.StatusOK, updated.Public())
-}
-
 /* handleSetFeature is PATCH /api/admin/users/{id}/features.
  *
  * One feature per request, carrying the end state rather than a verb, for the same reason

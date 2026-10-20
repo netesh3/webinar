@@ -1,17 +1,15 @@
-/* Admin account row: CDN Broadcast and Instant webinar live in Features.
+/* Admin account row: Instant webinar and the rest live in Features.
  *
  * Run: node --experimental-strip-types --no-warnings lib/admin-account-features.test.mts
  *
- * Order follows the server catalogue (Instant webinar before Zoom), then CDN
- * Broadcast, which is not a feature key. A non-host does not see the catalogue,
- * including Instant webinar. */
+ * Order follows the server catalogue (Instant webinar before Zoom). A non-host does not
+ * see the catalogue, including Instant webinar. */
 
 import assert from "node:assert/strict";
 import type { Feature } from "./api-types.ts";
 import {
   accountFeatureRows,
   accountFeaturesOnCount,
-  CDN_BROADCAST_ROW_ID,
   overrideState,
   planIncludes,
   withOverride,
@@ -48,60 +46,22 @@ const catalogue: Feature[] = [
 const hostRows = accountFeatureRows(true, catalogue);
 assert.deepEqual(
   hostRows.map((row) => row.label),
-  [
-    "WhatsApp CRM",
-    "Cloud recording",
-    "Join without registration",
-    "Instant webinar",
-    "Zoom",
-    "CDN Broadcast",
-  ],
+  ["WhatsApp CRM", "Cloud recording", "Join without registration", "Instant webinar", "Zoom"],
 );
-assert.equal(hostRows.length, 6);
 assert.deepEqual(
-  hostRows.filter((row) => row.source === "feature").map((row) => row.id),
+  hostRows.map((row) => row.id),
   catalogue.map((f) => f.key),
 );
-const cdn = hostRows[hostRows.length - 1];
-assert.equal(cdn.source, "cdn_broadcast");
-assert.equal(cdn.id, CDN_BROADCAST_ROW_ID);
-assert.equal(cdn.label, "CDN Broadcast");
-assert.ok(cdn.description.length > 0);
-assert.ok(
-  !hostRows.some((row) => row.source === "feature" && row.id === CDN_BROADCAST_ROW_ID),
-);
+assert.ok(hostRows.every((row) => row.source === "feature"));
 
-assert.equal(
-  accountFeaturesOnCount(hostRows, ["whatsapp_crm"], false),
-  1,
-);
-assert.equal(
-  accountFeaturesOnCount(
-    hostRows,
-    ["whatsapp_crm", "instant_webinar"],
-    true,
-  ),
-  3,
-);
-assert.equal(
-  accountFeaturesOnCount(hostRows, ["not_a_real_feature"], true),
-  1,
-);
+assert.equal(accountFeaturesOnCount(hostRows, ["whatsapp_crm"]), 1);
+assert.equal(accountFeaturesOnCount(hostRows, ["whatsapp_crm", "instant_webinar"]), 2);
+assert.equal(accountFeaturesOnCount(hostRows, ["not_a_real_feature"]), 0);
 
+// A non-host sees no switches (CDN Broadcast, the one row they had, was retired).
 const guestRows = accountFeatureRows(false, catalogue);
-assert.deepEqual(
-  guestRows.map((row) => row.label),
-  ["CDN Broadcast"],
-);
-assert.equal(guestRows.length, 1);
-assert.equal(
-  accountFeaturesOnCount(guestRows, ["instant_webinar", "zoom"], false),
-  0,
-);
-assert.equal(
-  accountFeaturesOnCount(guestRows, ["instant_webinar"], true),
-  1,
-);
+assert.equal(guestRows.length, 0);
+assert.equal(accountFeaturesOnCount(guestRows, ["instant_webinar", "zoom"]), 0);
 
 /* Plan, then overrides. Inherit is the absence of an override; the plan's value
  * comes from the tier matrix, "" being no plan. */

@@ -492,10 +492,9 @@ export function CdnAttendeeRoom({
   );
 }
 
-function isWhepUrl(url: string) {
-  return /\/whep(\?|$)/i.test(url);
-}
-
+/* The broadcast room's player: HLS or a file, which is what a simulive attendee plays (the
+ * recording). It used to choose a WHEP player for the live CDN Broadcast mode; that mode
+ * was retired (2026-10-20) and live big audiences are on Edge delivery. */
 function BroadcastPlayer({
   streamUrl,
   lowLatency,
@@ -505,225 +504,7 @@ function BroadcastPlayer({
   lowLatency?: boolean;
   coverUrl?: string;
 }) {
-  if (isWhepUrl(streamUrl)) {
-    return <WhepPlayer streamUrl={streamUrl} coverUrl={coverUrl} />;
-  }
-  return (
-    <HlsPlayer
-      streamUrl={streamUrl}
-      lowLatency={lowLatency}
-      coverUrl={coverUrl}
-    />
-  );
-}
-
-async function waitIceGathering(pc: RTCPeerConnection, ms = 2500) {
-  if (pc.iceGatheringState === "complete") return;
-  await new Promise<void>((resolve) => {
-    const t = window.setTimeout(resolve, ms);
-    const onChange = () => {
-      if (pc.iceGatheringState === "complete") {
-        window.clearTimeout(t);
-        pc.removeEventListener("icegatheringstatechange", onChange);
-        resolve();
-      }
-    };
-    pc.addEventListener("icegatheringstatechange", onChange);
-  });
-}
-
-function WhepPlayer({
-  streamUrl,
-  coverUrl,
-}: {
-  streamUrl: string;
-  coverUrl?: string;
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isMuted, setIsMuted] = useState(true);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    let cancelled = false;
-    let pc: RTCPeerConnection | null = null;
-    let sessionUrl: string | null = null;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    let tearingDown = false;
-
-    const tryPlay = () => {
-      video.playsInline = true;
-      video.setAttribute("playsinline", "");
-      video.setAttribute("webkit-playsinline", "true");
-      video.muted = true;
-      setIsMuted(true);
-      video.play().catch(() => {});
-    };
-
-    const teardown = () => {
-      tearingDown = true;
-      if (sessionUrl) {
-        void fetch(sessionUrl, { method: "DELETE" }).catch(() => {});
-        sessionUrl = null;
-      }
-      if (pc) {
-        pc.close();
-        pc = null;
-      }
-      video.srcObject = null;
-    };
-
-    const connect = async () => {
-      teardown();
-      if (cancelled) return;
-      tearingDown = false;
-
-      pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
-      pc.addTransceiver("video", { direction: "recvonly" });
-      pc.addTransceiver("audio", { direction: "recvonly" });
-      pc.ontrack = (ev) => {
-        if (cancelled || !video) return;
-        video.srcObject = ev.streams[0] ?? new MediaStream([ev.track]);
-        setLoading(false);
-        setError(null);
-        tryPlay();
-      };
-      pc.onconnectionstatechange = () => {
-        if (tearingDown || cancelled || !pc) return;
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-          setError("Waiting for the broadcast to start...");
-          setLoading(true);
-          clearTimeout(retryTimer);
-          retryTimer = setTimeout(() => {
-            void connect();
-          }, 1500);
-        }
-      };
-
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await waitIceGathering(pc);
-        const sdp = pc.localDescription?.sdp;
-        if (!sdp) throw new Error("no local sdp");
-
-        const res = await fetch(streamUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/sdp",
-            Accept: "application/sdp",
-          },
-          body: sdp,
-        });
-
-        if (cancelled) return;
-
-        if (!res.ok) {
-          /* 404 is the normal state before the host goes live: Egress has to
-           * boot Chromium and connect RTMP before the origin has a stream.
-           *
-           * Anything else is the origin refusing us, and saying "waiting for
-           * the broadcast" to that is how a misconfigured origin cost a whole
-           * session — it rejected every viewer with 401 while the mix was
-           * publishing, and the room sat on a spinner that read as "the host
-           * has not started yet". Still retry, but do not claim to know why. */
-          const waiting =
-            res.status === 404 || res.status === 406 || res.status === 425;
-          if (!waiting) {
-            console.error(`whep ${res.status} from ${streamUrl}`);
-          }
-          setError(
-            waiting
-              ? "Waiting for the broadcast to start..."
-              : "Reconnecting to the broadcast...",
-          );
-          setLoading(true);
-          teardown();
-          retryTimer = setTimeout(() => {
-            void connect();
-          }, waiting ? 1500 : 4000);
-          return;
-        }
-
-        const loc = res.headers.get("Location");
-        if (loc) {
-          sessionUrl = new URL(loc, streamUrl).toString();
-        }
-        const answer = await res.text();
-        await pc.setRemoteDescription({ type: "answer", sdp: answer });
-      } catch {
-        if (cancelled) return;
-        setError("Waiting for the broadcast to start...");
-        setLoading(true);
-        teardown();
-        retryTimer = setTimeout(() => {
-          void connect();
-        }, 1500);
-      }
-    };
-
-    void connect();
-
-    return () => {
-      cancelled = true;
-      clearTimeout(retryTimer);
-      teardown();
-    };
-  }, [streamUrl]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const resume = () => {
-      if (document.visibilityState === "visible" && video.paused) {
-        video.play().catch(() => {
-          video.muted = true;
-          setIsMuted(true);
-          video.play().catch(() => {});
-        });
-      }
-    };
-    document.addEventListener("visibilitychange", resume);
-    window.addEventListener("pageshow", resume);
-    return () => {
-      document.removeEventListener("visibilitychange", resume);
-      window.removeEventListener("pageshow", resume);
-    };
-  }, [streamUrl]);
-
-  return (
-    <StagePlayerChrome
-      videoRef={videoRef}
-      loading={loading}
-      error={error}
-      isMuted={isMuted}
-      coverUrl={coverUrl}
-      onMutedChange={setIsMuted}
-      onReady={() => {
-        setLoading(false);
-        setError(null);
-      }}
-      unmute={() => {
-        if (videoRef.current) {
-          videoRef.current.muted = false;
-          setIsMuted(false);
-          void videoRef.current.play();
-        }
-      }}
-      toggleMute={() => {
-        const video = videoRef.current;
-        if (!video) return;
-        video.muted = !video.muted;
-        setIsMuted(video.muted);
-        if (!video.muted) void video.play();
-      }}
-    />
-  );
+  return <HlsPlayer streamUrl={streamUrl} lowLatency={lowLatency} coverUrl={coverUrl} />;
 }
 
 function isPlaylistUrl(url: string): boolean {
@@ -990,7 +771,7 @@ export function StagePlayerChrome({
   unmute: () => void;
   toggleMute: () => void;
 }) {
-  /* Fullscreen belongs to the chrome, not to each player: WHEP and HLS differ
+  /* Fullscreen belongs to the chrome, not to each player: the players could differ
    * in how they fill the video element and in nothing else, and the two copies
    * of this that lived in those players had already drifted into being the
    * same eight lines twice. */

@@ -190,13 +190,13 @@ func productionEnv(extra map[string]string) map[string]string {
 
 func TestBroadcastURLsStayEmptyUntilBothBasesAreSet(t *testing.T) {
 	c := Config{}
-	if c.BroadcastHLSURL("slug") != "" || c.BroadcastRTMPURL("slug") != "" {
+	if c.EdgePlaybackURLFor("", "slug") != "" || c.BroadcastRTMPURL("slug") != "" {
 		t.Fatal("empty bases should produce empty URLs")
 	}
 	c.BroadcastHLSBase = "https://live.example.com/live"
 	c.BroadcastRTMPBase = "rtmp://127.0.0.1:1935/live"
-	if got, want := c.BroadcastHLSURL("slug"), "https://live.example.com/live/slug/whep"; got != want {
-		t.Errorf("BroadcastHLSURL = %q, want %q", got, want)
+	if got, want := c.EdgePlaybackURLFor("", "slug"), "https://live.example.com/live/slug/index.m3u8"; got != want {
+		t.Errorf("EdgePlaybackURLFor = %q, want %q", got, want)
 	}
 	if got, want := c.BroadcastRTMPURL("slug"), "rtmp://127.0.0.1:1935/live/slug"; got != want {
 		t.Errorf("BroadcastRTMPURL = %q, want %q", got, want)

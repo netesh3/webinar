@@ -83,14 +83,11 @@ type LiveKitProject struct {
 	 */
 	Disabled bool `json:"disabled,omitempty"`
 
-	/* BroadcastHLSBase is where attendees play this project's CDN broadcast, overriding
-	 * BROADCAST_HLS_BASE for rooms on this project.
-	 *
-	 * The broadcast is composited by the Egress that runs beside each SFU and pushed to
-	 * the MediaMTX on that same box (BROADCAST_RTMP_BASE is a loopback address on purpose).
-	 * So a room on a second SFU publishes its stream on THAT box, and a viewer sent to the
-	 * first box's origin would ask for a stream that is not there. Empty uses the global
-	 * BROADCAST_HLS_BASE, which is right while there is one SFU. */
+	/* BroadcastHLSBase is this project's public live origin: the /live of the MediaMTX on
+	 * its SFU box, overriding BROADCAST_HLS_BASE. The mix for a room on this project is
+	 * pushed to that box (BROADCAST_RTMP_BASE is a loopback address on purpose), so its
+	 * Edge playback falls back to this when no edgePlaybackBase is set. Empty uses the
+	 * global BROADCAST_HLS_BASE. */
 	BroadcastHLSBase string `json:"broadcastHlsBase,omitempty"`
 
 	/* EdgePlaybackBase is where an Edge-delivery audience plays this project's LL-HLS,
@@ -293,7 +290,7 @@ func validateLiveKitProjects(list []LiveKitProject, dev bool) error {
 		if b := p.BroadcastHLSBase; b != "" && !strings.HasPrefix(b, "https://") &&
 			!(dev && strings.HasPrefix(b, "http://")) {
 			errs = append(errs, fmt.Errorf(
-				"%s: broadcastHlsBase must begin with https:// (it is the WHEP URL attendees open): %q",
+				"%s: broadcastHlsBase must begin with https:// (it is the public live origin): %q",
 				where, b))
 		}
 

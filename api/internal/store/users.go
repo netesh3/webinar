@@ -42,8 +42,6 @@ type User struct {
 	// AccountKind is customer (signed up for the app) or audience (made by a
 	// webinar registration). See types.AccountKind.
 	AccountKind types.AccountKind
-	// CanCdnBroadcast allows this host to run CDN HLS broadcast webinars.
-	CanCdnBroadcast bool
 	/* Features are the per-account switches an admin has turned on — the
 	 * types.Feature keys, and nothing else. Absent means off; see migrations/0048 for
 	 * why these are a list and can_host is a column.
@@ -134,23 +132,22 @@ func (u User) HasFeature(key string) bool {
 
 func (u User) Public() types.Account {
 	a := types.Account{
-		ID:              u.ID,
-		Email:           u.Email,
-		EmailVerified:   u.EmailVerified(),
-		Name:            u.Name,
-		Title:           u.Title,
-		Org:             u.Org,
-		Phone:           u.Phone,
-		GooglePhone:     u.GooglePhone,
-		Initials:        u.Initials,
-		Hue:             u.Hue,
-		AvatarURL:       u.AvatarURL(),
-		CanHost:         u.CanHost,
-		IsAdmin:         u.IsAdmin,
-		MaxDurationMin:  u.MaxDurationMin,
-		Plan:            u.Plan,
-		AttendeeCap:     types.PlanAttendeeCap(u.Plan),
-		CanCdnBroadcast: u.CanCdnBroadcast,
+		ID:             u.ID,
+		Email:          u.Email,
+		EmailVerified:  u.EmailVerified(),
+		Name:           u.Name,
+		Title:          u.Title,
+		Org:            u.Org,
+		Phone:          u.Phone,
+		GooglePhone:    u.GooglePhone,
+		Initials:       u.Initials,
+		Hue:            u.Hue,
+		AvatarURL:      u.AvatarURL(),
+		CanHost:        u.CanHost,
+		IsAdmin:        u.IsAdmin,
+		MaxDurationMin: u.MaxDurationMin,
+		Plan:           u.Plan,
+		AttendeeCap:    types.PlanAttendeeCap(u.Plan),
 		// Never nil on the wire: a browser that has to guard a list guards it
 		// differently on every screen.
 		Features: append([]string{}, u.Features...),
@@ -205,7 +202,7 @@ func (u User) Person() types.Person {
 
 const userColumns = `id::text, email, coalesce(password_hash,''), name, title, org, phone,
 	coalesce(google_phone,''),
-	initials, hue, can_host, is_admin, max_duration_min, can_cdn_broadcast,
+	initials, hue, can_host, is_admin, max_duration_min,
 	effective_features(effective_plan(users.id), features, features_off),
 	coalesce(youtube_refresh,''), coalesce(youtube_channel_id,''),
 	coalesce(youtube_channel_title,''), coalesce(youtube_stream_id,''),
@@ -222,7 +219,7 @@ func scanUser(row scanner) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Title, &u.Org, &u.Phone,
 		&u.GooglePhone,
-		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin, &u.CanCdnBroadcast,
+		&u.Initials, &u.Hue, &u.CanHost, &u.IsAdmin, &u.MaxDurationMin,
 		&u.Features,
 		&u.YouTubeRefresh, &u.YouTubeChannelID, &u.YouTubeChannelTitle, &u.YouTubeStreamID,
 		&u.WhatsAppToken, &u.WhatsAppWABAID, &u.WhatsAppPhoneNumberID, &u.WhatsAppDisplayPhone,
@@ -244,15 +241,6 @@ func (u User) AvatarURL() string {
 		return "/api/auth/avatar?v=" + u.AvatarKey
 	}
 	return u.GooglePicture
-}
-
-func (s *Store) HostCanCdnBroadcast(ctx context.Context, hostID string) (bool, error) {
-	var can bool
-	err := s.pool.QueryRow(ctx, `SELECT can_cdn_broadcast FROM users WHERE id = $1`, hostID).Scan(&can)
-	if noRows(err) {
-		return false, nil
-	}
-	return can, err
 }
 
 func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {

@@ -542,7 +542,6 @@ func (s *Server) Routes() http.Handler {
 			r.Delete("/users/{id}/trial-flags", s.handleClearTrialFlags)
 			r.Get("/plan-features", s.handlePlanFeatures)
 			r.Put("/plan-features", s.handleSetPlanFeatures)
-			r.Patch("/users/{id}/cdn-broadcast", s.handleSetCdnBroadcastCapability)
 			r.Patch("/users/{id}/features", s.handleSetFeature)
 			r.Delete("/users/{id}", s.handleAdminDeleteUser)
 

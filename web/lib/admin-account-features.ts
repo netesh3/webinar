@@ -9,22 +9,14 @@ import type { Feature, PlanFeatures } from "./api-types.ts";
  * switches were already host-only, for the same reason: they act on a webinar
  * this account would create.
  *
- * CDN Broadcast is not a catalogue key. It stays the boolean canCdnBroadcast,
- * patched at /api/admin/users/{id}/cdn-broadcast, and it is offered on every
- * account, including one that cannot host yet. It follows the catalogue so
- * the server's order is left as the server declared it.
+ * (CDN Broadcast used to follow the catalogue as its own row; that mode was retired in
+ * 2026-10, Edge delivery being the big-audience path.)
  */
 
-export const CDN_BROADCAST_ROW_ID = "cdn_broadcast";
-
-const CDN_BROADCAST_DESCRIPTION =
-  "Let this host's webinars stream the audience over HLS. Off means attendees stay in the live room.";
-
 export type AccountFeatureRow = {
-  /* Catalogue feature key, or CDN_BROADCAST_ROW_ID. Only source "feature" is
-   * sent to PATCH …/features. The CDN row uses PATCH …/cdn-broadcast. */
+  /* Catalogue feature key, sent to PATCH …/features. */
   id: string;
-  source: "feature" | "cdn_broadcast";
+  source: "feature";
   label: string;
   description: string;
 };
@@ -41,15 +33,7 @@ export function accountFeatureRows(
         description: f.description,
       }))
     : [];
-  return [
-    ...features,
-    {
-      id: CDN_BROADCAST_ROW_ID,
-      source: "cdn_broadcast",
-      label: "CDN Broadcast",
-      description: CDN_BROADCAST_DESCRIPTION,
-    },
-  ];
+  return features;
 }
 
 /* How many of the visible rows are on. A feature key that is not in the list
@@ -58,18 +42,9 @@ export function accountFeatureRows(
 export function accountFeaturesOnCount(
   rows: readonly AccountFeatureRow[],
   features: readonly string[] | null | undefined,
-  canCdnBroadcast: boolean,
 ): number {
   const on = new Set(features ?? []);
-  let n = 0;
-  for (const row of rows) {
-    if (row.source === "cdn_broadcast") {
-      if (canCdnBroadcast) n += 1;
-    } else if (on.has(row.id)) {
-      n += 1;
-    }
-  }
-  return n;
+  return rows.filter((row) => on.has(row.id)).length;
 }
 
 /* Plan, then overrides (migrations/0107). The admin row shows each catalogue

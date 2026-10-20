@@ -131,18 +131,18 @@ type Config struct {
 	// RecordingsCDNBaseURL: Cloudflare CDN URL for serving recordings (e.g. https://recordings.webinarliv.com).
 	RecordingsCDNBaseURL string
 
-	/* BroadcastRTMPBase / BroadcastHLSBase are the Zoom-style one-way attendee
-	 * path: Egress pushes RTMP to MediaMTX on the SFU box, attendees play WHEP
-	 * from BroadcastHLSBase/<slug>/whep. Env names are leftover from HLS; the
-	 * public URL is no longer a playlist.
+	/* BroadcastRTMPBase / BroadcastHLSBase are the live origin for Edge delivery: Egress
+	 * pushes RTMP to MediaMTX on the SFU box (BroadcastRTMPBase, a loopback address there),
+	 * and BroadcastHLSBase is that box's public /live, where its LL-HLS is served — the
+	 * Edge playback URL when no CDN pull zone is set (EdgePlaybackURLFor).
 	 *
-	 * Empty means CDN-broadcast attendees stay on the SFU. Both must be set
-	 * together — RTMP without a public WHEP URL would encode a feed nobody can
-	 * watch, and a WHEP URL without RTMP would 404 forever. */
+	 * Both must be set together: RTMP with no public origin encodes a feed nobody can
+	 * fetch, and an origin with no RTMP has nothing on it. (This was also the WHEP path of
+	 * the retired CDN Broadcast mode, 2026-10-20.) */
 	BroadcastRTMPBase string
 	BroadcastHLSBase  string
 	/* EdgePlaybackBase is where an Edge-delivery audience plays the LL-HLS feed:
-	 * <base>/<slug>/index.m3u8. Empty derives it from the same origin as the WHEP feed
+	 * <base>/<slug>/index.m3u8. Empty derives it from the live origin
 	 * (the per-project or global BroadcastHLSBase, whose /live/* route MediaMTX's LL-HLS
 	 * already sits behind). Point it at a CDN pull zone that mirrors that origin (Bunny)
 	 * and nothing else changes. See docs/edge-delivery.md. */
@@ -755,7 +755,7 @@ func (c Config) validate() error {
 	}
 
 	if (c.BroadcastRTMPBase == "") != (c.BroadcastHLSBase == "") {
-		errs = append(errs, errors.New("BROADCAST_RTMP_BASE and BROADCAST_HLS_BASE must be set together (RTMP ingest and the public WHEP URL)"))
+		errs = append(errs, errors.New("BROADCAST_RTMP_BASE and BROADCAST_HLS_BASE must be set together (RTMP ingest and the public live origin)"))
 	}
 	if c.BroadcastRTMPBase != "" && !strings.HasPrefix(c.BroadcastRTMPBase, "rtmp://") && !strings.HasPrefix(c.BroadcastRTMPBase, "rtmps://") {
 		errs = append(errs, fmt.Errorf("BROADCAST_RTMP_BASE must begin with rtmp:// or rtmps://: %q", c.BroadcastRTMPBase))
@@ -895,36 +895,12 @@ func splitAndTrim(s string) []string {
 /* BroadcastRTMPURL is the RTMP ingest LiveKit Egress pushes, on the SFU box.
  *
  * Empty when the live origin is not configured. The slug is the MediaMTX path
- * that also appears in the matching WHEP URL. */
+ * that also appears in the matching playback URL. */
 func (c Config) BroadcastRTMPURL(slug string) string {
 	if c.BroadcastRTMPBase == "" || strings.TrimSpace(slug) == "" {
 		return ""
 	}
 	return c.BroadcastRTMPBase + "/" + strings.TrimSpace(slug)
-}
-
-/* BroadcastHLSURL is the WHEP endpoint attendees POST an SDP offer to.
- *
- * Empty when the live origin is not configured, so join keeps attendees on the SFU. */
-func (c Config) BroadcastHLSURL(slug string) string {
-	if c.BroadcastHLSBase == "" || strings.TrimSpace(slug) == "" {
-		return ""
-	}
-	return c.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
-}
-
-/* BroadcastHLSURLFor is BroadcastHLSURL for a room on one LiveKit project: that project's
- * own origin when it declares one (see LiveKitProject.BroadcastHLSBase), the global one
- * otherwise. A project can only override the address; with no BROADCAST_RTMP_BASE the CDN
- * broadcast is off everywhere and this is empty. */
-func (c Config) BroadcastHLSURLFor(projectID, slug string) string {
-	if c.BroadcastRTMPBase == "" || strings.TrimSpace(slug) == "" {
-		return ""
-	}
-	if p, ok := c.liveKitProject(projectID); ok && p.BroadcastHLSBase != "" {
-		return p.BroadcastHLSBase + "/" + strings.TrimSpace(slug) + "/whep"
-	}
-	return c.BroadcastHLSURL(slug)
 }
 
 /* EdgePlaybackURLFor is the LL-HLS playlist an Edge-delivery audience plays.

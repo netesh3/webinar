@@ -587,8 +587,8 @@ func TestAdminStats(t *testing.T) {
 	}
 
 	st := before.stats
-	if st.Accounts != 6 || st.Hosts != 6 || st.Admins != 1 || st.CdnBroadcast != 0 || st.NewAccounts7d != 6 {
-		t.Errorf("accounts = %+v, want 6 accounts / 6 hosts / 1 admin / 0 cdn / 6 new", st)
+	if st.Accounts != 6 || st.Hosts != 6 || st.Admins != 1 || st.NewAccounts7d != 6 {
+		t.Errorf("accounts = %+v, want 6 accounts / 6 hosts / 1 admin / 6 new", st)
 	}
 	if st.Webinars != 6 || st.Live != 0 || st.Scheduled != 4 || st.Ended != 1 || st.Drafts != 1 {
 		t.Errorf("webinars live/scheduled/ended/drafts = %d/%d/%d/%d (total %d), want 0/4/1/1 (total 6)",
@@ -621,9 +621,7 @@ func TestAdminStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create account: %v", err)
 	}
-	if _, err := h.store.SetCdnBroadcastCapability(t.Context(), viewer.ID, true); err != nil {
-		t.Fatalf("cdn: %v", err)
-	}
+	_ = viewer
 
 	wb := h.newWebinar("Stats glance session", nil)
 	/* The series ends today (UTC) and scheduling needs notice, so a start two hours
@@ -649,9 +647,9 @@ func TestAdminStats(t *testing.T) {
 	after := h.adminStats(t).stats
 	// The viewer is one new account. The registrant is another: registering
 	// creates an account, and it does not grant hosting.
-	if after.Accounts != st.Accounts+2 || after.Hosts != st.Hosts || after.CdnBroadcast != st.CdnBroadcast+1 || after.NewAccounts7d != st.NewAccounts7d+2 {
-		t.Errorf("after account create: accounts %d hosts %d cdn %d new %d, before %+v",
-			after.Accounts, after.Hosts, after.CdnBroadcast, after.NewAccounts7d, st)
+	if after.Accounts != st.Accounts+2 || after.Hosts != st.Hosts || after.NewAccounts7d != st.NewAccounts7d+2 {
+		t.Errorf("after account create: accounts %d hosts %d new %d, before %+v",
+			after.Accounts, after.Hosts, after.NewAccounts7d, st)
 	}
 	if after.Webinars != st.Webinars+1 || after.Live != st.Live+1 || after.Scheduled != st.Scheduled {
 		t.Errorf("after go-live: webinars %d live %d scheduled %d, before webinars %d live %d scheduled %d",

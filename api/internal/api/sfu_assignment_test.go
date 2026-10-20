@@ -104,51 +104,6 @@ func TestAnAssignmentNeverMovesALiveRoom(t *testing.T) {
 	}
 }
 
-/* A room on a second SFU publishes its CDN broadcast on THAT box's MediaMTX, so its
- * attendees are sent to that project's own origin; rooms on the default box keep the global
- * one. */
-func TestEachProjectsRoomsUseItsOwnBroadcastOrigin(t *testing.T) {
-	edge := newFakeProject("edge")
-	h := newHarnessWith(t, []*fakeRooms{edge}, func(c *config.Config) {
-		c.BroadcastRTMPBase = "rtmp://127.0.0.1:1935/live"
-		c.BroadcastHLSBase = "https://live.example.com/live"
-		c.LiveKitProjects = append(c.LiveKitProjects,
-			config.LiveKitProject{ID: "edge", BroadcastHLSBase: "https://live-edge.example.com/live"})
-	})
-	h.login("neeraj@acme.dev")
-	host := hostID(t, h, "neeraj@acme.dev")
-	if _, err := h.store.SetCdnBroadcastCapability(context.Background(), host, true); err != nil {
-		t.Fatal(err)
-	}
-	join := func(slug string) types.JoinResponse {
-		t.Helper()
-		res, raw := h.guestJoin(slug, "Viewer")
-		if res.StatusCode != http.StatusOK {
-			t.Fatalf("join %s: %d %s", slug, res.StatusCode, raw)
-		}
-		var out types.JoinResponse
-		h.decode(raw, &out)
-		return out
-	}
-
-	onDefault := h.openWebinar("Default box")
-	if got, want := join(onDefault.ID).CdnStreamURL, "https://live.example.com/live/"+onDefault.ID+"/whep"; got != want {
-		t.Errorf("default-box viewer sent to %q, want %q", got, want)
-	}
-
-	if err := h.store.SetUserSFUProject(context.Background(), host, "edge"); err != nil {
-		t.Fatal(err)
-	}
-	onEdge := h.openWebinar("Second box")
-	j := join(onEdge.ID)
-	if got := h.pinOf(onEdge.ID); got != "edge" {
-		t.Fatalf("edge-assigned host's webinar pinned to %q", got)
-	}
-	if got, want := j.CdnStreamURL, "https://live-edge.example.com/live/"+onEdge.ID+"/whep"; got != want {
-		t.Errorf("second-box viewer sent to %q, want %q", got, want)
-	}
-}
-
 func TestAdminVideoServerEndpoints(t *testing.T) {
 	h := newHarnessWith(t, []*fakeRooms{newFakeProject("second")}, func(c *config.Config) {
 		c.LiveKitProjects = append(c.LiveKitProjects, config.LiveKitProject{
