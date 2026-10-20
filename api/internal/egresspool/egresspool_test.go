@@ -59,3 +59,15 @@ func TestACapacityRefusalIsErrCapacity(t *testing.T) {
 		t.Fatalf("Start = %v, want ErrCapacity", err)
 	}
 }
+
+func TestStatusReadsOneInstance(t *testing.T) {
+	p := fakePool(t, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/instances/sfu-india") || r.Method != http.MethodGet {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"name":"sfu-india","status":"TERMINATED"}`))
+	})
+	if st, err := p.Status(context.Background(), "sfu-india"); err != nil || st != "TERMINATED" {
+		t.Fatalf("Status = %q, %v", st, err)
+	}
+}

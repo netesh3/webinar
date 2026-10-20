@@ -43,12 +43,19 @@ export function attendeeJoinRefusal(code: string, message: string): JoinRefusal 
     title,
     body: bodyUnlessRepeat(title, message),
     // Removed is the host's decision; the same automatic rejoin would only be refused again.
-    action: REGISTER_CODES.has(code) ? "register" : code === "removed" ? "none" : "retry",
+    // sfu_starting retries by itself (attendee-room-gate), so no button.
+    action: REGISTER_CODES.has(code)
+      ? "register"
+      : code === "removed" || code === "sfu_starting"
+        ? "none"
+        : "retry",
   };
 }
 
 function joinRefusalTitle(code: string): string {
   switch (code) {
+    case "sfu_starting":
+      return "Getting the webinar ready…";
     case "not_approved":
       return "Waiting for approval";
     case "locked":

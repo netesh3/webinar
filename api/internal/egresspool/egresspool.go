@@ -159,6 +159,17 @@ func (o operation) err() error {
 	return errors.New("egress pool: " + msg)
 }
 
+// Status is one instance's Compute Engine status (RUNNING, TERMINATED, ...).
+func (p *Pool) Status(ctx context.Context, name string) (string, error) {
+	var out struct {
+		Status string `json:"status"`
+	}
+	if err := p.do(ctx, http.MethodGet, p.zoneURL()+"/instances/"+url.PathEscape(name), &out); err != nil {
+		return "", err
+	}
+	return out.Status, nil
+}
+
 // Start powers a stopped worker on and waits (up to the context) for GCP to accept or
 // refuse it. Capacity and quota refusals come back as ErrCapacity.
 func (p *Pool) Start(ctx context.Context, name string) error {

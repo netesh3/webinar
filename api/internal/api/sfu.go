@@ -28,6 +28,9 @@ import (
 // the configuration and the session is too far along to be moved.
 const sfuUnavailable = "sfu_unavailable"
 
+// sfuStarting is a server that was stopped to save money and is booting: retry shortly.
+const sfuStarting = "sfu_starting"
+
 /* sfuFor resolves the room client for a webinar, pinning the project if this is the first time.
  *
  * Called by every handler that touches LiveKit. It is deliberately cheap in the common case:
@@ -151,6 +154,10 @@ func (s *Server) failSFU(w http.ResponseWriter, r *http.Request, wb types.Webina
 			"slug", wb.ID, "configured", s.sfu.IDs())
 		httpx.Error(w, http.StatusServiceUnavailable, sfuUnavailable,
 			"Live sessions are temporarily unavailable. Please tell the organiser.")
+	case errors.Is(err, errSFUStarting):
+		w.Header().Set("Retry-After", "5")
+		httpx.Error(w, http.StatusServiceUnavailable, sfuStarting,
+			"Getting the video server ready. This takes about a minute, and this page keeps trying.")
 	case errors.Is(err, lk.ErrUnknownProject):
 		httpx.Error(w, http.StatusServiceUnavailable, sfuUnavailable,
 			"This webinar's media server is no longer available. Please tell the organiser.")
