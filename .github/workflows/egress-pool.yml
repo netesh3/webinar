@@ -32,9 +32,9 @@ on:
         type: number
         default: 1
       machine_type:
-        description: "Machine type (one 1080p30 webinar per worker)"
+        description: "Machine type (one 1080p webinar per worker; 2 vCPU carries 1080p/20fps)"
         type: string
-        default: c2d-highcpu-4
+        default: c2d-highcpu-2
       leave_running:
         description: "Leave the new workers running (for a webinar that is waiting right now)"
         type: boolean
