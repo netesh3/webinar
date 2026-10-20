@@ -103,6 +103,7 @@ import { trackEvent, useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { useLockScreenAudio } from "./lock-screen-audio";
 import { MeetingLimitBanner, endedByLimit } from "./meeting-limit-banner";
+import { KeepScreenOn } from "@/lib/wake-lock";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 import { EdgeAudienceRoom } from "./edge-audience-room";
 import { EdgeBadge } from "./edge-badge";
@@ -1629,12 +1630,18 @@ function ConnectedRoom({
               way to fix it themselves. */}
           <StartAudio
             label="Tap to enable sound"
-            className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-4 py-2 text-[13px] font-medium text-white shadow-lg"
+            // Full width on a phone, where a small centred pill was easy to miss;
+            // the original pill from sm up.
+            className="fixed inset-x-4 top-16 z-50 rounded-full bg-brand px-4 py-2.5 text-[14px] font-semibold text-white shadow-lg sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:py-2 sm:text-[13px] sm:font-medium"
           />
           <AutoStartAudio room={room} />
           {/* For an attendee the browser would keep silent: "Join webinar" over the room,
               whose tap is what starts the sound. See join-tap.tsx. */}
           <JoinTap room={room} publisher={join.canPublish} />
+          {/* A phone left to watch must not auto-lock: on iOS that suspends the
+              page and the host's audio with it (lib/wake-lock.ts). Off while the
+              Android lock-screen experiment (?bg=1) runs: that person means to lock. */}
+          <KeepScreenOn active={lockScreenVolume === undefined} />
           </ActiveSpeakerProvider>
         </RecorderProvider>
         </HostSurveyProvider>

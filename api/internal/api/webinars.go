@@ -201,8 +201,12 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	 * Google sign-in has to be configured; otherwise the existing verification
 	 * link is the only door and blocking Gmail would turn the form into a dead
 	 * end. Nothing is written before the redirect: no account, no registration.
+	 *
+	 * Except inside an app's WebView (EmbeddedBrowser): Google answers OAuth there
+	 * with "403 disallowed_useragent", so the redirect would be the dead end. The
+	 * verification link below works in any browser and still proves the address.
 	 */
-	if userID == "" && s.cfg.GoogleAuthEnabled() && gmailAddress(req.Email) {
+	if userID == "" && s.cfg.GoogleAuthEnabled() && !req.EmbeddedBrowser && gmailAddress(req.Email) {
 		httpx.Error(w, http.StatusConflict, "google_signin_required",
 			"Continue with Google to register this Gmail address.")
 		return

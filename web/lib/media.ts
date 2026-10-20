@@ -35,6 +35,7 @@ import {
   shareLayers,
   shareTop,
 } from "./network";
+import { currentIsMobile } from "./device";
 
 export { canCaptureCamera1080, cameraCapturePreset } from "./network";
 
@@ -328,6 +329,15 @@ export const DEFAULT_PREFERENCES: MediaPreferences = {
   lowLightAuto: true,
 };
 
+/* Phones count each CSS pixel as 1.5 device pixels, not the screen's real 3.
+ *
+ * With "screen", a 390-point-wide iPhone asks for 1170 pixels and so pulls the 1080p
+ * layer — 2–3 Mbps onto a six-inch screen, over 4G, warming the phone and buffering
+ * the moment the signal dips. At 1.5 a portrait stage asks for ~585 and gets 720p,
+ * and a landscape or fullscreen one still reaches 1080p. Screen shares keep their own
+ * 720p floor (shareLayers), so slide text is unaffected. */
+const PHONE_PIXEL_DENSITY = 1.5;
+
 /**
  * roomOptions builds the LiveKit Room configuration for one participant.
  *
@@ -339,6 +349,7 @@ export function roomOptions(
   canPublish: boolean,
 ): RoomOptions {
   const capture = cameraCapturePreset();
+  const phone = currentIsMobile();
   return {
     /* Measured in DEVICE pixels, not CSS pixels.
      *
@@ -351,7 +362,7 @@ export function roomOptions(
      * stage's own per-tile caps (qualityFor, LOW for strips), so this does not turn every
      * grid tile on a retina screen into a 1080p download.
      */
-    adaptiveStream: { pixelDensity: "screen" },
+    adaptiveStream: { pixelDensity: phone ? PHONE_PIXEL_DENSITY : "screen" },
     dynacast: true,
 
     videoCaptureDefaults: {

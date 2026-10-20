@@ -38,6 +38,7 @@ import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
 import { SurveyPopup } from "./survey-popup";
+import { useScreenWakeLock } from "@/lib/wake-lock";
 import { SessionSurvey } from "../survey/session-survey";
 import { useAudienceSurvey } from "@/lib/use-audience-survey";
 import { CtaPopup } from "./cta-popup";
@@ -77,6 +78,8 @@ export function EdgeAudienceRoom({
   onRefreshJoin: () => void;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
+  // A phone left to watch must not auto-lock mid-webinar (lib/wake-lock.ts).
+  useScreenWakeLock();
   // Never connected. The SSE stream raises its events (see lib/edge-events.ts).
   const [room] = useState(() => new Room());
   const [removed, setRemoved] = useState(false);

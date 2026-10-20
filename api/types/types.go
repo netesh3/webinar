@@ -3231,6 +3231,10 @@ type RegisterRequest struct {
 	/** The webinar's passcode, when it has one. Checked at registration, which is the
 	 *  one gate every attendee passes through — a join key is only issued here. */
 	Passcode string `json:"passcode,omitempty"`
+	/** Set by the form when it runs inside an app's WebView (Instagram, Facebook…).
+	 *  Google refuses OAuth there, so a Gmail address registers through the email
+	 *  verification link instead of being sent to Google sign-in. */
+	EmbeddedBrowser bool `json:"embeddedBrowser,omitempty"`
 }
 
 type Registration struct {

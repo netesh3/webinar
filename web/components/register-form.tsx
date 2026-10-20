@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useJoinKeys, useRegistrations } from "./registrations";
 import { Alert, CopyField, Modal, Spinner } from "./controls";
 import { startGoogleOAuth } from "./google-continue";
@@ -22,6 +22,7 @@ import {
   webinarSignInHref,
 } from "@/lib/webinar-register";
 import { openRoomTab } from "@/lib/open-room";
+import { androidChromeIntent, currentInAppBrowser, currentIsAndroid } from "@/lib/device";
 import { CHECKBOX_YES } from "@/lib/registration-questions";
 import { WhatsAppOptInCheckbox } from "@/engage";
 
@@ -1007,6 +1008,10 @@ function RegisterFields({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const { googleAuth } = useAppConfig();
+  /* Instagram / Facebook / other app WebViews. The server snapshot is "not in one",
+   * so the server HTML and the hydrating render agree; the client value follows. */
+  const inApp = useSyncExternalStore(noSubscribe, currentInAppBrowser, () => null);
+  const android = useSyncExternalStore(noSubscribe, currentIsAndroid, () => false);
 
   async function redirectGmail(body: RegisterRequest) {
     savePendingWebinarRegister(w.id, body);
@@ -1050,6 +1055,9 @@ function RegisterFields({
        * nothing — somebody in a broadcast audience nobody can reach. */
       whatsappOptIn: whatsappOptIn && phoneDigits !== "",
       passcode,
+      /* Google refuses OAuth inside an app's WebView, so a Gmail address here takes
+       * the email verification link instead (see handleRegister). */
+      embeddedBrowser: inApp ? true : undefined,
     };
 
     /* Gmail on this public form signs in with Google instead of the password
@@ -1057,7 +1065,7 @@ function RegisterFields({
      * back, on this same webinar page. Anyone already signed in, and any other
      * domain, keeps the ordinary register call — that is the email verification
      * link, and it does not ask for a password. */
-    if (!account && googleAuth && isGmailAddress(body.email)) {
+    if (!account && googleAuth && !inApp && isGmailAddress(body.email)) {
       await redirectGmail(body);
       return;
     }
@@ -1070,6 +1078,7 @@ function RegisterFields({
     } catch (err) {
       if (
         !account &&
+        !inApp &&
         err instanceof ApiError &&
         err.code === "google_signin_required"
       ) {
@@ -1110,6 +1119,8 @@ function RegisterFields({
           </Alert>
         </div>
       )}
+
+      {inApp && <InAppBrowserNote app={inApp} android={android} />}
 
       {!account && (
         <div className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[12px] leading-relaxed text-ink-2">
@@ -1518,4 +1529,36 @@ function Confirmed({
       )}
     </div>
   );
+}
+
+/* Shown on the form when the page is open inside Instagram, Facebook or another app's
+ * built-in browser. Registration still works there (Gmail falls back to the email
+ * link), but the room plays better, and the join link stays saved, in the phone's own
+ * browser. Android can be sent straight to Chrome; iOS has no such link, so it says
+ * where the app keeps its "Open in browser" item. */
+function InAppBrowserNote({ app, android }: { app: string; android: boolean }) {
+  return (
+    <div className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[12px] leading-relaxed text-ink-2">
+      You&apos;re in {app}&apos;s built-in browser. For reliable sound and video,{" "}
+      {android ? (
+        <button
+          type="button"
+          onClick={() => window.location.assign(androidChromeIntent(window.location.href))}
+          className="font-medium text-brand hover:underline"
+        >
+          open this page in Chrome
+        </button>
+      ) : (
+        <>
+          tap <b>•••</b> (or the share icon) and choose <b>Open in browser</b>
+        </>
+      )}
+      .
+    </div>
+  );
+}
+
+/** The user agent never changes while the page is open: nothing to subscribe to. */
+function noSubscribe(): () => void {
+  return () => {};
 }
