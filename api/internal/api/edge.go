@@ -515,7 +515,8 @@ func (s *Server) edgeEncoding() lk.BroadcastEncoding {
 	enc := lk.BroadcastEncoding{
 		Width: s.cfg.EdgeEncodingWidth, Height: s.cfg.EdgeEncodingHeight,
 		FPS: s.cfg.EdgeEncodingFPS, BitrateKbps: s.cfg.EdgeVideoBitrateKbps,
-		Profile: s.cfg.EdgeH264Profile,
+		AudioBitrateKbps: s.cfg.EdgeAudioBitrateKbps,
+		Profile:          s.cfg.EdgeH264Profile,
 	}
 	// A config built by hand (tests, tools) rather than by Load gets today's encoding.
 	if enc.Width == 0 || enc.Height == 0 {

@@ -138,6 +138,7 @@ both can run side by side on the same deployment and be compared.
 | `EDGE_ENCODING_WIDTH` / `EDGE_ENCODING_HEIGHT` | `1280` / `720` | Edge mix resolution (even, 320–3840 × 180–2160). |
 | `EDGE_ENCODING_FPS` | `30` | 10–60. |
 | `EDGE_VIDEO_BITRATE_KBPS` | `1700` | 300–20000. Use about **4500 for 1080p**. |
+| `EDGE_AUDIO_BITRATE_KBPS` | `128` | AAC bitrate of the mix, 32–320. `96` is plenty for speech and trims ~30 kbps a viewer. |
 | `EDGE_H264_PROFILE` | `baseline` | `baseline`, `main` or `high`. Baseline was the default while the mix also fed WHEP, which cannot take B-frames. With WHEP retired, **high** gives noticeably sharper screen-share text for the same bitrate. |
 
 **Recommended test encoding for screen-share legibility:** `EDGE_ENCODING_WIDTH=1920`,

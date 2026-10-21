@@ -69,7 +69,7 @@
 # Repository variables (vars.*, not secrets):
 #   EDGE_PLAYBACK_BASE / EDGE_PLAYBACK_LOW_LATENCY / EDGE_DEBUG_CLOCK /
 #     EDGE_ENCODING_WIDTH / EDGE_ENCODING_HEIGHT / EDGE_ENCODING_FPS /
-#     EDGE_VIDEO_BITRATE_KBPS / EDGE_H264_PROFILE — Edge delivery playback and
+#     EDGE_VIDEO_BITRATE_KBPS / EDGE_AUDIO_BITRATE_KBPS / EDGE_H264_PROFILE — Edge delivery playback and
 #     egress encoding; each unset keeps its default. See docs/edge-delivery.md.
 #   EMPTY_ROOM_CLOSE_MIN — minutes an empty live room may run past its scheduled
 #     start before the server ends it (default 10; 0 = never).
@@ -163,6 +163,7 @@ jobs:
       EDGE_ENCODING_HEIGHT: ${{ vars.EDGE_ENCODING_HEIGHT }}
       EDGE_ENCODING_FPS: ${{ vars.EDGE_ENCODING_FPS }}
       EDGE_VIDEO_BITRATE_KBPS: ${{ vars.EDGE_VIDEO_BITRATE_KBPS }}
+      EDGE_AUDIO_BITRATE_KBPS: ${{ vars.EDGE_AUDIO_BITRATE_KBPS }}
       EDGE_H264_PROFILE: ${{ vars.EDGE_H264_PROFILE }}
       SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}

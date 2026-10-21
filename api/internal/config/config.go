@@ -160,14 +160,16 @@ type Config struct {
 	 * LL-HLS against a distant origin (India to Germany, ~0.4s a request) cannot keep up. */
 	EdgePlaybackLowLatency bool
 	/* EdgeEncoding is the mix encoding for edge webinars' egress only: EDGE_ENCODING_WIDTH /
-	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (30), EDGE_VIDEO_BITRATE_KBPS (1700) and
-	 * EDGE_H264_PROFILE (baseline|main|high, default baseline). The keyframe interval stays
+	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (30), EDGE_VIDEO_BITRATE_KBPS (1700),
+	 * EDGE_AUDIO_BITRATE_KBPS (AAC, 128) and EDGE_H264_PROFILE (baseline|main|high, default
+	 * baseline). The keyframe interval stays
 	 * 1s. Defaults are exactly today's broadcast encoding; raise them only where the egress
 	 * box can carry it (docs/edge-delivery.md). Validated at load. */
 	EdgeEncodingWidth    int
 	EdgeEncodingHeight   int
 	EdgeEncodingFPS      int
 	EdgeVideoBitrateKbps int
+	EdgeAudioBitrateKbps int
 	EdgeH264Profile      string
 
 	// Branding and public URLs are served to the frontend over /api/config so
@@ -516,6 +518,7 @@ func Load() (Config, error) {
 		EdgeEncodingHeight:          envIntStrict("EDGE_ENCODING_HEIGHT", 720),
 		EdgeEncodingFPS:             envIntStrict("EDGE_ENCODING_FPS", 30),
 		EdgeVideoBitrateKbps:        envIntStrict("EDGE_VIDEO_BITRATE_KBPS", 1700),
+		EdgeAudioBitrateKbps:        envIntStrict("EDGE_AUDIO_BITRATE_KBPS", 128),
 		EdgeH264Profile:             strings.ToLower(strings.TrimSpace(env("EDGE_H264_PROFILE", "baseline"))),
 	}
 	if c.RecordingsMode == "" {
@@ -856,6 +859,7 @@ func (c Config) edgeEncodingErrors() []error {
 	check("EDGE_ENCODING_HEIGHT", c.EdgeEncodingHeight, 180, 2160, true)
 	check("EDGE_ENCODING_FPS", c.EdgeEncodingFPS, 10, 60, false)
 	check("EDGE_VIDEO_BITRATE_KBPS", c.EdgeVideoBitrateKbps, 300, 20000, false)
+	check("EDGE_AUDIO_BITRATE_KBPS", c.EdgeAudioBitrateKbps, 32, 320, false)
 	switch c.EdgeH264Profile {
 	case "baseline", "main", "high":
 	default:
