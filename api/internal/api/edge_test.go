@@ -251,7 +251,7 @@ func TestEdgeJoinGivesPlaybackNotALiveKitToken(t *testing.T) {
 func TestEdgeEgressUsesTheEdgeEncoding(t *testing.T) {
 	h := newHarness(t, edgeConfig, func(c *config.Config) {
 		c.EdgeEncodingWidth, c.EdgeEncodingHeight, c.EdgeEncodingFPS = 1920, 1080, 30
-		c.EdgeVideoBitrateKbps, c.EdgeH264Profile = 4500, "high"
+		c.EdgeVideoBitrateKbps, c.EdgeAudioBitrateKbps, c.EdgeH264Profile = 4500, 96, "high"
 	})
 	edgeHost(t, h, "edge-enc@test.dev")
 	wb := edgeWebinar(h, "Edge encoding")
@@ -260,7 +260,7 @@ func TestEdgeEgressUsesTheEdgeEncoding(t *testing.T) {
 		h.rooms.mu.Lock()
 		enc := h.rooms.lastEncoding
 		h.rooms.mu.Unlock()
-		if enc.Width == 1920 && enc.Height == 1080 && enc.BitrateKbps == 4500 && enc.Profile == "high" {
+		if enc.Width == 1920 && enc.Height == 1080 && enc.BitrateKbps == 4500 && enc.AudioBitrateKbps == 96 && enc.Profile == "high" {
 			break
 		}
 		if time.Now().After(deadline) {

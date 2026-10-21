@@ -189,6 +189,7 @@ ENV_VARS=(
 [[ -n "${EDGE_ENCODING_HEIGHT:-}" ]] && ENV_VARS+=("EDGE_ENCODING_HEIGHT=${EDGE_ENCODING_HEIGHT}")
 [[ -n "${EDGE_ENCODING_FPS:-}" ]] && ENV_VARS+=("EDGE_ENCODING_FPS=${EDGE_ENCODING_FPS}")
 [[ -n "${EDGE_VIDEO_BITRATE_KBPS:-}" ]] && ENV_VARS+=("EDGE_VIDEO_BITRATE_KBPS=${EDGE_VIDEO_BITRATE_KBPS}")
+[[ -n "${EDGE_AUDIO_BITRATE_KBPS:-}" ]] && ENV_VARS+=("EDGE_AUDIO_BITRATE_KBPS=${EDGE_AUDIO_BITRATE_KBPS}")
 [[ -n "${EDGE_H264_PROFILE:-}" ]] && ENV_VARS+=("EDGE_H264_PROFILE=${EDGE_H264_PROFILE}")
 # Turns on POST /api/internal/tick, which Cloud Scheduler calls every minute so that
 # reminders, drips and meeting limits run while the service is scaled to zero. See

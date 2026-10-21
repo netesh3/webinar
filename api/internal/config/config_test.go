@@ -473,7 +473,7 @@ func TestEdgeEncodingDefaultsAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.EdgeEncodingWidth != 1280 || c.EdgeEncodingHeight != 720 || c.EdgeEncodingFPS != 30 ||
-		c.EdgeVideoBitrateKbps != 1700 || c.EdgeH264Profile != "baseline" {
+		c.EdgeVideoBitrateKbps != 1700 || c.EdgeAudioBitrateKbps != 128 || c.EdgeH264Profile != "baseline" {
 		t.Errorf("defaults = %dx%d@%d %dkbps %s, want today's 720p baseline", c.EdgeEncodingWidth,
 			c.EdgeEncodingHeight, c.EdgeEncodingFPS, c.EdgeVideoBitrateKbps, c.EdgeH264Profile)
 	}
@@ -488,6 +488,7 @@ func TestEdgeEncodingDefaultsAndValidation(t *testing.T) {
 		"EDGE_ENCODING_WIDTH":     "wide",
 		"EDGE_ENCODING_HEIGHT":    "1081",
 		"EDGE_ENCODING_FPS":       "120",
+		"EDGE_AUDIO_BITRATE_KBPS": "16",
 		"EDGE_VIDEO_BITRATE_KBPS": "50",
 		"EDGE_H264_PROFILE":       "ultra",
 	} {
