@@ -293,8 +293,14 @@ export function retryDelayMs(attempt: number): number {
   return Math.min(10_000, 1000 * 2 ** Math.max(0, attempt));
 }
 
-/** How far behind live counts as "behind" enough to offer Jump to live, in seconds. */
-export const BEHIND_LIVE_SECONDS: Record<PlaybackMode, number> = { standard: 5, "low-latency": 4 };
+/* How far behind live counts as "behind" enough to offer Back to live, in seconds.
+ *
+ * Well clear of the targets (1.5s low-latency, STANDARD_TARGET_SECONDS 4) on purpose. It was
+ * 4 / 5, a second or two above them, so an ordinary stall put the button up during normal
+ * playback, and the player catches up from those on its own (settle). Ten seconds is
+ * somebody who paused, or came back to a tab the browser had throttled: the case a button is
+ * for. */
+export const BEHIND_LIVE_SECONDS: Record<PlaybackMode, number> = { standard: 10, "low-latency": 10 };
 
 /** The latency readout: one decimal under ten seconds, whole seconds above. */
 export function latencyLabel(seconds: number | null | undefined): string {

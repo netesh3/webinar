@@ -499,11 +499,8 @@ export function EdgePlayer({
         <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-2">
           {debugClock && <EdgeClock offsetMs={clockOffsetMs} />}
           {/* No delay readout or mode for viewers: those were for tuning, and the delay is
-              still measured (edge_latency telemetry). Just that this is live. */}
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white/90 backdrop-blur">
-            <span aria-hidden="true" className="inline-block size-1.5 rounded-full bg-red-500" />
-            LIVE
-          </span>
+              still measured (edge_latency telemetry). No LIVE badge here either:
+              StagePlayerChrome already draws one top left, and two read as a glitch. */}
           {behind && (
             <button
               type="button"
