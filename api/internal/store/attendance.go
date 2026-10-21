@@ -123,6 +123,10 @@ func (s *Store) touchAttendance(ctx context.Context, slug string, touches []Atte
  *
  * The summary row is touched too, because it is where the name and the registration live and
  * the report still reads them from there.
+ *
+ * An edge viewer the host just promoted arrives here with their feed visit still open. That
+ * visit is handed to the webhooks (seen_at cleared) rather than duplicated: the person never
+ * left, and from now on participant_left is what says when they do.
  */
 func (s *Store) OpenVisit(ctx context.Context, slug, identity, name string, at time.Time) error {
 	if identity == "" {
@@ -134,7 +138,9 @@ func (s *Store) OpenVisit(ctx context.Context, slug, identity, name string, at t
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO attendance_visits (webinar_id, identity, joined_at)
 		SELECT w.id, $2, $3 FROM webinars w WHERE w.slug = $1
-		ON CONFLICT DO NOTHING`,
+		ON CONFLICT (webinar_id, identity) WHERE left_at IS NULL DO UPDATE
+		   SET seen_at = NULL
+		 WHERE attendance_visits.seen_at IS NOT NULL`,
 		slug, identity, at)
 	return err
 }
@@ -145,6 +151,10 @@ func (s *Store) OpenVisit(ctx context.Context, slug, identity, name string, at t
  * time. A left with no matching open visit — a webhook that arrived out of order, or a
  * participant whose join we never saw — writes nothing rather than inventing a visit, since
  * a visit with no arrival has no duration anybody could believe.
+ *
+ * Only a visit the webhooks own. An edge viewer's (seen_at set) is the browser's to close: a
+ * late participant_left from their spell on the stage must not end the feed visit they went
+ * back to.
  */
 func (s *Store) CloseVisit(ctx context.Context, slug, identity string, at time.Time) error {
 	if identity == "" {
@@ -155,7 +165,7 @@ func (s *Store) CloseVisit(ctx context.Context, slug, identity string, at time.T
 		   SET left_at = $3
 		  FROM webinars w
 		 WHERE v.webinar_id = w.id AND w.slug = $1
-		   AND v.identity = $2 AND v.left_at IS NULL`,
+		   AND v.identity = $2 AND v.left_at IS NULL AND v.seen_at IS NULL`,
 		slug, identity, at)
 	return err
 }
@@ -168,14 +178,18 @@ func (s *Store) CloseVisit(ctx context.Context, slug, identity string, at time.T
  * and a participant_left can be lost like any other webhook. Whichever gets here first wins
  * and the rest are no-ops, so an open visit cannot outlive the session and report itself as
  * "still watching" three weeks later.
+ *
+ * An edge visit whose beats had already stopped ends at its last beat, not at `at`: the
+ * viewer who closed their tab twenty minutes before the end did not watch those twenty.
  */
 func (s *Store) CloseOpenVisits(ctx context.Context, slug string, at time.Time) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE attendance_visits v
-		   SET left_at = GREATEST($2, v.joined_at)
+		   SET left_at = CASE WHEN v.seen_at < $2::timestamptz - $3::interval THEN v.seen_at
+		                      ELSE GREATEST($2, v.joined_at) END
 		  FROM webinars w
 		 WHERE v.webinar_id = w.id AND w.slug = $1 AND v.left_at IS NULL`,
-		slug, at)
+		slug, at, edgeVisitStale)
 	return err
 }
 
@@ -294,6 +308,11 @@ const clippedSeconds = `
  * their join key, the stage is "user_" plus a user id.
  */
 func (s *Store) SessionReport(ctx context.Context, slug string) (types.SessionReport, error) {
+	// An edge viewer who went away without a goodbye is still an open visit until something
+	// closes it, and an open visit counts until now(). See SweepEdgeVisits.
+	if err := s.SweepEdgeVisits(ctx, slug, time.Now()); err != nil {
+		return types.SessionReport{}, err
+	}
 	var rep types.SessionReport
 	err := s.pool.QueryRow(ctx, attendanceWindow+`
 		SELECT

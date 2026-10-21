@@ -347,17 +347,19 @@ func (s *Server) handleEdgeEvents(w http.ResponseWriter, r *http.Request) {
 	sub, cancel := s.rt.Hub().Subscribe(slug, identity)
 	defer cancel()
 
+	/* Connecting counts as a beat; the stream ENDING says nothing, so nothing is closed here.
+	 *
+	 * Neither end of a stream can be trusted to mean the viewer came or went. Behind the CDN
+	 * a browser that closed its tab left the stream open on this side until edgeStreamLife,
+	 * and when a viewer reloaded, the old stream ending closed the visit of the new one: on
+	 * instant-webinar-4178 a phone that left at 11:11 was "there" until 11:29, and then
+	 * "gone" for the twelve minutes it was actually back. The visit is the browser's beats
+	 * (handleEdgeBeat) and its goodbye (handleEdgeLeave) instead. */
 	if wb.Status == types.StatusLive {
-		if err := s.store.OpenVisit(r.Context(), slug, identity, name, time.Now()); err != nil {
+		_ = s.store.TouchAttendance(r.Context(), slug, identity, "", name)
+		if err := s.store.TouchEdgeVisit(r.Context(), slug, identity, time.Now()); err != nil {
 			s.log.Warn("edge events: open visit", "slug", slug, "error", err)
 		}
-		defer func() {
-			ctx, done := context.WithTimeout(context.Background(), 5*time.Second)
-			defer done()
-			if err := s.store.CloseVisit(ctx, slug, identity, time.Now()); err != nil {
-				s.log.Warn("edge events: close visit", "slug", slug, "error", err)
-			}
-		}()
 	}
 
 	write := func(kind string, data []byte) bool {
@@ -407,6 +409,41 @@ func (s *Server) handleEdgeEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+/* handleEdgeBeat is an edge viewer's browser saying they are still watching, every 30 seconds
+ * while the player is up (web/lib/edge-events.ts). It keeps their visit open, or opens one
+ * if the webinar went live after they connected; a viewer whose beats stop is closed at the
+ * last one (store.SweepEdgeVisits). Same credential as the stream, in the query for the same
+ * reason: one shape for every edge call. */
+func (s *Server) handleEdgeBeat(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	identity, _, err := verifyEvents([]byte(s.cfg.SessionSecret), r.URL.Query().Get("t"), slug, time.Now())
+	if err != nil || s.cfg.SessionSecret == "" {
+		httpx.Error(w, http.StatusUnauthorized, "bad_token", "Join the webinar again.")
+		return
+	}
+	if err := s.store.TouchEdgeVisit(r.Context(), slug, identity, time.Now()); err != nil {
+		s.fail(w, r, "edge beat", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+/* handleEdgeLeave is the goodbye: the Leave button, or navigator.sendBeacon as the page goes
+ * away. A beacon cannot be retried or read, so this answers 204 whatever happens and a lost
+ * one is covered by the beats stopping. */
+func (s *Server) handleEdgeLeave(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	identity, _, err := verifyEvents([]byte(s.cfg.SessionSecret), r.URL.Query().Get("t"), slug, time.Now())
+	if err != nil || s.cfg.SessionSecret == "" {
+		httpx.Error(w, http.StatusUnauthorized, "bad_token", "Join the webinar again.")
+		return
+	}
+	if err := s.store.CloseEdgeVisit(r.Context(), slug, identity, time.Now()); err != nil {
+		s.log.Warn("edge leave: close visit", "slug", slug, "error", err)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 /* handleHostEdgeStatus is the host's view of edge delivery for one webinar: whether it is on,
@@ -473,6 +510,10 @@ func (s *Server) removeEdgeViewer(ctx context.Context, sfu RoomManager, slug, id
 	}
 	if err := s.store.RecordRemoval(ctx, slug, identity); err != nil {
 		s.log.Warn("edge remove: could not record removal", "slug", slug, "error", err)
+	}
+	// Their seat is free now, not when their beats stop.
+	if err := s.store.CloseEdgeVisit(ctx, slug, identity, time.Now()); err != nil {
+		s.log.Warn("edge remove: could not close visit", "slug", slug, "error", err)
 	}
 	_ = s.sendRoomPacket(ctx, sfu, slug, []string{identity}, map[string]any{
 		"kind": "removed", "identity": identity, "at": time.Now().UnixMilli(),
