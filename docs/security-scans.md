@@ -38,6 +38,9 @@ the HTTP/2 transport, `crypto/tls`, `net/textproto` and `html/template`. Fixed b
 GO-2026-5932 (`golang.org/x/crypto/openpgp` is unmaintained). We do not import `openpgp`,
 and there is no fixed version.
 
+**21 Oct 2026.** GO-2026-6809 (`crypto/x509` trusted compromised intermediate certificates)
+was reachable from the S3 media reader in Go 1.27.2. Fixed by moving `api/go.mod` to Go 1.27.3.
+
 **gosec.** Found 61 findings. All were reviewed, and the following were fixed or annotated:
 
 - Recording files on the local-disk backend are now created owner-only (0600, was 0640).
