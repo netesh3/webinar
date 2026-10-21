@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
-import { CopyIcon, SendIcon } from "../icons";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { CopyIcon, SendIcon, ShareIcon } from "../icons";
 import { useShareOrigin, useToast } from "../providers";
 import { useRoomUI } from "./context";
 
@@ -64,6 +64,8 @@ export function InviteMenu({
       if (panel.current?.contains(e.target as Node)) return;
       if ((e.target as HTMLElement).closest?.("[data-tool-slot='invite']")) return;
       if ((e.target as HTMLElement).closest?.("[data-tool-cell='invite']")) return;
+      // The button that opened it toggles it; closing here first would reopen it.
+      if ((e.target as HTMLElement).closest?.("[data-invite-anchor]")) return;
       onClose();
     };
     window.addEventListener("keydown", onKey);
@@ -135,6 +137,31 @@ export function InviteMenu({
       className="room-dark absolute bottom-full left-1/2 z-50 mb-2 w-[220px] -translate-x-1/2 rounded-xl border border-line bg-surface p-1.5 shadow-2xl"
     >
       {body}
+    </div>
+  );
+}
+
+/* The same invitation from the foot of the Participants panel.
+ *
+ * Looking down the list and seeing who is missing is when people think of asking somebody
+ * else in — Zoom keeps Invite at the bottom of its participants list for that reason. It is
+ * InviteMenu, not a second share path, opening upwards from a full-width button, and it is
+ * there for the audience as much as the host for the reason InviteMenu gives. */
+export function ShareLinkFooter() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative shrink-0 border-t border-line p-2" data-invite-anchor>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-line-2 px-3 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:min-h-0 md:h-8"
+      >
+        <ShareIcon className="size-4 shrink-0" />
+        Share link
+      </button>
+      {open && <InviteMenu onClose={() => setOpen(false)} />}
     </div>
   );
 }

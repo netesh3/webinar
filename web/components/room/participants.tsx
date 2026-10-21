@@ -36,6 +36,7 @@ import {
 import { SenderAvatar } from "../sender-avatar";
 import { Pill, RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
+import { ShareLinkFooter } from "./invite-panel";
 
 /* The participants panel.
  *
@@ -544,6 +545,7 @@ function HostRoster() {
           </>
         )}
       </div>
+      <ShareLinkFooter />
     </div>
   );
 }
@@ -984,6 +986,7 @@ function AudienceRoster() {
           </Group>
         ))}
       </div>
+      <ShareLinkFooter />
     </div>
   );
 }
