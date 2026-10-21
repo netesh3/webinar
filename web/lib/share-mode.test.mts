@@ -3,6 +3,7 @@ import {
   SHARE_CAPTURE_MAX,
   SHARE_MODE_FPS,
   shareCaptureResolution,
+  shareCodec,
   shareContentHint,
   shareDegradation,
   shareModeOfHint,
@@ -23,6 +24,21 @@ assert.equal(shareContentHint("sharp"), "detail");
 assert.equal(shareDegradation("sharp"), "maintain-resolution");
 assert.equal(shareContentHint("video"), "motion");
 assert.equal(shareDegradation("video"), "maintain-framerate");
+
+// VP9 on desktop Chromium (Chrome, Edge, Brave, Opera all say Chrome/); H264 elsewhere.
+const UA = {
+  chromeMac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+  edgeWin: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
+  safariMac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+  firefox: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:140.0) Gecko/20100101 Firefox/140.0",
+  chromeAndroid: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36",
+  chromeIOS: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/155.0.0.0 Mobile/15E148 Safari/604.1",
+};
+assert.equal(shareCodec(UA.chromeMac), "vp9");
+assert.equal(shareCodec(UA.edgeWin), "vp9");
+for (const ua of [UA.safariMac, UA.firefox, UA.chromeAndroid, UA.chromeIOS, ""]) {
+  assert.equal(shareCodec(ua), "h264", ua);
+}
 
 // A live share's mode is read back off its track; anything but motion is sharp.
 assert.equal(shareModeOfHint("motion"), "video");

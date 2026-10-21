@@ -10,6 +10,7 @@ import {
 } from "livekit-client";
 import {
   shareCaptureResolution,
+  shareCodec,
   shareContentHint,
   shareDegradation,
   type ShareMode,
@@ -167,6 +168,10 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
  *
  * Primary H264 matches the wire. VP8 stays as backup for subscribers that need it.
  *
+ * Except on desktop Chromium, which now shares as VP9 (shareCodec in share-mode.ts, with the
+ * measurements): rid simulcast, L1T1 on each encoding, H264 as the backup. Chrome on macOS
+ * was measured sending the VP9 it was asked for, not H264.
+ *
  * Encodings: the mode's layers and top preset (shareLayers / shareTop in network.ts — the
  * same functions the share ladder reads, so the two cannot drift): the 720p floor and the
  * capture itself, 1080p at most. Priority over the camera is set on the live senders by
@@ -179,11 +184,15 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
  * below SHARE_FLOOR_DESKTOP.
  */
 export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
+  const codec = shareCodec(typeof navigator === "undefined" ? "" : navigator.userAgent);
   return {
     audioPreset: AudioPresets.musicStereo,
     dtx: false,
-    videoCodec: "h264",
-    backupCodec: { codec: "vp8" },
+    ...(codec === "vp9"
+      ? // simulcast + an L1T* mode is what makes livekit-client publish VP9 as two rid
+        // encodings rather than SVC (isSVCSimulcast); the SFU (>= 1.13.7) takes it.
+        { videoCodec: "vp9", scalabilityMode: "L1T1", simulcast: true, backupCodec: { codec: "h264" } }
+      : { videoCodec: "h264", backupCodec: { codec: "vp8" } }),
     degradationPreference: shareDegradation(mode),
     screenShareEncoding: shareTop(mode).encoding,
     screenShareSimulcastLayers: shareLayers(mode),
