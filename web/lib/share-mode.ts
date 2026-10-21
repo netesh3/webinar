@@ -49,6 +49,27 @@ export function shareDegradation(
   return mode === "video" ? "maintain-framerate" : "maintain-resolution";
 }
 
+/* Which codec a share is encoded in: VP9 on desktop Chromium, H264 everywhere else.
+ *
+ * H264 was the share codec everywhere, and it is the blur that never clears. Measured in
+ * Chrome 155 on macOS (2026-10-21, a 1080p slide of small text, contentHint "detail", held
+ * still for four seconds): at 500 kbps — what a presenter on a weak uplink really sends —
+ * H264 arrived at 41.0 dB PSNR against VP9's 46.3, and used under half of the bitrate it was
+ * allowed. At 1.5 Mbps it was 46.2 against 48.6. Chrome's H264 spends its first frame on a
+ * new slide and then barely refines it; libvpx keeps sharpening static screen content.
+ *
+ * Desktop Chromium only, because only there is it published the way the share ladder needs:
+ * as rid simulcast (L1T1, the same two encodings as before, so SHARE_LADDER's indexes hold).
+ * Safari reads several VP9 encodings as SVC, and livekit-client falls back to one L1T3
+ * encoding with contentHint forced to "motion" — the opposite of sharp. Firefox was not
+ * measured. Phones encode VP9 in software and rarely share. Those keep H264, unchanged.
+ * A subscriber that cannot decode VP9 gets the H264 backup publication. */
+export function shareCodec(ua: string): "vp9" | "h264" {
+  const chromium = /\b(Chrome|Chromium)\/\d+/.test(ua);
+  const mobile = /android|iphone|ipad|ipod|mobile|crios|edgios/i.test(ua);
+  return chromium && !mobile ? "vp9" : "h264";
+}
+
 /** Which mode a live share is in, read back off its track's contentHint. */
 export function shareModeOfHint(hint: string | undefined): ShareMode {
   return hint === "motion" ? "video" : "sharp";
