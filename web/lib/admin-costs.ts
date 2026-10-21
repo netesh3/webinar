@@ -16,8 +16,8 @@ import {
   FeatureZoom,
 } from "./api-types.ts";
 
-const GCP_EGRESS_PER_GB = 0.12;
-const GB_PER_MBPS_HOUR = 0.45; // 1 Mbps for an hour
+export const GCP_EGRESS_PER_GB = 0.12;
+export const GB_PER_MBPS_HOUR = 0.45; // 1 Mbps for an hour
 
 function usd(n: number): string {
   return n < 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(n < 10 ? 1 : 0)}`;

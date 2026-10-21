@@ -65,6 +65,7 @@ import { DateRangeField } from "./date-picker";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 import { AdminSales } from "./admin-sales";
+import { AdminCostCalculator } from "./admin-cost-calculator";
 import { ArrowLeftIcon } from "./icons";
 
 /* The admin panel: a dashboard first, then the two lists.
@@ -82,7 +83,7 @@ import { ArrowLeftIcon } from "./icons";
  * server, which needs access to the machine to change.
  */
 
-const ADMIN_TABS = ["dashboard", "accounts","plans","webinars", "sales"] as const;
+const ADMIN_TABS = ["dashboard", "accounts", "plans", "webinars", "sales", "costs"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 
@@ -130,6 +131,7 @@ export function AdminScreen({
           plans: "Plans",
           webinars: "Webinars",
           sales: "Sales chats",
+          costs: "Cost calculator",
         }}
         counts={salesWaiting ? { sales: salesWaiting } : undefined}
       />
@@ -143,6 +145,7 @@ export function AdminScreen({
           <AdminWebinars key={webinarView.n} initialStatus={webinarView.status} />
         )}
         {tab === "sales" && <AdminSales initialId={salesConversation} onCount={setSalesWaiting} />}
+        {tab === "costs" && <AdminCostCalculator />}
       </div>
     </div>
   );
