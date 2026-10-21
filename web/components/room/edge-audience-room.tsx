@@ -18,7 +18,7 @@ import { Room } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
-import { useEdgeEvents, useServerClockOffset } from "@/lib/edge-events";
+import { leaveEdge, useEdgeEvents, useServerClockOffset } from "@/lib/edge-events";
 import { useMediaPreferences } from "@/lib/media";
 import { useMediaPermissions, useLiveRole } from "@/lib/permissions";
 import { useRealtime, useSessionControls, type Relay, type Sender } from "@/lib/realtime";
@@ -219,7 +219,12 @@ export function EdgeAudienceRoom({
   useEffect(() => {
     onLeaveRef.current = onLeave;
   }, [onLeave]);
-  const leave = useCallback(() => onLeaveRef.current(), []);
+  // The Leave button ends the visit now; the page going away is the hook's beacon.
+  const eventsToken = join.eventsToken ?? "";
+  const leave = useCallback(() => {
+    leaveEdge(slug, eventsToken);
+    onLeaveRef.current();
+  }, [slug, eventsToken]);
 
   const roster = useHostRoster(slug, false, room);
   const polls = useAudiencePolls(slug, joinKey, realtime.pollsRevision, true, controls.pollsEnabled, room);

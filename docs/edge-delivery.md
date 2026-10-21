@@ -27,7 +27,7 @@ both can run side by side on the same deployment and be compared.
 | Audience picture | SFU | LL-HLS from the origin or a CDN |
 | Audience chat/polls/controls | LiveKit data channel and room metadata | `GET /api/webinars/{slug}/events` (SSE) |
 | Audience on the SFU | Yes (full or data-only peers) | **No.** Not a participant, not counted against the room size |
-| Attendee limit | Live SFU participant count | Open event streams (attendance visits) |
+| Attendee limit | Live SFU participant count | Open edge visits: a viewer's browser beats every 30 s (`POST /events/beat`) and says goodbye on leave (`POST /events/leave`); a visit with no beat for 150 s ends at its last beat. The stream connecting or ending is not trusted for attendance. |
 
 ## How it works
 

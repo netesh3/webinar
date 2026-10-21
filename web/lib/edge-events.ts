@@ -17,7 +17,12 @@
  *
  * That is the whole abstraction: the shared hooks take a Room either way and never know which
  * source fed it. The few things only an edge room does — go to the stage, go back, be
- * removed, get a fresh token — arrive as callbacks. */
+ * removed, get a fresh token — arrive as callbacks.
+ *
+ * Attendance rides beside the stream rather than on it. Behind the CDN neither end of a
+ * stream means the viewer came or went (a closed tab kept its stream open on the server for
+ * 25 minutes), so the hook beats every EDGE_BEAT_MS while mounted and says goodbye with a
+ * beacon when the page goes away; leaveEdge is the same goodbye for the Leave button. */
 
 import { useEffect, useRef, useState } from "react";
 import { RoomEvent, type Room } from "livekit-client";
@@ -26,6 +31,18 @@ import { routeEdgeEvent } from "./edge-route";
 import { DATA_TOPIC } from "./realtime";
 
 export type EdgeStreamState = "connecting" | "open" | "retrying";
+
+/** How often the browser tells the server it is still watching (api: store.edgeVisitStale). */
+export const EDGE_BEAT_MS = 30_000;
+
+/** Tells the server this viewer has left, so their visit ends now rather than at a stale beat. */
+export function leaveEdge(slug: string, token: string) {
+  if (!token) return;
+  const url = api.edgeLeaveUrl(slug, token);
+  // A beacon survives the page unloading; a fetch with keepalive is the fallback.
+  if (typeof navigator !== "undefined" && navigator.sendBeacon?.(url)) return;
+  void fetch(url, { method: "POST", keepalive: true }).catch(() => {});
+}
 
 export function useEdgeEvents({
   room,
@@ -61,6 +78,25 @@ export function useEdgeEvents({
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
 
+    const beat = () => {
+      if (closed) return;
+      void fetch(api.edgeBeatUrl(slug, token), { method: "POST", keepalive: true }).catch(() => {});
+    };
+    const beats = setInterval(beat, EDGE_BEAT_MS);
+    // A background tab's timers are throttled; say so the moment it is looked at again.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") beat();
+    };
+    // pagehide rather than unload: it fires on mobile, and for a page going into the
+    // back-forward cache, which pageshow then brings back with a beat.
+    const onPageHide = () => leaveEdge(slug, token);
+    const onPageShow = (ev: PageTransitionEvent) => {
+      if (ev.persisted) beat();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+
     const emit = (kind: string, data: string) => {
       const action = routeEdgeEvent(kind, data, identity);
       switch (action.type) {
@@ -81,6 +117,7 @@ export function useEdgeEvents({
           break;
         case "removed":
           closed = true;
+          clearInterval(beats);
           source?.close();
           handlers.current.onRemoved();
           break;
@@ -102,8 +139,16 @@ export function useEdgeEvents({
       for (const kind of ["packet", "meta", "refetch"]) {
         es.addEventListener(kind, (ev) => emit(kind, (ev as MessageEvent<string>).data));
       }
-      // The server ends a stream before Cloud Run would; the browser reconnects on its own.
-      es.addEventListener("reconnect", () => setState("retrying"));
+      /* The server ends a stream before Cloud Run would. Reopened here rather than left to
+       * EventSource: through the CDN the end of the response did not always reach the
+       * browser, which then sat on a dead stream and heard nothing more of the session. The
+       * jitter spreads an audience that connected together. */
+      es.addEventListener("reconnect", () => {
+        setState("retrying");
+        es.close();
+        clearTimeout(retry);
+        retry = setTimeout(open, 500 + Math.random() * 1500);
+      });
       es.onerror = () => {
         if (closed) return;
         setState("retrying");
@@ -125,6 +170,10 @@ export function useEdgeEvents({
     return () => {
       closed = true;
       clearTimeout(retry);
+      clearInterval(beats);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
       source?.close();
     };
   }, [room, slug, token, identity]);

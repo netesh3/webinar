@@ -347,6 +347,11 @@ export const api = {
    *  token is a query parameter because EventSource cannot send headers). */
   edgeEventsUrl: (slug: string, token: string) =>
     `${API_BASE}/api/webinars/${seg(slug)}/events?t=${encodeURIComponent(token)}`,
+  /** The edge viewer's attendance (lib/edge-events.ts): a beat while watching, a goodbye on leaving. */
+  edgeBeatUrl: (slug: string, token: string) =>
+    `${API_BASE}/api/webinars/${seg(slug)}/events/beat?t=${encodeURIComponent(token)}`,
+  edgeLeaveUrl: (slug: string, token: string) =>
+    `${API_BASE}/api/webinars/${seg(slug)}/events/leave?t=${encodeURIComponent(token)}`,
 
   /** The host's view of edge delivery for one webinar: on or off, and how many watch. */
   hostEdgeStatus: (slug: string) => request<EdgeStatus>(`/api/host/webinars/${seg(slug)}/edge`, fresh),
