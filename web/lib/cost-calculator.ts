@@ -11,6 +11,14 @@
  * is included in the box and its composites run on it, so on Hetzner the stage, WebRTC and
  * worker lines are the box's fixed cost, not this coach's.
  *
+ * Cloud Run (the API: 1 vCPU, 1 GiB, request-based billing, 500 requests per instance) is
+ * $0.000024 per vCPU-second plus $0.0000025 per GiB-second while any request is open, about
+ * $0.095 an instance-hour, and $0.40 per million requests. An edge viewer's event stream is a
+ * request open for the whole webinar, so an edge webinar keeps ceil(viewers / 500) instances
+ * billed for its length. That is pessimistic when two coaches are live at once (they share an
+ * instance) and the free tier is ignored. The database (Supabase) and the Hetzner box are
+ * fixed monthly costs, divided by the number of coaches sharing them.
+ *
  * Pure: no React, no DOM, so it runs under node tests. */
 
 import { GB_PER_MBPS_HOUR, GCP_EGRESS_PER_GB, stageMbps } from "./admin-costs.ts";
@@ -56,6 +64,18 @@ export type CostInputs = {
   webrtcViewerMbps: number;
   /** What the API sends each viewer an hour: the event stream, chat, Q&A, attendance beats. */
   apiMbPerViewerHour: number;
+  cloudRunPerInstanceHour: number;
+  /** Requests one Cloud Run instance holds at once (deploy: --concurrency). */
+  cloudRunConcurrency: number;
+  /** API calls a viewer makes an hour: attendance beats (120), chat, Q&A, polls. */
+  requestsPerViewerHour: number;
+  perMillionRequests: number;
+  /** The database's monthly bill (Supabase plan plus compute), for the whole instance. */
+  dbMonthlyUsd: number;
+  /** The Hetzner box's monthly bill, for everybody on it. */
+  hetznerMonthlyUsd: number;
+  /** Coaches the fixed bills (database, Hetzner box) are split between. */
+  coachesSharing: number;
   /** Stored size of a recorded hour. */
   recordingGbPerHour: number;
 
@@ -89,6 +109,13 @@ export const DEFAULT_INPUTS: CostInputs = {
   warmupMinutes: 10,
   webrtcViewerMbps: 1.5,
   apiMbPerViewerHour: 3,
+  cloudRunPerInstanceHour: 0.0954,
+  cloudRunConcurrency: 500,
+  requestsPerViewerHour: 150,
+  perMillionRequests: 0.4,
+  dbMonthlyUsd: 25,
+  hetznerMonthlyUsd: 11,
+  coachesSharing: 20,
   recordingGbPerHour: 1.75,
 
   inrPerUsd: 100,
@@ -194,6 +221,35 @@ export function calculateCost(raw: CostInputs): CostResult {
     (viewerHours * nonNeg(i.apiMbPerViewerHour) * nonNeg(i.egressPerGb)) / 1000,
     `${nonNeg(i.apiMbPerViewerHour)} MB per viewer-hour from Cloud Run`,
   );
+
+  // Edge viewers hold a stream open, so instances are billed for the webinar; WebRTC
+  // viewers only make short calls, which the request count covers.
+  const instances = edge ? Math.max(1, Math.ceil(viewers / (nonNeg(i.cloudRunConcurrency) || 500))) : 0;
+  const requests = viewerHours * nonNeg(i.requestsPerViewerHour);
+  add(
+    "cloudrun",
+    "Cloud Run compute (API)",
+    liveHours * instances * nonNeg(i.cloudRunPerInstanceHour) + (requests / 1e6) * nonNeg(i.perMillionRequests),
+    edge
+      ? `${instances} instance${instances === 1 ? "" : "s"} for ${liveHours} live hours, ${Math.round(requests).toLocaleString("en-IN")} requests`
+      : `${Math.round(requests).toLocaleString("en-IN")} requests`,
+  );
+
+  const coaches = Math.max(1, Math.round(nonNeg(i.coachesSharing)));
+  add(
+    "db",
+    "Database (share)",
+    nonNeg(i.dbMonthlyUsd) / coaches,
+    `$${nonNeg(i.dbMonthlyUsd)} a month split between ${coaches} coaches`,
+  );
+  if (!gcp) {
+    add(
+      "hetzner",
+      "Hetzner box (share)",
+      nonNeg(i.hetznerMonthlyUsd) / coaches,
+      `$${nonNeg(i.hetznerMonthlyUsd)} a month split between ${coaches} coaches`,
+    );
+  }
 
   if (i.recording) {
     const store = RECORDING_STORES[i.recordingStore] ?? RECORDING_STORES.r2;

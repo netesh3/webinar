@@ -54,12 +54,25 @@ near(line(w, "webrtc"), 1260 * 1.5 * 0.45 * 0.12, 0.05);
 assert.equal(line(calculateCost({ ...DEFAULT_INPUTS, onStage: 1 }), "stage"), 0);
 assert.ok(line(calculateCost({ ...DEFAULT_INPUTS, onStage: 6 }), "stage") > 10 * line(d, "stage"));
 
-// No recording, no recording lines. No price, no margin. Nonsense inputs cost nothing.
+// Cloud Run: an edge webinar of 300 keeps one instance for its 6 live hours, plus requests.
+near(line(d, "cloudrun"), 6 * 0.0954 + (1260 * 150 / 1e6) * 0.4);
+// 1,200 viewers need three instances at 500 each.
+const big = calculateCost({ ...DEFAULT_INPUTS, viewersPerWebinar: 1200 });
+near(line(big, "cloudrun"), 6 * 3 * 0.0954 + ((6 * 1200 * 0.7 * 150) / 1e6) * 0.4);
+// WebRTC holds no stream: requests only.
+near(line(w, "cloudrun"), (1260 * 150 / 1e6) * 0.4);
+// Fixed bills, split: the database always, the Hetzner box only on Hetzner.
+near(line(d, "db"), 25 / 20);
+assert.equal(line(d, "hetzner"), 0);
+near(line(h, "hetzner"), 11 / 20);
+
+// No recording, no recording lines. No price, no margin.
 const n = calculateCost({ ...DEFAULT_INPUTS, recording: false, priceInr: 0 });
 assert.equal(line(n, "rec-worker") + line(n, "rec-storage") + line(n, "rec-upload"), 0);
 assert.equal(n.marginUsd, null);
 const z = calculateCost({ ...DEFAULT_INPUTS, webinarsPerMonth: -3, viewersPerWebinar: NaN });
-assert.equal(z.monthUsd, 0);
+// Nothing but the fixed share is left: a coach who runs nothing still has a database row.
+assert.deepEqual(z.lines.map((l) => l.key), ["db"]);
 assert.equal(z.webinarUsd, 0);
 
 console.log("cost-calculator: ok");

@@ -158,6 +158,13 @@ export function AdminCostCalculator() {
               {num("warmupMinutes", "Warm-up per webinar", { suffix: "min" })}
               {num("webrtcViewerMbps", "WebRTC viewer", { step: 0.1, suffix: "Mbps" })}
               {num("apiMbPerViewerHour", "API traffic per viewer-hour", { step: 0.5, suffix: "MB" })}
+              {num("cloudRunPerInstanceHour", "Cloud Run per instance-hour", { step: 0.01, suffix: "$", hint: "1 vCPU + 1 GiB while requests are open." })}
+              {num("cloudRunConcurrency", "Viewers per Cloud Run instance")}
+              {num("requestsPerViewerHour", "API requests per viewer-hour")}
+              {num("perMillionRequests", "Cloud Run per million requests", { step: 0.05, suffix: "$" })}
+              {num("dbMonthlyUsd", "Database a month (all coaches)", { suffix: "$" })}
+              {num("hetznerMonthlyUsd", "Hetzner box a month (all coaches)", { suffix: "$" })}
+              {num("coachesSharing", "Coaches sharing those", { hint: "Splits the database and Hetzner box." })}
             </div>
             <button
               type="button"
@@ -228,9 +235,10 @@ export function AdminCostCalculator() {
         </Card>
 
         <p className="text-[12px] leading-relaxed text-ink-3">
-          Estimates at list prices, per coach. Not included: the database, Cloud Run&apos;s own
-          compute, the Hetzner box (a fixed monthly cost shared by every coach on it), and
-          WhatsApp messages, which Meta bills to the coach.
+          Estimates at list prices, per coach. The database and the Hetzner box are fixed
+          bills split evenly between coaches; Cloud Run assumes this coach&apos;s webinars do not
+          share an instance with anyone else&apos;s. Not included: WhatsApp messages, which Meta
+          bills to the coach.
         </p>
       </div>
     </div>
