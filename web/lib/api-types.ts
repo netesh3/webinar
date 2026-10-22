@@ -1299,6 +1299,115 @@ export interface EngagementAttendeeDetail {
 }
 
 //////////
+// source: leads.go
+
+/**
+ * AI feature names for these two, as recorded in ai_usage.
+ */
+export const AIFeatureLeads = "leads";
+/**
+ * AI feature names for these two, as recorded in ai_usage.
+ */
+export const AIFeatureFollowups = "followups";
+/**
+ *  Why the AI part is not there (LeadsResponse.AIStatus, FollowupsResponse.Status):
+ *  * ready, or one of the recap's reasons — ai_off, ai_limit, ai_unavailable, not_ended,
+ *  * processing, failed — or empty (nobody to write for).
+ */
+export const AIStatusReady = "ready";
+/**
+ * LeadSignals is what one person did, counted. WatchPct is of the live session.
+ */
+export interface LeadSignals {
+  watchMin: number /* int */;
+  watchPct: number /* int */;
+  joined: boolean;
+  replayMin?: number /* int */;
+  replayOpened?: boolean;
+  questions?: number /* int */;
+  upvotes?: number /* int */;
+  chats?: number /* int */;
+  pollAnswers?: number /* int */;
+  raisedHand?: boolean;
+  onStage?: boolean;
+  offerClicks?: number /* int */;
+}
+/**
+ *  Lead is one ranked person. Key is stable for the session (a registration id, else the
+ *  * room identity). Email and Phone are what the host already sees in People. Tag is hot,
+ *  * warm or cold; Group is attended, left_early or no_show. Reason is the AI's line, for the
+ *  * top leads only, empty otherwise. RegistrationID is empty for somebody who never
+ *  * registered (a meeting guest).
+ */
+export interface Lead {
+  key: string;
+  registrationId?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  score: number /* int */;
+  tag: string;
+  group: string;
+  signals: LeadSignals;
+  reason?: string;
+  /**
+   * * The person's CRM contact and WhatsApp standing, as on the People tab's roster; empty
+   * 	 * when WhatsApp is not connected or there is no contact.
+   */
+  contactId?: string;
+  whatsappStatus?: string;
+}
+/**
+ *  LeadsResponse is GET /api/host/webinars/{slug}/leads: everybody, ranked. AIStatus is
+ *  * ready when the reasons are in; otherwise why not (the list is there either way, since it
+ *  * is counted). SessionMin is the live session's length.
+ */
+export interface LeadsResponse {
+  leads: Lead[];
+  aiStatus: string;
+  sessionMin: number /* int */;
+  generatedAt?: string;
+}
+/**
+ * FollowupDraft is one group's drafts: an email and a WhatsApp message.
+ */
+export interface FollowupDraft {
+  emailSubject: string;
+  emailBody: string;
+  whatsapp: string;
+}
+/**
+ *  FollowupGroup is one group: hot, attended, left_early or no_show. Count is how many
+ *  * people are in it (the people are in GET …/leads, by group and tag). Draft is the host's
+ *  * edit when Edited, else what the AI wrote; nil when the group is empty.
+ */
+export interface FollowupGroup {
+  group: string;
+  count: number /* int */;
+  draft?: FollowupDraft;
+  edited?: boolean;
+}
+/**
+ *  FollowupsResponse is GET /api/host/webinars/{slug}/followups[?lang=en|hinglish].
+ *  * Language is what the drafts are in: detected from what was said unless the host picked.
+ *  * ReplayLink fills {{replay_link}}: the latest public recording, empty when there is none. Errors: 429 ai_limit, 503 ai_unavailable. Status says why there are no drafts
+ *  * otherwise (ai_off, not_ended, empty, processing, failed).
+ */
+export interface FollowupsResponse {
+  status: string;
+  language: string;
+  groups: FollowupGroup[];
+  replayLink?: string;
+  generatedAt?: string;
+}
+/**
+ * FollowupEditRequest is PUT /api/host/webinars/{slug}/followups/{group}[?lang=]: the host's edit.
+ */
+export interface FollowupEditRequest {
+  draft: FollowupDraft;
+}
+
+//////////
 // source: metrics.go
 
 export interface CRMMetricsResponse {

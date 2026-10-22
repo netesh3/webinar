@@ -724,6 +724,10 @@ func (s *Server) Routes() http.Handler {
 					// The AI recap, and Regenerate. See recap.go.
 					r.Get("/recap", s.handleGetRecap)
 					r.Post("/recap", s.handleRegenerateRecap)
+					// Hot leads and the follow-up writer. See leads.go and followups.go.
+					r.Get("/leads", s.handleGetLeads)
+					r.Get("/followups", s.handleGetFollowups)
+					r.Put("/followups/{group}", s.handlePutFollowup)
 					r.Patch("/questions/{id}", s.handlePatchQuestion)
 					r.Post("/registrants/approve-all", s.handleApproveAll)
 

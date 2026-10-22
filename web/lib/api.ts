@@ -80,6 +80,9 @@ import type {
   SendMessageResponse,
   SessionReport,
   SessionRecapResponse,
+  LeadsResponse,
+  FollowupsResponse,
+  FollowupDraft,
   SignupResponse,
   ShareRecordingRequest,
   StageAllResponse,
@@ -976,6 +979,27 @@ export const api = {
    *  503 ai_unavailable. */
   regenerateRecap: (slug: string) =>
     post<SessionRecapResponse>(`/api/host/webinars/${seg(slug)}/recap`),
+
+  /** Hot leads: everybody, ranked by what they did (counted, not AI), with an AI reason
+   *  beside the top ones once the session has ended. aiStatus says why there are none. */
+  sessionLeads: (slug: string, signal?: AbortSignal) =>
+    request<LeadsResponse>(`/api/host/webinars/${seg(slug)}/leads`, { ...fresh, signal }),
+
+  /** The follow-up writer's drafts per group, written once after the end. lang is "en" or
+   *  "hinglish"; omitted, the session's own language. Refusals: 429 ai_limit, 503
+   *  ai_unavailable. */
+  sessionFollowups: (slug: string, lang?: string, signal?: AbortSignal) =>
+    request<FollowupsResponse>(
+      `/api/host/webinars/${seg(slug)}/followups${lang ? `?lang=${encodeURIComponent(lang)}` : ""}`,
+      { ...fresh, signal },
+    ),
+
+  /** Save the host's edit of one group's drafts. 409 no_drafts, 422 too_long. */
+  saveFollowup: (slug: string, group: string, draft: FollowupDraft, lang: string) =>
+    put<FollowupsResponse>(
+      `/api/host/webinars/${seg(slug)}/followups/${seg(group)}?lang=${encodeURIComponent(lang)}`,
+      { draft },
+    ),
 
   hostSurvey: (slug: string) =>
     request<HostSurvey>(`/api/host/webinars/${seg(slug)}/survey`, fresh),

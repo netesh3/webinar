@@ -483,6 +483,16 @@ export function StarIcon(props: IconProps) {
   );
 }
 
+/** The AI mark: a four-point star with a small one beside it, next to anything AI wrote. */
+export function SparklesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 3.5c.6 3.6 2.4 5.4 6 6-3.6.6-5.4 2.4-6 6-.6-3.6-2.4-5.4-6-6 3.6-.6 5.4-2.4 6-6z" />
+      <path d="M18 14.5c.3 1.7 1.1 2.5 2.8 2.8-1.7.3-2.5 1.1-2.8 2.8-.3-1.7-1.1-2.5-2.8-2.8 1.7-.3 2.5-1.1 2.8-2.8z" />
+    </Icon>
+  );
+}
+
 export function ClipboardIcon(props: IconProps) {
   return (
     <Icon {...props}>

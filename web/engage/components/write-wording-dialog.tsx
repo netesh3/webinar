@@ -132,8 +132,16 @@ export function WriteWordingDialog({
   onUse,
   templates,
   fields = [],
+  initialDraft = "",
+  initialMapping,
+  initialTitle = "",
 }: {
   connected: boolean;
+  /** Wording to start from, with its {{n}} mapping and a name: a follow-up writer draft.
+   *  Starts as Marketing, which is what a follow-up to a group is to Meta. */
+  initialDraft?: string;
+  initialMapping?: Draft[];
+  initialTitle?: string;
   /** The merge fields, for "Insert field" and the mapping saved with the wording. */
   fields?: CRMMergeField[];
   /** The host's templates, to add a language to one of their own. */
@@ -145,9 +153,11 @@ export function WriteWordingDialog({
 }) {
   const { notify } = useToast();
   const [starters, setStarters] = useState<CRMStarterTemplate[] | null>(null);
-  const [draft, setDraft] = useState("");
-  const [mapping, setMapping] = useState<Draft[]>([]);
-  const [options, setOptions] = useState<OptionsDraft>(DEFAULT_OPTIONS);
+  const [draft, setDraft] = useState(initialDraft);
+  const [mapping, setMapping] = useState<Draft[]>(initialMapping ?? []);
+  const [options, setOptions] = useState<OptionsDraft>(
+    initialDraft ? { ...DEFAULT_OPTIONS, category: "MARKETING", title: initialTitle } : DEFAULT_OPTIONS,
+  );
   const ownNames = useMemo(() => languagesByName(templates ?? []), [templates]);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
