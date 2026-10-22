@@ -252,6 +252,13 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	/* An instant MEETING is not gated: "meet now" is the ordinary way a meeting starts, and
 	 * meetings are open to every host (meeting.go). The switch is about instant webinars. */
 	meeting := in.Kind == types.KindMeeting
+	// What kind of session this account may create at all (Admin -> Accounts).
+	if meeting && !s.requireHostFeature(w, r, user.ID, types.FeatureMeetings) {
+		return types.Webinar{}, false
+	}
+	if in.Kind == types.KindSimulive && !s.requireHostFeature(w, r, user.ID, types.FeatureSimulive) {
+		return types.Webinar{}, false
+	}
 	if in.Instant && !meeting && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return types.Webinar{}, false
 	}
@@ -440,6 +447,12 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
+		return
+	}
+	// A simulive is saved only for a host with the switch: the OWNER's, as above, so a
+	// co-host cannot turn a session into a simulive for an account that does not have it.
+	if in.Kind == types.KindSimulive && prevOwner != "" &&
+		!s.requireHostFeature(w, r, prevOwner, types.FeatureSimulive) {
 		return
 	}
 

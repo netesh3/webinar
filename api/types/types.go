@@ -1238,6 +1238,12 @@ type Account struct {
  * nowhere outside the session; its switch exists to turn it off. AI writing is
  * the second exception (migrations/0126): on in every tier, its spend bounded by the
  * monthly AI caps rather than by the switch.
+ *
+ * (0127 made AI opt-in again.) migrations/0142 added simulive (off; kept on for accounts
+ * that already had one), and meetings, server captions and the AI sub-switches ai_knowledge,
+ * simulive_auto and followup_send, all on in every tier. A switch with Requires is in effect
+ * only with all of them (EffectiveFeatures), so a sub-switch on by default does nothing for
+ * an account without AI.
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1312,7 +1318,60 @@ const (
 	 * Off means a simulive plays the video only, as before. The rule that a simulive is never
 	 * recorded again applies regardless of this switch. */
 	FeatureReplayEngage = "replay_engage"
+	/* FeatureSimulive is scheduling a recording to play as a live session: the "Simulive"
+	 * create card and its recording picker, "Replay as Simulive" on a recording, the
+	 * Results "Run this again on autopilot" card, and any create or save with kind
+	 * simulive (refused 403 feature_off without it).
+	 *
+	 * Off for a new account, because absent means off. Every account that already had a
+	 * simulive when the switch arrived was turned on (migrations/0142), so nobody lost one. */
+	FeatureSimulive = "simulive"
+	/* FeatureMeetings is meetings: the Meetings tab, instant and scheduled meetings, and
+	 * any create with kind meeting (403 feature_off without it).
+	 *
+	 * ON by default: every plan tier includes it (migrations/0142), because meetings were
+	 * open to every host before this switch existed. Its job is turning them off. */
+	FeatureMeetings = "meetings"
+	/* FeatureAIKnowledge is the AI knowledge library (documents, links, past answers) and
+	 * the Q&A drafts grounded in it. Needs FeatureAI: on in every tier (migrations/0142) but
+	 * only in effect for an account that also has AI. Off: no library, and Q&A drafts are
+	 * written from the topic and description only. */
+	FeatureAIKnowledge = "ai_knowledge"
+	/* FeatureSimuliveAuto is Auto mode: the assistant answering a simulive's questions by
+	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive; on in every tier
+	 * (migrations/0142), in effect only with all three. */
+	FeatureSimuliveAuto = "simulive_auto"
+	/* FeatureFollowupSend is sending the AI follow-up drafts by email or WhatsApp from
+	 * Results. Needs FeatureAI; on in every tier (migrations/0142). Off: the drafts are
+	 * still written, to copy or export, and the send routes answer 403 feature_off. */
+	FeatureFollowupSend = "followup_send"
+	/* FeatureCaptions is live server captions in the room (the caption agent). ON by default
+	 * in every tier (migrations/0142). Off: turning server captions on is refused 403
+	 * feature_off and the room falls back to on-device captions in the browser. */
+	FeatureCaptions = "captions"
 )
+
+// Feature groups: the admin screen's headings (Feature.Group).
+const (
+	FeatureGroupSessions     = "sessions"
+	FeatureGroupAI           = "ai"
+	FeatureGroupDelivery     = "delivery"
+	FeatureGroupIntegrations = "integrations"
+)
+
+// FeatureGroup is one heading of the admin screen's feature list.
+type FeatureGroup struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
+// FeatureGroups are the admin screen's headings for Feature.Group, in order.
+var FeatureGroups = []FeatureGroup{
+	{Key: FeatureGroupSessions, Label: "Sessions"},
+	{Key: FeatureGroupAI, Label: "AI"},
+	{Key: FeatureGroupDelivery, Label: "Delivery & recording"},
+	{Key: FeatureGroupIntegrations, Label: "Integrations"},
+}
 
 // Delivery modes (Webinar.Delivery).
 const (
@@ -1330,6 +1389,11 @@ type Feature struct {
 	Key         string `json:"key"`
 	Label       string `json:"label"`
 	Description string `json:"description"`
+	// Group is one of the FeatureGroups keys: the heading the admin screen files it under.
+	Group string `json:"group"`
+	/* Requires are the switches this one needs. Without every one of them it is not in
+	 * effect, whatever its own setting says: EffectiveFeatures drops it from the account. */
+	Requires []string `json:"requires,omitempty"`
 }
 
 /* Features is the catalogue, in the order an admin is offered it. Iterated by the
@@ -1337,51 +1401,148 @@ type Feature struct {
  * here and nowhere else.
  */
 var Features = []Feature{
+	// Sessions: what this host can run.
 	{
-		Key:         FeatureWhatsAppCRM,
-		Label:       "WhatsApp CRM",
-		Description: "Contact tags and notes, replay links, WhatsApp number registration, sequences, and the other host contact tools.",
+		Key:         FeatureSimulive,
+		Label:       "Simulive",
+		Description: "Let this host schedule one of their recordings to play as a live session: the Simulive create card, \"Replay as Simulive\" on a recording, and the Results autopilot card. Off means no simulives can be created or edited.",
+		Group:       FeatureGroupSessions,
 	},
 	{
-		Key:         FeatureCloudRecording,
-		Label:       "Cloud recording",
-		Description: "Record sessions to cloud storage and show the recordings tab. Off leaves recording on this computer.",
-	},
-	{
-		Key:         FeatureJoinWithoutRegistration,
-		Label:       "Join without registration",
-		Description: "Let this host turn registration off so people can join with a name and no form. Off means everyone registers.",
+		Key:         FeatureMeetings,
+		Label:       "Meetings",
+		Description: "Let this host hold instant and scheduled meetings (everyone on stage, link and lobby), with the Meetings tab. On by default. Off hides Meetings and refuses a new one.",
+		Group:       FeatureGroupSessions,
 	},
 	{
 		Key:         FeatureInstantWebinar,
 		Label:       "Instant webinar",
 		Description: "Let this host go live immediately, without scheduling a webinar. Off means every webinar is scheduled first.",
+		Group:       FeatureGroupSessions,
 	},
 	{
-		Key:         FeatureZoom,
-		Label:       "Zoom",
-		Description: "Let this host connect Zoom and schedule a session as a Zoom meeting or webinar. Off means sessions stay in this app.",
+		Key:         FeatureJoinWithoutRegistration,
+		Label:       "Join without registration",
+		Description: "Let this host turn registration off so people can join with a name and no form. Off means everyone registers.",
+		Group:       FeatureGroupSessions,
 	},
 	{
 		Key:         FeatureWhiteboard,
 		Label:       "Whiteboard",
 		Description: "Let this host and their panelists open a shared whiteboard from More in the live room. Attendees watch it. Off means no whiteboard.",
-	},
-	{
-		Key:         FeatureEdgeDelivery,
-		Label:       "Edge delivery (beta)",
-		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery.",
-	},
-	{
-		Key:         FeatureAI,
-		Label:       "AI writing",
-		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off means no AI buttons and no recaps.",
+		Group:       FeatureGroupSessions,
 	},
 	{
 		Key:         FeatureReplayEngage,
 		Label:       "Simulive engagement replay",
 		Description: "In a simulive session, replay the original session's chat, Q&A, answers and polls at the moment they happened in the video (names shortened, contact details removed), with a host preview to hide items. Off means a simulive plays the video only.",
+		Group:       FeatureGroupSessions,
+		Requires:    []string{FeatureSimulive},
 	},
+	// AI: the master switch, then what it can be narrowed to.
+	{
+		Key:         FeatureAI,
+		Label:       "AI writing",
+		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap, hot-lead reasons and follow-up drafts after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off means no AI anywhere.",
+		Group:       FeatureGroupAI,
+	},
+	{
+		Key:         FeatureAIKnowledge,
+		Label:       "AI knowledge",
+		Description: "The AI knowledge library (documents, links, past answers) and Q&A drafts grounded in it. On by default, in effect only with AI. Off: no library, and drafts use the topic only.",
+		Group:       FeatureGroupAI,
+		Requires:    []string{FeatureAI},
+	},
+	{
+		Key:         FeatureSimuliveAuto,
+		Label:       "Simulive Auto mode",
+		Description: "Let the AI assistant answer a simulive's questions by itself. On by default, in effect only with AI, Simulive and Simulive engagement replay.",
+		Group:       FeatureGroupAI,
+		Requires:    []string{FeatureAI, FeatureReplayEngage, FeatureSimulive},
+	},
+	{
+		Key:         FeatureFollowupSend,
+		Label:       "Send follow-ups",
+		Description: "Let this host send the AI follow-up drafts by email or WhatsApp from Results. On by default, in effect only with AI. Off leaves the drafts to copy or export.",
+		Group:       FeatureGroupAI,
+		Requires:    []string{FeatureAI},
+	},
+	// Delivery and recording.
+	{
+		Key:         FeatureCloudRecording,
+		Label:       "Cloud recording",
+		Description: "Record sessions to cloud storage and show the recordings tab. Off leaves recording on this computer.",
+		Group:       FeatureGroupDelivery,
+	},
+	{
+		Key:         FeatureEdgeDelivery,
+		Label:       "Edge delivery (beta)",
+		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery.",
+		Group:       FeatureGroupDelivery,
+	},
+	{
+		Key:         FeatureCaptions,
+		Label:       "Server captions",
+		Description: "Live captions from the server's caption agent (Hindi, English, Hinglish) when the host turns captions on. On by default. Off falls back to captions on each speaker's device.",
+		Group:       FeatureGroupDelivery,
+	},
+	// Integrations.
+	{
+		Key:         FeatureWhatsAppCRM,
+		Label:       "WhatsApp CRM",
+		Description: "Contact tags and notes, replay links, WhatsApp number registration, sequences, and the other host contact tools.",
+		Group:       FeatureGroupIntegrations,
+	},
+	{
+		Key:         FeatureZoom,
+		Label:       "Zoom",
+		Description: "Let this host connect Zoom and schedule a session as a Zoom meeting or webinar. Off means sessions stay in this app.",
+		Group:       FeatureGroupIntegrations,
+	},
+}
+
+// FeatureByKey is the catalogue entry for a key.
+func FeatureByKey(key string) (Feature, bool) {
+	for _, f := range Features {
+		if f.Key == key {
+			return f, true
+		}
+	}
+	return Feature{}, false
+}
+
+/* EffectiveFeatures is the keys in effect, from the keys an account was granted (plan and
+ * overrides applied): a key whose Requires are not all in effect is dropped, until nothing
+ * changes, so a chain (simulive_auto -> replay_engage -> simulive) resolves whole. Order is
+ * kept. Every reader of an account's features goes through this, so a sub-switch on by
+ * default is never in effect for an account without its parent. */
+func EffectiveFeatures(granted []string) []string {
+	out := append([]string{}, granted...)
+	for {
+		on := make(map[string]bool, len(out))
+		for _, k := range out {
+			on[k] = true
+		}
+		kept := out[:0:0]
+		for _, k := range out {
+			ok := true
+			if f, known := FeatureByKey(k); known {
+				for _, r := range f.Requires {
+					if !on[r] {
+						ok = false
+						break
+					}
+				}
+			}
+			if ok {
+				kept = append(kept, k)
+			}
+		}
+		if len(kept) == len(out) {
+			return kept
+		}
+		out = kept
+	}
 }
 
 // KnownFeature reports whether a key is one of the switches this server has.
@@ -3141,6 +3302,14 @@ type FeatureGrant struct {
 	Inherit bool `json:"inherit,omitempty"`
 }
 
+/* FeatureGrants is PUT /api/admin/users/{id}/features: several switches for one account in
+ * one request (the admin screen's "All on / All off / Plan default" per group). Each is the
+ * end state, as FeatureGrant; switches not named are left as they are. Every key is checked
+ * before any is written, and all are written in one transaction. */
+type FeatureGrants struct {
+	Grants []FeatureGrant `json:"grants"`
+}
+
 /* PlanFeatures is one column of the tier matrix: the features a plan includes. Plan ""
  * is no plan. GET and PUT /api/admin/plan-features carry all four tiers. */
 type PlanFeatures struct {
@@ -4290,6 +4459,8 @@ type AppConfig struct {
 	 * the admin screen renders what this build actually supports instead of a list the
 	 * browser keeps its own copy of. */
 	FeatureCatalogue []Feature `json:"featureCatalogue"`
+	// FeatureGroups are the headings the catalogue is filed under (Feature.Group), in order.
+	FeatureGroups []FeatureGroup `json:"featureGroups"`
 }
 
 /* TelemetryEvent is one entry in a POST /telemetry batch — the shape is

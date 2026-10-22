@@ -8,6 +8,7 @@ import { Button, ButtonLink, Card, Empty } from "../ui";
 import { api } from "@/lib/api";
 import {
   FeatureAI,
+  FeatureAIKnowledge,
   type KnowledgeDoc,
   type KnowledgeDocDetail,
   type KnowledgeLibrary,
@@ -42,7 +43,9 @@ export function KnowledgeScreen() {
   const [deleting, setDeleting] = useState<KnowledgeDoc | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
 
-  const hasAI = (account?.features ?? []).includes(FeatureAI);
+  // ai_knowledge, which is only in effect with ai; noAI says which of the two is missing.
+  const hasAI = (account?.features ?? []).includes(FeatureAIKnowledge);
+  const noAI = !(account?.features ?? []).includes(FeatureAI);
 
   const load = useCallback(async () => {
     try {
@@ -120,8 +123,8 @@ export function KnowledgeScreen() {
       {!hasAI ? (
         <div className="mt-6">
           <Empty
-            title="AI isn't switched on for this account"
-            hint="AI knowledge is part of the AI features. Ask us to switch AI on for your account."
+            title={noAI ? "AI isn't switched on for this account" : "AI knowledge isn't switched on for this account"}
+            hint={noAI ? "AI knowledge is part of the AI features. Ask us to switch AI on for your account." : "Ask us to switch AI knowledge on for your account."}
           />
         </div>
       ) : (

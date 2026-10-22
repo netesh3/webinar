@@ -315,6 +315,49 @@ func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
 
+/* handleSetFeatures is PUT /api/admin/users/{id}/features: handleSetFeature for several
+ * switches at once (types.FeatureGrants). All keys are checked first, so a typo writes
+ * nothing; the writes share one transaction, so the account is never left half-changed. */
+func (s *Server) handleSetFeatures(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	targetID := chi.URLParam(r, "id")
+
+	var body types.FeatureGrants
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if len(body.Grants) == 0 {
+		httpx.Error(w, http.StatusUnprocessableEntity, "no_grants", "Name at least one feature.")
+		return
+	}
+	changes := make([]store.FeatureChange, 0, len(body.Grants))
+	for _, g := range body.Grants {
+		if !types.KnownFeature(g.Feature) {
+			httpx.Error(w, http.StatusUnprocessableEntity, "unknown_feature",
+				"That isn't a feature this server knows about.")
+			return
+		}
+		c := store.FeatureChange{Feature: g.Feature}
+		if !g.Inherit {
+			on := g.Enabled
+			c.State = &on
+		}
+		changes = append(changes, c)
+	}
+	updated, err := s.store.SetFeatureOverrides(r.Context(), targetID, changes)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "set features", err)
+		return
+	}
+	s.log.Info("account features changed", "admin", admin.ID, "target", updated.ID, "count", len(changes))
+	httpx.JSON(w, http.StatusOK, updated.Public())
+}
+
 /* handlePlanFeatures is GET /api/admin/plan-features: which features each plan
  * includes, for the admin screen's matrix. */
 func (s *Server) handlePlanFeatures(w http.ResponseWriter, r *http.Request) {

@@ -86,7 +86,7 @@ func harvestSessionOf(wb types.Webinar) store.HarvestSession {
  * without anything saved. */
 func (s *Server) harvestTyped(ctx context.Context, wb types.Webinar, hs store.HarvestSession) {
 	host, err := s.store.UserByID(ctx, wb.Host.ID)
-	if err != nil || !host.HasFeature(types.FeatureAI) {
+	if err != nil || !host.HasFeature(types.FeatureAIKnowledge) {
 		return
 	}
 	webinarID, err := s.store.WebinarIDBySlug(ctx, wb.ID)
@@ -207,7 +207,7 @@ func (s *Server) harvestAloud(ctx context.Context, wb types.Webinar, hs store.Ha
 		return false
 	}
 	host, err := s.store.UserByID(ctx, wb.Host.ID)
-	if err != nil || !host.HasFeature(types.FeatureAI) {
+	if err != nil || !host.HasFeature(types.FeatureAIKnowledge) {
 		return false
 	}
 	webinarID, err := s.store.WebinarIDBySlug(ctx, wb.ID)
@@ -375,7 +375,7 @@ func pastAnswerNotFound(w http.ResponseWriter) {
 // handlePastAnswers is GET /api/host/knowledge/answers.
 func (s *Server) handlePastAnswers(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	s.harvestBackfill(r.Context(), user.ID)
@@ -446,7 +446,7 @@ func (s *Server) writePastAnswer(w http.ResponseWriter, r *http.Request, hostID,
 // handleEditPastAnswer is PATCH /api/host/knowledge/answers/{id}: a correction.
 func (s *Server) handleEditPastAnswer(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -478,7 +478,7 @@ func (s *Server) handleEditPastAnswer(w http.ResponseWriter, r *http.Request) {
 // as the host edited it.
 func (s *Server) handleApprovePastAnswer(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -512,7 +512,7 @@ func (s *Server) handleApprovePastAnswer(w http.ResponseWriter, r *http.Request)
 // replaced, back.
 func (s *Server) handleUndoPastAnswer(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -530,7 +530,7 @@ func (s *Server) handleUndoPastAnswer(w http.ResponseWriter, r *http.Request) {
 // handleDeletePastAnswer is DELETE /api/host/knowledge/answers/{id} (Skip, for a draft).
 func (s *Server) handleDeletePastAnswer(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	if err := s.store.DeletePastAnswer(r.Context(), user.ID, chi.URLParam(r, "id")); errors.Is(err, store.ErrNotFound) {

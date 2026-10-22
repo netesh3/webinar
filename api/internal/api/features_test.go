@@ -70,10 +70,11 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	}
 
 	target := h.signup("Switchable Host", "switchable@test.dev", true)
-	// Every switch is off until somebody decides — except the whiteboard, which
-	// starts on (migrations/0099). AI writing is opt-in (migrations/0127).
-	if len(target.Features) != 1 || !hasFeature(target.Features, types.FeatureWhiteboard) {
-		t.Fatalf("a new account starts with features %v, want only the whiteboard", target.Features)
+	// Every switch is off until somebody decides — except the whiteboard (migrations/0099),
+	// meetings and server captions (0142), which start on. AI writing is opt-in (0127), so its
+	// sub-switches, on in every tier, are not in effect; simulive is off for a new account.
+	if want := []string{types.FeatureCaptions, types.FeatureMeetings, types.FeatureWhiteboard}; !slices.Equal(target.Features, want) {
+		t.Fatalf("a new account starts with features %v, want %v", target.Features, want)
 	}
 
 	// A host cannot grant themselves anything.
@@ -116,8 +117,8 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	_, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
 		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: true})
 	h.decode(raw, &updated)
-	if len(updated.Features) != 3 {
-		t.Errorf("features = %v after re-granting WhatsApp CRM, want three (with the default whiteboard)", updated.Features)
+	if len(updated.Features) != 5 {
+		t.Errorf("features = %v after re-granting WhatsApp CRM, want five (with the defaults: whiteboard, meetings, captions)", updated.Features)
 	}
 
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",

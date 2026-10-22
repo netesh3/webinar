@@ -41,9 +41,10 @@ import (
  * people can arrive in any order). The SFU's own ceiling sits a few seats above it — see
  * ensureRoom — for reconnect overlap and a recorder, never as the number that decides.
  *
- * Meetings do not go behind a feature switch: anybody who can host can hold one. A meeting
- * needs nothing a host does not already have, and it costs less to run than a webinar of the
- * same headcount, not more.
+ * Meetings have a switch (types.FeatureMeetings) that is ON for every host by default
+ * (migrations/0142): a meeting needs nothing a host does not already have and costs less to
+ * run than a webinar of the same headcount, so the switch exists to turn them OFF for an
+ * account. Creating one (createWebinar) is what it refuses.
  */
 
 func isMeeting(wb types.Webinar) bool { return wb.Kind == types.KindMeeting }

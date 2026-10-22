@@ -1960,8 +1960,10 @@ export const AIFeatureLeads = "leads";
 export const AIFeatureFollowups = "followups";
 /**
  *  Why the AI part is not there (LeadsResponse.AIStatus, FollowupsResponse.Status):
- *  * ready, or one of the recap's reasons — ai_off, ai_limit, ai_unavailable, not_ended,
- *  * processing, failed — or empty (nobody to write for).
+ *  * ready, or one of the recap's reasons — ai_off (the ACCOUNT has no ai feature),
+ *  * ai_session_off (the account has AI but this session's AI switch was off), ai_limit (the
+ *  * monthly AI budget is used up), ai_unavailable, not_ended, processing, failed — or empty
+ *  * (nobody took part, so nobody to write for).
  */
 export const AIStatusReady = "ready";
 /**
@@ -2040,7 +2042,7 @@ export interface FollowupGroup {
  *  FollowupsResponse is GET /api/host/webinars/{slug}/followups[?lang=en|hinglish].
  *  * Language is what the drafts are in: detected from what was said unless the host picked.
  *  * ReplayLink fills {{replay_link}}: the latest public recording, empty when there is none. Errors: 429 ai_limit, 503 ai_unavailable. Status says why there are no drafts
- *  * otherwise (ai_off, not_ended, empty, processing, failed).
+ *  * otherwise (ai_off, ai_session_off, not_ended, empty, processing, failed).
  */
 export interface FollowupsResponse {
   status: string;
@@ -4208,6 +4210,72 @@ export const FeatureAI = "ai";
  */
 export const FeatureReplayEngage = "replay_engage";
 /**
+ *  FeatureSimulive is scheduling a recording to play as a live session: the "Simulive"
+ * 	 * create card and its recording picker, "Replay as Simulive" on a recording, the
+ * 	 * Results "Run this again on autopilot" card, and any create or save with kind
+ * 	 * simulive (refused 403 feature_off without it).
+ * 	 *
+ * 	 * Off for a new account, because absent means off. Every account that already had a
+ * 	 * simulive when the switch arrived was turned on (migrations/0142), so nobody lost one.
+ */
+export const FeatureSimulive = "simulive";
+/**
+ *  FeatureMeetings is meetings: the Meetings tab, instant and scheduled meetings, and
+ * 	 * any create with kind meeting (403 feature_off without it).
+ * 	 *
+ * 	 * ON by default: every plan tier includes it (migrations/0142), because meetings were
+ * 	 * open to every host before this switch existed. Its job is turning them off.
+ */
+export const FeatureMeetings = "meetings";
+/**
+ *  FeatureAIKnowledge is the AI knowledge library (documents, links, past answers) and
+ * 	 * the Q&A drafts grounded in it. Needs FeatureAI: on in every tier (migrations/0142) but
+ * 	 * only in effect for an account that also has AI. Off: no library, and Q&A drafts are
+ * 	 * written from the topic and description only.
+ */
+export const FeatureAIKnowledge = "ai_knowledge";
+/**
+ *  FeatureSimuliveAuto is Auto mode: the assistant answering a simulive's questions by
+ * 	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive; on in every tier
+ * 	 * (migrations/0142), in effect only with all three.
+ */
+export const FeatureSimuliveAuto = "simulive_auto";
+/**
+ *  FeatureFollowupSend is sending the AI follow-up drafts by email or WhatsApp from
+ * 	 * Results. Needs FeatureAI; on in every tier (migrations/0142). Off: the drafts are
+ * 	 * still written, to copy or export, and the send routes answer 403 feature_off.
+ */
+export const FeatureFollowupSend = "followup_send";
+/**
+ *  FeatureCaptions is live server captions in the room (the caption agent). ON by default
+ * 	 * in every tier (migrations/0142). Off: turning server captions on is refused 403
+ * 	 * feature_off and the room falls back to on-device captions in the browser.
+ */
+export const FeatureCaptions = "captions";
+/**
+ * Feature groups: the admin screen's headings (Feature.Group).
+ */
+export const FeatureGroupSessions = "sessions";
+/**
+ * Feature groups: the admin screen's headings (Feature.Group).
+ */
+export const FeatureGroupAI = "ai";
+/**
+ * Feature groups: the admin screen's headings (Feature.Group).
+ */
+export const FeatureGroupDelivery = "delivery";
+/**
+ * Feature groups: the admin screen's headings (Feature.Group).
+ */
+export const FeatureGroupIntegrations = "integrations";
+/**
+ * FeatureGroup is one heading of the admin screen's feature list.
+ */
+export interface FeatureGroup {
+  key: string;
+  label: string;
+}
+/**
  * Delivery modes (Webinar.Delivery).
  */
 export const DeliveryStandard = "standard";
@@ -4226,6 +4294,15 @@ export interface Feature {
   key: string;
   label: string;
   description: string;
+  /**
+   * Group is one of the FeatureGroups keys: the heading the admin screen files it under.
+   */
+  group: string;
+  /**
+   *  Requires are the switches this one needs. Without every one of them it is not in
+   * 	 * effect, whatever its own setting says: EffectiveFeatures drops it from the account.
+   */
+  requires?: string[];
 }
 /**
  * YouTubeLink is the public half of a host's YouTube OAuth grant. The refresh
@@ -6585,6 +6662,15 @@ export interface FeatureGrant {
   inherit?: boolean;
 }
 /**
+ *  FeatureGrants is PUT /api/admin/users/{id}/features: several switches for one account in
+ *  * one request (the admin screen's "All on / All off / Plan default" per group). Each is the
+ *  * end state, as FeatureGrant; switches not named are left as they are. Every key is checked
+ *  * before any is written, and all are written in one transaction.
+ */
+export interface FeatureGrants {
+  grants: FeatureGrant[];
+}
+/**
  *  PlanFeatures is one column of the tier matrix: the features a plan includes. Plan ""
  *  * is no plan. GET and PUT /api/admin/plan-features carry all four tiers.
  */
@@ -7862,6 +7948,10 @@ export interface AppConfig {
    * 	 * browser keeps its own copy of.
    */
   featureCatalogue: Feature[];
+  /**
+   * FeatureGroups are the headings the catalogue is filed under (Feature.Group), in order.
+   */
+  featureGroups: FeatureGroup[];
 }
 /**
  *  TelemetryEvent is one entry in a POST /telemetry batch — the shape is

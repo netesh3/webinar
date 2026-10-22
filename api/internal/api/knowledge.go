@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -81,7 +82,7 @@ func knowledgeTitle(s string) string {
 // handleKnowledgeLibrary is GET /api/host/knowledge.
 func (s *Server) handleKnowledgeLibrary(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	// What earlier adds could not embed (no key then, a cap, an outage).
@@ -97,7 +98,7 @@ func (s *Server) handleKnowledgeLibrary(w http.ResponseWriter, r *http.Request) 
 // handleCreateKnowledge is POST /api/host/knowledge: a pasted document.
 func (s *Server) handleCreateKnowledge(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	var in types.KnowledgeCreateRequest
@@ -131,7 +132,7 @@ func (s *Server) handleCreateKnowledge(w http.ResponseWriter, r *http.Request) {
  * the file name without its extension. */
 func (s *Server) handleUploadKnowledge(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	filename := clipRunes(path.Base(strings.ReplaceAll(strings.TrimSpace(r.URL.Query().Get("filename")), "\\", "/")), 200)
@@ -203,7 +204,7 @@ func (s *Server) addKnowledgeDoc(w http.ResponseWriter, r *http.Request, user st
 // handleKnowledgeDoc is GET /api/host/knowledge/{id}: the document and its extracted text.
 func (s *Server) handleKnowledgeDoc(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	doc, body, err := s.store.KnowledgeDoc(r.Context(), user.ID, chi.URLParam(r, "id"))
@@ -225,7 +226,7 @@ func (s *Server) handleKnowledgeDoc(w http.ResponseWriter, r *http.Request) {
 // handleRenameKnowledge is PATCH /api/host/knowledge/{id}.
 func (s *Server) handleRenameKnowledge(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	var in types.KnowledgeRenameRequest
@@ -257,7 +258,7 @@ func (s *Server) handleRenameKnowledge(w http.ResponseWriter, r *http.Request) {
 // handleDeleteKnowledge is DELETE /api/host/knowledge/{id}.
 func (s *Server) handleDeleteKnowledge(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	if err := s.store.DeleteKnowledgeDoc(r.Context(), user.ID, chi.URLParam(r, "id")); errors.Is(err, store.ErrNotFound) {
@@ -285,8 +286,8 @@ func (s *Server) sessionKnowledgeAllowed(w http.ResponseWriter, r *http.Request)
 		s.fail(w, r, "session knowledge: host", err)
 		return "", false
 	}
-	if !host.HasFeature(types.FeatureAI) {
-		httpx.Error(w, http.StatusForbidden, "feature_off", featureLabel(types.FeatureAI)+" isn't switched on for this account.")
+	if !host.HasFeature(types.FeatureAIKnowledge) {
+		httpx.Error(w, http.StatusForbidden, "feature_off", featureLabel(types.FeatureAIKnowledge)+" isn't switched on for this account.")
 		return "", false
 	}
 	return slug, true
@@ -353,4 +354,15 @@ func (s *Server) handlePatchSessionKnowledge(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.writeSessionKnowledge(w, r, slug)
+}
+
+/* sessionKnowledge is whether a session's Q&A drafts and Auto mode may draw on the host's AI
+ * knowledge: the host has ai_knowledge (types.FeatureAIKnowledge, which needs ai) and the
+ * session has some. Without the switch a draft is written from the topic and description
+ * only, as for a session with no knowledge, and Auto mode answers nothing. */
+func (s *Server) sessionKnowledge(ctx context.Context, wb types.Webinar) (bool, error) {
+	if !s.hostFeature(ctx, wb.Host.ID, types.FeatureAIKnowledge) {
+		return false, nil
+	}
+	return s.store.SessionHasKnowledge(ctx, wb.ID)
 }

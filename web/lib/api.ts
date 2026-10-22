@@ -72,6 +72,7 @@ import type {
   EngagementAttendeePage,
   EngagementSummary,
   FeatureGrant,
+  FeatureGrants,
   HostWebinarPage,
   JoinResponse,
   RejoinCheckResponse,
@@ -1505,6 +1506,11 @@ export const api = {
       enabled: state === true,
       inherit: state === null,
     } satisfies FeatureGrant),
+
+  /** Several switches for one account in one request (PUT …/features): each grant is the
+   *  end state, the rest are left as they are. Refused whole on an unknown key. */
+  setUserFeatures: (userId: string, grants: FeatureGrant[]) =>
+    put<Account>(`/api/admin/users/${seg(userId)}/features`, { grants } satisfies FeatureGrants),
 
   /** The tier matrix: which features each plan includes. */
   planFeatures: () =>

@@ -22,7 +22,8 @@ import (
  * fenced in:
  *
  *   switch     per simulive (options.simuliveAutoAnswer), off by default, and only with the
- *              account features ai AND replay_engage, and only while sessionAIAllowed (the
+ *              account feature simulive_auto (in effect only with ai, replay_engage and
+ *              simulive), and only while sessionAIAllowed (the
  *              room's AI switch). Q&A questions only: chat is never auto-answered.
  *   grounded   only an answer the knowledge covers is posted (aiwrite.ParseQAAuto: grounded
  *              AND citing an excerpt it was given). Anything else stays open for the host, and
@@ -77,7 +78,7 @@ func assistantLabel(hostName string) string {
 // qaAutoAvailable is whether the host's account may use Auto mode at all.
 func (s *Server) qaAutoAvailable(ctx context.Context, hostID string) bool {
 	host, err := s.store.UserByID(ctx, hostID)
-	return err == nil && host.HasFeature(types.FeatureAI) && host.HasFeature(types.FeatureReplayEngage)
+	return err == nil && host.HasFeature(types.FeatureSimuliveAuto) // needs ai, replay_engage, simulive (types.EffectiveFeatures)
 }
 
 /* qaAutoOn is whether Auto mode answers this session's questions right now: a live simulive with
@@ -89,7 +90,7 @@ func (s *Server) qaAutoOn(ctx context.Context, wb types.Webinar) bool {
 		wb.SimuliveLiveAt != "" || !s.ai.Enabled() {
 		return false
 	}
-	return s.sessionAIAllowed(ctx, wb) && s.hostFeature(ctx, wb.Host.ID, types.FeatureReplayEngage)
+	return s.sessionAIAllowed(ctx, wb) && s.hostFeature(ctx, wb.Host.ID, types.FeatureSimuliveAuto)
 }
 
 /* qaAutoAsked is handleSay's hook for a new question: in line for the next batch when Auto mode
@@ -217,7 +218,7 @@ func (s *Server) qaAutoAnswer(ctx context.Context, wb types.Webinar, qs []store.
 		return 0, nil
 	}
 
-	has, err := s.store.SessionHasKnowledge(ctx, slug)
+	has, err := s.sessionKnowledge(ctx, wb)
 	if err != nil || !has {
 		settle(eligible, store.AutoUngrounded)
 		return 0, err
@@ -395,7 +396,7 @@ func (s *Server) handlePutSimuliveAuto(w http.ResponseWriter, r *http.Request) {
 		}
 		if !s.qaAutoAvailable(r.Context(), wb.Host.ID) {
 			httpx.Error(w, http.StatusForbidden, "feature_off",
-				featureLabel(types.FeatureAI)+" and "+featureLabel(types.FeatureReplayEngage)+" both need to be on for this account.")
+				featureLabel(types.FeatureSimuliveAuto)+" isn't switched on for this account (it needs "+featureLabel(types.FeatureAI)+", "+featureLabel(types.FeatureSimulive)+" and "+featureLabel(types.FeatureReplayEngage)+").")
 			return
 		}
 	}

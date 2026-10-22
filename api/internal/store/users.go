@@ -227,6 +227,8 @@ func scanUser(row scanner) (User, error) {
 		&u.WhatsAppRegisteredAt, &u.WhatsAppCoexistence, &u.WhatsAppTokenRejectedAt,
 		&u.GooglePicture, &u.AvatarKey, &u.AvatarMime, &u.EmailVerifiedAt,
 		&u.HostRequestedAt, &u.PasswordChangedAt, &u.Plan, &u.AccountKind)
+	// A sub-switch is not in effect without its parent (types.EffectiveFeatures).
+	u.Features = types.EffectiveFeatures(u.Features)
 	return u, err
 }
 

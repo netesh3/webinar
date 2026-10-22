@@ -61,7 +61,8 @@ func TestSimuliveScheduleRecordingRules(t *testing.T) {
 	theirs := h.newWebinar("Their session", nil)
 	foreign := h.insertRecording(theirs.ID, "ready", 1000)
 
-	h.signup("Coach Asha", "sim-coach@test.dev", true)
+	coach := h.signup("Coach Asha", "sim-coach@test.dev", true)
+	grantFeature(t, h, coach.ID, types.FeatureSimulive)
 	orig := h.newWebinar("Original session", nil)
 	ready := h.insertRecording(orig.ID, "ready", 1000)
 	processing := h.insertRecording(orig.ID, "processing", 0)

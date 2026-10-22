@@ -26,7 +26,8 @@ import {
   hostListFilterKey,
   hostListPageKey,
 } from "@/lib/host-list-cache";
-import { FeatureCloudRecording, FeatureEdgeDelivery, type Webinar, type WebinarInput } from "@/lib/api-types";
+import { FeatureEdgeDelivery, type Webinar, type WebinarInput } from "@/lib/api-types";
+import { simuliveCardOffered } from "@/lib/host-features";
 import {
   instantDeliveryFor,
   readInstantDelivery,
@@ -205,9 +206,9 @@ export function HostWebinarsScreen() {
   const createActions = hostHomeCreateActions(account?.features);
   const edgeAllowed = (account?.features ?? []).includes(FeatureEdgeDelivery);
   const twoColumns = hostHomeCreateColumns(createActions) === 2;
-  /* "Simulive" plays one of the host's cloud recordings, so it is offered where recording
-   * is: an account without cloud_recording has nothing to replay and no way to make one. */
-  const offerSimulive = (account?.features ?? []).includes(FeatureCloudRecording);
+  /* "Simulive" needs its own switch (Admin -> Accounts), and plays one of the host's cloud
+   * recordings, so cloud_recording too. See lib/host-features.ts. */
+  const offerSimulive = simuliveCardOffered(account);
   /* Read during the prefetch's callback. The prefetch itself must not restart when
    * the session resolves, or it would drop the list it just fetched. */
   const statusRef = useRef(status);

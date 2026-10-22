@@ -28,6 +28,7 @@ import { VideoPlayer, type VideoPlayerHandle } from "./video-player";
 import { RecordingChapters } from "./recording-chapters";
 import { playableRecordingParts, recordingSources } from "@/lib/recording-parts";
 import { chapterSeekTimes } from "@/lib/recap";
+import { simuliveAllowed } from "@/lib/host-features";
 import { simuliveEligible, simuliveScheduleHref } from "@/lib/simulive-create";
 import { SimuliveInfoButton } from "./simulive-info";
 
@@ -61,7 +62,8 @@ export function RecordingsTab({
    * recordings only (host.go simuliveRecordingField), so a panelist or co-host looking at
    * someone else's session is not offered a button that would be refused. A meeting's
    * recording qualifies too — the simulive made from it is a webinar. */
-  const canSimulive = Boolean(account?.canHost && account.id === w.host.id);
+  // And the account's simulive switch (Admin -> Accounts): the server refuses one without it.
+  const canSimulive = Boolean(account?.canHost && account.id === w.host.id && simuliveAllowed(account));
   const days = recordingRetentionDays(rows[0], cfg.recordingsRetentionDays);
   const [playing, setPlaying] = useState<Recording | null>(null);
   const [sharing, setSharing] = useState<Recording | null>(null);

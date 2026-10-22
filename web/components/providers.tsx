@@ -52,6 +52,7 @@ const CONFIG_FALLBACK: AppConfig = {
    * switch this build's API does not know about — better no switches for the
    * second before the real config lands than a wrong one. */
   featureCatalogue: [],
+  featureGroups: [],
 };
 
 const ConfigContext = createContext<AppConfig>(CONFIG_FALLBACK);

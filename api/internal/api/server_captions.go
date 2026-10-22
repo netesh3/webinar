@@ -104,6 +104,10 @@ func (s *Server) handleHostServerCaptions(w http.ResponseWriter, r *http.Request
 			"A simulive shows its recording's own captions. There's nothing live to caption.")
 		return
 	}
+	// The host's switch (types.FeatureCaptions); the room falls back to on-device captions.
+	if req.On && !s.requireHostFeature(w, r, wb.Host.ID, types.FeatureCaptions) {
+		return
+	}
 	dispatcher, ok := dispatcherFor(sfu)
 	if req.On && (!s.serverCaptionsConfigured() || !ok) {
 		// The browser falls back to on-device captions on this answer.

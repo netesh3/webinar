@@ -34,7 +34,10 @@ assert.equal(assistantLabelFor("  "), "✨ The host's assistant");
 assert.ok(autoAnswerDisclosure("✨ Asha's assistant").includes("“✨ Asha's assistant”"));
 assert.ok(autoAnswerDisclosure("✨ Asha's assistant").includes("never as you"));
 
-assert.equal(autoModeAvailable(["ai", "replay_engage"]), true);
+assert.equal(autoModeAvailable(["ai", "replay_engage", "simulive", "simulive_auto"]), true);
+assert.equal(autoModeAvailable(["ai", "replay_engage", "simulive"]), false);
+assert.equal(autoModeAvailable(["ai", "replay_engage", "simulive_auto"]), false);
+assert.equal(autoModeAvailable(["ai", "replay_engage"]), false);
 assert.equal(autoModeAvailable(["ai"]), false);
 assert.equal(autoModeAvailable(["replay_engage"]), false);
 assert.equal(autoModeAvailable(null), false);

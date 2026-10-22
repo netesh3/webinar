@@ -38,8 +38,10 @@ func TestFeatureConversionKeepsEveryonesFeatures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// AI writing is opt-in (migrations/0127), so conversion adds nothing.
-		want := slices.Clone(old)
+		// AI writing is opt-in (migrations/0127), so conversion adds nothing. Every tier gives
+		// meetings and server captions (migrations/0142); the AI sub-switches are in the tier
+		// too but not in effect without ai.
+		want := append(slices.Clone(old), types.FeatureMeetings, types.FeatureCaptions)
 		slices.Sort(want)
 		if !slices.Equal(u.Features, want) {
 			t.Errorf("%s: features after conversion = %v, want %v", email, u.Features, want)

@@ -5,6 +5,11 @@ import { api } from "@/lib/api";
 import {
   accountFeatureRows,
   accountFeaturesOnCount,
+  bulkGrants,
+  groupFeatureRows,
+  unmetRequirements,
+  withOverrides,
+  type AccountFeatureGroup,
   overrideState,
   planIncludes,
   withOverride,
@@ -941,7 +946,7 @@ function AccountFeatures({
   tiers: PlanFeatures[] | null;
   onFeatures: (features: string[], overrides: Record<string, boolean>) => void;
 }) {
-  const { featureCatalogue } = useAppConfig();
+  const { featureCatalogue, featureGroups } = useAppConfig();
   const { notify } = useToast();
   /* Keyed by feature rather than a single boolean: an admin switching two things
    * on in quick succession should not have the second switch look dead because
@@ -952,6 +957,28 @@ function AccountFeatures({
   if (switches.length === 0) return null;
 
   const onCount = accountFeaturesOnCount(switches, user.features);
+  const grouped = groupFeatureRows(switches, featureGroups);
+
+  /* A whole group to one state in one request (PUT …/features): all on, all off, or every
+   * switch back to the plan's default. */
+  async function setGroup(group: AccountFeatureGroup, state: OverrideState) {
+    setBusy(`group:${group.key}`);
+    try {
+      const updated = await api.setUserFeatures(user.id, bulkGrants(group.rows, state));
+      onFeatures(
+        updated.features,
+        withOverrides(user.featureOverrides, group.rows.map((r) => r.id), state),
+      );
+      notify(
+        `${group.label}: ${state === "inherit" ? "plan defaults" : state === "on" ? "all on" : "all off"} for ${user.name || user.email}.`,
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function setFeature(key: string, state: OverrideState) {
     setBusy(key);
@@ -982,16 +1009,47 @@ function AccountFeatures({
 
   return (
     <Disclosure summary={`Features · ${onCount} of ${switches.length} on`}>
-      <div className="grid gap-2.5">
-        {switches.map((row) => (
-          <FeatureToggle
-            key={`${row.source}:${row.id}`}
-            row={row}
-            user={user}
-            tiers={tiers}
-            disabled={busy !== null}
-            onFeature={setFeature}
-          />
+      <div className="grid gap-4">
+        {grouped.map((group) => (
+          <section key={group.key} aria-label={group.label} className="grid gap-2.5">
+            <div className="flex items-center justify-between gap-3 border-b border-line pb-1">
+              <h4 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">
+                {group.label}
+              </h4>
+              {group.rows.length > 1 && (
+                <div className="flex shrink-0 gap-1" role="group" aria-label={`Set every ${group.label} switch`}>
+                  {(
+                    [
+                      ["on", "All on"],
+                      ["off", "All off"],
+                      ["inherit", "Plan default"],
+                    ] as const
+                  ).map(([state, label]) => (
+                    <button
+                      key={state}
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => void setGroup(group, state)}
+                      className="rounded-md border border-line px-2 py-0.5 text-[11px] text-ink-2 hover:text-ink-1 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {group.rows.map((row) => (
+              <FeatureToggle
+                key={`${row.source}:${row.id}`}
+                row={row}
+                user={user}
+                tiers={tiers}
+                needs={unmetRequirements(row, user.features, featureCatalogue)}
+                disabled={busy !== null}
+                onFeature={setFeature}
+              />
+            ))}
+          </section>
         ))}
       </div>
     </Disclosure>
@@ -1002,12 +1060,15 @@ function FeatureToggle({
   row,
   user,
   tiers,
+  needs,
   disabled,
   onFeature,
 }: {
   row: AccountFeatureRow;
   user: AdminUser;
   tiers: PlanFeatures[] | null;
+  /* Labels of the switches this one needs that are off: it is not in effect until they are on. */
+  needs: string[];
   disabled: boolean;
   onFeature: (key: string, state: OverrideState) => Promise<void>;
 }) {
@@ -1027,6 +1088,11 @@ function FeatureToggle({
           <span className={`text-[11px] font-normal ${effective ? "text-ok" : "text-ink-3"}`}>
             · {effective ? "on" : "off"}
           </span>
+          {needs.length > 0 && (
+            <span className="ml-1.5 rounded bg-surface-2 px-1.5 py-px text-[10.5px] font-normal text-warn">
+              needs {needs.join(" + ")}
+            </span>
+          )}
         </div>
         <p className="mt-0.5 text-[12px] leading-relaxed text-ink-2">{row.description}</p>
         {FEATURE_COSTS[row.id] && (
