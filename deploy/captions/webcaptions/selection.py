@@ -138,3 +138,80 @@ def main_source(active: Iterable[str], speaking: Iterable[str]) -> str | None:
         if identity in now:
             return identity
     return now[0]
+
+
+# Why every microphone is subscribed, not only the selected ones: LiveKit sends a participant
+# active-speaker updates ONLY for the participants it is subscribed to (livekit-server
+# ParticipantImpl.SendSpeakerUpdate filters them with IsSubscribedTo). An agent that
+# subscribed to the selection alone never heard that anyone was speaking, so never selected
+# anyone, so never subscribed: nobody was captioned. So the agent subscribes to every
+# person's audio (on the same host that is an Opus decode and one RMS per frame), and the
+# selection decides whose LINES reach the model, which is the expensive part.
+def wants_key(key: str, chosen) -> bool:
+    """Whether the pipeline `key` (see pipeline_key) is to be transcribed now."""
+    return key.endswith(SHARE_SUFFIX) or key in chosen
+
+
+class LineGate:
+    """Per source: whether a finished line goes to the model.
+
+    LiveKit names an active speaker a few hundred ms after they start, so a line usually
+    opens before its speaker is selected. A line is kept when its source is selected when it
+    ends OR was at any point while it was open; a line nobody selected is dropped."""
+
+    def __init__(self) -> None:
+        self._held = False
+
+    def note(self, selected: bool, in_speech: bool) -> None:
+        if selected and in_speech:
+            self._held = True
+
+    def take(self, selected: bool) -> bool:
+        keep = selected or self._held
+        self._held = False
+        return keep
+
+
+class FrameWatch:
+    """Diagnostics: subscribed sources that have sent no audio frame for `quiet_s` while
+    their track is unmuted (a subscription that never delivers, a stalled stream). Each is
+    reported once per quiet spell; a frame re-arms it."""
+
+    def __init__(self, quiet_s: float = 60.0) -> None:
+        self.quiet_s = quiet_s
+        self._last: dict[str, float] = {}
+        self._frames: dict[str, int] = {}
+        self._warned: set[str] = set()
+
+    def start(self, key: str, now: float) -> None:
+        self._last[key] = now
+        self._frames[key] = 0
+        self._warned.discard(key)
+
+    def frame(self, key: str, now: float) -> bool:
+        """Records a frame; True for the source's first one (worth one log line)."""
+        self._last[key] = now
+        self._warned.discard(key)
+        n = self._frames.get(key, 0)
+        self._frames[key] = n + 1
+        return n == 0
+
+    def stop(self, key: str) -> None:
+        self._last.pop(key, None)
+        self._frames.pop(key, None)
+        self._warned.discard(key)
+
+    def frames(self, key: str) -> int:
+        return self._frames.get(key, 0)
+
+    def due(self, now: float, muted: Callable[[str], bool] = lambda _k: False) -> list[str]:
+        out = []
+        for key, last in self._last.items():
+            if key in self._warned or now - last < self.quiet_s:
+                continue
+            if muted(key):
+                self._last[key] = now  # muted time is not quiet time
+                continue
+            self._warned.add(key)
+            out.append(key)
+        return sorted(out)
