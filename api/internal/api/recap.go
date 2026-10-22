@@ -96,6 +96,44 @@ func (s *Server) runRecaps(ctx context.Context) {
 	}
 }
 
+/* recapInlineBudget bounds a recap written inside a request (recapNow). One gpt-5-nano call
+ * is seconds; a session long enough to need chunking may not finish, and is then left to the
+ * tick, which picks the row up once the claim lapses. */
+const recapInlineBudget = 45 * time.Second
+
+// recapEmailBudget bounds the outbox flush after an inline recap, so a slow mail server
+// cannot hold the caller (the caption agent waits 60 s for its transcript post).
+const recapEmailBudget = 12 * time.Second
+
+/* recapNow writes this session's recap inside the current request, if it is due, and sends its
+ * email straight away.
+ *
+ * Why not leave it to the tick. Cloud Run gives the instance CPU only while a request is in
+ * flight and scales to zero when idle, and nothing calls the tick on a schedule, so the in-process
+ * ticker runs only while somebody is using the site. The recap is due exactly when two requests
+ * happen anyway — the after-session transcript arriving, and the host's Results page polling
+ * GET /recap — so it is written in those. The tick stays as the backstop for retries and for a
+ * session nobody looks at. Reports whether a recap was processed. */
+func (s *Server) recapNow(ctx context.Context, slug string) bool {
+	ctx, cancel := context.WithTimeout(ctx, recapInlineBudget)
+	defer cancel()
+	job, ok, err := s.store.ClaimRecapForSlug(ctx, slug, recapClaimFor)
+	if err != nil {
+		s.log.Warn("recap now: claim", "slug", slug, "error", err)
+		return false
+	}
+	if !ok {
+		return false
+	}
+	s.processRecap(ctx, job)
+	// The recap email was queued in the same transaction that marked it emailed: send it while
+	// this request still holds the CPU, instead of on the next tick.
+	flushCtx, done := context.WithTimeout(context.WithoutCancel(ctx), recapEmailBudget)
+	defer done()
+	s.flushOutbox(flushCtx)
+	return true
+}
+
 // recapOutcome is why a recap was not written, as the row records it.
 type recapOutcome struct {
 	status, reason string
@@ -422,6 +460,12 @@ func (s *Server) handleGetRecap(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, r, "recap: read", err)
 		return
+	}
+	// Due and nobody on it: write it now, inside this poll (recapNow).
+	if row.Status == types.RecapPending && s.recapNow(r.Context(), slug) {
+		if fresh, err := s.store.SessionRecap(r.Context(), slug); err == nil {
+			row = fresh
+		}
 	}
 	httpx.JSON(w, http.StatusOK, recapResponse(row))
 }

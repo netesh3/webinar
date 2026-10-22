@@ -416,9 +416,12 @@ func (s *Server) handleInternalTranscript(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.log.Info("session transcript stored", "slug", slug, "model", model, "segments", len(segments))
-	// The AI recap was waiting for this: write it on the next tick.
+	// The AI recap was waiting for this: make it due, and write it now, in this request
+	// (recapNow) — the tick only runs while somebody is using the site.
 	if err := s.store.NudgeRecap(r.Context(), slug); err != nil {
 		s.log.Warn("internal transcript: could not nudge the recap", "slug", slug, "error", err)
+	} else {
+		s.recapNow(r.Context(), slug)
 	}
 	httpx.JSON(w, http.StatusCreated, map[string]any{"status": "ok", "segments": len(segments)})
 }

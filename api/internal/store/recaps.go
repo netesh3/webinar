@@ -86,6 +86,28 @@ func (s *Store) ClaimDueRecap(ctx context.Context, claimFor time.Duration) (Reca
 	return j, true, nil
 }
 
+/* ClaimRecapForSlug is ClaimDueRecap for one session: it claims that session's recap only
+ * when it is pending, due and not already claimed (by the tick, or by another request). */
+func (s *Store) ClaimRecapForSlug(ctx context.Context, slug string, claimFor time.Duration) (RecapJob, bool, error) {
+	var j RecapJob
+	err := s.pool.QueryRow(ctx, `
+		UPDATE session_recaps r
+		   SET claimed_until = now() + make_interval(secs => $2)
+		  FROM webinars w
+		 WHERE w.id = r.webinar_id AND w.slug = $1
+		   AND r.status = 'pending' AND r.due_at <= now()
+		   AND (r.claimed_until IS NULL OR r.claimed_until < now())
+		RETURNING r.webinar_id::text, w.slug, r.wait_until, r.attempts`, slug, claimFor.Seconds()).
+		Scan(&j.WebinarID, &j.Slug, &j.WaitUntil, &j.Attempts)
+	if noRows(err) {
+		return RecapJob{}, false, nil
+	}
+	if err != nil {
+		return RecapJob{}, false, err
+	}
+	return j, true, nil
+}
+
 // DeferRecap releases a claimed recap to be looked at again at due.
 func (s *Store) DeferRecap(ctx context.Context, webinarID string, due time.Time, attempts int, reason string) error {
 	_, err := s.pool.Exec(ctx, `
