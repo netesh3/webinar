@@ -5,16 +5,18 @@
  * many votes each has right now. Grouping here joins the two, so a vote cast a second ago is
  * counted without waiting for the next read of the clusters. Host and co-hosts only. */
 
+import { sessionAIOn } from "./ai-session.ts";
 import type { QACluster, QADraft, SessionControls } from "./api-types.ts";
 import type { Question } from "./realtime.ts";
 
 /** Whether this person gets the assistant: the host or a co-host, in a session whose
- *  account has AI and whose room AI switch is on. Otherwise the panel is the plain list. */
+ *  account has AI, whose room AI switch is on, and which has not been out of AI at any point
+ *  while live (sessionAIOn). Otherwise the panel is the plain list. */
 export function qaAssistOn(
   isHost: boolean,
-  controls: Pick<SessionControls, "aiAvailable" | "aiEnabled">,
+  controls: Pick<SessionControls, "aiAvailable" | "aiEnabled" | "aiOffThisSession">,
 ): boolean {
-  return isHost && controls.aiAvailable === true && controls.aiEnabled === true;
+  return isHost && sessionAIOn(controls);
 }
 
 export type QAItem =

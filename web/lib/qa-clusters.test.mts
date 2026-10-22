@@ -33,6 +33,10 @@ assert.equal(qaAssistOn(true, { aiAvailable: true, aiEnabled: true }), true);
 assert.equal(qaAssistOn(true, { aiAvailable: true, aiEnabled: false }), false);
 assert.equal(qaAssistOn(true, { aiAvailable: false, aiEnabled: true }), false);
 assert.equal(qaAssistOn(false, { aiAvailable: true, aiEnabled: true }), false);
+// Switched off and back on while live: the server keeps the session out of AI, so the panel
+// neither polls nor waits for an assistant that will not come.
+assert.equal(qaAssistOn(true, { aiAvailable: true, aiEnabled: true, aiOffThisSession: true }), false);
+assert.equal(qaAssistOn(true, { aiAvailable: true, aiEnabled: true, aiOffThisSession: false }), true);
 
 // Grouping: a cluster folds at its first question; lone and unclustered questions stay.
 const open = [q("1", "a", 2), q("2", "b"), q("3", "b", 1), q("4", "c"), q("5", "d", 4)];

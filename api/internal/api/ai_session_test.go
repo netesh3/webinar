@@ -261,3 +261,66 @@ func mustWebinar(t *testing.T, h *harness, slug string) types.Webinar {
 	}
 	return wb
 }
+
+/* The room's AI state reaches every browser in room metadata, and the web decides whether the
+ * host gets the Q&A assistant from it alone (web/lib/qa-clusters.ts qaAssistOn). So every
+ * write of it carries aiAvailable and aiEnabled — after a controls PATCH, a stage promotion
+ * and the AI switch — and, once AI was off during the live session, aiOffThisSession, which is
+ * what tells the room the assistant is gone for the rest of the session (instant-webinar-4277,
+ * 2026-10-22: AI off then on within a second; the switch read on, the assistant vanished). */
+func TestRoomMetadataAlwaysCarriesTheAIState(t *testing.T) {
+	h := newHarness(t)
+	email := "aimeta-host@test.dev"
+	h.signup("AI Meta Host", email, true)
+	enableAI(t, h, email)
+	wb := h.liveWebinar("AI in metadata", nil)
+	room := "webinar_" + wb.ID
+
+	check := func(step string, wantEnabled, wantOff bool) {
+		t.Helper()
+		h.rooms.mu.Lock()
+		raw := h.rooms.metadata[room]
+		h.rooms.mu.Unlock()
+		for _, key := range []string{`"aiAvailable":true`, `"aiEnabled":`} {
+			if !strings.Contains(raw, key) {
+				t.Fatalf("%s: room metadata lacks %s: %s", step, key, raw)
+			}
+		}
+		c := h.rooms.roomMeta(t, room).Controls
+		if !c.AIAvailable || c.AIEnabled != wantEnabled || c.AIOffThisSession != wantOff {
+			t.Fatalf("%s: metadata controls = %+v, want aiEnabled %v aiOffThisSession %v",
+				step, c, wantEnabled, wantOff)
+		}
+	}
+
+	// A controls PATCH that is not about AI.
+	chat := false
+	if res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/controls",
+		types.ControlsPatch{ChatEnabled: &chat}); res.StatusCode != http.StatusOK {
+		t.Fatalf("chat off: %d %s", res.StatusCode, raw)
+	}
+	check("chat off", true, false)
+
+	// Bringing an attendee on stage, and their rejoin as a panelist.
+	reg := h.registerAsGuest(wb.ID, "aimeta-guest@test.dev")
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/participants/att_"+reg.JoinKey+"/stage",
+		types.StageRequest{Role: types.RolePanelist}); res.StatusCode != http.StatusOK {
+		t.Fatalf("promote: %d %s", res.StatusCode, raw)
+	}
+	h.acceptStage(wb.ID, reg.JoinKey)
+	if res, raw := h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/join",
+		types.JoinRequest{JoinKey: reg.JoinKey}); res.StatusCode != http.StatusOK {
+		t.Fatalf("rejoin: %d %s", res.StatusCode, raw)
+	}
+	check("stage promote", true, false)
+
+	// The AI switch: off, then back on. The session stays out of AI and the metadata says so.
+	if res, raw := h.patchAI(wb.ID, false); res.StatusCode != http.StatusOK {
+		t.Fatalf("ai off: %d %s", res.StatusCode, raw)
+	}
+	check("ai off", false, true)
+	if res, raw := h.patchAI(wb.ID, true); res.StatusCode != http.StatusOK {
+		t.Fatalf("ai on: %d %s", res.StatusCode, raw)
+	}
+	check("ai back on", true, true)
+}
