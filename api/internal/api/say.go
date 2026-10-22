@@ -264,6 +264,7 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 	 * — a rejoined tab clicking again — is acknowledged and NOT re-broadcast, or every
 	 * other browser would count it twice. A vote on a question with no row (asked
 	 * before questions were persisted) is still delivered live. */
+	var autoIn time.Duration
 	switch packet.Kind {
 	case types.MsgQuestion:
 		if packet.ID == "" {
@@ -275,8 +276,10 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			// Still delivered live, but it will be missing from the report — say so.
 			s.log.Warn("say: record question failed", "slug", slug, "question", packet.ID, "error", err)
-		} else {
-			// The Q&A assistant's batching check, beside the request (qa_assist.go).
+		} else if autoIn = s.qaAutoAsked(r.Context(), wb, from, packet.ID); autoIn == 0 {
+			// The Q&A assistant's batching check, beside the request (qa_assist.go). Not for a
+			// question Auto mode is answering (qa_auto.go): a host who drops in still gets it
+			// grouped when their panel reads the clusters.
 			defer s.qaQuestionAsked(r.Context(), wb)
 		}
 	case types.MsgUpvote:
@@ -300,8 +303,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 	s.recordRealtime(slug, from, packet)
 
 	httpx.JSON(w, http.StatusOK, types.SendMessageResponse{
-		Destination: packet.Destination,
-		Recipients:  len(to),
+		Destination:    packet.Destination,
+		Recipients:     len(to),
+		AutoAnswerInMs: int(autoIn.Milliseconds()),
 	})
 }
 

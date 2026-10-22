@@ -488,6 +488,9 @@ func (s *Server) Routes() http.Handler {
 		// A simulive's engagement replay: the original session's chat, Q&A and polls on the
 		// video's timeline, privacy-shortened. Same credential. See simulive_replay.go.
 		r.Get("/webinars/{slug}/replay", s.handleReplayTimeline)
+		// A simulive's Auto mode: the asker's browser, a few seconds after a question, asks
+		// for the waiting batch to be answered — inline, in this request. See qa_auto.go.
+		r.Post("/webinars/{slug}/qa/auto", s.handleQAAuto)
 		// An image and the message carrying it, in one request: an upload endpoint that
 		// hands back a handle for a second call leaves orphaned bytes every time the second
 		// call does not happen.
@@ -723,6 +726,9 @@ func (s *Server) Routes() http.Handler {
 					// A simulive's engagement replay, as the host curates it.
 					r.Get("/replay", s.handleHostReplayPreview)
 					r.Put("/replay/hidden", s.handleSetReplayHidden)
+					// Its Auto mode: the assistant answering new questions. See qa_auto.go.
+					r.Get("/replay/auto", s.handleGetSimuliveAuto)
+					r.Put("/replay/auto", s.handlePutSimuliveAuto)
 
 					r.Get("/polls", s.handleListPolls)
 					r.Post("/polls", s.handleCreatePoll)
@@ -755,6 +761,8 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/followups", s.handleGetFollowups)
 					r.Put("/followups/{group}", s.handlePutFollowup)
 					r.Patch("/questions/{id}", s.handlePatchQuestion)
+					// Auto mode's answer taken back off a question (qa_auto.go).
+					r.Post("/questions/{id}/retract", s.handleRetractAutoAnswer)
 					// The live Q&A assistant: duplicate questions grouped, a Top
 					// questions strip, and a private draft answer. See qa_assist.go.
 					r.Get("/qa/clusters", s.handleQAClusters)

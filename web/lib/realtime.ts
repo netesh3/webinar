@@ -141,6 +141,9 @@ type QModMessage = {
   dismissed?: boolean;
   answered?: boolean;
   answer?: string;
+  /** Who signs the answer when it is not the host team: a simulive's Auto mode assistant
+   *  ("✨ <First name>'s assistant"). "" clears it (a host's edit, a retraction). */
+  answerBy?: string;
 };
 export type CtaOffer = { id: string; title: string; url: string; label: string };
 type CtaMessage = { kind: "cta" } & CtaOffer;
@@ -288,6 +291,8 @@ export type Question = QuestionMessage & {
   pinned: boolean;
   dismissed: boolean;
   answer: string;
+  /** The assistant's signature on an Auto mode answer; "" for the host team's. */
+  answerBy?: string;
 };
 
 /** One emoji in flight, from one tap. Randomised so a stream of taps doesn't look
@@ -443,7 +448,13 @@ function decode(bytes: Uint8Array): RoomMessage | null {
         pinned: typeof msg.pinned === "boolean" ? msg.pinned : undefined,
         dismissed: typeof msg.dismissed === "boolean" ? msg.dismissed : undefined,
         answered: typeof msg.answered === "boolean" ? msg.answered : undefined,
-        answer: typeof msg.answer === "string" ? str(msg.answer, 600) || undefined : undefined,
+        // An empty answer only clears one when the question is being reopened (a retract):
+        // "Mark answered" sends "" too, and must not wipe a written answer.
+        answer:
+          typeof msg.answer === "string"
+            ? str(msg.answer, 600) || (msg.answered === false ? "" : undefined)
+            : undefined,
+        answerBy: typeof msg.answerBy === "string" ? (str(msg.answerBy, 80) ?? "") : undefined,
       };
     }
     case "cta": {
@@ -798,7 +809,7 @@ export function useRealtime(
   const [voteBase, setVoteBase] = useState<Record<string, { count: number; mine: boolean }>>({});
   const [answered, setAnswered] = useState<Set<string>>(new Set());
   const [qMods, setQMods] = useState<
-    Record<string, { pinned: boolean; dismissed: boolean; answer: string }>
+    Record<string, { pinned: boolean; dismissed: boolean; answer: string; answerBy?: string }>
   >({});
   const [cta, setCta] = useState<CtaOffer | null>(null);
   const [captions, setCaptions] = useState<{
@@ -925,6 +936,7 @@ export function useRealtime(
                 pinned: current[msg.questionId]?.pinned ?? false,
                 dismissed: current[msg.questionId]?.dismissed ?? false,
                 answer: msg.answer ?? "",
+                answerBy: "",
               },
             }));
           }
@@ -935,6 +947,7 @@ export function useRealtime(
               pinned: false,
               dismissed: false,
               answer: "",
+              answerBy: "",
             };
             return {
               ...current,
@@ -942,11 +955,22 @@ export function useRealtime(
                 pinned: msg.pinned ?? prev.pinned,
                 dismissed: msg.dismissed ?? prev.dismissed,
                 answer: msg.answer ?? prev.answer,
+                // A written answer with no signature is the host team's: an edit of the
+                // assistant's answer stops being signed by the assistant.
+                answerBy: msg.answerBy ?? (msg.answer !== undefined ? "" : (prev.answerBy ?? "")),
               },
             };
           });
-          if (msg.answered) {
+          if (msg.answered === true) {
             setAnswered((current) => new Set(current).add(msg.questionId));
+          } else if (msg.answered === false) {
+            // Reopened: the assistant's answer retracted.
+            setAnswered((current) => {
+              if (!current.has(msg.questionId)) return current;
+              const next = new Set(current);
+              next.delete(msg.questionId);
+              return next;
+            });
           }
           break;
         case "cta":
@@ -1180,13 +1204,13 @@ export function useRealtime(
       for (const id of Object.keys(snap.base)) delete next[id];
       return next;
     });
-    if (snap.answered.length) {
-      setAnswered((current) => {
-        const next = new Set(current);
-        for (const id of snap.answered) next.add(id);
-        return next;
-      });
-    }
+    setAnswered((current) => {
+      const next = new Set(current);
+      for (const id of snap.answered) next.add(id);
+      // Authoritative for what it holds: an answer retracted while this page was away is gone.
+      for (const q of snap.questions) if (!snap.answered.includes(q.id)) next.delete(q.id);
+      return next;
+    });
     setQMods((current) => ({ ...current, ...snap.mods }));
   }, []);
 
@@ -1380,6 +1404,7 @@ export function useRealtime(
           pinned: mod?.pinned ?? false,
           dismissed: mod?.dismissed ?? false,
           answer: mod?.answer ?? "",
+          answerBy: mod?.answerBy ?? "",
         };
       })
       .filter((q) => host || !q.dismissed)

@@ -1,11 +1,13 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { clusterIdFor, draftFor, groupOpenQuestions, qaAssistOn, topQuestions } from "@/lib/qa-clusters";
 import { answerKind, questionAuthor } from "@/lib/qa-view";
+import { assistantSignature } from "@/lib/qa-auto";
+import { useToast } from "../providers";
 import { Alert } from "../controls";
-import { ArrowUpIcon, CheckIcon, EyeOffIcon, PinIcon, SendIcon } from "../icons";
+import { ArrowUpIcon, CheckIcon, EyeOffIcon, PinIcon, SendIcon, SparklesIcon } from "../icons";
 import { GlyphAvatar, SenderAvatar } from "../sender-avatar";
 import { RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
@@ -16,6 +18,7 @@ const MAX_CHARS = 600;
 
 export function QAPanel() {
   const { slug, realtime, controls, isHost, permissions, me } = useRoomUI();
+  const { notify } = useToast();
   const [draft, setDraft] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   const [sending, setSending] = useState(false);
@@ -58,6 +61,15 @@ export function QAPanel() {
       await api.patchQuestion(slug, id, patch);
     } catch {
       /* live packet already went out */
+    }
+  }
+
+  // A simulive's Auto mode answer taken back (qa_auto.go): the server tells the room.
+  async function retract(id: string) {
+    try {
+      await api.retractAutoAnswer(slug, id);
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : "Could not retract that answer.", "error");
     }
   }
 
@@ -180,6 +192,7 @@ export function QAPanel() {
                     }
                     onPin={() => void persist(q.id, { pinned: !q.pinned })}
                     onDismiss={() => void persist(q.id, { dismissed: true })}
+                    onRetract={() => void retract(q.id)}
                   />
                 ))}
               </>
@@ -271,6 +284,7 @@ function QuestionCard({
   onAnswered,
   onPin,
   onDismiss,
+  onRetract,
   extra,
 }: {
   question: Question;
@@ -280,17 +294,22 @@ function QuestionCard({
   onAnswered: (answer: string) => void;
   onPin: () => void;
   onDismiss: () => void;
+  /** Takes an Auto mode assistant's answer back (host side, answered questions only). */
+  onRetract?: () => void;
   /** Host-side extras under the actions: the Q&A assistant's Suggest an answer. */
   extra?: React.ReactNode;
 }) {
   /* A question replayed from a simulive's original session (lib/simulive-replay.ts) is
    * read-only for everyone: no vote, pin, hide or answer — it was answered (or not) then.
-   * The host curates the replay from the webinar's Setup tab instead. The AUTO MODE hook
-   * (answering the new audience's questions) is server-side; see simulive_replay.go. */
+   * The host curates the replay from the webinar's Setup tab instead. Auto mode (answering
+   * the new audience's questions) is server-side; see qa_auto.go and lib/qa-auto.ts. */
   const isHost = hostView && !q.replay;
   const [answer, setAnswer] = useState("");
+  // Editing the assistant's answer (host side): the edit is posted as the host team's.
+  const [editing, setEditing] = useState<string | null>(null);
   const author = questionAuthor(q, myIdentity);
   const answered = answerKind(q);
+  const signature = answered === "assistant" ? assistantSignature(q.answerBy) : null;
 
   return (
     <article
@@ -374,6 +393,58 @@ function QuestionCard({
               </div>
             </div>
           )}
+          {answered === "assistant" && (
+            // A simulive's Auto mode: signed by the assistant with the sparkle, never by the
+            // host — no host name or avatar on it (lib/qa-auto.ts).
+            <div className="mt-2 flex items-start gap-2 rounded-lg border border-brand-line bg-brand-soft/50 px-2.5 py-2">
+              <GlyphAvatar size="xs" className="mt-px">
+                <SparklesIcon className="size-3" />
+              </GlyphAvatar>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold text-brand">{signature}</p>
+                {editing == null ? (
+                  <p className="mt-0.5 text-[12.5px] leading-relaxed break-words wrap-anywhere text-ink">
+                    {q.answer}
+                  </p>
+                ) : (
+                  <form
+                    className="mt-1 grid gap-1.5"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const text = editing.trim();
+                      if (!text) return;
+                      onAnswered(text);
+                      setEditing(null);
+                    }}
+                  >
+                    <textarea
+                      className="field min-h-16 text-base md:text-[12px]"
+                      value={editing}
+                      maxLength={600}
+                      onChange={(e) => setEditing(e.target.value)}
+                      aria-label="Edit the answer"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        type="submit"
+                        disabled={!editing.trim()}
+                        className="min-h-11 rounded-md bg-ok px-2.5 text-[11.5px] font-semibold text-stage hover:bg-ok/85 disabled:opacity-40 md:min-h-7"
+                      >
+                        Save as your answer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(null)}
+                        className="min-h-11 rounded-md px-2.5 text-[11.5px] font-medium text-ink-2 hover:bg-surface-2 md:min-h-7"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
           {answered === "live" && (
             <p className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-ok/25 bg-ok-soft px-2 text-[10.5px] leading-5 font-semibold text-ok">
               <CheckIcon className="size-3" />
@@ -446,6 +517,24 @@ function QuestionCard({
               <EyeOffIcon className="size-3.5" />
               Hide
             </HostAction>
+          )}
+          {answered === "assistant" && (
+            <>
+              <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-[10.5px] font-medium text-brand">
+                <SparklesIcon className="size-3" />
+                Auto-answered
+              </span>
+              {editing == null && (
+                <HostAction onClick={() => setEditing(q.answer)} title="Edit the assistant's answer">
+                  Edit
+                </HostAction>
+              )}
+              {onRetract && (
+                <HostAction onClick={onRetract} title="Take the assistant's answer back: the question is open again">
+                  Retract
+                </HostAction>
+              )}
+            </>
           )}
           {!q.answered && (
             <HostAction onClick={() => onAnswered("")} tone="ok" title="Mark as answered">

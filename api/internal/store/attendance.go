@@ -220,6 +220,9 @@ func (s *Store) UpdateSessionQuestion(ctx context.Context, slug, id string, patc
 		       answer = COALESCE($4, q.answer),
 		       pinned = COALESCE($5, q.pinned),
 		       dismissed = COALESCE($6, q.dismissed),
+		       -- An answer the host team writes, or unanswering, is the host team's: the
+		       -- assistant's signature (0137) goes with the answer it was on.
+		       answer_by = CASE WHEN $4::text IS NOT NULL OR $3::bool = false THEN '' ELSE q.answer_by END,
 		       -- The first moment it was answered, for the simulive replay (0135). Never moved.
 		       answered_at = CASE
 		           WHEN q.answered_at IS NULL AND (COALESCE($3, q.answered) OR NULLIF($4, '') IS NOT NULL)

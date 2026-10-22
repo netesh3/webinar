@@ -66,7 +66,8 @@ export type QuestionSnapshot = {
   /** The server's count for each question and whether it includes the caller. */
   base: Record<string, { count: number; mine: boolean }>;
   answered: string[];
-  mods: Record<string, { pinned: boolean; dismissed: boolean; answer: string }>;
+  /** answerBy is the Auto mode assistant's signature on an answer, present only when signed. */
+  mods: Record<string, { pinned: boolean; dismissed: boolean; answer: string; answerBy?: string }>;
 };
 
 function role(value: string | undefined): HistorySender["role"] {
@@ -109,6 +110,8 @@ export function questionSnapshot(list: RoomQuestions): QuestionSnapshot {
       dismissed: q.dismissed === true,
       answer: clampText(q.answer, 600),
     };
+    const by = clampText(q.answerBy, 80);
+    if (by && q.answered) out.mods[id].answerBy = by;
   }
   for (const id of list.hidden ?? []) {
     out.mods[id] = { pinned: false, dismissed: true, answer: out.mods[id]?.answer ?? "" };

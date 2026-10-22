@@ -64,6 +64,10 @@ export const AIFeatureQAAnswer = "qa_answer";
  */
 export const AIFeatureQAAutoDraft = "qa_autodraft";
 /**
+ * A simulive's Auto mode: the assistant's posted answers to new audience questions.
+ */
+export const AIFeatureQAAuto = "qa_auto";
+/**
  * Past answers drafted from an ended session's transcript, for questions answered aloud.
  */
 export const AIFeatureQAHarvest = "qa_harvest";
@@ -205,6 +209,40 @@ export const QAAnswerMaxRunes = 600;
 export interface QAPostDraftResponse {
   questionIds: string[];
   answer: string;
+}
+/**
+ * SimuliveAutoAnswer is a simulive's Auto mode setting, as the Setup tab shows it:
+ * GET/PUT /api/host/webinars/{slug}/replay/auto.
+ */
+export interface SimuliveAutoAnswer {
+  enabled: boolean;
+  /**
+   * Available is whether the host's account has both features it needs (ai, replay_engage).
+   */
+  available: boolean;
+  /**
+   * Label is how the assistant's answers are signed for the audience.
+   */
+  label: string;
+}
+/**
+ * SimuliveAutoAnswerRequest switches a simulive's Auto mode.
+ */
+export interface SimuliveAutoAnswerRequest {
+  enabled: boolean;
+}
+/**
+ * QAAutoRequest is POST /api/webinars/{slug}/qa/auto: the asker's browser, a few seconds after
+ * a question, asking the server to answer the waiting batch. Same credential as /say.
+ */
+export interface QAAutoRequest {
+  joinKey?: string;
+}
+/**
+ * QAAutoResponse is how many questions this request's batch posted an answer on.
+ */
+export interface QAAutoResponse {
+  answered: number /* int */;
 }
 /**
  * QAClustersResponse is GET /api/host/webinars/{slug}/qa/clusters.
@@ -2791,6 +2829,13 @@ export interface WebinarOptions {
    * 	 * means no timed reminders.
    */
   reminders: number /* int */[];
+  /**
+   *  SimuliveAutoAnswer is a simulive's Auto mode: the assistant answers new audience
+   * 	 * questions its host's AI knowledge covers, signed "✨ <First name>'s assistant", without
+   * 	 * the host. Off by default; only acts with the account features ai AND replay_engage,
+   * 	 * and only for a simulive (cleared on anything else). See api/internal/api/qa_auto.go.
+   */
+  simuliveAutoAnswer?: boolean;
 }
 /**
  * SessionControls are the things a host flips *during* the session.
@@ -3254,6 +3299,12 @@ export interface SendMessageResponse {
    * room, because a broadcast carries no list.
    */
   recipients: number /* int */;
+  /**
+   *  AutoAnswerInMs is set on a question that Auto mode will consider (a simulive with the
+   * 	 * assistant on): the asker's browser calls POST /api/webinars/{slug}/qa/auto after this
+   * 	 * long, and that request is where the batch is answered. See qa_auto.go.
+   */
+  autoAnswerInMs?: number /* int */;
 }
 export interface WebinarReport {
   attended: number /* int */;
@@ -3313,6 +3364,12 @@ export interface SessionQuestion {
   anonymous?: boolean;
   answered: boolean;
   answer?: string;
+  /**
+   *  AnswerBy signs an answer that is not the host team's: the Auto mode assistant's label,
+   * 	 * "✨ <First name>'s assistant", exactly as everyone sees it. Empty for the host team. The
+   * 	 * room shows it as the author of the answer, never the host's name or avatar.
+   */
+  answerBy?: string;
   pinned?: boolean;
   dismissed?: boolean;
   upvotes: number /* int */;

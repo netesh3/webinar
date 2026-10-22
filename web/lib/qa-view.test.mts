@@ -53,6 +53,9 @@ eq(answerKind({ answered: false, answer: "" }), null, "open");
 eq(answerKind({ answered: true, answer: "" }), "live", "ticked with no text is answered live");
 eq(answerKind({ answered: true, answer: "  " }), "live", "whitespace is not an answer");
 eq(answerKind({ answered: true, answer: "Yes, in May." }), "text", "a written reply");
+eq(answerKind({ answered: true, answer: "Yes, in May.", answerBy: "✨ Asha's assistant" }), "assistant", "signed by the assistant");
+eq(answerKind({ answered: true, answer: "Yes.", answerBy: "  " }), "text", "a blank signature is the host team's");
+eq(answerKind({ answered: false, answer: "", answerBy: "✨ Asha's assistant" }), null, "retracted is open");
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);
 process.exit(failures === 0 ? 0 : 1);

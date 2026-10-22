@@ -37,6 +37,8 @@ const (
 	AIFeatureQAAnswer  = "qa_answer"
 	// Draft answers the assistant writes unasked, from the AI knowledge, batched with grouping.
 	AIFeatureQAAutoDraft = "qa_autodraft"
+	// A simulive's Auto mode: the assistant's posted answers to new audience questions.
+	AIFeatureQAAuto = "qa_auto"
 	// Past answers drafted from an ended session's transcript, for questions answered aloud.
 	AIFeatureQAHarvest = "qa_harvest"
 	// Embeddings for the AI knowledge's vector search (text-embedding-3-small).
@@ -148,6 +150,32 @@ const QAAnswerMaxRunes = 600
 type QAPostDraftResponse struct {
 	QuestionIDs []string `json:"questionIds"`
 	Answer      string   `json:"answer"`
+}
+
+// SimuliveAutoAnswer is a simulive's Auto mode setting, as the Setup tab shows it:
+// GET/PUT /api/host/webinars/{slug}/replay/auto.
+type SimuliveAutoAnswer struct {
+	Enabled bool `json:"enabled"`
+	// Available is whether the host's account has both features it needs (ai, replay_engage).
+	Available bool `json:"available"`
+	// Label is how the assistant's answers are signed for the audience.
+	Label string `json:"label"`
+}
+
+// SimuliveAutoAnswerRequest switches a simulive's Auto mode.
+type SimuliveAutoAnswerRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// QAAutoRequest is POST /api/webinars/{slug}/qa/auto: the asker's browser, a few seconds after
+// a question, asking the server to answer the waiting batch. Same credential as /say.
+type QAAutoRequest struct {
+	JoinKey string `json:"joinKey,omitempty"`
+}
+
+// QAAutoResponse is how many questions this request's batch posted an answer on.
+type QAAutoResponse struct {
+	Answered int `json:"answered"`
 }
 
 // QAClustersResponse is GET /api/host/webinars/{slug}/qa/clusters.

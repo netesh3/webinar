@@ -79,3 +79,10 @@ func SetQAClusterTiming(sync bool, every time.Duration) func() {
 	qaClusterSync, qaClusterEvery = sync, every
 	return func() { qaClusterSync, qaClusterEvery = oldSync, oldEvery }
 }
+
+// SetQAAuto sets Auto mode's delay and session cap; the returned func restores both.
+func SetQAAuto(delay time.Duration, sessionCap int) func() {
+	oldDelay, oldCap := qaAutoDelay, qaAutoSessionCap
+	qaAutoDelay, qaAutoSessionCap = delay, sessionCap
+	return func() { qaAutoDelay, qaAutoSessionCap = oldDelay, oldCap }
+}

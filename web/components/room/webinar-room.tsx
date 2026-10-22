@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
+import { withAutoAnswer } from "@/lib/qa-auto";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
 import { roomOptions, sharePublishOptions, useMediaPreferences } from "@/lib/media";
@@ -798,8 +799,16 @@ function ConnectedRoom({
   // whenever the SFU says this participant may publish on it, so the host and the
   // panelists never actually use this, and a promoted attendee stops using it the
   // moment their grant arrives.
-  const relay = useCallback<Relay>(
-    (req) => api.say(slug, joinKey ? { ...req, joinKey } : req),
+  //
+  // In a simulive's Auto mode, a question's response says when to come back, and this
+  // browser makes that one call: it is the request the server answers the batch in
+  // (lib/qa-auto.ts, api/internal/api/qa_auto.go).
+  const relay = useMemo<Relay>(
+    () =>
+      withAutoAnswer(
+        (req: Parameters<Relay>[0]) => api.say(slug, joinKey ? { ...req, joinKey } : req),
+        () => api.qaAuto(slug, joinKey || undefined),
+      ),
     [slug, joinKey],
   );
 
