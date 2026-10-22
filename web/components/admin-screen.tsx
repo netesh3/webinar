@@ -335,6 +335,39 @@ function AdminAccounts() {
     }
   }
 
+  /* Meetings are sized separately from webinar stages: everyone in a meeting is on camera, but
+   * each person pulls at most a page of thumbnails, so it grows with the room. Raising it says
+   * so and asks first, because 50 is the heaviest room this server runs. */
+  async function setMeetingCap(u: AdminUser, meetingCap: number | null) {
+    const next = meetingCap ?? u.planMeetingSeats;
+    if (next > u.planMeetingSeats &&
+        !window.confirm(
+          `Allow meetings of up to ${next} people for ${u.name || u.email}? Their plan allows ${u.planMeetingSeats}.\n\n` +
+          "Webinar stages are not affected.",
+        )) {
+      return;
+    }
+    setBusy(u.id);
+    try {
+      await api.setUserMeetingCap(u.id, meetingCap);
+      setUsers((prev) =>
+        (prev ?? []).map((row) =>
+          row.id === u.id ? { ...row, meetingCap: meetingCap ?? undefined, meetingSeats: next } : row,
+        ),
+      );
+      notify(
+        meetingCap === null
+          ? `${u.name || u.email} is back on the plan's meeting size (${u.planMeetingSeats} people).`
+          : `${u.name || u.email} may hold meetings of ${meetingCap} people.`,
+        "ok",
+      );
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Could not change the meeting size.", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /* A bigger stage is the costliest switch here (traffic grows with its square), so raising
    * it above the plan says what it costs and asks first. */
   async function setStageCap(u: AdminUser, stageCap: number | null) {
@@ -729,6 +762,27 @@ function AdminAccounts() {
                             <option key={n} value={n}>
                               Stage: {n}
                               {n > u.planStageSeats ? " (over plan)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {u.canHost && (
+                        <select
+                          aria-label="People in a meeting"
+                          title="People in one meeting at once, host included. Webinar stages are separate."
+                          value={u.meetingCap ?? ""}
+                          disabled={busy === u.id}
+                          onChange={(e) =>
+                            void setMeetingCap(u, e.target.value === "" ? null : Number(e.target.value))
+                          }
+                          className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+                        >
+                          <option value="">Meeting: plan ({u.planMeetingSeats})</option>
+                          {[2, 5, 10, 15, 20, 25, 30, 40, 50].map((n) => (
+                            <option key={n} value={n}>
+                              Meeting: {n}
+                              {n > u.planMeetingSeats ? " (over plan)" : ""}
                             </option>
                           ))}
                         </select>

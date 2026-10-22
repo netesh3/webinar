@@ -16,6 +16,7 @@ import type {
   PlanFeatures,
   PlanFeaturesBody,
   SetUserMediaQuotaRequest,
+  SetUserMeetingCapRequest,
   SetUserStageCapRequest,
   SetUserPlanRequest,
   WebinarImageFromMediaRequest,
@@ -1077,6 +1078,11 @@ export const api = {
     patch<StatusResponse>(`/api/admin/users/${seg(userId)}/stage-cap`, {
       stageCap: stageCap ?? undefined,
     } satisfies SetUserStageCapRequest),
+  /** Set how many people one of an account's meetings holds; null goes back to its plan. */
+  setUserMeetingCap: (userId: string, meetingCap: number | null) =>
+    patch<StatusResponse>(`/api/admin/users/${seg(userId)}/meeting-cap`, {
+      meetingCap: meetingCap ?? undefined,
+    } satisfies SetUserMeetingCapRequest),
 
   /** Set a custom max meeting duration for a user in minutes. Pass null to reset to system default. */
   setUserMaxDuration: (userId: string, maxDurationMin: number | null) =>

@@ -239,6 +239,34 @@ func (s *Server) handleSetUserStageCap(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
 }
 
+/* handleSetUserMeetingCap is PATCH /api/admin/users/{id}/meeting-cap: how many people one of
+ * this account's meetings holds, over its plan's (types.PlanMeetingCap). Null goes back to the
+ * plan. Webinar stages are not affected (stage-cap). Takes effect on the next person admitted. */
+func (s *Server) handleSetUserMeetingCap(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	targetID := chi.URLParam(r, "id")
+
+	var body types.SetUserMeetingCapRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if body.MeetingCap != nil && (*body.MeetingCap < 1 || *body.MeetingCap > types.MaxMeetingCapOverride) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "invalid_meeting_cap",
+			fmt.Sprintf("A meeting holds 1 to %d people, or null to use the plan.", types.MaxMeetingCapOverride))
+		return
+	}
+	if err := s.store.SetUserMeetingCap(r.Context(), targetID, body.MeetingCap); errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "No such account.")
+		return
+	} else if err != nil {
+		s.fail(w, r, "set user meeting cap", err)
+		return
+	}
+	s.log.Info("user meeting cap changed", "admin", admin.ID, "target", targetID, "meeting_cap", body.MeetingCap)
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
+}
+
 /* handleSetFeature is PATCH /api/admin/users/{id}/features.
  *
  * One feature per request, carrying the end state rather than a verb, for the same reason

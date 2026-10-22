@@ -34,6 +34,20 @@ func (s *Server) stageCapForHost(ctx context.Context, hostID string) int {
 	return types.PlanStageCap(plan)
 }
 
+// meetingCapForHost is how many people one of this host's meetings holds: the admin's
+// override if set, else the plan's. A failed read is the plan default, never more.
+func (s *Server) meetingCapForHost(ctx context.Context, hostID string) int {
+	plan, override, err := s.store.MeetingCapForUser(ctx, hostID)
+	if err != nil {
+		s.log.Warn("meeting cap: could not read plan", "host", hostID, "error", err)
+		return types.PlanMeetingCap("")
+	}
+	if override != nil && *override > 0 {
+		return *override
+	}
+	return types.PlanMeetingCap(plan)
+}
+
 // onStage reports whether a live participant is publishing: anyone with a stage role,
 // or an attendee allowed to speak.
 func onStage(p types.LiveParticipant) bool {

@@ -1838,6 +1838,10 @@ export type WebinarKind = string;
 export const KindLive: WebinarKind = "live";
 export const KindSimulive: WebinarKind = "simulive";
 export const KindRecurring: WebinarKind = "recurring";
+/**
+ * KindMeeting is a meeting: everyone admitted is on the stage, sized by PlanMeetingCap.
+ */
+export const KindMeeting: WebinarKind = "meeting";
 export type ApprovalMode = string;
 export const ApprovalAutomatic: ApprovalMode = "automatic";
 export const ApprovalManual: ApprovalMode = "manual";
@@ -5432,6 +5436,13 @@ export interface AdminUser {
   planStageSeats: number /* int */;
   stageSeats: number /* int */;
   /**
+   * MeetingCap is an admin's override of the plan's meeting size (PlanMeetingCap); nil uses
+   * the plan. PlanMeetingSeats is the plan's; MeetingSeats is what applies.
+   */
+  meetingCap?: number /* int */;
+  planMeetingSeats: number /* int */;
+  meetingSeats: number /* int */;
+  /**
    * Plan is the paid tier, empty for the launch default.
    */
   plan?: Plan;
@@ -5970,6 +5981,16 @@ export interface SetUserStageCapRequest {
  * MaxStageCapOverride is the largest stage an admin may allow one account.
  */
 export const MaxStageCapOverride = 25;
+/**
+ * SetUserMeetingCapRequest is PATCH /api/admin/users/{id}/meeting-cap. Null goes back to the plan.
+ */
+export interface SetUserMeetingCapRequest {
+  meetingCap?: number /* int */;
+}
+/**
+ * MaxMeetingCapOverride is the most people an admin may allow in one account's meetings.
+ */
+export const MaxMeetingCapOverride = 50;
 export interface SetUserMaxDurationRequest {
   maxDurationMin?: number /* int */;
 }
