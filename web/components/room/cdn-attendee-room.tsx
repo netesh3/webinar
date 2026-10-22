@@ -16,15 +16,19 @@ import type { JoinResponse } from "@/lib/api-types";
 import { useMediaPreferences } from "@/lib/media";
 import {
   useMediaPermissions,
+  useLiveCoHost,
   useLiveRole,
   type MediaPermissions,
 } from "@/lib/permissions";
 import {
   useRealtime,
   useSessionControls,
+  type Realtime,
   type Relay,
   type Sender,
 } from "@/lib/realtime";
+import { startPositionSec, sharedPositionMs } from "@/lib/simulive-replay";
+import { useSimuliveReplay } from "@/lib/use-simulive-replay";
 import { countSince } from "@/lib/room-history";
 import { useRoomHistory } from "@/lib/room-history-sync";
 import { useAudiencePolls } from "@/lib/polls";
@@ -75,6 +79,7 @@ export function CdnAttendeeRoom({
   joinKey,
   onLeave,
   onPromoted,
+  presenter = false,
 }: {
   join: JoinResponse;
   slug: string;
@@ -83,6 +88,10 @@ export function CdnAttendeeRoom({
   joinKey?: string;
   onLeave: () => void;
   onPromoted: () => void;
+  /** The host team dropping into a simulive (JoinResponse.simulive): they watch the
+   *  recording like the audience, and chat, answer and moderate as the host. Their grant
+   *  publishes no audio or video (lk.Spec.NoMedia), so nothing of theirs reaches anyone. */
+  presenter?: boolean;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
   // A phone left to watch must not auto-lock mid-webinar (lib/wake-lock.ts).
@@ -118,6 +127,9 @@ export function CdnAttendeeRoom({
 
   // Live roles & permissions
   const liveRole = useLiveRole(room, join.role);
+  // The host, or a co-host, dropping into a simulive (see `presenter`). Never an attendee.
+  const isCoHost = useLiveCoHost(room);
+  const isHost = presenter && (liveRole === "host" || isCoHost);
 
   // Real-time chat relay
   const relay = useCallback<Relay>(
@@ -231,7 +243,7 @@ export function CdnAttendeeRoom({
   }, [room, connect, disconnect, join.url, join.token]);
 
   // Tools & layout
-  const availableTools = useAvailableTools({ isHost: false, controls, streaming: true });
+  const availableTools = useAvailableTools({ isHost, controls, streaming: true });
   const tools = useToolLayout(availableTools);
   const raisedHands = useRaisedHandsController(tools);
   const compact = useCompact();
@@ -249,10 +261,31 @@ export function CdnAttendeeRoom({
   // Chat and Q&A history, on joining and after every reconnect. See useRoomHistory.
   useRoomHistory(room, slug, joinKey, realtime);
 
+  /* A simulive's engagement replay (lib/simulive-replay.ts): the original session's chat,
+   * Q&A and polls, scheduled against this player's own position and folded into the room's
+   * conversation alongside what this audience says live. Everything below reads `shown`. */
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const replayed = useSimuliveReplay({
+    slug,
+    joinKey,
+    enabled: Boolean(join.simulive && join.replayEngage),
+    video: videoEl,
+    startedAt: startedAt ?? join.startedAt ?? null,
+    chat: realtime.chat,
+    questions: realtime.questions,
+  });
+  const shown = useMemo<Realtime>(
+    () =>
+      replayed.chat === realtime.chat && replayed.questions === realtime.questions
+        ? realtime
+        : { ...realtime, chat: replayed.chat, questions: replayed.questions },
+    [realtime, replayed],
+  );
+
   // Unread badge counters. History read back on mount predates this page and is not
   // counted — see the same watermark in webinar-room.tsx.
-  const chatCount = realtime.chat.length;
-  const questionCount = realtime.questions.length;
+  const chatCount = shown.chat.length;
+  const questionCount = shown.questions.length;
   const chatVisible = isToolVisible(tools.layout, tools.panelTab, "chat", tools.poppedOut);
   const qaVisible = isToolVisible(tools.layout, tools.panelTab, "qa", tools.poppedOut);
 
@@ -265,7 +298,7 @@ export function CdnAttendeeRoom({
   if (wantSeen.chat !== seen.chat || wantSeen.qa !== seen.qa) setSeen(wantSeen);
 
   // By id, not by count — see useMentionBadge.
-  const mentions = useMentionBadge(realtime.chat, me.identity, chatVisible);
+  const mentions = useMentionBadge(shown.chat, me.identity, chatVisible);
 
   const unread = useMemo<Record<ToolId, number>>(
     () => ({
@@ -273,13 +306,13 @@ export function CdnAttendeeRoom({
         ? 0
         : Math.min(
             Math.max(0, chatCount - seen.chat),
-            countSince(realtime.chat, mountedAt, me.identity),
+            countSince(shown.chat, mountedAt, me.identity),
           ),
       qa: qaVisible
         ? 0
         : Math.min(
             Math.max(0, questionCount - seen.qa),
-            countSince(realtime.questions, mountedAt, me.identity),
+            countSince(shown.questions, mountedAt, me.identity),
           ),
       polls: 0,
       participants: 0,
@@ -297,7 +330,7 @@ export function CdnAttendeeRoom({
       facebook: 0,
       whiteboard: 0,
     }),
-    [chatVisible, qaVisible, chatCount, questionCount, seen, realtime.chat, realtime.questions, mountedAt, me.identity],
+    [chatVisible, qaVisible, chatCount, questionCount, seen, shown.chat, shown.questions, mountedAt, me.identity],
   );
 
   const leave = useCallback(() => {
@@ -305,16 +338,16 @@ export function CdnAttendeeRoom({
     onLeaveRef.current();
   }, [disconnect]);
 
-  const roster = useHostRoster(slug, false, room);
+  const roster = useHostRoster(slug, isHost, room);
   const polls = useAudiencePolls(
     slug,
     joinKey,
     realtime.pollsRevision,
-    true,
+    !isHost,
     controls.pollsEnabled,
     room,
   );
-  const survey = useAudienceSurvey(slug, joinKey, realtime.surveyRevision, true);
+  const survey = useAudienceSurvey(slug, joinKey, realtime.surveyRevision, !isHost);
   const network = useNetworkHealth(room, false);
 
   const ui = useMemo<RoomUI>(
@@ -331,14 +364,14 @@ export function CdnAttendeeRoom({
       maxDurationMin: maxDurationMin ?? join.maxDurationMin,
       recording,
       recordingStartedAt,
-      isHost: false,
+      isHost,
       permissions,
       me,
       entryVideo: null,
       recovering: null,
       over: false,
       markEnding: () => undefined,
-      realtime,
+      realtime: shown,
       roster,
       polls,
       network,
@@ -367,9 +400,10 @@ export function CdnAttendeeRoom({
       maxDurationMin,
       recording,
       recordingStartedAt,
+      isHost,
       permissions,
       me,
-      realtime,
+      shown,
       roster,
       polls,
       network,
@@ -455,6 +489,14 @@ export function CdnAttendeeRoom({
                         streamUrl={streamUrl}
                         lowLatency={Boolean(join.cdnLowLatency)}
                         coverUrl={initialImageUrl}
+                        onVideo={setVideoEl}
+                        // A simulive is one shared clock: joining late starts where everybody
+                        // else is, not at the top of the recording.
+                        sharedStartMs={
+                          join.simulive
+                            ? () => sharedPositionMs(startedAt ?? join.startedAt ?? null, Date.now())
+                            : undefined
+                        }
                       />
                     </div>
 
@@ -507,12 +549,24 @@ function BroadcastPlayer({
   streamUrl,
   lowLatency,
   coverUrl,
+  onVideo,
+  sharedStartMs,
 }: {
   streamUrl: string;
   lowLatency?: boolean;
   coverUrl?: string;
+  onVideo?: (video: HTMLVideoElement | null) => void;
+  sharedStartMs?: () => number | null;
 }) {
-  return <HlsPlayer streamUrl={streamUrl} lowLatency={lowLatency} coverUrl={coverUrl} />;
+  return (
+    <HlsPlayer
+      streamUrl={streamUrl}
+      lowLatency={lowLatency}
+      coverUrl={coverUrl}
+      onVideo={onVideo}
+      sharedStartMs={sharedStartMs}
+    />
+  );
 }
 
 function isPlaylistUrl(url: string): boolean {
@@ -523,12 +577,27 @@ function HlsPlayer({
   streamUrl,
   lowLatency,
   coverUrl,
+  onVideo,
+  sharedStartMs,
 }: {
   streamUrl: string;
   lowLatency?: boolean;
   coverUrl?: string;
+  /** Hands the element up: a simulive's replay is scheduled against its position. */
+  onVideo?: (video: HTMLVideoElement | null) => void;
+  /** A simulive's shared position, read when the media loads: a late joiner starts there. */
+  sharedStartMs?: () => number | null;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    onVideo?.(videoRef.current);
+    return () => onVideo?.(null);
+  }, [onVideo]);
+  // Read at load time through a ref, so a new closure each render does not reload the media.
+  const sharedStart = useRef(sharedStartMs);
+  useEffect(() => {
+    sharedStart.current = sharedStartMs;
+  }, [sharedStartMs]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // A plain file is muted before it plays (see the effect below); starting in
@@ -554,6 +623,12 @@ function HlsPlayer({
       video.play().catch(() => {});
     };
 
+    // A simulive's late joiner starts at the shared position (lib/simulive-replay.ts).
+    const seekToShared = () => {
+      const at = startPositionSec(sharedStart.current?.() ?? null, video.duration);
+      if (at != null && Math.abs(video.currentTime - at) > 2) video.currentTime = at;
+    };
+
     const isPlaylist = isPlaylistUrl(activeUrl);
     if (!isPlaylist) {
       video.playsInline = true;
@@ -562,6 +637,7 @@ function HlsPlayer({
       video.src = activeUrl;
       const onLoaded = () => {
         setLoading(false);
+        seekToShared();
         tryPlay();
       };
       video.addEventListener("loadedmetadata", onLoaded);
@@ -593,6 +669,8 @@ function HlsPlayer({
         ...(ll
           ? { liveDurationInfinity: true }
           : { liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 8 }),
+        // A simulive's recording (VOD) starts at the shared position; -1 is hls.js's default.
+        startPosition: ll ? -1 : (startPositionSec(sharedStart.current?.() ?? null) ?? -1),
         // Let the player nudge up to 1.5x to close a gap instead of waiting
         // for it to drain on its own.
         maxLiveSyncPlaybackRate: ll ? 1.5 : 1,
@@ -672,6 +750,7 @@ function HlsPlayer({
       const onLoadedMetadata = () => {
         setLoading(false);
         setError(null);
+        if (!ll) seekToShared();
         tryPlay();
       };
       const onNativeError = () => {

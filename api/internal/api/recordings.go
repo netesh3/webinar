@@ -110,6 +110,9 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "start recording: load webinar", err)
 		return
 	}
+	if refuseSimuliveRecording(w, wb) {
+		return
+	}
 	if wb.Status == types.StatusEnded || wb.Status == types.StatusDraft {
 		httpx.Error(w, http.StatusConflict, "not_recordable",
 			"This webinar isn't running, so there's nothing to record.")

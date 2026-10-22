@@ -116,6 +116,9 @@ export type ChatMessage = {
   /** Who this message @mentions, by identity, as the server validated it. May include
    *  "@everyone". Absent when it mentions nobody — see lib/mentions.ts. */
   mentions?: string[];
+  /** Replayed from the original session of a simulive (lib/simulive-replay.ts): shown in
+   *  the conversation but not a message of this room — nothing to delete or reply to. */
+  replay?: boolean;
 };
 
 export type QuestionMessage = {
@@ -125,6 +128,8 @@ export type QuestionMessage = {
   text: string;
   anonymous: boolean;
   at: number;
+  /** Replayed from a simulive's original session: read-only — no vote, pin or answer. */
+  replay?: boolean;
 };
 
 type UpvoteMessage = { kind: "upvote"; questionId: string; from: Sender };

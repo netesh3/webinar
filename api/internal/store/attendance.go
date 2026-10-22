@@ -219,7 +219,11 @@ func (s *Store) UpdateSessionQuestion(ctx context.Context, slug, id string, patc
 		   SET answered = COALESCE($3, q.answered),
 		       answer = COALESCE($4, q.answer),
 		       pinned = COALESCE($5, q.pinned),
-		       dismissed = COALESCE($6, q.dismissed)
+		       dismissed = COALESCE($6, q.dismissed),
+		       -- The first moment it was answered, for the simulive replay (0135). Never moved.
+		       answered_at = CASE
+		           WHEN q.answered_at IS NULL AND (COALESCE($3, q.answered) OR NULLIF($4, '') IS NOT NULL)
+		           THEN now() ELSE q.answered_at END
 		  FROM webinars w
 		 WHERE q.webinar_id = w.id AND w.slug = $1 AND q.id = $2`,
 		slug, id, patch.Answered, patch.Answer, patch.Pinned, patch.Dismissed)

@@ -79,6 +79,9 @@ type Metadata struct {
 	// rights over the room, not just the stage. See GrantFor's RolePanelist case
 	// for what that actually grants, and Spec.CoHost for where it comes from.
 	CoHost bool `json:"coHost,omitempty"`
+	// NoMedia: see Spec.NoMedia. Kept here so a permission rewrite read back from the
+	// participant (SetSpeaking) cannot drop it.
+	NoMedia bool `json:"noMedia,omitempty"`
 }
 
 // Spec is everything that shapes one participant's permissions.
@@ -113,6 +116,10 @@ type Spec struct {
 	// DataOnly restricts the participant to data channels only (no WebRTC audio/video subscription).
 	// Used for CDN broadcast attendees to receive Chat/Polls/Q&A without consuming SFU media bandwidth.
 	DataOnly bool
+	// NoMedia takes audio and video publishing out of any role's grant while keeping the
+	// rest (RoomAdmin, data, metadata). The host team in a simulive: they drop in to watch,
+	// chat and answer, and nothing of theirs may reach an audience watching the recording.
+	NoMedia bool
 }
 
 // MicrophoneSource is LiveKit's name for the microphone in a grant's source list.
@@ -246,6 +253,12 @@ func GrantFor(spec Spec) (*auth.VideoGrant, error) {
 	default:
 		return nil, fmt.Errorf("unknown role %q", spec.Role)
 	}
+	// NoMedia: whatever the role, no audio or video. An explicit false — nil would be
+	// "everything" (see the DANGER note above) — and no source list to widen it again.
+	if spec.NoMedia {
+		base.CanPublish = ptr(false)
+		base.CanPublishSources = nil
+	}
 	return base, nil
 }
 
@@ -281,6 +294,7 @@ func metadataFor(spec Spec) Metadata {
 		// Same narrowing: somebody back in the audience is not a promoted anybody.
 		Promoted: spec.Promoted && spec.Role == types.RolePanelist,
 		CoHost:   spec.CoHost && spec.Role == types.RolePanelist,
+		NoMedia:  spec.NoMedia,
 	}
 }
 
@@ -661,6 +675,10 @@ func permissionFor(spec Spec) *livekit.ParticipantPermission {
 	default:
 		perm.CanPublish = false
 	}
+	if spec.NoMedia {
+		perm.CanPublish = false
+		perm.CanPublishSources = nil
+	}
 	return perm
 }
 
@@ -949,6 +967,8 @@ func specOf(p *livekit.ParticipantInfo) (Spec, bool) {
 			// them every REST action a co-host may take. The two disagreeing is
 			// exactly what "co-host isn't working" looks like from the room.
 			spec.CoHost = m.CoHost
+			// And this: a mute and an unmute must not hand a simulive's host team a camera.
+			spec.NoMedia = m.NoMedia
 		}
 	}
 	return spec, true

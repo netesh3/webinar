@@ -40,7 +40,8 @@ var broadcastRestartDelay = 3 * time.Second
 func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, sfu RoomManager) {
 	// A meeting has no audience to feed and no stream destinations: never a mix, and never an
 	// egress worker booted for one (meeting.go).
-	if sfu == nil || isMeeting(wb) {
+	// Nor a simulive: no mix and no egress, ever (mixPlan, refuseSimuliveRecording).
+	if sfu == nil || isMeeting(wb) || wb.Kind == types.KindSimulive {
 		return
 	}
 	// On a project with an egress pool, the mix runs on a worker VM: make sure one is up.

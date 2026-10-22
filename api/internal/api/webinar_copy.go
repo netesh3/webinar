@@ -48,7 +48,7 @@ func (s *Server) handleCopyWebinar(w http.ResponseWriter, r *http.Request) {
 	if in.Kind == types.KindSimulive && !s.ownsReadyRecording(r.Context(), user.ID, in.SimuliveRecordingID) {
 		in.Kind, in.SimuliveRecordingID = types.KindLive, ""
 	}
-	if in.Options.AutoRecord && !user.HasFeature(types.FeatureCloudRecording) {
+	if in.Options.AutoRecord && (in.Kind == types.KindSimulive || !user.HasFeature(types.FeatureCloudRecording)) {
 		in.Options.AutoRecord = false
 	}
 	if zoom.IsVenue(in.Venue) && !user.HasFeature(types.FeatureZoom) {

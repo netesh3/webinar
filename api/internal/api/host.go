@@ -918,6 +918,10 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	if in.Kind == types.KindSimulive && strings.TrimSpace(in.SimuliveRecordingID) == "" {
 		fields["simuliveRecordingId"] = "Pick a recording to play as the live session."
 	}
+	// Never recorded again: see refuseSimuliveRecording.
+	if in.Kind == types.KindSimulive && in.Options.AutoRecord {
+		fields["options.autoRecord"] = "A simulive session plays a recording, so it can't be recorded again."
+	}
 
 	switch in.Status {
 	case types.StatusScheduled, types.StatusDraft:
@@ -1289,6 +1293,7 @@ func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
 		Room:     room,
 		Identity: identity,
 		Name:     target.Name,
+		NoMedia:  wb.Kind == types.KindSimulive,
 	}); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
 		s.log.Warn("transfer host: could not promote new host in the room",
 			"slug", slug, "identity", identity, "error", err)
@@ -1298,6 +1303,7 @@ func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
 		Room:     room,
 		Identity: fromIdentity,
 		Name:     user.Name,
+		NoMedia:  wb.Kind == types.KindSimulive,
 	}); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
 		s.log.Warn("transfer host: could not demote previous host in the room",
 			"slug", slug, "identity", fromIdentity, "error", err)
@@ -1760,7 +1766,7 @@ func (s *Server) handleAllowAllToSpeak(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "allow all: load webinar", err)
 		return
 	}
-	if refuseInMeeting(w, wb) {
+	if refuseInMeeting(w, wb) || refuseInSimulive(w, wb) {
 		return
 	}
 
@@ -1814,7 +1820,7 @@ func (s *Server) handleBringAllOnStage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "bring all on stage: load webinar", err)
 		return
 	}
-	if refuseInMeeting(w, wb) {
+	if refuseInMeeting(w, wb) || refuseInSimulive(w, wb) {
 		return
 	}
 
@@ -2038,6 +2044,9 @@ func (s *Server) handleSetStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if refuseInMeeting(w, wb) {
+		return
+	}
+	if body.Role == types.RolePanelist && refuseInSimulive(w, wb) {
 		return
 	}
 
@@ -2678,6 +2687,7 @@ func (s *Server) handleSetCoHost(w http.ResponseWriter, r *http.Request) {
 			CoHost:      body.CoHost,
 			MutedByHost: grant.MutedByHost,
 			Hidden:      lk.HiddenFor(types.RolePanelist, wb.Controls.HideAttendees),
+			NoMedia:     wb.Kind == types.KindSimulive,
 		}
 		if err := sfu.SetRole(r.Context(), spec); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
 			s.log.Warn("set co-host: apply live", "slug", slug, "user", userID, "error", err)
