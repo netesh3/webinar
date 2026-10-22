@@ -177,7 +177,7 @@ func (s *Server) serveCaptions(w http.ResponseWriter, r *http.Request, wb types.
 	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 	w.Header().Set("Cache-Control", cacheControl)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write([]byte(captionvtt.Render(cues)))
+	_, _ = w.Write([]byte(captionvtt.Render(cues))) // #nosec G705 -- escaped WebVTT sent as text/vtt with nosniff, never HTML
 }
 
 func (s *Server) noCaptions(w http.ResponseWriter) {
