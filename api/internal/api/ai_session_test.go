@@ -167,17 +167,22 @@ func TestAISwitchKeepsATranscriptWithCaptionsHidden(t *testing.T) {
 		t.Fatalf("caption after off: %d, want 409", code)
 	}
 
-	// AI back on mid-session: dispatched again.
+	// AI back on mid-session: the session was switched off once, so it stays out of AI
+	// (AIOffThisSession) — no transcript agent comes back for it.
 	if res, raw := h.patchAI(wb.ID, true); res.StatusCode != http.StatusOK {
 		t.Fatalf("ai on: %d %s", res.StatusCode, raw)
 	}
-	if _, ok := h.rooms.dispatched(room); !ok {
-		t.Fatal("AI on mid-session did not dispatch the agent")
+	if _, ok := h.rooms.dispatched(room); ok {
+		t.Fatal("AI back on after an off brought the transcript agent back")
 	}
 
-	// AI off with captions shown: the agent stays, for the captions.
-	if res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/controls", types.ControlsPatch{CaptionsEnabled: &on}); res.StatusCode != http.StatusOK {
-		t.Fatalf("captions on: %d %s", res.StatusCode, raw)
+	// Captions shown (the room's CC button) bring the agent back for the captions alone, and
+	// AI off then leaves it there, for the captions.
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/captions/server", map[string]any{"on": true}); res.StatusCode != http.StatusOK {
+		t.Fatalf("server captions on: %d %s", res.StatusCode, raw)
+	}
+	if _, ok := h.rooms.dispatched(room); !ok {
+		t.Fatal("CC on did not dispatch the agent")
 	}
 	h.patchAI(wb.ID, false)
 	if _, ok := h.rooms.dispatched(room); !ok {
@@ -206,4 +211,53 @@ func TestAISwitchOffMeansNoRecap(t *testing.T) {
 	if m := h.recapMails(wb.ID); len(m) != 0 {
 		t.Fatalf("mails = %+v, want none", m)
 	}
+}
+
+/* Any "off" while live keeps the whole session out of AI, even if AI is switched back on
+ * before the end (decided 2026-10-22). The next session starts clean. */
+func TestAISwitchOffDuringTheSessionBlocksItEvenIfTurnedBackOn(t *testing.T) {
+	h, model := aiHarness(t, recapReply, nil)
+	recapHost(t, h)
+	wb := h.newWebinar("Off then on again", nil)
+
+	// Off before the session starts is not "during": a session started with AI on is clean.
+	h.patchAI(wb.ID, false)
+	h.patchAI(wb.ID, true)
+	h.goLive(wb.ID)
+	if got := mustWebinar(t, h, wb.ID); got.Controls.AIOffThisSession {
+		t.Fatal("a session started with AI on begins marked off")
+	}
+
+	h.caption(wb.ID, "user_x", "a line said while AI was briefly off")
+	h.question(wb.ID, "oo1", "Is this summarised?", 1)
+	h.patchAI(wb.ID, false)
+	if res, raw := h.patchAI(wb.ID, true); res.StatusCode != http.StatusOK {
+		t.Fatalf("ai back on: %d %s", res.StatusCode, raw)
+	}
+	if got := mustWebinar(t, h, wb.ID); !got.Controls.AIEnabled || !got.Controls.AIOffThisSession {
+		t.Fatalf("controls after off/on = %+v, want AI on but marked off this session", got.Controls)
+	}
+	h.endSession(wb.ID)
+	h.runRecaps()
+	if got := h.getRecap(wb.ID); got.Status != types.RecapSkipped || got.Reason != types.RecapReasonAISessionOff {
+		t.Fatalf("recap = %+v, want skipped ai_session_off", got)
+	}
+	if model.callCount() != 0 {
+		t.Fatalf("model calls = %d, want none", model.callCount())
+	}
+
+	// The next live session starts clean.
+	h.goLive(wb.ID)
+	if got := mustWebinar(t, h, wb.ID); got.Controls.AIOffThisSession {
+		t.Fatal("the flag survived into the next session")
+	}
+}
+
+func mustWebinar(t *testing.T, h *harness, slug string) types.Webinar {
+	t.Helper()
+	wb, err := h.store.WebinarBySlug(context.Background(), slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wb
 }

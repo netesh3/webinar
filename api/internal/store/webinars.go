@@ -30,6 +30,7 @@ const webinarColumns = `
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.captions_enabled, (w.server_captions AND w.server_captions_live),
 	w.ai_enabled, ('ai' = ANY (effective_features(effective_plan(h.id), h.features, h.features_off))),
+	w.ai_off_this_session,
 	w.locked, w.audience_layout, w.sfu_project, w.image_key,
 	w.simulive_recording_id::text,
 	w.stream_watch, w.stream_on, (w.stream_ingest <> ''),
@@ -80,7 +81,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.ChatDestination,
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
 		&c.PollsEnabled, &c.CaptionsEnabled, &c.ServerCaptions,
-		&c.AIEnabled, &c.AIAvailable,
+		&c.AIEnabled, &c.AIAvailable, &c.AIOffThisSession,
 		&c.Locked, &c.AudienceLayout, &w.SFUProject, &imageKey,
 		&simuliveID,
 		&streamWatch, &streamOn, &streamSaved,
@@ -850,7 +851,9 @@ func (s *Store) SetStatus(ctx context.Context, slug string, status types.Webinar
 	var col string
 	switch status {
 	case types.StatusLive:
-		col = `started_at = coalesce(started_at, now()), ended_at = NULL, empty_since = NULL`
+		// A new live session starts AI-clean, unless the switch is already off.
+		col = `started_at = coalesce(started_at, now()), ended_at = NULL, empty_since = NULL,
+		       ai_off_this_session = NOT ai_enabled`
 	case types.StatusEnded:
 		col = `ended_at = now(), empty_since = NULL`
 	case types.StatusScheduled, types.StatusDraft:
@@ -905,6 +908,7 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 			polls_enabled      = coalesce($11, polls_enabled),
 			captions_enabled   = coalesce($12, captions_enabled),
 			ai_enabled         = coalesce($13, ai_enabled),
+			ai_off_this_session = ai_off_this_session OR (status = 'live' AND $13::boolean IS FALSE),
 			audience_layout    = coalesce($14, audience_layout),
 			updated_at         = now()
 		 WHERE slug = $1`,
