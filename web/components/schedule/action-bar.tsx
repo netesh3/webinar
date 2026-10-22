@@ -27,6 +27,7 @@ function followUpsText(f: FollowUpSummary): string {
  * Back are plain buttons, keyed apart from the submit one so the button under
  * the pointer never turns into a submit mid-click. */
 export function ActionBar({
+  single = false,
   lead,
   rest,
   stepNumber,
@@ -41,6 +42,9 @@ export function ActionBar({
   onNext,
   onDraft,
 }: {
+  /** A one-step form (a meeting): no step count, no Back, and no follow-ups line, because
+   *  there is no second step and nothing is sent to anyone after it. */
+  single?: boolean;
   lead: string | null;
   rest: string;
   stepNumber: number;
@@ -83,20 +87,26 @@ export function ActionBar({
           </p>
           <p className="mt-1 flex flex-wrap gap-x-3.5 gap-y-0.5 pl-4 text-[11.5px] text-ink-3">
             <DraftStatusText status={status} />
-            <span className="inline-flex items-center gap-1">
-              <MaterialIcon name="mail" className="size-3.5" />
-              {followUpsText(followUps)}
-            </span>
+            {!single && (
+              <span className="inline-flex items-center gap-1">
+                <MaterialIcon name="mail" className="size-3.5" />
+                {followUpsText(followUps)}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap lg:gap-2.5">
-          <span
-            className="mr-auto text-[11.5px] font-medium whitespace-nowrap text-ink-3 lg:mr-1.5"
-            aria-live="polite"
-          >
-            Step <b className="font-semibold text-ink">{stepNumber}</b> of{" "}
-            {stepCount}
-          </span>
+          {single ? (
+            <span className="mr-auto" />
+          ) : (
+            <span
+              className="mr-auto text-[11.5px] font-medium whitespace-nowrap text-ink-3 lg:mr-1.5"
+              aria-live="polite"
+            >
+              Step <b className="font-semibold text-ink">{stepNumber}</b> of{" "}
+              {stepCount}
+            </span>
+          )}
           {showDraft && (
             <Button
               type="button"
@@ -110,16 +120,18 @@ export function ActionBar({
               Save as draft
             </Button>
           )}
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            className="px-4"
-            disabled={onBack === null}
-            onClick={onBack ?? undefined}
-          >
-            ← Back
-          </Button>
+          {!single && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="px-4"
+              disabled={onBack === null}
+              onClick={onBack ?? undefined}
+            >
+              ← Back
+            </Button>
+          )}
           {nextLabel !== null ? (
             <Button
               key="next"

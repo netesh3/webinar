@@ -31,6 +31,7 @@ import {
   type Webinar,
 } from "@/lib/api-types";
 import { answerText } from "@/lib/registration-questions";
+import { isMeetingKind } from "@/lib/meeting-create";
 import { DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import {
@@ -100,13 +101,18 @@ export function HostWebinarTabs({
   const { whatsappConnect } = useAppConfig();
   const { account } = useSession();
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
-  const tabs = tabsFor(w.status, whatsappConnect, cloudRecording);
+  /* A meeting has no People and no Follow up (lib/host-tabs.ts meetingTabs), and its Overview
+   * and Setup leave out what is about registrants. Recording, chat, Q&A, polls and Results are
+   * the webinar's own, because a meeting's room has all of them. */
+  const meeting = isMeetingKind(w);
+  const tabs = tabsFor(w.status, whatsappConnect, cloudRecording, meeting);
 
   const [tab, setTab] = useState<HostTab>(() =>
     defaultTab(w.status, {
       whatsapp: whatsappConnect,
       requested: initialTab,
       cloudRecording,
+      meeting,
     }),
   );
 
@@ -127,11 +133,12 @@ export function HostWebinarTabs({
       w.status,
       whatsappConnect,
       cloudRecording,
+      meeting,
     );
     if (next) setTab(next);
     // A status change (the webinar just ended) can take the open tab away.
     else if (!tabs.includes(tab))
-      setTab(defaultTab(w.status, { whatsapp: whatsappConnect, cloudRecording }));
+      setTab(defaultTab(w.status, { whatsapp: whatsappConnect, cloudRecording, meeting }));
   }
 
   useLayoutEffect(() => {
@@ -153,7 +160,8 @@ export function HostWebinarTabs({
         />
       </div>
 
-      {tab === "Overview" && (
+      {tab === "Overview" && meeting && <MeetingOverviewTab webinar={w} />}
+      {tab === "Overview" && !meeting && (
         <OverviewTab
           webinar={w}
           counts={counts}
@@ -177,7 +185,13 @@ export function HostWebinarTabs({
           <AttendeesTab webinar={w} counts={counts} rosterToken={rosterToken} />
         </div>
       )}
-      {tab === "Setup" && (
+      {tab === "Setup" && meeting && (
+        <div className="grid gap-4">
+          <SettingsTab webinar={w} />
+          <HostLinkCard webinar={w} />
+        </div>
+      )}
+      {tab === "Setup" && !meeting && (
         <div className="grid gap-4">
           <Card className="p-5">
             <SectionTitle>Messages & follow-ups</SectionTitle>
@@ -216,13 +230,13 @@ export function HostWebinarTabs({
       {tab === "Results" && (
         <EngagementTab
           webinar={w}
-          approved={w.approval === "manual" ? counts?.approved : undefined}
-          onOpenAttendees={!ended ? () => setTab("People") : undefined}
+          approved={!meeting && w.approval === "manual" ? counts?.approved : undefined}
+          onOpenAttendees={!ended && !meeting ? () => setTab("People") : undefined}
           initialSection={engagementSection(initialTab, w.status)}
           // After the end, following up is its own tab.
-          hideFollowUp={ended && whatsappConnect}
+          hideFollowUp={meeting || (ended && whatsappConnect)}
           onOpenFollowUp={
-            ended && whatsappConnect ? () => setTab("Follow up") : undefined
+            !meeting && ended && whatsappConnect ? () => setTab("Follow up") : undefined
           }
         />
       )}
@@ -251,6 +265,87 @@ function EmailReminders({ webinar }: { webinar: Webinar }) {
         </li>
       ))}
     </>
+  );
+}
+
+/* A meeting's Overview: the invite link, and how the door works.
+ *
+ * No numbers and no automated messages — nobody registers, so there is nothing to count and
+ * nobody to send to. The one thing a host needs before a meeting is the link; the one thing
+ * they need to know is that people with it wait in a lobby until let in from the room. */
+function MeetingOverviewTab({ webinar: w }: { webinar: Webinar }) {
+  const origin = useShareOrigin();
+  const { notify } = useToast();
+  const link = `${origin}/webinars/${w.id}`;
+  const invite =
+    `${w.topic}\n` +
+    `${formatDay(w.startsAt, w.timeZone)}, ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}\n\n` +
+    `Join: ${link}`;
+
+  return (
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <Card className="p-5">
+        <SectionTitle>Invite link</SectionTitle>
+        <CopyField value={link} />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <ButtonLink
+            href={`https://wa.me/?text=${encodeURIComponent(`${w.topic} — join here: ${link}`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="sm"
+            variant="secondary"
+          >
+            WhatsApp
+          </ButtonLink>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(invite)
+                .then(() => notify("Invitation copied.", "ok"))
+                .catch(() => notify("Could not copy.", "error"))
+            }
+          >
+            Copy invitation
+          </Button>
+          <ButtonLink
+            href={googleCalendarInviteUrl({
+              topic: w.topic,
+              description: w.description,
+              startsAt: w.startsAt,
+              durationMin: w.durationMin,
+              timeZone: w.timeZone,
+              webinarId: w.webinarId,
+              registrationUrl: link,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="sm"
+            variant="secondary"
+          >
+            <CalendarIcon className="size-4" />
+            Add to calendar
+          </ButtonLink>
+        </div>
+        <p className="mt-2.5 text-[12px] text-ink-3">
+          Anyone with this link can ask to join. They give a name and wait until
+          you let them in.
+        </p>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle>How people get in</SectionTitle>
+        <ul className="grid gap-2 text-[13px] text-ink-2">
+          <li>They open the link, type their name and ask to join.</li>
+          <li>
+            You see them waiting in the room — under Participants — and admit
+            or deny each one, or admit everyone at once.
+          </li>
+          <li>Everyone arrives on camera with their microphone off.</li>
+        </ul>
+      </Card>
+    </div>
   );
 }
 
@@ -1014,7 +1109,22 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
   const openJoin = (account?.features ?? []).includes(
     FeatureJoinWithoutRegistration,
   );
-  const rows: [string, boolean | string][] = [
+  const meeting = isMeetingKind(w);
+  /* A meeting's list is the room's switches that mean something in it. Hidden attendees,
+   * registration, raise hand and the attendee limit are a webinar's: a meeting forces the
+   * first two, needs no hand to speak, and is sized by the account's meeting size. */
+  const meetingRows: [string, boolean | string][] = [
+    ["Chat", w.controls.chatEnabled],
+    ["Q&A", w.controls.qaEnabled],
+    ["Reactions", w.controls.reactionsEnabled],
+    ["Locked to new people", w.controls.locked],
+    ...(cloudRecording
+      ? ([["Record automatically", w.options.autoRecord]] as [string, boolean][])
+      : []),
+    ["Live captions", w.options.captions],
+    ["Time zone", w.timeZone],
+  ];
+  const webinarRows: [string, boolean | string][] = [
     ["Attendees hidden from each other", w.controls.hideAttendees],
     ["Panelists muted on entry", w.controls.muteOnEntry],
     ["Panelists may unmute themselves", w.controls.allowUnmute],
@@ -1033,6 +1143,7 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ["Attendee limit", formatCount(w.attendeeLimit)],
     ["Time zone", w.timeZone],
   ];
+  const rows = meeting ? meetingRows : webinarRows;
 
   return (
     <Card className="p-5">
@@ -1066,8 +1177,10 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
       </dl>
 
       <p className="mt-4 border-t border-line pt-3 text-[12px] leading-relaxed text-ink-3">
-        Everything under &ldquo;how the session starts&rdquo; can also be
-        changed live from the host controls once the webinar is running.
+        {meeting
+          ? "These can also be changed live from the host controls once the meeting is running."
+          : <>Everything under &ldquo;how the session starts&rdquo; can also be
+        changed live from the host controls once the webinar is running.</>}
       </p>
     </Card>
   );

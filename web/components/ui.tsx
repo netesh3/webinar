@@ -307,6 +307,15 @@ export function ListPager({
 }
 
 export function kindLabel(w: Webinar): { text: string; tone: Tone } {
+  /* A meeting says so in every state. It lives in the same lists as the host's webinars, and
+   * "Live now" on a meeting reads as a broadcast somebody could watch — the word "meeting" is
+   * what tells a host which of their rows is the call with five people. */
+  if (w.kind === "meeting") {
+    if (w.status === "live") return { text: "Meeting · live", tone: "live" };
+    if (w.status === "ended") return { text: "Meeting · ended", tone: "neutral" };
+    if (w.status === "draft") return { text: "Meeting · draft", tone: "warn" };
+    return { text: "Meeting", tone: "brand" };
+  }
   if (w.status === "live") return { text: "Live now", tone: "live" };
   if (w.status === "ended") return { text: "Completed", tone: "neutral" };
   if (w.status === "draft") return { text: "Draft", tone: "warn" };

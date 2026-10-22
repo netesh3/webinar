@@ -38,6 +38,7 @@ import {
   saveMedia,
   type RejoinRole,
 } from "@/lib/rejoin";
+import { meetingRejoinEntry, prejoinMedia, usesMeetingEntry } from "@/lib/meeting-room";
 import {
   useMediaPermissions,
   useLiveRole,
@@ -65,6 +66,7 @@ import { ActiveSpeakerProvider } from "./active-speaker";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
+import { LobbyChip, useLobbyToasts, useMeetingLobby } from "./meeting-lobby";
 import { RecorderProvider, RecordingBanner, RecordingIndicator } from "./recording";
 import { useAudiencePolls } from "@/lib/polls";
 import { handAudience } from "@/lib/hand-toasts";
@@ -286,14 +288,20 @@ export function WebinarRoom({
     });
     return Promise.race([mint, giveUp]);
   }, [isScheduledPresenter, slug, joinKey]);
-  const webinarUsesCdn = Boolean(initialJoin.cdnBroadcast || currentJoin.cdnBroadcast);
+  /* A meeting never has an audience feed — no edge, no CDN mix (meeting.go) — so neither
+   * branch below is ever taken for one, whatever an older or confused response says. */
+  const meetingJoin = Boolean(initialJoin.meeting || currentJoin.meeting);
+  const webinarUsesCdn =
+    !meetingJoin && Boolean(initialJoin.cdnBroadcast || currentJoin.cdnBroadcast);
   /* Edge delivery (docs/edge-delivery.md): the audience is on LL-HLS with an SSE event
    * stream, and the stage is ordinary WebRTC. Either join says so — the feed's, or a stage
    * token's edgeWebinar — and from then on demotion goes back to the feed. */
-  const webinarUsesEdge = Boolean(
-    initialJoin.delivery === "edge" || initialJoin.edgeWebinar ||
-      currentJoin.delivery === "edge" || currentJoin.edgeWebinar,
-  );
+  const webinarUsesEdge =
+    !meetingJoin &&
+    Boolean(
+      initialJoin.delivery === "edge" || initialJoin.edgeWebinar ||
+        currentJoin.delivery === "edge" || currentJoin.edgeWebinar,
+    );
   const refreshEdgeJoin = useCallback(async () => {
     try {
       setCurrentJoin(await api.join(slug, joinKey));
@@ -313,7 +321,7 @@ export function WebinarRoom({
     );
   }
 
-  if (currentJoin.delivery === "edge" && !isScheduledPresenter && !promotedToStage) {
+  if (webinarUsesEdge && currentJoin.delivery === "edge" && !isScheduledPresenter && !promotedToStage) {
     return (
       <EdgeAudienceRoom
         join={currentJoin}
@@ -480,13 +488,19 @@ function RoomSession({
   const [restored] = useState(() => (rejoined && join.canPublish ? loadMedia(slug) : null));
   const hostMuted =
     join.role !== "host" && (join.controls.muteOnEntry || !join.controls.allowUnmute);
+  /* A meeting guest walks in muted with the camera on (lib/meeting-room.ts), not on the
+   * mic and camera they last presented a webinar with. A refresh's saved state still wins,
+   * as it does for everyone. */
+  const meetingEntry = usesMeetingEntry(join.meeting, join.role);
 
   // A publisher checks their devices first; an attendee publishes nothing, so a
   // preview screen would be a pointless click between them and the webinar. A publisher
   // coming back after a refresh already checked them, minutes ago.
   const [checked, setChecked] = useState(!join.canPublish || rejoined);
   const [entry, setEntry] = useState<Entry>(() => ({
-    ...rejoinEntry(rejoined ? restored : null, hostMuted),
+    ...(meetingEntry
+      ? meetingRejoinEntry(rejoined ? restored : null, hostMuted)
+      : rejoinEntry(rejoined ? restored : null, hostMuted)),
     audioTrack: null,
     videoTrack: null,
   }));
@@ -524,9 +538,10 @@ function RoomSession({
       <PreJoin
         topic={initialTopic}
         displayName={join.displayName}
-        role={join.role === "host" ? "Host" : "Panelist"}
+        role={join.role === "host" ? "Host" : join.meeting ? "Meeting" : "Panelist"}
         prefs={prefs}
         onUpdatePrefs={updatePrefs}
+        initialMedia={meetingEntry ? prejoinMedia(prefs, true) : undefined}
         onJoin={(choices) => {
           setEntry(choices);
           setChecked(true);
@@ -674,6 +689,12 @@ function ConnectedRoom({
   // useLiveCoHost and lk.Spec.CoHost on the API side for what that grants.
   const isCoHost = useLiveCoHost(room);
   const isHost = liveRole === "host" || isCoHost;
+  /* A meeting: everyone admitted is on the stage, and the host runs a lobby rather than an
+   * audience (lib/meeting-room.ts). The lobby is polled for whoever can admit — the host and
+   * co-hosts — and the server's {kind:"lobby"} packet below pulls the next read forward. */
+  const meeting = join.meeting === true;
+  const lobby = useMeetingLobby(slug, meeting && isHost);
+  const lobbySignal = lobby.signal;
   const me = useMemo<Sender>(
     () => ({
       identity: join.identity,
@@ -791,8 +812,10 @@ function ConnectedRoom({
         onAttendeeJoined: (from: Sender) => {
           announceJoining.current?.(from);
         },
+        // Somebody knocked, or was let in or turned away by another host: read the lobby now.
+        onLobby: () => lobbySignal(),
       }),
-      [notify],
+      [notify, lobbySignal],
     ),
   );
 
@@ -1166,7 +1189,7 @@ function ConnectedRoom({
   // What this person may use. Passed into the layout so it can drop a tool that
   // has gone away and surface one that has appeared — a host turning polls on
   // mid-session has to reach a bar that was laid out before they did.
-  const availableTools = useAvailableTools({ isHost, controls, whiteboard: canWhiteboard });
+  const availableTools = useAvailableTools({ isHost, controls, whiteboard: canWhiteboard, meeting });
   const tools = useToolLayout(availableTools);
   const raisedHands = useRaisedHandsController(tools);
   // Whether a docked panel (Chat, Participants, …) is open and should share
@@ -1331,6 +1354,15 @@ function ConnectedRoom({
       raisedHands.open ||
       raisedHands.poppedOut,
   });
+  // "Asha is waiting to join", with Admit and Deny, for whoever runs a meeting. Gone while
+  // Participants is open, where the lobby list has the same buttons.
+  const roomLobby = meeting && isHost ? lobby : null;
+  const openParticipants = useCallback(() => openTool("participants"), [openTool]);
+  useLobbyToasts(
+    roomLobby,
+    tools.panelTab === "participants" || tools.poppedOut.includes("participants"),
+    openParticipants,
+  );
   // "You're connected" on joining the stage, then "Reconnecting…" → "You're back online" /
   // "Connection lost", for everyone in this room.
   const { greet } = useConnectionToast(
@@ -1429,6 +1461,7 @@ function ConnectedRoom({
       over,
       markEnding,
       realtime,
+      lobby: roomLobby,
       roster,
       polls,
       network,
@@ -1467,6 +1500,7 @@ function ConnectedRoom({
       permissions,
       me,
       realtime,
+      roomLobby,
       roster,
       polls,
       network,
@@ -1733,7 +1767,7 @@ function AutoStartAudio({ room }: { room: Room }) {
 // ------------------------------------------------------------------- header
 
 export function RoomHeader() {
-  const { controls, isHost, permissions, tools, cdnStage } = useRoomUI();
+  const { controls, isHost, permissions, tools, cdnStage, join, lobby } = useRoomUI();
   const raisedHands = useRaisedHandsPanel();
   const panelOpen = Boolean(tools.panelTab) || raisedHands.open;
 
@@ -1747,9 +1781,12 @@ export function RoomHeader() {
       ? { label: "Muted by host", tone: "warn" as const }
       : permissions.audioOnly
         ? { label: "Allowed to speak", tone: "ok" as const }
-        : permissions.canPublish
-          ? { label: "Panelist", tone: "ok" as const }
-          : { label: "Attendee", tone: "neutral" as const };
+        : join.meeting
+          ? // Nobody in a meeting is a panelist: there is no audience to be one above.
+            { label: "In meeting", tone: "ok" as const }
+          : permissions.canPublish
+            ? { label: "Panelist", tone: "ok" as const }
+            : { label: "Attendee", tone: "neutral" as const };
 
   return (
     // A fixed 3rem (ROOM_HEADER_HEIGHT): the stage starts at top-12 directly
@@ -1768,7 +1805,10 @@ export function RoomHeader() {
           {/* Everyone sees this, including the audience — consent is not something
               to leave to the browser that pressed the button. */}
           <RecordingIndicator />
-          {isHost && <EdgeBadge />}
+          {isHost && !join.meeting && <EdgeBadge />}
+          {/* Somebody at a meeting's door. Up here because the host is looking at the
+              people they are talking to, not at a panel. */}
+          {lobby && <LobbyChip waiting={lobby.waiting} onOpen={() => tools.open("participants")} />}
           {/* Only exceptional room state — not the room ID on every frame. Inline
               rather than on a second line, which made the header taller than
               the 3rem the stage is offset by. */}

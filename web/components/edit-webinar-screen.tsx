@@ -81,16 +81,19 @@ export function EditWebinarScreen({ slug }: { slug: string }) {
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
       >
         <ArrowLeftIcon className="size-3.5" />
-        Back to the webinar
+        {webinar.kind === "meeting" ? "Back to the meeting" : "Back to the webinar"}
       </Link>
       <h1 className="mb-1 text-[22px] font-semibold tracking-[-0.02em] sm:text-[24px]">
-        Edit webinar
+        {webinar.kind === "meeting" ? "Edit meeting" : "Edit webinar"}
       </h1>
       <p className="mb-3 text-[13.5px] text-ink-2">{webinar.topic}</p>
 
       {webinar.status === "live" && (
         <div className="mb-4">
-          <Alert tone="warn" title="This webinar is running">
+          <Alert
+            tone="warn"
+            title={webinar.kind === "meeting" ? "This meeting is running" : "This webinar is running"}
+          >
             Changes to the session controls apply immediately to everyone in the
             room. Changing the date or time will not move anyone out of it.
           </Alert>

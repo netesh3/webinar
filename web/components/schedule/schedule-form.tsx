@@ -30,6 +30,7 @@ import { useHydrated, useNow } from "@/lib/clock";
 import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
 import { planRecurrence } from "@/lib/recurrence";
+import { isMeetingKind, meetingInputBase } from "@/lib/meeting-create";
 import {
   issuesFor,
   legacyAnchor,
@@ -65,7 +66,7 @@ import {
 } from "./form-state";
 import { MessagesTab } from "./messages-tab";
 import { panelId, StepCards, StepPanel, stepFrom, type Step } from "./stepper";
-import { scheduleSummary, shortTimeZone } from "./summary";
+import { meetingSummary, scheduleSummary, shortTimeZone } from "./summary";
 import { WebinarTab } from "./webinar-tab";
 
 export type { FormState };
@@ -127,10 +128,20 @@ function focusTarget(id: string) {
   });
 }
 
-export function ScheduleForm({ webinar = null }: { webinar?: Webinar | null }) {
+/* `meeting` is a new meeting (/host/new/meeting). Editing one needs no flag: the webinar's
+ * own kind says so. In meeting mode the form is one step — a topic and a time — because
+ * everything else it asks a webinar's host (registration, delivery, the room, a survey,
+ * reminders and follow-ups) is about an audience a meeting does not have. */
+export function ScheduleForm({
+  webinar = null,
+  meeting = false,
+}: {
+  webinar?: Webinar | null;
+  meeting?: boolean;
+}) {
   return (
     <Suspense fallback={<ScheduleFallback />}>
-      <ScheduleFormGate webinar={webinar} />
+      <ScheduleFormGate webinar={webinar} meeting={meeting} />
     </Suspense>
   );
 }
@@ -153,7 +164,13 @@ function ScheduleFallback() {
  * hydration mismatch that React resolved by throwing the tree away. And the
  * draft is keyed by account, so it waits for the session rather than reading
  * an anonymous key and then another. */
-function ScheduleFormGate({ webinar }: { webinar: Webinar | null }) {
+function ScheduleFormGate({
+  webinar,
+  meeting,
+}: {
+  webinar: Webinar | null;
+  meeting: boolean;
+}) {
   const hydrated = useHydrated();
   const { account, status } = useSession();
   /* Topic suggestions need the cookie, not the account body. Ask while the
@@ -177,6 +194,7 @@ function ScheduleFormGate({ webinar }: { webinar: Webinar | null }) {
     <ScheduleFormBody
       key={account?.id ?? "anon"}
       webinar={webinar}
+      meeting={meeting}
       accountId={account?.id}
     />
   );
@@ -184,11 +202,35 @@ function ScheduleFormGate({ webinar }: { webinar: Webinar | null }) {
 
 type Restored = { savedAt: number; messages: MessageSlot[] };
 
+/* A new meeting's blank form: a webinar's, with the kind and the switches a meeting has no
+ * choice about already set, so the draft this browser keeps and the request it sends agree. */
+function blankForm(
+  webinar: Webinar | null,
+  maxAttendees: number,
+  meeting: boolean,
+): FormState {
+  const blank = initialState(webinar, maxAttendees);
+  if (webinar || !meeting) return blank;
+  const base = meetingInputBase();
+  return {
+    ...blank,
+    kind: "meeting",
+    registrationRequired: false,
+    approval: "automatic",
+    options: base.options,
+    controls: base.controls,
+    venue: "app",
+    delivery: "standard",
+  };
+}
+
 function ScheduleFormBody({
   webinar,
+  meeting: newMeeting,
   accountId,
 }: {
   webinar: Webinar | null;
+  meeting: boolean;
   accountId: string | undefined;
 }) {
   const router = useRouter();
@@ -200,6 +242,7 @@ function ScheduleFormBody({
     FeatureJoinWithoutRegistration,
   );
   const editing = webinar !== null;
+  const meeting = editing ? isMeetingKind(webinar) : newMeeting;
 
   /* The step, mirrored into ?step= so a reload or a shared link opens the
    * same one. Written with history.replaceState, NOT router.replace: a router
@@ -261,9 +304,14 @@ function ScheduleFormBody({
   }, []);
 
   /* The form's own draft. See draft-store.ts. */
-  const storageKey = draftKey(accountId, webinar?.id);
+  /* A new meeting keeps its own draft: one key with a new webinar's would open a half-written
+   * webinar on the meeting page, and the other way round. */
+  const storageKey = draftKey(
+    accountId,
+    webinar?.id ?? (meeting ? "new-meeting" : undefined),
+  );
   const [serverForm] = useState<FormState>(() =>
-    initialState(webinar, config.maxAttendees),
+    blankForm(webinar, config.maxAttendees, meeting),
   );
   const serverPrint = useMemo(() => fingerprint(serverForm), [serverForm]);
   const base = editing ? serverPrint : null;
@@ -405,7 +453,7 @@ function ScheduleFormBody({
     clearDraft(storageKey);
     pendingMessages.current = [];
     setMessagesPrint("[]");
-    setForm(initialState(webinar, config.maxAttendees));
+    setForm(blankForm(webinar, config.maxAttendees, meeting));
     setWritten(null);
     setRestored(null);
     setFields({});
@@ -446,6 +494,25 @@ function ScheduleFormBody({
       flushSync(() => go("webinar"));
       focusTarget("date");
       return null;
+    }
+    /* A meeting sends the meeting shape and the few things the host typed. No recurrence (the
+     * server refuses one: a meeting's link is reused instead), no venue but this app, no
+     * delivery choice. Its options and controls are the meeting defaults, or what an edited
+     * meeting already has. */
+    if (meeting) {
+      return {
+        ...meetingInputBase(),
+        topic: form.topic,
+        summary: form.summary,
+        description: form.description,
+        track: form.track.trim(),
+        startsAt: startsAt.toISOString(),
+        durationMin: form.durationMin,
+        timeZone: form.timeZone,
+        status,
+        options: form.options,
+        controls: { ...form.controls, hideAttendees: false },
+      };
     }
     const seriesMember = form.seriesId !== "";
     const sendingRule =
@@ -539,7 +606,7 @@ function ScheduleFormBody({
       setBusy(null);
       return;
     }
-    const surveyProblem = survey.problem();
+    const surveyProblem = meeting ? null : survey.problem();
     if (surveyProblem) {
       setError(surveyProblem);
       flushSync(() => go("webinar"));
@@ -547,7 +614,7 @@ function ScheduleFormBody({
       setBusy(null);
       return;
     }
-    const pollsProblem = polls.problem();
+    const pollsProblem = meeting ? null : polls.problem();
     if (pollsProblem) {
       setError(pollsProblem);
       flushSync(() => go("webinar"));
@@ -606,8 +673,11 @@ function ScheduleFormBody({
         }
       }
 
+      // A meeting has no stream, survey, live polls or messages of its own to save.
       try {
-        if (form.options.multistream) {
+        if (meeting) {
+          // Nothing to set, and nothing a meeting could have had to turn off.
+        } else if (form.options.multistream) {
           if (form.streamKey || form.streamWatchUrl) {
             saved = await api.setWebinarStream(saved.id, {
               streamKey: form.streamKey,
@@ -637,14 +707,14 @@ function ScheduleFormBody({
         );
       }
 
-      const surveyWarning = await survey.persist(saved.id);
+      const surveyWarning = meeting ? null : await survey.persist(saved.id);
       if (surveyWarning) notify(surveyWarning, "info");
 
-      const pollsWarning = await polls.persist(saved.id);
+      const pollsWarning = meeting ? null : await polls.persist(saved.id);
       if (pollsWarning) notify(pollsWarning, "info");
 
       try {
-        await messagesRef.current?.persistOverrides(saved.id);
+        if (!meeting) await messagesRef.current?.persistOverrides(saved.id);
       } catch (err) {
         notify(
           err instanceof Error
@@ -665,7 +735,9 @@ function ScheduleFormBody({
               : "Changes saved."
           : status === "draft"
             ? "Saved as a draft."
-            : sessions && sessions > 1
+            : meeting
+              ? "Meeting scheduled."
+              : sessions && sessions > 1
               ? `Scheduled ${sessions} sessions.`
               : "Webinar scheduled.",
         "ok",
@@ -702,11 +774,14 @@ function ScheduleFormBody({
     hydrated && startsAtPreview && form.timeZone
       ? shortTimeZone(form.timeZone, startsAtPreview)
       : "";
-  const summary = scheduleSummary(
-    openJoin ? form : { ...form, registrationRequired: true },
-    summaryZone,
-  );
-  const showDraft = !editing || webinar.status === "draft";
+  const summary = meeting
+    ? meetingSummary(form, summaryZone)
+    : scheduleSummary(
+        openJoin ? form : { ...form, registrationRequired: true },
+        summaryZone,
+      );
+  // A meeting is scheduled or it is not: nobody can knock on a draft, so there is no draft.
+  const showDraft = !meeting && (!editing || webinar.status === "draft");
 
   const questionProblem =
     form.questions
@@ -720,9 +795,9 @@ function ScheduleFormBody({
     now,
     questionProblem,
     watchUrl: form.streamWatchUrl,
-    multistream: Boolean(form.options.multistream),
-    surveyProblem: survey.problem(),
-    pollsProblem: polls.problem(),
+    multistream: !meeting && Boolean(form.options.multistream),
+    surveyProblem: meeting ? null : survey.problem(),
+    pollsProblem: meeting ? null : polls.problem(),
   });
 
   /* Inline errors for problems the host has been sent to fix. Derived from
@@ -825,7 +900,8 @@ function ScheduleFormBody({
         e.preventDefault();
         // Only the last step has a submit button; anything else that gets
         // here (a browser's implicit submission) is not a request to schedule.
-        if (nextStep(step) !== null) return;
+        // A meeting is one step, so its only button is the submit.
+        if (!meeting && nextStep(step) !== null) return;
         // Schedule checks The webinar the way Next does, and opens it on the
         // first problem.
         for (const s of STEPS) {
@@ -853,17 +929,26 @@ function ScheduleFormBody({
       {/* The bar is position:fixed, so it does not take a row. This padding
           is what keeps the last fields from sitting underneath it. */}
       <div className="grid gap-5 pb-48 lg:pb-28">
-        <p className="-mt-1 text-[13px] text-ink-2">
-          Set up the webinar, then what your attendees get. You can change
-          anything later.
-        </p>
+        {meeting ? (
+          <p className="-mt-1 text-[13px] text-ink-2">
+            A topic and a time. Share the link; people ask to join and you let
+            them in from the room.
+          </p>
+        ) : (
+          <>
+            <p className="-mt-1 text-[13px] text-ink-2">
+              Set up the webinar, then what your attendees get. You can change
+              anything later.
+            </p>
 
-        <StepCards
-          step={step}
-          done={done}
-          details={cardDetails}
-          onStep={openStep}
-        />
+            <StepCards
+              step={step}
+              done={done}
+              details={cardDetails}
+              onStep={openStep}
+            />
+          </>
+        )}
 
         <div className="grid gap-5">
           {restored && (
@@ -894,8 +979,9 @@ function ScheduleFormBody({
               Nothing is unmounted by moving between them (reminder editors and
               the survey builder keep their state), and a failed submit can
               still find the invalid field and open its step. */}
-          <StepPanel step="webinar" current={step}>
+          <StepPanel step="webinar" current={meeting ? "webinar" : step}>
             <WebinarTab
+              meeting={meeting}
               form={form}
               set={set}
               fields={shownFields}
@@ -935,7 +1021,7 @@ function ScheduleFormBody({
               }
             />
           </StepPanel>
-          <StepPanel step="messages" current={step}>
+          {!meeting && <StepPanel step="messages" current={step}>
             <MessagesTab
               key={restoreGen}
               previewWebinar={previewWebinar}
@@ -949,22 +1035,23 @@ function ScheduleFormBody({
                 setMessagesPrint(JSON.stringify(slots));
               }}
             />
-          </StepPanel>
+          </StepPanel>}
         </div>
       </div>
 
       <ActionBar
         lead={summary.lead}
         rest={summary.rest}
-        stepNumber={stepIndex(step) + 1}
-        stepCount={STEPS.length}
-        nextLabel={nextLabel}
-        finalLabel={editing ? "Save changes" : "Schedule"}
+        single={meeting}
+        stepNumber={meeting ? 1 : stepIndex(step) + 1}
+        stepCount={meeting ? 1 : STEPS.length}
+        nextLabel={meeting ? null : nextLabel}
+        finalLabel={editing ? "Save changes" : meeting ? "Schedule meeting" : "Schedule"}
         showDraft={showDraft}
         busy={busy}
         status={status}
         followUps={followUps}
-        onBack={back ? () => go(back, true) : null}
+        onBack={back && !meeting ? () => go(back, true) : null}
         onNext={next}
         onDraft={() => void submit("draft")}
       />

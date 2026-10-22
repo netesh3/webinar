@@ -11,6 +11,7 @@ import type {
   SendMessageResponse,
   SessionControls,
 } from "./api-types";
+import { lobbyWaitingFrom } from "./meeting-room";
 import { planReactionBurst, reactionBurstCount } from "./reaction-queue";
 import { mergeQuestions as mergeQuestionList, questionSnapshot, tallyVotes } from "./room-history";
 
@@ -230,6 +231,15 @@ type UnmuteRequestMessage = { kind: "unmute-request"; from: Sender };
  * memory once it is gone from the transcript. */
 type ChatDeletedMessage = { kind: "chat-deleted"; id: string };
 
+/* "N people are waiting in the meeting's lobby."
+ *
+ * Sent only by the SERVER (announceLobby in api/internal/api/meeting.go), addressed to the
+ * host and any co-host, on every knock, admit and deny. A count and nothing else: the names
+ * are the host's to read from GET /lobby, and this is the cue to read it now rather than at
+ * the next poll. A copy from a participant is dropped on receipt (see the receive path), and
+ * one that got through anyway would only cost the host an extra read. */
+type LobbyMessage = { kind: "lobby"; waiting: number };
+
 export type RoomMessage =
   | ChatMessage
   | QuestionMessage
@@ -249,7 +259,8 @@ export type RoomMessage =
   | CtaClearMessage
   | CaptionMessage
   | StageInviteMessage
-  | StageInviteClearMessage;
+  | StageInviteClearMessage
+  | LobbyMessage;
 
 /** The reactions a client may send. Anything else is dropped on receipt, so one
  *  patched client cannot push arbitrary strings into everyone's UI. */
@@ -506,6 +517,11 @@ function decode(bytes: Uint8Array): RoomMessage | null {
       if (!id) return null;
       return { kind: "chat-deleted", id };
     }
+    case "lobby": {
+      const waiting = lobbyWaitingFrom(msg);
+      if (waiting === null) return null;
+      return { kind: "lobby", waiting };
+    }
     default:
       return null;
   }
@@ -751,6 +767,9 @@ export function useRealtime(
     /** Fires when an attendee joins. Only ever delivered to the host — see
      *  AttendeeJoinedMessage — so a caller need not check the role itself. */
     onAttendeeJoined?: (from: Sender) => void;
+    /** Fires when the server says how many are waiting in a meeting's lobby. Only ever
+     *  addressed to the host and co-hosts — see LobbyMessage. */
+    onLobby?: (waiting: number) => void;
   },
 ): Realtime {
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -987,6 +1006,9 @@ export function useRealtime(
             setStageInvite(null);
           }
           break;
+        case "lobby":
+          notify.current?.onLobby?.(msg.waiting);
+          break;
       }
     },
     [pushReaction],
@@ -999,6 +1021,9 @@ export function useRealtime(
     const onData = (payload: Uint8Array, _p?: Participant, _k?: unknown, topic?: string) => {
       if (topic !== undefined && topic !== DATA_TOPIC) return;
       const msg = decode(payload);
+      // The lobby count is the server's to give: a packet with a sender is a participant
+      // claiming it, and is dropped (see LobbyMessage).
+      if (msg?.kind === "lobby" && _p) return;
       if (msg) apply(msg);
     };
 

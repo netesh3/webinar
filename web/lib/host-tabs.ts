@@ -36,7 +36,9 @@ export function tabsFor(
   status: HostStatus,
   whatsapp = false,
   cloudRecording = false,
+  meeting = false,
 ): readonly HostTab[] {
+  if (meeting) return meetingTabs(tabsFor(status, whatsapp, cloudRecording));
   if (status === "ended") {
     const tabs: HostTab[] = ["Results"];
     if (whatsapp) tabs.push("Follow up");
@@ -45,6 +47,16 @@ export function tabsFor(
   }
   if (status === "live") return [...PRE_EVENT_TABS, "Results"];
   return PRE_EVENT_TABS;
+}
+
+/* A meeting has no People and no Follow up.
+ *
+ * People is the registrant roster and the approval queue, and nobody registers for a meeting:
+ * its door is the lobby, answered from inside the room. Follow up messages the people who
+ * registered, which for a meeting is nobody. What is left — the link, the settings, the
+ * results and the recording — means the same for a meeting as for a webinar. */
+export function meetingTabs(tabs: readonly HostTab[]): HostTab[] {
+  return tabs.filter((t) => t !== "People" && t !== "Follow up");
 }
 
 /* Every ?tab= spelling ever linked to, onto today's tabs. The old names are the ones
@@ -96,10 +108,13 @@ export function allowedTab(
   status: HostStatus,
   whatsapp = false,
   cloudRecording = false,
+  meeting = false,
 ): HostTab | null {
   if (!tab) return null;
-  const tabs = tabsFor(status, whatsapp, cloudRecording);
+  const tabs = tabsFor(status, whatsapp, cloudRecording, meeting);
   if (tabs.includes(tab)) return tab;
+  // An old People link to a meeting before its end has nowhere better than Overview.
+  if (meeting && status !== "ended" && tab === "People") return "Overview";
   if (status === "ended" && tab === "People") return "Results";
   if (status === "ended" && tab === "Follow up") return "Results";
   if (status !== "ended" && (tab === "Follow up" || tab === "Recording")) return "Overview";
@@ -121,14 +136,16 @@ export function defaultTab(
     whatsapp = false,
     requested,
     cloudRecording = false,
+    meeting = false,
   }: {
     pending?: number;
     whatsapp?: boolean;
     requested?: string | null;
     cloudRecording?: boolean;
+    meeting?: boolean;
   } = {},
 ): HostTab {
-  const asked = allowedTab(tabFromQuery(requested), status, whatsapp, cloudRecording);
+  const asked = allowedTab(tabFromQuery(requested), status, whatsapp, cloudRecording, meeting);
   if (asked) return asked;
   return status === "ended" ? "Results" : "Overview";
 }

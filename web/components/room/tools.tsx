@@ -3,6 +3,7 @@
 import { useMemo, type ReactNode } from "react";
 import type { ToolId } from "@/lib/tools";
 import { TOOL_IDS } from "@/lib/tools";
+import { meetingTools } from "@/lib/meeting-room";
 import {
   ChatIcon,
   HandIcon,
@@ -339,23 +340,30 @@ export function useAvailableTools(input: {
     raiseHandEnabled: boolean;
   };
   whiteboard?: boolean;
+  /** A meeting (JoinResponse.meeting): no raise hand and no streaming — see
+   *  lib/meeting-room.ts meetingTools. */
+  meeting?: boolean;
 }): ToolId[] {
-  const { isHost, controls, whiteboard = false } = input;
+  const { isHost, controls, whiteboard = false, meeting = false } = input;
   return useMemo(
     () =>
-      availableTools({
-        isHost,
-        pollsEnabled: controls.pollsEnabled,
-        reactionsEnabled: controls.reactionsEnabled,
-        raiseHandEnabled: controls.raiseHandEnabled,
-        whiteboard,
-      }),
+      meetingTools(
+        availableTools({
+          isHost,
+          pollsEnabled: controls.pollsEnabled,
+          reactionsEnabled: controls.reactionsEnabled,
+          raiseHandEnabled: controls.raiseHandEnabled,
+          whiteboard,
+        }),
+        meeting,
+      ),
     [
       isHost,
       controls.pollsEnabled,
       controls.reactionsEnabled,
       controls.raiseHandEnabled,
       whiteboard,
+      meeting,
     ],
   );
 }

@@ -31,6 +31,7 @@ import { useNow } from "@/lib/clock";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
+import { isMeetingKind } from "@/lib/meeting-create";
 import { hostResultsPath } from "@/lib/host-results";
 import { beginWebinarWhatsAppMetrics } from "@/engage";
 
@@ -257,6 +258,10 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   }
 
   const kind = kindLabel(webinar);
+  /* A meeting's page is this one with an audience's parts taken out: no registrant count, no
+   * approval badge, no step bar (whose middle steps are inviting and registering), no copy.
+   * It starts rather than goes live, and the lobby is answered from the room. */
+  const meeting = isMeetingKind(webinar);
   const isZoom =
     webinar.venue === "zoom_meeting" || webinar.venue === "zoom_webinar";
   const isLive = webinar.status === "live";
@@ -288,7 +293,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
               {kind.text}
             </Badge>
             {webinar.didntGoLive && <Badge tone="neutral">Didn&apos;t go live</Badge>}
-            {webinar.approval === "manual" && !isEnded && (
+            {!meeting && webinar.approval === "manual" && !isEnded && (
               <Badge tone="warn">
                 {waiting > 0 ? `${waiting} waiting to admit` : "Manual admit"}
               </Badge>
@@ -315,7 +320,10 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
           <p className="mt-1 text-[12px] text-ink-3">
             ID <span className="tabular-nums">{webinar.webinarId}</span>
             {webinar.passcode && <> · Passcode {webinar.passcode}</>}
-            {!isDraft && (
+            {!isDraft && meeting && isEnded && webinar.report && (
+              <> · {webinar.report.attended} joined</>
+            )}
+            {!isDraft && !meeting && (
               <>
                 {" "}
                 · {webinar.registrantCount} registered
@@ -347,7 +355,8 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                 disabled={busy || !liveOpen}
                 aria-describedby={showWait ? waitReasonId : undefined}
               >
-                {busy && <Spinner className="size-4" />}▶ Go live
+                {busy && <Spinner className="size-4" />}
+                {meeting ? "▶ Start meeting" : "▶ Go live"}
               </Button>
             )}
             <Menu
@@ -362,7 +371,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                   ? [
                       {
                         kind: "action" as const,
-                        label: "Edit webinar",
+                        label: meeting ? "Edit meeting" : "Edit webinar",
                         onSelect: () => router.push(`/host/${slug}/edit`),
                       },
                       {
@@ -387,15 +396,19 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                       },
                     ]
                   : []),
-                {
-                  kind: "action" as const,
-                  label: "Copy webinar",
-                  onSelect: () => setCopying(true),
-                },
+                ...(meeting
+                  ? []
+                  : [
+                      {
+                        kind: "action" as const,
+                        label: "Copy webinar",
+                        onSelect: () => setCopying(true),
+                      },
+                    ]),
                 { kind: "separator" as const },
                 {
                   kind: "action" as const,
-                  label: "Delete webinar",
+                  label: meeting ? "Delete meeting" : "Delete webinar",
                   danger: true,
                   onSelect: () => setConfirmDelete(true),
                 },
@@ -410,7 +423,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         </div>
       </div>
 
-      <StepBar webinar={webinar} registrants={webinar.registrantCount} />
+      {!meeting && (
+        <StepBar webinar={webinar} registrants={webinar.registrantCount} />
+      )}
 
       <HostWebinarTabs
         webinar={webinar}
@@ -432,8 +447,12 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         busy={busy}
         onClose={() => setConfirmEnd(false)}
         onConfirm={() => void end()}
-        title="End this webinar for everyone?"
-        body="Everyone is disconnected and the webinar is marked as ended. Registrations are kept as the attendance record, but nobody can rejoin."
+        title={meeting ? "End this meeting for everyone?" : "End this webinar for everyone?"}
+        body={
+          meeting
+            ? "Everyone is disconnected and the meeting is marked as ended. Nobody can rejoin, and anyone still waiting is told it has ended."
+            : "Everyone is disconnected and the webinar is marked as ended. Registrations are kept as the attendance record, but nobody can rejoin."
+        }
         confirmLabel="End for everyone"
       />
 
@@ -444,7 +463,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         onConfirm={() => void remove()}
         title={deleteTitle(webinar)}
         body={deleteWarning(webinar)}
-        confirmLabel="Delete this webinar"
+        confirmLabel={meeting ? "Delete this meeting" : "Delete this webinar"}
       />
     </>
   );
