@@ -270,6 +270,32 @@ if [[ -f docker-compose.egress.yml ]]; then
   docker compose "${COMPOSE_ARGS[@]}" restart mediamtx
 fi
 
+# The API's background pass, once a minute (TICK_URL and TICK_SECRET in .env).
+#
+# Cloud Run scales the API to zero and gives it CPU only during requests, so its own ticker
+# does not run while nobody is using the app: a simulive would not start, reminders and drips
+# would wait for the next visitor. This box is always on, so it is the visitor. The secret
+# stays in .env (read by the script at run time), never in the world-readable cron file. A
+# second box doing the same is harmless: the API takes a lease, and the loser answers "busy".
+# Either value unset: no cron, and an old one is removed.
+TICK_URL="$(env_value TICK_URL)"
+if [[ -n "$TICK_URL" && -n "$(env_value TICK_SECRET)" ]]; then
+  cat >"${TARGET}/tick.sh" <<'TICK'
+#!/usr/bin/env bash
+# One background pass of the API (see redeploy.sh). Quiet unless it fails.
+set -euo pipefail
+cd "$(dirname "$0")"
+v() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- | tr -d '"'; }
+curl -fsS -m 55 -X POST -H "X-Tick-Secret: $(v TICK_SECRET)" "$(v TICK_URL)" >/dev/null
+TICK
+  chmod 700 "${TARGET}/tick.sh"
+  echo "* * * * * root ${TARGET}/tick.sh 2>&1 | logger -t webinarliv-tick" >/etc/cron.d/webinarliv-tick
+  chmod 644 /etc/cron.d/webinarliv-tick
+  echo "API tick: every minute to ${TICK_URL}"
+else
+  rm -f /etc/cron.d/webinarliv-tick "${TARGET}/tick.sh"
+fi
+
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
 if [[ "$CAPTIONS" == 1 ]]; then
   echo "Server captions: on (docker compose logs captions; first start downloads the models)"
