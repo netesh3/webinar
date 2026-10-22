@@ -69,7 +69,7 @@ export { canCaptureCamera1080, cameraCapturePreset } from "./network";
  * What is left is one capture resolution and one published ladder. 1080p@30 is the
  * featured-speaker ceiling (Zoom Full HD is gated the same way — plan + CPU + large
  * speaker view). Most laptop cams that can do 1080p deliver it; those that cannot
- * negotiate down. Simulcast keeps 720p and 360p so grids and filmstrips do not pull
+ * negotiate down. Simulcast keeps 360p and 180p so grids and filmstrips do not pull
  * 1080. The ladder starts at the top and steps DOWN within four seconds of trouble,
  * then back up after a clear run, so a good connection is never punished for the
  * possibility of a bad one.
@@ -80,7 +80,7 @@ export { canCaptureCamera1080, cameraCapturePreset } from "./network";
  *
  * Low-power / mobile publishers skip the 1080p capture ideal via `cameraCapturePreset()` —
  * they still publish the same three-rung ladder shape so applyLadder indexing stays shared,
- * but the top encoding is capped at 720p so we do not ask a phone to encode empty 1080.
+ * but their top encoding is CAMERA_720, so we do not ask a phone to encode empty 1080.
  */
 export const CAPTURE = CAMERA_TOP;
 
@@ -91,9 +91,9 @@ export const CAPTURE = CAMERA_TOP;
  * hundred subscribers on wildly different connections, the ladder IS the adaptive bitrate
  * strategy — so it is written down.
  *
- * Three layers: 360p (filmstrip / weak links), 720p (grids), 1080p (large speaker tile).
- * Dropping the old 180p rung is deliberate — with a 1080 top, MEDIUM is 720p, so small
- * grids no longer land on soft 360p-upscaled faces.
+ * Three layers: 180p (big grids, filmstrips), 360p (grids of 3–9, weak links), 1080p (large
+ * speaker tile; 720p on devices that capture 720). The 180p rung is back and the 720p one is
+ * gone, for big rooms: see the camera ladder in network.ts.
  *
  * Not SVC. VP9 and AV1 would give better quality per bit and let the SFU drop temporal
  * layers more finely, but decode cost lands on the SUBSCRIBER — and in an audience of five
@@ -342,7 +342,7 @@ export const DEFAULT_PREFERENCES: MediaPreferences = {
  *
  * With "screen", a 390-point-wide iPhone asks for 1170 pixels and so pulls the 1080p
  * layer — 2–3 Mbps onto a six-inch screen, over 4G, warming the phone and buffering
- * the moment the signal dips. At 1.5 a portrait stage asks for ~585 and gets 720p,
+ * the moment the signal dips. At 1.5 a portrait stage asks for ~585 and gets 360p,
  * and a landscape or fullscreen one still reaches 1080p. Screen shares keep their own
  * 720p floor (shareLayers), so slide text is unaffected. */
 const PHONE_PIXEL_DENSITY = 1.5;
@@ -396,9 +396,8 @@ export function roomOptions(
       // many subscribers on wildly different networks.
       simulcast: true,
       videoSimulcastLayers: SIMULCAST_LAYERS,
-      // Top encoding is always the 1080 rung of the shared ladder. Low-power
-      // devices capture at 720 and keep this rung inactive (see canCaptureCamera1080).
-      videoEncoding: CAMERA_TOP.encoding,
+      // Top encoding: 1080p, or 720p on a device that captures 720 (cameraCapturePreset).
+      videoEncoding: capture.encoding,
 
       /* What to give up first when there is not enough upstream.
        *

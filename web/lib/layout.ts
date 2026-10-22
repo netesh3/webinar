@@ -358,14 +358,15 @@ export function applyBudget(
  *  tiles at 132px do not benefit from a 1080p layer; they benefit from the tab not
  *  falling over.
  *
- *  1–2 large tiles get HIGH (1080p), 3 get MEDIUM (720p), and 4 or more get LOW (360p).
- *  Four used to be MEDIUM too, but every viewer of a grid pulls every tile, so SFU traffic
- *  grows with the square of the stage: at 4+, 360p tiles (a 2x2 grid is ~540p a tile, and
- *  360p is what Zoom's gallery sends) halve it with faces that still read (2026-10-20).
- *  Filmstrips stay LOW. Speaker/spotlight focus forces HIGH independently of this helper. */
+ *  1–2 large tiles get HIGH (1080p), 3–9 get MEDIUM (360p), and 10 or more get LOW (180p).
+ *  Every viewer of a grid pulls every tile, so SFU traffic grows with the square of the
+ *  stage until the page caps it. A 3x3 grid's tiles are ~360p, which is what Zoom's gallery
+ *  sends at that size; past nine they are thumbnails, and a 16-tile page of 180p is ~3 Mbps
+ *  where 360p was ~10 (2026-10-22, see the camera ladder in network.ts). Filmstrips stay
+ *  LOW. Speaker/spotlight focus forces HIGH independently of this helper. */
 export function qualityFor(tileCount: number): VideoQuality {
   if (tileCount <= 2) return VideoQuality.HIGH;
-  if (tileCount <= 3) return VideoQuality.MEDIUM;
+  if (tileCount <= 9) return VideoQuality.MEDIUM;
   return VideoQuality.LOW;
 }
 

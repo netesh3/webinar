@@ -272,7 +272,7 @@ export function Stage() {
        * looking at, and LOW is 320x180.
        *
        * Only ever a floor, so it cannot demote the focus or a share, and only ever MEDIUM: a
-       * thumbnail does not need 720p, and requesting it would spend the audience's bandwidth
+       * thumbnail does not need 1080p, and requesting it would spend the audience's bandwidth
        * on pixels their tile cannot show. Driven by the debounced highlight, so a handover
        * changes this at most once every 450 ms rather than on every audio-level update.
        */
