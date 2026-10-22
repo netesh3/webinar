@@ -5785,6 +5785,50 @@ export interface LookupRequest {
 export interface GuestJoinRequest {
   name: string;
 }
+/**
+ *  MeetingKnockRequest is POST /api/webinars/{slug}/meeting/knock: a name, to wait in a
+ *  * meeting's lobby until the host lets them in.
+ *  *
+ *  * JoinKey is the key an earlier knock returned, sent back by a browser that already knocked
+ *  * (a reload of the lobby page) so it keeps its place instead of joining the queue a second
+ *  * time. Optional; an unknown key, or one for another meeting, is ignored and a new place is
+ *  * taken.
+ */
+export interface MeetingKnockRequest {
+  name: string;
+  joinKey?: string;
+}
+/**
+ * LobbyState is where one knock stands: still waiting, or let in by the host.
+ */
+export type LobbyState = string;
+export const LobbyWaiting: LobbyState = "waiting";
+export const LobbyAdmitted: LobbyState = "admitted";
+/**
+ *  MeetingKnockResponse carries the join key the guest polls POST /join with, and where they
+ *  * stand now. The key is their credential for this meeting, exactly as a webinar's is.
+ */
+export interface MeetingKnockResponse {
+  joinKey: string;
+  state: LobbyState;
+}
+/**
+ *  LobbyEntry is one person waiting to be let into a meeting, as the host sees them. No join
+ *  * key: that is the guest's credential, and the host acts on the id.
+ */
+export interface LobbyEntry {
+  id: string;
+  name: string;
+  requestedAt: string;
+}
+/**
+ *  LobbyAdmitAllResponse is POST .../lobby/admit-all: how many were let in, and how many are
+ *  * still waiting because the meeting filled up first.
+ */
+export interface LobbyAdmitAllResponse {
+  admitted: number /* int */;
+  left: number /* int */;
+}
 export interface JoinRequest {
   /**
    * JoinKey is optional for a signed-in account: the server finds the
@@ -5945,6 +5989,12 @@ export interface JoinResponse {
    * viewer's browser knows that demotion returns them to the feed, not to the SFU.
    */
   edgeWebinar?: boolean;
+  /**
+   *  Meeting is set on every token for a meeting (Webinar.Kind == KindMeeting): the host's,
+   * 	 * a panelist's and an admitted guest's. Everyone in a meeting is on the stage, so the
+   * 	 * room renders as a grid of equals rather than a stage and an audience.
+   */
+  meeting?: boolean;
 }
 /**
  * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge

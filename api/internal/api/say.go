@@ -505,6 +505,13 @@ func (s *Server) resolveSender(
 	} else if grant.Granted {
 		role = types.RolePanelist
 	}
+	// Everyone admitted to a meeting is on its stage and holds a panelist token, so their
+	// lines are labelled and routed the same way — never as an audience the meeting lacks.
+	if role == types.RoleAttendee {
+		if kind, err := s.store.WebinarKindOf(r.Context(), slug); err == nil && kind == types.KindMeeting {
+			role = types.RolePanelist
+		}
+	}
 
 	return wireSender{Identity: identity, Name: name, Role: role}, true
 }

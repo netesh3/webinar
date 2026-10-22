@@ -68,6 +68,11 @@ func (s *Server) handleGuestJoin(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
 	}
+	// A meeting's only door is its lobby. This one mints an approved key, which would walk
+	// straight past the host.
+	if refuseMeetingDoor(w, wb) {
+		return
+	}
 
 	/* The passcode, checked here because this is the only place a guest join key is minted.
 	 *

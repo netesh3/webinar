@@ -84,6 +84,20 @@ func (s *Server) handleAttendeeJoin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "join: load webinar", err)
+		return
+	}
+	/* A meeting answers from its lobby rather than from the approval gate below: pending there
+	 * means "waiting at the door", which the waiting page polls through, not "the host has not
+	 * reviewed your registration". See meeting.go. */
+	if isMeeting(wb) {
+		s.joinMeeting(w, r, wb, reg)
+		return
+	}
+
 	if reg.State == types.RegUnverified {
 		httpx.Error(w, http.StatusForbidden, "email_unverified",
 			"Verify your email to get your join link.")
@@ -96,12 +110,6 @@ func (s *Server) handleAttendeeJoin(w http.ResponseWriter, r *http.Request) {
 	}
 	// A refresh or a reopened link must not undo the host removing somebody.
 	if isRejoin(r) && s.refuseRemoved(w, r, slug, attendeeIdentity(reg.JoinKey)) {
-		return
-	}
-
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
-	if err != nil {
-		s.fail(w, r, "join: load webinar", err)
 		return
 	}
 	s.joinAsAttendee(w, r, wb, reg)
@@ -499,7 +507,14 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 	}
 	// A scheduled panelist arriving at a stage already filled by promoted attendees waits
 	// for a seat. Never the host, and never someone already on stage (a reconnect).
-	if role == types.RolePanelist {
+	// In a meeting the whole room is the stage, so a panelist waits for a seat in the meeting
+	// instead — the same cap an admitted guest is held to.
+	if role == types.RolePanelist && isMeeting(wb) {
+		if ok, capacity := s.meetingHasRoom(r.Context(), sfu, wb, identity); !ok {
+			writeMeetingFull(w, capacity)
+			return
+		}
+	} else if role == types.RolePanelist {
 		if ok, capacity := s.stageHasRoom(r.Context(), sfu, wb, identity); !ok {
 			writeStageFull(w, capacity)
 			return
@@ -564,6 +579,12 @@ func (s *Server) ensureRoom(
 	}
 
 	limit := min(wb.AttendeeLimit, s.ceilingForHost(ctx, wb.Host.ID))
+	if isMeeting(wb) {
+		/* A meeting's room is sized to the meeting, not to the attendee ceiling: the headroom
+		 * below is for a reconnect overlapping its own old session and for a recorder, and the
+		 * number that actually turns people away is the meeting cap joinMeeting checks. */
+		limit = s.meetingCapForHost(ctx, wb.Host.ID)
+	}
 	meta, err := s.roomMetadata(ctx, wb)
 	if err != nil {
 		return nil, 0, false, err
@@ -757,14 +778,18 @@ func (s *Server) issueToken(
 		CloudRecording: canRecord && s.hostCloudRecording(r.Context(), wb.Host.ID),
 		// The stage only, and not an attendee promoted onto it: they watch the
 		// board like the rest of the audience. See JoinResponse.Whiteboard.
+		// Nor a meeting guest: they are on the stage because everyone is, not because the host
+		// chose them to present, so the board stays with the host and the panelists.
 		Whiteboard: lk.CanPublish(spec.Role) && !spec.Promoted &&
+			!(isMeeting(wb) && joinKeyFromIdentity(spec.Identity) != "") &&
 			s.hostFeature(r.Context(), wb.Host.ID, types.FeatureWhiteboard),
 		JoinKey:        joinKeyFromIdentity(spec.Identity),
 		MaxDurationMin: wb.MaxDurationMin,
 		CdnBroadcast:   cdnBroadcast,
 		CdnStreamURL:   cdnStreamURL,
 		CdnLowLatency:  cdnLowLatency,
-		EdgeWebinar:    wb.Delivery == types.DeliveryEdge,
+		EdgeWebinar:    wb.Delivery == types.DeliveryEdge && !isMeeting(wb),
+		Meeting:        isMeeting(wb),
 	})
 	return true
 }
