@@ -110,6 +110,10 @@ func (s *Server) mixPlan(ctx context.Context, wb types.Webinar) (origin string, 
 	/* An edge webinar's audience watches this mix, as LL-HLS from the origin (or a CDN pull
 	 * zone in front of it). The origin is the only push edge needs: a CDN mirrors it rather
 	 * than taking a second ingest. */
+	// A meeting pushes nowhere: no audience feed, and stream destinations are a webinar's.
+	if isMeeting(wb) {
+		return "", nil
+	}
 	if wb.Delivery == types.DeliveryEdge {
 		origin = s.cfg.BroadcastRTMPURL(wb.ID)
 	}

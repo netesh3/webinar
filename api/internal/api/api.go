@@ -400,6 +400,10 @@ func (s *Server) Routes() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(joinLimit.Middleware)
 			r.Post("/webinars/{slug}/join", s.handleAttendeeJoin)
+			/* A meeting's front door: a name, and a place in the lobby (meeting.go). In
+			 * joinLimit for the same reason as the guest door below — it creates a row and
+			 * mints a credential, and the waiting page's polling goes to /join, not here. */
+			r.Post("/webinars/{slug}/meeting/knock", s.handleMeetingKnock)
 
 			/* The guest door: a name, and in.
 			 *
@@ -701,6 +705,12 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/transcript.txt", s.handleTranscript)
 					r.Patch("/questions/{id}", s.handlePatchQuestion)
 					r.Post("/registrants/approve-all", s.handleApproveAll)
+
+					// A meeting's lobby: who is waiting, and letting them in (meeting.go).
+					r.Get("/lobby", s.handleLobby)
+					r.Post("/lobby/admit-all", s.handleLobbyAdmitAll)
+					r.Post("/lobby/{id}/admit", s.handleLobbyAdmit)
+					r.Post("/lobby/{id}/deny", s.handleLobbyDeny)
 
 					/* The approval queue, and a selective batch decision on it.
 					 *

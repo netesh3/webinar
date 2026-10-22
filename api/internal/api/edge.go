@@ -130,6 +130,10 @@ func (s *Server) forgetDelivery(slug string) { s.deliveryCache.Delete(slug) }
  * origin to push to; anything else is a field error rather than a silent downgrade, because a
  * host testing edge has to know they are not getting it. */
 func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.WebinarInput, prev string) (string, map[string]string) {
+	// A meeting is always standard: everyone is on the video server, whatever was asked for.
+	if in.Kind == types.KindMeeting {
+		return types.DeliveryStandard, nil
+	}
 	want := strings.TrimSpace(in.Delivery)
 	explicit := want != ""
 	if !explicit {
@@ -186,7 +190,7 @@ func (s *Server) saveDelivery(ctx context.Context, slug, delivery string) error 
  * webinar, the host's switch still on, an origin to play, and a person who is not on the stage.
  * Anyone on the stage — a promoted attendee — gets an ordinary LiveKit token. */
 func (s *Server) edgeAudience(ctx context.Context, wb types.Webinar, onStage bool) (playback string, ok bool) {
-	if onStage || wb.Delivery != types.DeliveryEdge || wb.Kind == types.KindSimulive {
+	if onStage || wb.Delivery != types.DeliveryEdge || wb.Kind == types.KindSimulive || isMeeting(wb) {
 		return "", false
 	}
 	if s.cfg.SessionSecret == "" || !s.hostFeature(ctx, wb.Host.ID, types.FeatureEdgeDelivery) {

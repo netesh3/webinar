@@ -186,7 +186,10 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	/* Before the lead check. An instant create has no time picker, so a
 	 * soon start must come back as "this account cannot", not as "schedule it
 	 * at least 15 minutes from now". */
-	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
+	/* An instant MEETING is not gated: "meet now" is the ordinary way a meeting starts, and
+	 * meetings are open to every host (meeting.go). The switch is about instant webinars. */
+	meeting := in.Kind == types.KindMeeting
+	if in.Instant && !meeting && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return types.Webinar{}, false
 	}
 	/* Go live now. The server's clock, not the browser's: a client clock a
@@ -196,7 +199,12 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 		in.StartsAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	in, fields := s.normalizeWebinarInput(in, true, "", s.attendeeCeiling(user.Plan))
-	if msg := panelistCapField(in.PanelistEmails, s.stageCapForHost(r.Context(), user.ID)); msg != "" {
+	// A meeting's panelists share the meeting's seats, not a webinar stage's.
+	panelSeats := s.stageCapForHost(r.Context(), user.ID)
+	if meeting {
+		panelSeats = s.meetingCapForHost(r.Context(), user.ID)
+	}
+	if msg := panelistCapField(in.PanelistEmails, panelSeats); msg != "" {
 		fields["panelistEmails"] = msg
 	}
 	if len(fields) > 0 {
@@ -208,7 +216,9 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	 * never heard of the field keeps working and a direct call cannot leave the door
 	 * open. The join path checks the switch again, in case this row was saved while
 	 * the switch was on and an administrator has since turned it off. */
-	if !user.HasFeature(types.FeatureJoinWithoutRegistration) {
+	// Not for a meeting, which has no registration at all: its door is the lobby, which
+	// the host controls one knock at a time, and no switch is needed to open it.
+	if !meeting && !user.HasFeature(types.FeatureJoinWithoutRegistration) {
 		in.RegistrationRequired = true
 	}
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
@@ -306,12 +316,28 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	// The owner's plan, not the editor's: a panelist editing does not change the cap.
 	ceiling := s.attendeeCeiling("")
 	stageCap := types.PlanStageCap("")
+	var prevKind types.WebinarKind
 	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 		prevLead = prev.StartsAt
+		prevKind = prev.Kind
 		ceiling = s.ceilingForHost(r.Context(), prev.Host.ID)
 		stageCap = s.stageCapForHost(r.Context(), prev.Host.ID)
+		if prev.Kind == types.KindMeeting {
+			stageCap = s.meetingCapForHost(r.Context(), prev.Host.ID)
+		}
+	}
+	/* A meeting stays a meeting and a webinar stays a webinar. An edit that omits the kind (or
+	 * sends a webinar's) keeps a meeting's shape rather than quietly growing it an audience, and
+	 * a webinar cannot become a meeting in place: its registrants were promised a webinar, and
+	 * the lobby has no idea what to do with them. */
+	wantMeeting := in.Kind == types.KindMeeting
+	if prevKind == types.KindMeeting {
+		in.Kind = types.KindMeeting
 	}
 	in, fields := s.normalizeWebinarInput(in, false, prevLead, ceiling)
+	if wantMeeting && prevKind != "" && prevKind != types.KindMeeting {
+		fields["kind"] = "A webinar can't become a meeting. Create a meeting instead."
+	}
 	if msg := panelistCapField(in.PanelistEmails, stageCap); msg != "" {
 		fields["panelistEmails"] = msg
 	}
@@ -323,7 +349,7 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	// Registration off is the host's switch, so a co-host cannot open the name-only
 	// door for an account that does not have it. Without the switch the save keeps
 	// registration required, the same as create.
-	if !in.RegistrationRequired {
+	if !in.RegistrationRequired && in.Kind != types.KindMeeting {
 		hostID, err := s.store.HostIDFor(r.Context(), slug)
 		if errors.Is(err, store.ErrNotFound) {
 			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
@@ -826,6 +852,11 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 		startsAt = parsed
 	}
 
+	// "Meet now" has no form to pick a length on, so a meeting that names none gets an hour.
+	// The length is only the calendar's; the room's own limit is MaxDurationMin.
+	if in.Kind == types.KindMeeting && in.Duration <= 0 {
+		in.Duration = 60
+	}
 	switch {
 	case in.Duration <= 0:
 		fields["durationMin"] = "Pick how long it runs."
@@ -854,10 +885,14 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 
 	switch in.Kind {
 	case types.KindLive, types.KindSimulive, types.KindRecurring:
+	case types.KindMeeting:
+		// Everything an audience needs is forced off here, once, for create and edit alike.
+		// The defaults below then find nothing left to fill in. See applyMeetingShape.
+		applyMeetingShape(&in, fields, ceiling)
 	case "":
 		in.Kind = types.KindLive
 	default:
-		fields["kind"] = "Pick live, simulive or a recurring series."
+		fields["kind"] = "Pick live, simulive, a recurring series or a meeting."
 	}
 
 	switch in.Venue {
@@ -1443,6 +1478,16 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	/* Hiding the audience has nobody to hide in a meeting — everyone is on the stage — and a
+	 * meeting's guests would vanish from each other's grids. Refused before anything is saved;
+	 * turning it off is already the state and goes through. */
+	if p.HideAttendees != nil && *p.HideAttendees {
+		kind, err := s.store.WebinarKindOf(r.Context(), slug)
+		if err == nil && kind == types.KindMeeting {
+			refuseInMeeting(w, types.Webinar{Kind: kind})
+			return
+		}
+	}
 
 	wb, err := s.store.UpdateControls(r.Context(), slug, p)
 	if errors.Is(err, store.ErrNotFound) {
@@ -1643,6 +1688,9 @@ func (s *Server) handleAllowAllToSpeak(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "allow all: load webinar", err)
 		return
 	}
+	if refuseInMeeting(w, wb) {
+		return
+	}
 
 	sfu, err := s.sfuFor(r.Context(), wb)
 	if err != nil {
@@ -1694,6 +1742,9 @@ func (s *Server) handleBringAllOnStage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "bring all on stage: load webinar", err)
 		return
 	}
+	if refuseInMeeting(w, wb) {
+		return
+	}
 
 	sfu, err := s.sfuFor(r.Context(), wb)
 	if err != nil {
@@ -1737,6 +1788,10 @@ func (s *Server) handleRevokeAllSpeaking(w http.ResponseWriter, r *http.Request)
 	wb, err := s.store.WebinarBySlug(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "revoke all: load webinar", err)
+		return
+	}
+	// Revoking would send meeting guests to an audience that does not exist.
+	if refuseInMeeting(w, wb) {
 		return
 	}
 
@@ -1908,6 +1963,9 @@ func (s *Server) handleSetStage(w http.ResponseWriter, r *http.Request) {
 	wb, err := s.store.WebinarBySlug(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "set stage: load webinar", err)
+		return
+	}
+	if refuseInMeeting(w, wb) {
 		return
 	}
 

@@ -3294,6 +3294,48 @@ type GuestJoinRequest struct {
 	Name string `json:"name"`
 }
 
+/* MeetingKnockRequest is POST /api/webinars/{slug}/meeting/knock: a name, to wait in a
+ * meeting's lobby until the host lets them in.
+ *
+ * JoinKey is the key an earlier knock returned, sent back by a browser that already knocked
+ * (a reload of the lobby page) so it keeps its place instead of joining the queue a second
+ * time. Optional; an unknown key, or one for another meeting, is ignored and a new place is
+ * taken. */
+type MeetingKnockRequest struct {
+	Name    string `json:"name"`
+	JoinKey string `json:"joinKey,omitempty"`
+}
+
+// LobbyState is where one knock stands: still waiting, or let in by the host.
+type LobbyState string
+
+const (
+	LobbyWaiting  LobbyState = "waiting"
+	LobbyAdmitted LobbyState = "admitted"
+)
+
+/* MeetingKnockResponse carries the join key the guest polls POST /join with, and where they
+ * stand now. The key is their credential for this meeting, exactly as a webinar's is. */
+type MeetingKnockResponse struct {
+	JoinKey string     `json:"joinKey"`
+	State   LobbyState `json:"state"`
+}
+
+/* LobbyEntry is one person waiting to be let into a meeting, as the host sees them. No join
+ * key: that is the guest's credential, and the host acts on the id. */
+type LobbyEntry struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	RequestedAt string `json:"requestedAt"`
+}
+
+/* LobbyAdmitAllResponse is POST .../lobby/admit-all: how many were let in, and how many are
+ * still waiting because the meeting filled up first. */
+type LobbyAdmitAllResponse struct {
+	Admitted int `json:"admitted"`
+	Left     int `json:"left"`
+}
+
 /* GuestJoinAllowedFor derives Webinar.GuestJoinAllowed, and lives here so there is exactly
  * one copy of the rule.
  *
@@ -3443,6 +3485,10 @@ type JoinResponse struct {
 	// EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
 	// viewer's browser knows that demotion returns them to the feed, not to the SFU.
 	EdgeWebinar bool `json:"edgeWebinar,omitempty"`
+	/* Meeting is set on every token for a meeting (Webinar.Kind == KindMeeting): the host's,
+	 * a panelist's and an admitted guest's. Everyone in a meeting is on the stage, so the
+	 * room renders as a grid of equals rather than a stage and an audience. */
+	Meeting bool `json:"meeting,omitempty"`
 }
 
 // ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge

@@ -200,7 +200,9 @@ func (s *Server) writeWebinarStreamDestination(w http.ResponseWriter, r *http.Re
 		Platform:   p.ID,
 		Configured: ingest != "",
 		Paused:     paused,
-		Streaming:  ingest != "" && !paused && wb.Status == types.StatusLive && wb.Kind != types.KindSimulive,
+		// A meeting never streams out (mixPlan), so it is never reported as streaming.
+		Streaming: ingest != "" && !paused && wb.Status == types.StatusLive &&
+			wb.Kind != types.KindSimulive && !isMeeting(wb),
 	}
 	if ingest != "" {
 		out.Hint = streamdest.Hint(ingest)

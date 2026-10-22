@@ -38,7 +38,9 @@ var broadcastRestartDelay = 3 * time.Second
  * encoding into nowhere. Join treats the same missing config as "CDN broadcast
  * is off" and keeps attendees on the SFU. */
 func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, sfu RoomManager) {
-	if sfu == nil {
+	// A meeting has no audience to feed and no stream destinations: never a mix, and never an
+	// egress worker booted for one (meeting.go).
+	if sfu == nil || isMeeting(wb) {
 		return
 	}
 	// On a project with an egress pool, the mix runs on a worker VM: make sure one is up.

@@ -166,6 +166,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "register: load webinar", err)
 		return
 	}
+	// Nobody registers for a meeting: they knock, and the host lets them in (meeting.go).
+	// A registration here would be approved automatically and skip the lobby.
+	if refuseMeetingDoor(w, wb) {
+		return
+	}
 
 	// Registering while signed in prefills from the account and links the row to
 	// it, so the registration follows the person to another browser instead of
