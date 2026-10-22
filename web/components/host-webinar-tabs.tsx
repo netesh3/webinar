@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { AIRecapCard } from "./ai-recap-card";
+import { AILeadsAndFollowups } from "./ai-leads-followups";
 import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
@@ -233,6 +234,7 @@ export function HostWebinarTabs({
           <AIRecapCard slug={w.id} />
         </div>
       )}
+      {tab === "Results" && ended && <AILeadsAndFollowups webinar={w} />}
       {tab === "Results" && (
         <EngagementTab
           webinar={w}

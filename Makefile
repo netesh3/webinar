@@ -282,6 +282,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The AI recap: chapter times, chapters mapped onto a recording's takes, and what
 	# the recap card says when there is no recap yet.
 	cd web && node --experimental-strip-types --no-warnings lib/recap.test.mts
+	# Hot leads and the follow-up writer: tags, signal chips, the ranked CSV, the groups,
+	# their empty states, and a draft turned into WhatsApp template wording.
+	cd web && node --experimental-strip-types --no-warnings lib/leads.test.mts
 	# The room's AI switch: who sees it, and whether this browser's caption engine runs,
 	# shows its lines, or only keeps them for the AI (display and capture are separate).
 	cd web && node --experimental-strip-types --no-warnings lib/ai-session.test.mts

@@ -25,6 +25,7 @@ export { WhatsAppScreen } from "./components/whatsapp-screen";
 export { CoverGallery, useMediaLibrary } from "./components/media-gallery";
 export { WhatsAppFrame, type WhatsAppTab } from "./components/whatsapp-frame";
 export { useRosterMessaging } from "./components/roster";
+export { FollowupWhatsAppActions } from "./components/followup-handoff";
 export { followupGroups, type FollowupGroup } from "./buckets";
 export { HostPeopleTab } from "./components/people-tab";
 export { HostMessagesTab } from "./components/inbox-tab";
