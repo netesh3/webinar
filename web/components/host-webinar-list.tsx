@@ -24,6 +24,7 @@ import { useNow } from "@/lib/clock";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
+import { isMeetingKind } from "@/lib/meeting-create";
 
 /* Rows, and the two things a host can do to one from the list — start it, or
  * delete it.
@@ -313,6 +314,9 @@ function HostCard({
           ? "reminders on (WhatsApp)"
           : null;
   const needsAdmit = w.approval === "manual" && !isEnded && !isDraft;
+  /* A meeting shares this list with webinars, and only its badge and a few words differ: it
+   * has no registrants to count and nobody to remind, and it starts rather than goes live. */
+  const meeting = isMeetingKind(w);
   const bypass = isDevAuthBypassActive();
   const origin = useShareOrigin();
   const { notify } = useToast();
@@ -350,9 +354,12 @@ function HostCard({
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
             {whenLabel ? (
-              <Badge tone="brand" dot>
-                {whenLabel}
-              </Badge>
+              <>
+                <Badge tone="brand" dot>
+                  {whenLabel}
+                </Badge>
+                {meeting && <Badge tone="brand">Meeting</Badge>}
+              </>
             ) : (
               <Badge tone={kind.tone} dot={isLive}>
                 {kind.text}
@@ -404,6 +411,12 @@ function HostCard({
           <p className="mt-1 text-[12px] text-ink-3">
             {isDraft ? (
               "Draft — not published yet"
+            ) : meeting ? (
+              isEnded ? (
+                w.report ? `${formatCount(w.report.attended)} joined` : "Meeting"
+              ) : (
+                "Guests ask to join and wait until you let them in"
+              )
             ) : isEnded ? (
               <>
                 {formatCount(w.registrantCount)} registered
@@ -461,7 +474,7 @@ function HostCard({
                   disabled={busy || !liveOpen}
                   aria-describedby={showWait ? waitReasonId : undefined}
                 >
-                  {busy ? "Starting…" : "Go live"}
+                  {busy ? "Starting…" : meeting ? "Start" : "Go live"}
                 </Button>
               )}
               {isLive && (
@@ -498,7 +511,8 @@ function HostCard({
                         { kind: "action" as const, label: "Edit", onSelect: () => router.push(`/host/${w.id}/edit`) },
                       ]
                     : []),
-                  { kind: "action" as const, label: "Copy webinar", onSelect: onCopy },
+                  // Copying is a webinar's: its form, its registration page, its messages.
+                  ...(meeting ? [] : [{ kind: "action" as const, label: "Copy webinar", onSelect: onCopy }]),
                   { kind: "separator" as const },
                   { kind: "action" as const, label: "Delete", danger: true, onSelect: onDelete },
                 ]}

@@ -15,7 +15,7 @@ import {
 import type { CRMMediaFile, Webinar } from "@/lib/api-types";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
 import { BasicsSection } from "./basics";
-import { FormGroup, FormSection } from "./chrome";
+import { FormGroup, FormSection, Text } from "./chrome";
 import {
   DURATIONS,
   MIN_SCHEDULE_LEAD_MS,
@@ -31,6 +31,7 @@ import { formatDuration } from "./summary";
 
 /** The Details step: basics, time, registration, the room and the feedback survey. */
 export function WebinarTab({
+  meeting = false,
   form,
   set,
   fields,
@@ -44,6 +45,8 @@ export function WebinarTab({
   polls,
   feedbackPreviews,
 }: {
+  /** A meeting's form: the topic and When, nothing else. */
+  meeting?: boolean;
   form: FormState;
   set: SetForm;
   fields: Record<string, string>;
@@ -76,6 +79,41 @@ export function WebinarTab({
   const startsAtPreview = useMemo(() => {
     return zonedToInstant(form.date, form.time, form.timeZone);
   }, [form.date, form.time, form.timeZone]);
+
+  if (meeting) {
+    return (
+      <div className="grid gap-5">
+        <FormGroup label="The meeting">
+          <FormSection
+            title="Topic"
+            description="What the invite and the room are called."
+            first
+          >
+            <Text
+              id="topic"
+              label="Topic"
+              value={form.topic}
+              onChange={(v) => set("topic", v)}
+              error={fields.topic}
+              placeholder="What is this meeting about?"
+              required
+              large
+            />
+          </FormSection>
+          <WhenSection
+            meeting
+            form={form}
+            set={set}
+            fields={fields}
+            editing={editing}
+            zones={zones}
+            hydrated={hydrated}
+            startsAtPreview={startsAtPreview}
+          />
+        </FormGroup>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-5">
@@ -118,6 +156,7 @@ export function WebinarTab({
 }
 
 function WhenSection({
+  meeting = false,
   form,
   set,
   fields,
@@ -126,6 +165,7 @@ function WhenSection({
   hydrated,
   startsAtPreview,
 }: {
+  meeting?: boolean;
   form: FormState;
   set: SetForm;
   fields: Record<string, string>;
@@ -149,9 +189,11 @@ function WhenSection({
     <FormSection
       title="When"
       description={
-        form.kind === "recurring" || form.seriesId
-          ? "The first session uses this start time. It has to be at least 15 minutes from now."
-          : "The webinar has to start at least 15 minutes from now."
+        meeting
+          ? "The meeting has to start at least 15 minutes from now. To meet now, use Start a meeting."
+          : form.kind === "recurring" || form.seriesId
+            ? "The first session uses this start time. It has to be at least 15 minutes from now."
+            : "The webinar has to start at least 15 minutes from now."
       }
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">
@@ -236,7 +278,7 @@ function WhenSection({
         </p>
       )}
 
-      {(form.kind === "recurring" || form.seriesId !== "") && (
+      {!meeting && (form.kind === "recurring" || form.seriesId !== "") && (
         <RecurrenceFields form={form} set={set} error={fields.recurrence} />
       )}
     </FormSection>

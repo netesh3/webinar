@@ -38,12 +38,19 @@ export function PreJoin({
   prefs,
   onUpdatePrefs,
   onJoin,
+  initialMedia,
 }: {
   topic: string;
   displayName: string;
   role: string;
   prefs: MediaPreferences;
   onUpdatePrefs: (patch: Partial<MediaPreferences>) => void;
+  /* Where the mic and camera toggles start, when that is the room's decision rather than
+   * the remembered preference — a meeting guest, who walks in muted with the camera on
+   * (lib/meeting-room.ts prejoinMedia). A start chosen for them is not a choice they made,
+   * so only a toggle they actually press is written back as their preference: a guest who
+   * leaves the mic off here has not decided to join every webinar muted from now on. */
+  initialMedia?: { micEnabled: boolean; cameraEnabled: boolean };
   /** Called with the choices AND the tracks already open for the preview.
    *
    *  Handing the tracks over rather than releasing them is worth a second or two of
@@ -60,8 +67,9 @@ export function PreJoin({
     videoTrack: LocalVideoTrack | null;
   }) => void;
 }) {
-  const [micEnabled, setMicEnabled] = useState(prefs.micEnabled);
-  const [cameraEnabled, setCameraEnabled] = useState(prefs.cameraEnabled);
+  const start = initialMedia ?? { micEnabled: prefs.micEnabled, cameraEnabled: prefs.cameraEnabled };
+  const [micEnabled, setMicEnabled] = useState(start.micEnabled);
+  const [cameraEnabled, setCameraEnabled] = useState(start.cameraEnabled);
   useAutoLowLight(prefs.lowLightAuto);
   /* Why a device that would not open gets its OWN piece of state, one per device.
    *
@@ -109,11 +117,15 @@ export function PreJoin({
    * A deliberate toggle does still persist, which is the point of having the preference: it
    * is the difference between a choice and an accident that only this file can tell apart.
    */
-  const wanted = useRef({ mic: prefs.micEnabled, camera: prefs.cameraEnabled });
+  const wanted = useRef({ mic: start.micEnabled, camera: start.cameraEnabled });
+  // Which toggles were pressed here. See initialMedia: with a start chosen by the room, only
+  // these are persisted.
+  const touched = useRef({ mic: false, camera: false });
 
   const toggleMic = useCallback(() => {
     const next = !micEnabled;
     wanted.current.mic = next;
+    touched.current.mic = true;
     // Their click is the one thing that clears a failure: it is a request to try again,
     // and a stale reason next to a button somebody just pressed reads as the press failing.
     setMicFailure(null);
@@ -123,6 +135,7 @@ export function PreJoin({
   const toggleCamera = useCallback(() => {
     const next = !cameraEnabled;
     wanted.current.camera = next;
+    touched.current.camera = true;
     setCameraFailure(null);
     setCameraEnabled(next);
   }, [cameraEnabled]);
@@ -380,10 +393,17 @@ export function PreJoin({
 
     // What was asked for is persisted; what is actually running is what gets published. See
     // `wanted` for why those cannot be the same value.
-    onUpdatePrefs({
-      micEnabled: wanted.current.mic,
-      cameraEnabled: wanted.current.camera,
-    });
+    if (!initialMedia) {
+      onUpdatePrefs({
+        micEnabled: wanted.current.mic,
+        cameraEnabled: wanted.current.camera,
+      });
+    } else if (touched.current.mic || touched.current.camera) {
+      onUpdatePrefs({
+        ...(touched.current.mic ? { micEnabled: wanted.current.mic } : {}),
+        ...(touched.current.camera ? { cameraEnabled: wanted.current.camera } : {}),
+      });
+    }
     onJoin({ micEnabled, cameraEnabled, audioTrack: audio, videoTrack: video });
   }
 

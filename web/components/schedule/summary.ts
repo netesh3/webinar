@@ -57,6 +57,19 @@ export function shortTimeZone(timeZone: string, at: Date): string {
   }
 }
 
+/** The action bar's line for a meeting: when, and how long. Registration and seats are not
+ *  a meeting's to choose, so saying "Registration off" would only describe a webinar. */
+export function meetingSummary(
+  form: FormState,
+  zoneLabel: string,
+): { lead: string | null; rest: string } {
+  const duration = formatDuration(form.durationMin);
+  return {
+    lead: formatScheduleWhen(form.date, form.time, zoneLabel),
+    rest: ["Meeting", duration].filter(Boolean).join(" · "),
+  };
+}
+
 /** One line for the action bar, from the form as it stands. A part that is
  *  still empty is left out; a switch that is off is said, because off is a
  *  choice the host already made. */

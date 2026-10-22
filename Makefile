@@ -186,6 +186,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the host roster sections: oldest-first hands and a search box that stays
 	# away until the list is too long to scan are not things a three-person room shows.
 	cd web && node --experimental-strip-types --no-warnings lib/roster.test.mts
+	# And a meeting's room: no raise hand or stream tools, a guest entering muted with the
+	# camera on unless a refresh saved otherwise, and the lobby's packet, queue and wording.
+	cd web && node --experimental-strip-types --no-warnings lib/meeting-room.test.mts
 	# And the media shortcuts: M/V/Space are also typing keys, so the guard that they
 	# do not fire in a chat box is the whole reason this file exists.
 	cd web && node --experimental-strip-types --no-warnings lib/media-hotkeys.test.mts
@@ -242,6 +245,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the Engagement tab that replaced Report: old ?tab=report links must still land on
 	# it, and the Export menu must keep offering the old attendance CSV people built on.
 	cd web && node --experimental-strip-types --no-warnings lib/host-tabs.test.mts
+	# And creating a meeting: the instant and scheduled inputs carry a meeting's shape (no
+	# registration, standard delivery, mic left to the pre-join), and its tabs drop People.
+	cd web && node --experimental-strip-types --no-warnings lib/meeting-create.test.mts
 	# And where the host goes when the webinar ends: Results, and not while their
 	# own End request is still the one sending the survey.
 	cd web && node --experimental-strip-types --no-warnings lib/host-results.test.mts
@@ -285,6 +291,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the attendee join card: a finished webinar is not "isn't running"
 	# with a retry, and the body does not repeat the title.
 	cd web && node --experimental-strip-types --no-warnings lib/join-refusal.test.mts
+	# And a meeting guest at the door: waiting polls, a denial is final, full and locked
+	# retry, and no key means the name field rather than "register".
+	cd web && node --experimental-strip-types --no-warnings lib/meeting-lobby.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
