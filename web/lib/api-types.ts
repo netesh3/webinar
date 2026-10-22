@@ -64,6 +64,14 @@ export const AIFeatureQAAnswer = "qa_answer";
  */
 export const AIFeatureQAAutoDraft = "qa_autodraft";
 /**
+ * Past answers drafted from an ended session's transcript, for questions answered aloud.
+ */
+export const AIFeatureQAHarvest = "qa_harvest";
+/**
+ * Embeddings for the AI knowledge's vector search (text-embedding-3-small).
+ */
+export const AIFeatureEmbed = "embed";
+/**
  * AIFeatureUsage is one AI feature's calls this month.
  */
 export interface AIFeatureUsage {
@@ -259,6 +267,10 @@ export interface KnowledgeDoc {
    */
   source: string;
   filename?: string;
+  /**
+   * Folder is a vault note's folder inside the vault ("Course/Week 1"), shown as a tag.
+   */
+  folder?: string;
   bytes: number /* int64 */;
   words: number /* int */;
   chunks: number /* int */;
@@ -327,15 +339,145 @@ export interface SessionKnowledgeDoc {
 }
 /**
  * SessionKnowledge is GET /api/host/webinars/{slug}/knowledge: the session host's library,
- * each document ticked unless it was left out of this session.
+ * each document ticked unless it was left out of this session, and the past answers' tick.
  */
 export interface SessionKnowledge {
   docs: SessionKnowledgeDoc[];
+  pastAnswers: SessionPastAnswers;
+}
+/**
+ * SessionPastAnswers is the "Past answers" item of a session's knowledge: on unless the
+ * session left them out. Count is the host's approved entries.
+ */
+export interface SessionPastAnswers {
+  count: number /* int */;
+  included: boolean;
 }
 /**
  * SessionKnowledgePatch is PATCH /api/host/webinars/{slug}/knowledge/{docId}.
  */
 export interface SessionKnowledgePatch {
+  included: boolean;
+}
+/**
+ *  KnowledgeVaultImport is POST /api/host/knowledge/vault?filename=…: an Obsidian vault as a
+ *  * .zip, the raw file as the body. Each Markdown note becomes a document (source "md", its
+ *  * folder kept as Folder); .obsidian/, hidden files and anything not Markdown are skipped. All
+ *  * the notes are added or none: errors 413 too_large, 415 unsupported (not a .zip), 422
+ *  * unreadable, too_many_files, note_too_large, vault_too_large, no_notes, too_long (a note over
+ *  * KnowledgeMaxDocWords) and library_full (the notes would not fit the library's caps).
+ */
+export interface KnowledgeVaultImport {
+  docs: KnowledgeDoc[];
+  /**
+   * Skipped counts the zip's entries that were not notes (settings, pictures, empty notes).
+   */
+  skipped: number /* int */;
+}
+/**
+ *  The past answers: a section of the host's AI knowledge holding answers to questions asked in
+ *  * their own sessions, one question and answer per entry. Only the text is kept, never who
+ *  * asked, with phone numbers and email addresses scrubbed.
+ *  *
+ *  *   typed     what a host answered in the Q&A panel, saved when the session ends (status
+ *  *             approved: it was already posted)
+ *  *   aloud     drafted by the AI from the session's transcript for a question the host answered
+ *  *             out loud (status pending until the host approves it; a pending entry is never
+ *  *             used to draft answers)
+ *  *
+ *  * The host can correct (edit) or delete any entry.
+ *  * A new approved answer to a question an entry already holds updates that entry instead of
+ *  * adding another: UpdatedFrom says so, and Undo puts the previous version back (once).
+ */
+export interface PastAnswer {
+  id: string;
+  question: string;
+  answer: string;
+  /**
+   * Status is approved or pending.
+   */
+  status: string;
+  /**
+   * Origin is typed or aloud.
+   */
+  origin: string;
+  /**
+   * SourceTopic and SourceAt are the session the current text came from.
+   */
+  sourceTopic?: string;
+  sourceAt?: string;
+  /**
+   * CanUndo is set when a repeat replaced an earlier version that Undo would restore.
+   */
+  canUndo: boolean;
+  /**
+   * UpdatedFrom names the session a repeat came from ("Updated from <topic>"), with CanUndo.
+   */
+  updatedFrom?: string;
+  updatedFromAt?: string;
+  updatedAt: string;
+}
+/**
+ * Past answer states and origins.
+ */
+export const PastAnswerApproved = "approved";
+/**
+ * Past answer states and origins.
+ */
+export const PastAnswerPending = "pending";
+/**
+ * Past answer states and origins.
+ */
+export const PastAnswerTyped = "typed";
+/**
+ * Past answer states and origins.
+ */
+export const PastAnswerAloud = "aloud";
+/**
+ * The past answers' limits.
+ */
+export const PastAnswerMaxEntries = 2000;
+/**
+ * The past answers' limits.
+ */
+export const PastAnswerMaxQuestionRunes = 600;
+/**
+ * The past answers' limits.
+ */
+export const PastAnswerMaxAnswerRunes = 2000;
+/**
+ * PastAnswers is GET /api/host/knowledge/answers: pending entries first, then approved, newest
+ * first. The read is also when ended sessions not yet harvested are (see knowledge_answers.go).
+ */
+export interface PastAnswers {
+  answers: PastAnswer[];
+  pending: number /* int */;
+  approved: number /* int */;
+  max: number /* int */;
+}
+/**
+ *  PastAnswerEdit is PATCH /api/host/knowledge/answers/{id} (a correction: the new text
+ *  * replaces the old, and the earlier version an Undo would restore is dropped) and POST
+ *  * /api/host/knowledge/answers/{id}/approve (a pending draft, as the host edited it; both
+ *  * fields optional there). Errors: 404 not_found, 422 (fields question/answer).
+ */
+export interface PastAnswerEdit {
+  question: string;
+  answer: string;
+}
+/**
+ *  PastAnswerResult is an entry after an approve, edit or undo. Merged is set when approving
+ *  * matched an existing entry, which was updated instead (Answer is that entry; the draft is
+ *  * gone).
+ */
+export interface PastAnswerResult {
+  answer: PastAnswer;
+  merged: boolean;
+}
+/**
+ * SessionPastAnswersPatch is PATCH /api/host/webinars/{slug}/knowledge/past-answers.
+ */
+export interface SessionPastAnswersPatch {
   included: boolean;
 }
 

@@ -1493,6 +1493,8 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 
 	// The AI recap for the host, written by the recap lane once the session has settled.
 	s.scheduleRecap(ctx, wb, serverCaptions)
+	// The host's typed Q&A answers, into their past answers (knowledge_answers.go).
+	s.harvestOnEnd(ctx, wb)
 
 	s.log.Info("webinar ended", "slug", slug)
 	return wb, nil

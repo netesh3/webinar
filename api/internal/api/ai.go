@@ -66,14 +66,8 @@ func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.
 	if !s.ai.Enabled() {
 		return ai.Reply{}, ai.ErrUnavailable
 	}
-	total, host, err := s.store.AISpendSince(ctx, aiMonthStart(time.Now()), hostID)
-	if err != nil {
+	if err := s.aiCapCheck(ctx, feature, hostID); err != nil {
 		return ai.Reply{}, err
-	}
-	if total >= s.cfg.AIMonthlyUSD || (hostID != "" && host >= s.cfg.AIHostMonthlyUSD) {
-		s.log.Warn("ai: monthly limit reached", "feature", feature, "host", hostID,
-			"spent_usd", total, "host_spent_usd", host)
-		return ai.Reply{}, errAILimit
 	}
 
 	reply, callErr := s.ai.Complete(ctx, req)
@@ -88,6 +82,20 @@ func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.
 		s.log.Warn("ai: record usage", "feature", feature, "error", err)
 	}
 	return reply, callErr
+}
+
+// aiCapCheck is errAILimit when the instance or the host has spent its month's allowance.
+func (s *Server) aiCapCheck(ctx context.Context, feature, hostID string) error {
+	total, host, err := s.store.AISpendSince(ctx, aiMonthStart(time.Now()), hostID)
+	if err != nil {
+		return err
+	}
+	if total >= s.cfg.AIMonthlyUSD || (hostID != "" && host >= s.cfg.AIHostMonthlyUSD) {
+		s.log.Warn("ai: monthly limit reached", "feature", feature, "host", hostID,
+			"spent_usd", total, "host_spent_usd", host)
+		return errAILimit
+	}
+	return nil
 }
 
 // handleAdminAIStatus is GET /api/admin/ai: which provider is answering, which are

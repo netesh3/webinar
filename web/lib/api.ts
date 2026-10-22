@@ -15,6 +15,9 @@ import type {
   KnowledgeDoc,
   KnowledgeDocDetail,
   KnowledgeLibrary,
+  KnowledgeVaultImport,
+  PastAnswerResult,
+  PastAnswers,
   SessionKnowledge,
   SalesChat,
   SalesConversationDetail,
@@ -234,24 +237,39 @@ function hostWebinarsPath(params: HostWebinarQuery): string {
 
 /* The home page's sales chat, visitor side. The visitor has no account: the chat's
  * own token (returned by start) goes in X-Chat-Token on every later call. */
-function salesCall<T>(method: "GET" | "POST", path: string, token: string, after: number, body?: unknown) {
+function salesCall<T>(
+  method: "GET" | "POST",
+  path: string,
+  token: string,
+  after: number,
+  body?: unknown,
+) {
   return request<T>(`${path}?after=${after}`, {
     method,
     cache: "no-store",
-    headers: { "X-Chat-Token": token, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+    headers: {
+      "X-Chat-Token": token,
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
 
 export const salesChat = {
   start: (page: string) => post<SalesChat>("/api/sales/chat", { page }),
-  poll: (token: string, after: number) => salesCall<SalesChat>("GET", "/api/sales/chat", token, after),
+  poll: (token: string, after: number) =>
+    salesCall<SalesChat>("GET", "/api/sales/chat", token, after),
   say: (token: string, after: number, body: string) =>
-    salesCall<SalesChat>("POST", "/api/sales/chat/messages", token, after, { body }),
+    salesCall<SalesChat>("POST", "/api/sales/chat/messages", token, after, {
+      body,
+    }),
   handoff: (token: string, after: number) =>
     salesCall<SalesChat>("POST", "/api/sales/chat/handoff", token, after, {}),
   contact: (token: string, after: number, email: string, name?: string) =>
-    salesCall<SalesChat>("POST", "/api/sales/chat/contact", token, after, { email, name }),
+    salesCall<SalesChat>("POST", "/api/sales/chat/contact", token, after, {
+      email,
+      name,
+    }),
 };
 
 export const api = {
@@ -272,10 +290,16 @@ export const api = {
   /** For a signed-in person about to register: the phone to prefill, and whether
    *  this webinar's coach may already message them on WhatsApp. */
   whatsappConsent: (slug: string) =>
-    request<WhatsAppConsent>(`/api/webinars/${seg(slug)}/whatsapp-consent`, fresh),
+    request<WhatsAppConsent>(
+      `/api/webinars/${seg(slug)}/whatsapp-consent`,
+      fresh,
+    ),
 
   register: async (slug: string, body: RegisterRequest) => {
-    const reg = await post<Registration>(`/api/webinars/${seg(slug)}/register`, body);
+    const reg = await post<Registration>(
+      `/api/webinars/${seg(slug)}/register`,
+      body,
+    );
     dropCache(REGISTRATIONS_KEY);
     return reg;
   },
@@ -307,7 +331,10 @@ export const api = {
    *  `meeting_ended`, `locked` or `lobby_full`. The waiting page then polls `join` with
    *  the key — lib/meeting-lobby.ts is what each answer means on screen. */
   meetingKnock: (slug: string, body: MeetingKnockRequest) =>
-    post<MeetingKnockResponse>(`/api/webinars/${seg(slug)}/meeting/knock`, body),
+    post<MeetingKnockResponse>(
+      `/api/webinars/${seg(slug)}/meeting/knock`,
+      body,
+    ),
 
   /** Exchanges a join key — or the session cookie — for a LiveKit token. The
    *  server decides the role; a client cannot ask for one. */
@@ -328,7 +355,8 @@ export const api = {
 
   /** The Leave button: forget the rejoin cookie, so reopening the link does not put this
    *  browser back in the room. */
-  leaveRoom: (slug: string) => post<StatusResponse>(`/api/webinars/${seg(slug)}/leave`),
+  leaveRoom: (slug: string) =>
+    post<StatusResponse>(`/api/webinars/${seg(slug)}/leave`),
 
   /** Hands one realtime message to the server for delivery.
    *
@@ -394,7 +422,8 @@ export const api = {
     `${API_BASE}/api/webinars/${seg(slug)}/events/leave?t=${encodeURIComponent(token)}`,
 
   /** The host's view of edge delivery for one webinar: on or off, and how many watch. */
-  hostEdgeStatus: (slug: string) => request<EdgeStatus>(`/api/host/webinars/${seg(slug)}/edge`, fresh),
+  hostEdgeStatus: (slug: string) =>
+    request<EdgeStatus>(`/api/host/webinars/${seg(slug)}/edge`, fresh),
 
   /** The server's clock, for the edge latency overlay. */
   serverTime: () => request<ServerTime>("/api/time", fresh),
@@ -519,7 +548,8 @@ export const api = {
   deleteAccount: (req: DeleteAccountRequest) =>
     del<StatusResponse>("/api/auth/account", req),
 
-  me: (force = false) => cachedGet<Account>(ME_KEY, { ttl: TTL_SESSION, force }),
+  me: (force = false) =>
+    cachedGet<Account>(ME_KEY, { ttl: TTL_SESSION, force }),
 
   updateProfile: (body: ProfilePatch) => patch<Account>("/api/auth/me", body),
 
@@ -533,7 +563,10 @@ export const api = {
 
   /** Checkout's signed success response. Turns hosting on; returns the account. */
   verifyBillingPayment: async (body: VerifyBillingPaymentRequest) => {
-    const res = await post<VerifyBillingPaymentResponse>("/api/billing/verify", body);
+    const res = await post<VerifyBillingPaymentResponse>(
+      "/api/billing/verify",
+      body,
+    );
     dropCache(ME_KEY);
     return res;
   },
@@ -543,11 +576,16 @@ export const api = {
   /** Starts the 7-day free trial on a monthly plan: a Razorpay subscription
    *  whose first charge is in seven days. Checkout then authorises it. */
   startTrial: (plan: string) =>
-    post<TrialCheckout>("/api/billing/trial", { plan } satisfies StartTrialRequest),
+    post<TrialCheckout>("/api/billing/trial", {
+      plan,
+    } satisfies StartTrialRequest),
 
   /** Checkout's signed response for the trial's authorisation. Starts the trial. */
   verifyTrial: async (body: VerifyTrialRequest) => {
-    const res = await post<VerifyTrialResponse>("/api/billing/trial/verify", body);
+    const res = await post<VerifyTrialResponse>(
+      "/api/billing/trial/verify",
+      body,
+    );
     dropCache(ME_KEY);
     return res;
   },
@@ -585,7 +623,10 @@ export const api = {
   },
 
   myRegistrations: (force = false) =>
-    cachedGet<RegisteredWebinar[]>(REGISTRATIONS_KEY, { ttl: TTL_SESSION, force }),
+    cachedGet<RegisteredWebinar[]>(REGISTRATIONS_KEY, {
+      ttl: TTL_SESSION,
+      force,
+    }),
 
   // ------------------------------------------------------------------ host
 
@@ -632,7 +673,8 @@ export const api = {
     return out;
   },
 
-  hostRecordingLibrary: () => request<Recording[]>("/api/host/recordings", fresh),
+  hostRecordingLibrary: () =>
+    request<Recording[]>("/api/host/recordings", fresh),
 
   /** Topic tags THIS host has already used, for the schedule form's
    *  suggestions. Scoped to the signed-in coach — another coach's tags are
@@ -661,7 +703,10 @@ export const api = {
   },
 
   updateWebinar: async (slug: string, body: WebinarInput) => {
-    const webinar = await patch<Webinar>(`/api/host/webinars/${seg(slug)}/`, body);
+    const webinar = await patch<Webinar>(
+      `/api/host/webinars/${seg(slug)}/`,
+      body,
+    );
     dropCache(TRACKS_KEY);
     return webinar;
   },
@@ -684,7 +729,10 @@ export const api = {
   },
 
   hostIntegrations: (force = false) =>
-    cachedGet<IntegrationsResponse>(INTEGRATIONS_KEY, { ttl: TTL_SESSION, force }),
+    cachedGet<IntegrationsResponse>(INTEGRATIONS_KEY, {
+      ttl: TTL_SESSION,
+      force,
+    }),
 
   /** "Notify me" for a coming-soon integration. Returns the card list. */
   integrationInterest: (id: string) =>
@@ -700,7 +748,10 @@ export const api = {
   /** A live-stream platform (linkedin, instagram, facebook) as this room sees
    *  it: key saved, paused here, streaming now. */
   webinarStreamDestination: (slug: string, platform: string) =>
-    request<WebinarStreamDestination>(`/api/host/webinars/${seg(slug)}/${seg(platform)}`, fresh),
+    request<WebinarStreamDestination>(
+      `/api/host/webinars/${seg(slug)}/${seg(platform)}`,
+      fresh,
+    ),
   setWebinarStreamPaused: (slug: string, platform: string, paused: boolean) =>
     patch<WebinarStreamDestination>(
       `/api/host/webinars/${seg(slug)}/${seg(platform)}`,
@@ -719,7 +770,9 @@ export const api = {
 
   deleteWebinar: async (slug: string, scope?: "this" | "following") => {
     const q = scope ? `?scope=${scope}` : "";
-    const res = await del<StatusResponse>(`/api/host/webinars/${seg(slug)}/${q}`);
+    const res = await del<StatusResponse>(
+      `/api/host/webinars/${seg(slug)}/${q}`,
+    );
     dropHostWebinarLists();
     return res;
   },
@@ -886,24 +939,36 @@ export const api = {
   /** The live Q&A assistant (host and co-hosts): duplicate questions grouped, and the Top
    *  questions strip. enabled is false while the session may not use AI. */
   qaClusters: (slug: string, signal?: AbortSignal) =>
-    request<QAClustersResponse>(`/api/host/webinars/${seg(slug)}/qa/clusters`, { ...fresh, signal }),
+    request<QAClustersResponse>(`/api/host/webinars/${seg(slug)}/qa/clusters`, {
+      ...fresh,
+      signal,
+    }),
 
   /** A private draft answer for one cluster: shown to this host only, never posted. */
   suggestQAAnswer: (slug: string, clusterId: string) =>
-    post<QASuggestResponse>(`/api/host/webinars/${seg(slug)}/qa/clusters/${seg(clusterId)}/suggest`, {}),
+    post<QASuggestResponse>(
+      `/api/host/webinars/${seg(slug)}/qa/clusters/${seg(clusterId)}/suggest`,
+      {},
+    ),
 
   /** Posts a draft, as edited, as the host's answer on its cluster's open questions. The
    *  only way a draft reaches the audience. Returns the questions now answered. */
   postQADraft: (slug: string, draftId: string, answer: string) =>
-    post<QAPostDraftResponse>(`/api/host/webinars/${seg(slug)}/qa/drafts/${seg(draftId)}/post`, { answer }),
+    post<QAPostDraftResponse>(
+      `/api/host/webinars/${seg(slug)}/qa/drafts/${seg(draftId)}/post`,
+      { answer },
+    ),
 
   discardQADraft: (slug: string, draftId: string) =>
-    del<StatusResponse>(`/api/host/webinars/${seg(slug)}/qa/drafts/${seg(draftId)}`),
+    del<StatusResponse>(
+      `/api/host/webinars/${seg(slug)}/qa/drafts/${seg(draftId)}`,
+    ),
 
   // ------------------------------------------------------------------ AI knowledge
 
   /** The host's AI knowledge library (accounts with the ai feature). */
-  knowledgeLibrary: () => request<KnowledgeLibrary>("/api/host/knowledge", fresh),
+  knowledgeLibrary: () =>
+    request<KnowledgeLibrary>("/api/host/knowledge", fresh),
 
   addKnowledgeText: (title: string, text: string) =>
     post<KnowledgeDoc>("/api/host/knowledge", { title, text }),
@@ -919,19 +984,66 @@ export const api = {
     });
   },
 
-  knowledgeDoc: (id: string) => request<KnowledgeDocDetail>(`/api/host/knowledge/${seg(id)}`, fresh),
+  knowledgeDoc: (id: string) =>
+    request<KnowledgeDocDetail>(`/api/host/knowledge/${seg(id)}`, fresh),
 
   renameKnowledge: (id: string, title: string) =>
     patch<KnowledgeDoc>(`/api/host/knowledge/${seg(id)}`, { title }),
 
-  deleteKnowledge: (id: string) => del<StatusResponse>(`/api/host/knowledge/${seg(id)}`),
+  deleteKnowledge: (id: string) =>
+    del<StatusResponse>(`/api/host/knowledge/${seg(id)}`),
 
   /** The session host's library, each document ticked unless left out of this session. */
   sessionKnowledge: (slug: string) =>
-    request<SessionKnowledge>(`/api/host/webinars/${seg(slug)}/knowledge`, fresh),
+    request<SessionKnowledge>(
+      `/api/host/webinars/${seg(slug)}/knowledge`,
+      fresh,
+    ),
 
   setSessionKnowledge: (slug: string, docId: string, included: boolean) =>
-    patch<SessionKnowledge>(`/api/host/webinars/${seg(slug)}/knowledge/${seg(docId)}`, { included }),
+    patch<SessionKnowledge>(
+      `/api/host/webinars/${seg(slug)}/knowledge/${seg(docId)}`,
+      { included },
+    ),
+
+  /** Ticks or unticks the host's past answers for one session. */
+  setSessionPastAnswers: (slug: string, included: boolean) =>
+    patch<SessionKnowledge>(
+      `/api/host/webinars/${seg(slug)}/knowledge/past-answers`,
+      { included },
+    ),
+
+  /** Uploads a zipped Obsidian vault as is; each note becomes a document. */
+  importVault: (file: File) =>
+    request<KnowledgeVaultImport>(
+      `/api/host/knowledge/vault?${new URLSearchParams({ filename: file.name }).toString()}`,
+      {
+        method: "POST",
+        body: file,
+        headers: { "Content-Type": "application/zip" },
+      },
+    ),
+
+  /** The host's past answers; the read also harvests ended sessions not yet harvested. */
+  pastAnswers: () => request<PastAnswers>("/api/host/knowledge/answers", fresh),
+
+  editPastAnswer: (id: string, question: string, answer: string) =>
+    patch<PastAnswerResult>(`/api/host/knowledge/answers/${seg(id)}`, {
+      question,
+      answer,
+    }),
+
+  approvePastAnswer: (id: string, question: string, answer: string) =>
+    post<PastAnswerResult>(`/api/host/knowledge/answers/${seg(id)}/approve`, {
+      question,
+      answer,
+    }),
+
+  undoPastAnswer: (id: string) =>
+    post<PastAnswerResult>(`/api/host/knowledge/answers/${seg(id)}/undo`, {}),
+
+  deletePastAnswer: (id: string) =>
+    del<StatusResponse>(`/api/host/knowledge/answers/${seg(id)}`),
 
   appendCaption: (slug: string, body: { joinKey?: string; text: string }) =>
     post<StatusResponse>(`/api/webinars/${seg(slug)}/captions`, body),
@@ -1018,7 +1130,12 @@ export const api = {
 
   hostRegistrants: (
     slug: string,
-    page: { limit?: number; offset?: number; sort?: string; order?: "asc" | "desc" } = {},
+    page: {
+      limit?: number;
+      offset?: number;
+      sort?: string;
+      order?: "asc" | "desc";
+    } = {},
   ) => {
     const qs = new URLSearchParams();
     if (page.limit) qs.set("limit", String(page.limit));
@@ -1042,17 +1159,26 @@ export const api = {
   /** The attendance report, now read only for the stage's own rows (the Engagement tab's
    *  "Hosts & panelists" list); its CSV twin is the Export menu's attendance log. */
   sessionReport: (slug: string, signal?: AbortSignal) =>
-    request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, { ...fresh, signal }),
+    request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, {
+      ...fresh,
+      signal,
+    }),
 
   /** The AI recap of an ended session: status none / pending / ready / skipped / failed,
    *  with the reason when it is not ready. */
   sessionRecap: (slug: string, signal?: AbortSignal) =>
-    request<SessionRecapResponse>(`/api/host/webinars/${seg(slug)}/recap`, { ...fresh, signal }),
+    request<SessionRecapResponse>(`/api/host/webinars/${seg(slug)}/recap`, {
+      ...fresh,
+      signal,
+    }),
 
   /** Hot leads: everybody, ranked by what they did (counted, not AI), with an AI reason
    *  beside the top ones once the session has ended. aiStatus says why there are none. */
   sessionLeads: (slug: string, signal?: AbortSignal) =>
-    request<LeadsResponse>(`/api/host/webinars/${seg(slug)}/leads`, { ...fresh, signal }),
+    request<LeadsResponse>(`/api/host/webinars/${seg(slug)}/leads`, {
+      ...fresh,
+      signal,
+    }),
 
   /** The follow-up writer's drafts per group, written once after the end. lang is "en" or
    *  "hinglish"; omitted, the session's own language. Refusals: 429 ai_limit, 503
@@ -1064,7 +1190,12 @@ export const api = {
     ),
 
   /** Save the host's edit of one group's drafts. 409 no_drafts, 422 too_long. */
-  saveFollowup: (slug: string, group: string, draft: FollowupDraft, lang: string) =>
+  saveFollowup: (
+    slug: string,
+    group: string,
+    draft: FollowupDraft,
+    lang: string,
+  ) =>
     put<FollowupsResponse>(
       `/api/host/webinars/${seg(slug)}/followups/${seg(group)}?lang=${encodeURIComponent(lang)}`,
       { draft },
@@ -1086,9 +1217,17 @@ export const api = {
     post<Survey>(`/api/host/webinars/${seg(slug)}/survey/close`),
 
   surveyResults: (slug: string, signal?: AbortSignal) =>
-    request<SurveyResults>(`/api/host/webinars/${seg(slug)}/survey/results`, { ...fresh, signal }),
+    request<SurveyResults>(`/api/host/webinars/${seg(slug)}/survey/results`, {
+      ...fresh,
+      signal,
+    }),
 
-  surveyAnswers: (slug: string, question: string, cursor?: string, limit = 20) =>
+  surveyAnswers: (
+    slug: string,
+    question: string,
+    cursor?: string,
+    limit = 20,
+  ) =>
     request<SurveyTextPage>(
       `/api/host/webinars/${seg(slug)}/survey/answers?question=${seg(question)}&limit=${limit}${
         cursor ? `&cursor=${seg(cursor)}` : ""
@@ -1109,7 +1248,11 @@ export const api = {
 
   /** One page of the attendee heatmap, sorted, filtered and paged server-side.
    *  `cursor` is the previous page's `nextCursor`, opaque. */
-  engagementAttendees: (slug: string, query: AttendeeQuery, signal?: AbortSignal) =>
+  engagementAttendees: (
+    slug: string,
+    query: AttendeeQuery,
+    signal?: AbortSignal,
+  ) =>
     request<EngagementAttendeePage>(
       `/api/host/webinars/${seg(slug)}/engagement/attendees?${toSearchParams(query).toString()}`,
       { ...fresh, signal },
@@ -1125,7 +1268,9 @@ export const api = {
     `${API_BASE}/api/host/webinars/${seg(slug)}/engagement.csv`,
 
   recomputeEngagement: (slug: string) =>
-    post<EngagementSummary>(`/api/host/webinars/${seg(slug)}/engagement/recompute`),
+    post<EngagementSummary>(
+      `/api/host/webinars/${seg(slug)}/engagement/recompute`,
+    ),
 
   /** Who is waiting at a meeting's door, longest-waiting first. Hosts and co-hosts only;
    *  422 `not_a_meeting` for a webinar. Polled by the room's lobby panel, beside the
@@ -1135,15 +1280,21 @@ export const api = {
 
   /** Let one waiting guest in. 409 `meeting_full` when the room is at its cap. */
   admitLobby: (slug: string, id: string) =>
-    post<StatusResponse>(`/api/host/webinars/${seg(slug)}/lobby/${seg(id)}/admit`),
+    post<StatusResponse>(
+      `/api/host/webinars/${seg(slug)}/lobby/${seg(id)}/admit`,
+    ),
 
   /** Turn one waiting guest away; their next poll answers `lobby_denied`. */
   denyLobby: (slug: string, id: string) =>
-    post<StatusResponse>(`/api/host/webinars/${seg(slug)}/lobby/${seg(id)}/deny`),
+    post<StatusResponse>(
+      `/api/host/webinars/${seg(slug)}/lobby/${seg(id)}/deny`,
+    ),
 
   /** Let in as many as fit, oldest first; `left` is how many are still waiting. */
   admitAllLobby: (slug: string) =>
-    post<LobbyAdmitAllResponse>(`/api/host/webinars/${seg(slug)}/lobby/admit-all`),
+    post<LobbyAdmitAllResponse>(
+      `/api/host/webinars/${seg(slug)}/lobby/admit-all`,
+    ),
 
   approveAll: (slug: string) =>
     post<MuteAllResponse>(
@@ -1182,7 +1333,10 @@ export const api = {
   adminStats: () => request<AdminStats>("/api/admin/stats", fresh),
   /** Which WhatsApp CRM features hosts used over the last 7, 30 or 90 days. */
   adminWhatsAppUsage: (days: 7 | 30 | 90) =>
-    request<AdminWhatsAppUsage>(`/api/admin/stats/whatsapp?days=${days}`, fresh),
+    request<AdminWhatsAppUsage>(
+      `/api/admin/stats/whatsapp?days=${days}`,
+      fresh,
+    ),
 
   /** Every account, for the admin panel. Admin-only server side; `q` filters by
    *  email or name. */
@@ -1193,7 +1347,8 @@ export const api = {
     ),
 
   /** How many accounts are in each admin list (customers, webinar audience). */
-  adminAccountCounts: () => request<AdminAccountCounts>("/api/admin/users/counts", fresh),
+  adminAccountCounts: () =>
+    request<AdminAccountCounts>("/api/admin/users/counts", fresh),
 
   /** Move an account between the customer list and the webinar-audience list.
    *  Does not grant or remove hosting. */
@@ -1220,7 +1375,11 @@ export const api = {
 
   /** Sets this account's override for one feature: true forces it on, false off,
    *  null clears it so the account's plan decides. */
-  setUserFeatureOverride: (userId: string, feature: string, state: boolean | null) =>
+  setUserFeatureOverride: (
+    userId: string,
+    feature: string,
+    state: boolean | null,
+  ) =>
     patch<Account>(`/api/admin/users/${seg(userId)}/features`, {
       feature,
       enabled: state === true,
@@ -1228,11 +1387,14 @@ export const api = {
     } satisfies FeatureGrant),
 
   /** The tier matrix: which features each plan includes. */
-  planFeatures: () => request<PlanFeaturesBody>("/api/admin/plan-features", fresh),
+  planFeatures: () =>
+    request<PlanFeaturesBody>("/api/admin/plan-features", fresh),
 
   /** Replaces the tier matrix whole. */
   setPlanFeatures: (tiers: PlanFeatures[]) =>
-    put<PlanFeaturesBody>("/api/admin/plan-features", { tiers } satisfies PlanFeaturesBody),
+    put<PlanFeaturesBody>("/api/admin/plan-features", {
+      tiers,
+    } satisfies PlanFeaturesBody),
 
   /** Set a custom number of people on stage for an account; null goes back to its plan. */
   setUserStageCap: (userId: string, stageCap: number | null) =>
@@ -1254,9 +1416,12 @@ export const api = {
   /** Set an account's media library limit in bytes; null puts it back on the default. */
   setUserMediaQuota: (userId: string, mediaQuotaBytes: number | null) =>
     // An absent field is null to the server: back on the default.
-    patch<SetUserMediaQuotaRequest>(`/api/admin/users/${seg(userId)}/media-quota`, {
-      mediaQuotaBytes: mediaQuotaBytes ?? undefined,
-    } satisfies SetUserMediaQuotaRequest),
+    patch<SetUserMediaQuotaRequest>(
+      `/api/admin/users/${seg(userId)}/media-quota`,
+      {
+        mediaQuotaBytes: mediaQuotaBytes ?? undefined,
+      } satisfies SetUserMediaQuotaRequest,
+    ),
 
   /** Put an account on a paid plan, or "" for none (the launch default). */
   setUserPlan: (userId: string, plan: Plan | "") =>
@@ -1265,7 +1430,8 @@ export const api = {
     } satisfies SetUserPlanRequest),
 
   /** The configured video servers (LiveKit projects): ids and labels, never secrets. */
-  sfuProjects: () => request<SFUProjectsResponse>("/api/admin/sfu-projects", fresh),
+  sfuProjects: () =>
+    request<SFUProjectsResponse>("/api/admin/sfu-projects", fresh),
 
   /** Send a host's NEW webinars to a video server, or "" for the default order. */
   setUserSFU: (userId: string, project: string) =>
@@ -1278,7 +1444,8 @@ export const api = {
     post<StatusResponse>(`/api/admin/users/${seg(userId)}/trial-exemption`, {}),
 
   /** Clears an account's payment-method review flags. */
-  clearTrialFlags: (userId: string) => del<StatusResponse>(`/api/admin/users/${seg(userId)}/trial-flags`),
+  clearTrialFlags: (userId: string) =>
+    del<StatusResponse>(`/api/admin/users/${seg(userId)}/trial-flags`),
 
   /** Deletes an account outright. Refused by the server for the caller's own
    *  account, and for one that still hosts webinars — those have to be
@@ -1322,14 +1489,29 @@ export const api = {
   adminSalesInbox: (filter: "needs" | "ai" | "closed" | "") =>
     request<SalesInbox>(`/api/admin/sales?filter=${filter}`, fresh),
   adminSalesConversation: (id: string, after = 0) =>
-    request<SalesConversationDetail>(`/api/admin/sales/${seg(id)}?after=${after}`, fresh),
+    request<SalesConversationDetail>(
+      `/api/admin/sales/${seg(id)}?after=${after}`,
+      fresh,
+    ),
   adminSalesJoin: (id: string, after = 0) =>
-    post<SalesConversationDetail>(`/api/admin/sales/${seg(id)}/join?after=${after}`),
+    post<SalesConversationDetail>(
+      `/api/admin/sales/${seg(id)}/join?after=${after}`,
+    ),
   /** via "" sends to the chat while the visitor is there, and by email once they have left. */
-  adminSalesReply: (id: string, body: string, via: "" | "chat" | "email", after = 0) =>
-    post<SalesConversationDetail>(`/api/admin/sales/${seg(id)}/messages?after=${after}`, { body, via }),
+  adminSalesReply: (
+    id: string,
+    body: string,
+    via: "" | "chat" | "email",
+    after = 0,
+  ) =>
+    post<SalesConversationDetail>(
+      `/api/admin/sales/${seg(id)}/messages?after=${after}`,
+      { body, via },
+    ),
   adminSalesClose: (id: string, after = 0) =>
-    post<SalesConversationDetail>(`/api/admin/sales/${seg(id)}/close?after=${after}`),
+    post<SalesConversationDetail>(
+      `/api/admin/sales/${seg(id)}/close?after=${after}`,
+    ),
 
   /** The AI model chain: which provider is answering, and which are paused
    *  (out of free quota, rate limited, or misconfigured) and until when. */

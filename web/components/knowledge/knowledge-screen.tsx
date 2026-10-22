@@ -6,23 +6,32 @@ import { SparklesIcon, TrashIcon } from "../icons";
 import { useSession, useToast } from "../providers";
 import { Button, ButtonLink, Card, Empty } from "../ui";
 import { api } from "@/lib/api";
-import { FeatureAI, type KnowledgeDoc, type KnowledgeDocDetail, type KnowledgeLibrary } from "@/lib/api-types";
 import {
+  FeatureAI,
+  type KnowledgeDoc,
+  type KnowledgeDocDetail,
+  type KnowledgeLibrary,
+} from "@/lib/api-types";
+import {
+  folderTag,
   KNOWLEDGE_ACCEPT,
   knowledgeError,
   libraryFull,
   sourceLabel,
   uploadProblem,
   usageLabel,
+  VAULT_ACCEPT,
+  vaultProblem,
   wordsLabel,
 } from "@/lib/knowledge";
+import { PastAnswersSection } from "./past-answers";
 
 /* "✨ AI knowledge": the host's library of documents that ground the live Q&A assistant's
  * draft answers. Pasted text or a PDF, Word, text or Markdown upload; the server extracts the
  * text and keeps only that. Every session uses every document unless the host unticks it on
  * that session's Setup tab. See api/internal/api/knowledge.go. */
 
-type AddMode = "paste" | "upload";
+type AddMode = "paste" | "upload" | "vault";
 
 export function KnowledgeScreen() {
   const { account, status } = useSession();
@@ -53,7 +62,8 @@ export function KnowledgeScreen() {
         if (!cancelled) setLib(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setLoadError(knowledgeError(err, "Couldn't load your AI knowledge."));
+        if (!cancelled)
+          setLoadError(knowledgeError(err, "Couldn't load your AI knowledge."));
       });
     return () => {
       cancelled = true;
@@ -85,7 +95,9 @@ export function KnowledgeScreen() {
   if (!account) {
     return (
       <Card className="p-8 text-center">
-        <h1 className="text-[18px] font-semibold">Sign in to see your AI knowledge</h1>
+        <h1 className="text-[18px] font-semibold">
+          Sign in to see your AI knowledge
+        </h1>
         <ButtonLink href="/login?next=/host/knowledge" className="mt-5">
           Sign in
         </ButtonLink>
@@ -100,8 +112,9 @@ export function KnowledgeScreen() {
         AI knowledge
       </h1>
       <p className="mt-1 text-[13.5px] text-ink-3">
-        Your course FAQ, policies and notes. During a live session, the Q&amp;A assistant drafts answers from
-        these for you to check, edit and post. Nothing is posted without you.
+        Your course FAQ, policies and notes. During a live session, the Q&amp;A
+        assistant drafts answers from these for you to check, edit and post.
+        Nothing is posted without you.
       </p>
 
       {!hasAI ? (
@@ -126,10 +139,19 @@ export function KnowledgeScreen() {
                   notify(`Added “${d.title}”: ${wordsLabel(d.words)}.`, "info");
                   void load();
                 }}
+                onImported={(n) => {
+                  notify(
+                    `Imported ${n} ${n === 1 ? "note" : "notes"} from your vault.`,
+                    "info",
+                  );
+                  void load();
+                }}
               />
               <section aria-label="Your documents" className="mt-6">
                 <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="text-[13px] font-semibold text-ink">Your documents</h2>
+                  <h2 className="text-[13px] font-semibold text-ink">
+                    Your documents
+                  </h2>
                   <p className="text-[12px] text-ink-3 tabular-nums">
                     {usageLabel(lib.docs.length, lib.usedWords, lib.limits)}
                   </p>
@@ -153,6 +175,7 @@ export function KnowledgeScreen() {
                   </ul>
                 )}
               </section>
+              <PastAnswersSection />
             </>
           )}
           {!lib && !loadError && (
@@ -177,7 +200,15 @@ export function KnowledgeScreen() {
   );
 }
 
-function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: KnowledgeDoc) => void }) {
+function AddDocument({
+  lib,
+  onAdded,
+  onImported,
+}: {
+  lib: KnowledgeLibrary;
+  onAdded: (d: KnowledgeDoc) => void;
+  onImported: (notes: number) => void;
+}) {
   const [mode, setMode] = useState<AddMode>("paste");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -191,12 +222,43 @@ function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: Kno
     e.preventDefault();
     if (busy) return;
     setError(null);
+    if (mode === "vault") {
+      if (!file) {
+        setError("Choose your zipped vault.");
+        return;
+      }
+      const problem = vaultProblem(
+        file.name,
+        file.size,
+        lib.limits.maxUploadBytes,
+      );
+      if (problem) {
+        setError(problem);
+        return;
+      }
+      setBusy(true);
+      try {
+        const res = await api.importVault(file);
+        setFile(null);
+        if (fileInput.current) fileInput.current.value = "";
+        onImported(res.docs.length);
+      } catch (err) {
+        setError(knowledgeError(err, "Couldn't import that vault."));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (mode === "upload") {
       if (!file) {
         setError("Choose a file to upload.");
         return;
       }
-      const problem = uploadProblem(file.name, file.size, lib.limits.maxUploadBytes);
+      const problem = uploadProblem(
+        file.name,
+        file.size,
+        lib.limits.maxUploadBytes,
+      );
       if (problem) {
         setError(problem);
         return;
@@ -207,7 +269,10 @@ function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: Kno
     }
     setBusy(true);
     try {
-      const doc = mode === "upload" && file ? await api.uploadKnowledge(file, title) : await api.addKnowledgeText(title, text);
+      const doc =
+        mode === "upload" && file
+          ? await api.uploadKnowledge(file, title)
+          : await api.addKnowledgeText(title, text);
       setTitle("");
       setText("");
       setFile(null);
@@ -228,9 +293,13 @@ function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: Kno
       onClick={() => {
         setMode(id);
         setError(null);
+        setFile(null);
+        if (fileInput.current) fileInput.current.value = "";
       }}
       className={`rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-        mode === id ? "bg-surface text-ink shadow-sm" : "text-ink-2 hover:text-ink"
+        mode === id
+          ? "bg-surface text-ink shadow-sm"
+          : "text-ink-2 hover:text-ink"
       }`}
     >
       {label}
@@ -241,31 +310,68 @@ function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: Kno
     <Card className="mt-5 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-[13px] font-semibold text-ink">Add a document</h2>
-        <div role="tablist" aria-label="How to add it" className="inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5">
+        <div
+          role="tablist"
+          aria-label="How to add it"
+          className="inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5"
+        >
           {tab("paste", "Paste text")}
           {tab("upload", "Upload a file")}
+          {tab("vault", "✨ Obsidian vault")}
         </div>
       </div>
       {full ? (
         <div className="mt-3">
-          <Alert tone="warn">Your AI knowledge is full. Delete a document to add another.</Alert>
+          <Alert tone="warn">
+            Your AI knowledge is full. Delete a document to add another.
+          </Alert>
         </div>
       ) : (
         <form onSubmit={(e) => void submit(e)} className="mt-3 grid gap-3">
-          <div>
-            <label className="label" htmlFor="kb-title">
-              Title{mode === "upload" && " (optional: the file name is used otherwise)"}
-            </label>
-            <input
-              id="kb-title"
-              className="field"
-              value={title}
-              maxLength={120}
-              placeholder="Course FAQ"
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-          {mode === "paste" ? (
+          {mode === "vault" ? (
+            <div>
+              <label className="label" htmlFor="kb-vault">
+                Zipped vault
+              </label>
+              <input
+                ref={fileInput}
+                id="kb-vault"
+                type="file"
+                accept={VAULT_ACCEPT}
+                className="block w-full text-[13px] text-ink-2 file:mr-3 file:rounded-md file:border file:border-line-2 file:bg-surface file:px-3 file:py-1.5 file:text-[12.5px] file:font-medium file:text-ink hover:file:bg-surface-2"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  setError(null);
+                }}
+              />
+              <p className="mt-1 text-[11.5px] text-ink-3">
+                Zip your vault&apos;s folder (up to{" "}
+                {Math.floor(lib.limits.maxUploadBytes / (1 << 20))} MB). Each
+                note becomes a document, tagged with its folder; front-matter is
+                dropped and [[links]] become plain words. Settings (.obsidian),
+                pictures and empty notes are skipped. The notes must fit your
+                library:{" "}
+                {usageLabel(lib.docs.length, lib.usedWords, lib.limits)}.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="label" htmlFor="kb-title">
+                Title
+                {mode === "upload" &&
+                  " (optional: the file name is used otherwise)"}
+              </label>
+              <input
+                id="kb-title"
+                className="field"
+                value={title}
+                maxLength={120}
+                placeholder="Course FAQ"
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+          )}
+          {mode === "vault" ? null : mode === "paste" ? (
             <div>
               <label className="label" htmlFor="kb-text">
                 Text
@@ -296,8 +402,10 @@ function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: Kno
                 }}
               />
               <p className="mt-1 text-[11.5px] text-ink-3">
-                PDF, Word (.docx), .txt or .md, up to {Math.floor(lib.limits.maxUploadBytes / (1 << 20))} MB and{" "}
-                {wordsLabel(lib.limits.maxDocWords)}. Only the text is kept; a scanned PDF has none.
+                PDF, Word (.docx), .txt or .md, up to{" "}
+                {Math.floor(lib.limits.maxUploadBytes / (1 << 20))} MB and{" "}
+                {wordsLabel(lib.limits.maxDocWords)}. Only the text is kept; a
+                scanned PDF has none.
               </p>
             </div>
           )}
@@ -305,7 +413,11 @@ function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: Kno
           <div>
             <Button type="submit" disabled={busy}>
               {busy && <Spinner className="size-4" />}
-              {mode === "upload" ? "Upload" : "Add document"}
+              {mode === "vault"
+                ? "Import notes"
+                : mode === "upload"
+                  ? "Upload"
+                  : "Add document"}
             </Button>
           </div>
         </form>
@@ -314,7 +426,12 @@ function AddDocument({ lib, onAdded }: { lib: KnowledgeLibrary; onAdded: (d: Kno
   );
 }
 
-function DocRow({ doc, onView, onDelete, onRenamed }: {
+function DocRow({
+  doc,
+  onView,
+  onDelete,
+  onRenamed,
+}: {
   doc: KnowledgeDoc;
   onView: () => void;
   onDelete: () => void;
@@ -344,7 +461,10 @@ function DocRow({ doc, onView, onDelete, onRenamed }: {
     <li>
       <Card className="px-4 py-3">
         {editing ? (
-          <form onSubmit={(e) => void rename(e)} className="flex flex-wrap items-center gap-2">
+          <form
+            onSubmit={(e) => void rename(e)}
+            className="flex flex-wrap items-center gap-2"
+          >
             <label className="sr-only" htmlFor={`kb-rename-${doc.id}`}>
               Title
             </label>
@@ -374,28 +494,53 @@ function DocRow({ doc, onView, onDelete, onRenamed }: {
         ) : (
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-medium break-words text-ink">{doc.title}</p>
+              <p className="flex flex-wrap items-center gap-1.5 text-[14px] font-medium break-words text-ink">
+                {doc.title}
+                {folderTag(doc.folder) && (
+                  <span className="rounded-full border border-line bg-surface-2 px-2 py-0.5 text-[11px] font-normal text-ink-2">
+                    {folderTag(doc.folder)}
+                  </span>
+                )}
+              </p>
               <p className="mt-0.5 text-[12px] text-ink-3">
                 {sourceLabel(doc.source)}
-                {doc.filename && doc.source !== "text" && <> · {doc.filename}</>} · {wordsLabel(doc.words)} · added{" "}
-                {new Date(doc.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                {doc.filename && doc.source !== "text" && (
+                  <> · {doc.filename}</>
+                )}{" "}
+                · {wordsLabel(doc.words)} · added{" "}
+                {new Date(doc.createdAt).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <Button size="sm" variant="ghost" onClick={onView}>
                 View text
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditing(true)}
+              >
                 Rename
               </Button>
-              <Button size="sm" variant="ghost" onClick={onDelete} aria-label={`Delete ${doc.title}`}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onDelete}
+                aria-label={`Delete ${doc.title}`}
+              >
                 <TrashIcon className="size-4" />
               </Button>
             </div>
           </div>
         )}
         {doc.preview && (
-          <p className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed break-words text-ink-2">{doc.preview}</p>
+          <p className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed break-words text-ink-2">
+            {doc.preview}
+          </p>
         )}
       </Card>
     </li>
@@ -403,7 +548,13 @@ function DocRow({ doc, onView, onDelete, onRenamed }: {
 }
 
 /** The extracted text, so a host can see what the assistant reads (and that a PDF read well). */
-function DocText({ doc, onClose }: { doc: KnowledgeDoc | null; onClose: () => void }) {
+function DocText({
+  doc,
+  onClose,
+}: {
+  doc: KnowledgeDoc | null;
+  onClose: () => void;
+}) {
   const [detail, setDetail] = useState<KnowledgeDocDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const id = doc?.id;
@@ -420,7 +571,8 @@ function DocText({ doc, onClose }: { doc: KnowledgeDoc | null; onClose: () => vo
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(knowledgeError(err, "Couldn't load the text."));
+        if (!cancelled)
+          setError(knowledgeError(err, "Couldn't load the text."));
       });
     return () => {
       cancelled = true;
@@ -433,7 +585,11 @@ function DocText({ doc, onClose }: { doc: KnowledgeDoc | null; onClose: () => vo
       open={doc !== null}
       onClose={onClose}
       title={doc?.title ?? ""}
-      description={doc ? `${sourceLabel(doc.source)} · ${wordsLabel(doc.words)} · the text the assistant reads` : undefined}
+      description={
+        doc
+          ? `${sourceLabel(doc.source)} · ${wordsLabel(doc.words)} · the text the assistant reads`
+          : undefined
+      }
       size="lg"
     >
       {error ? (
@@ -443,7 +599,11 @@ function DocText({ doc, onClose }: { doc: KnowledgeDoc | null; onClose: () => vo
           <pre className="max-h-[60vh] overflow-y-auto rounded-lg bg-surface-2 p-3 font-sans text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-ink">
             {detail.text}
           </pre>
-          {detail.truncated && <p className="mt-2 text-[11.5px] text-ink-3">Showing the start. The assistant reads all of it.</p>}
+          {detail.truncated && (
+            <p className="mt-2 text-[11.5px] text-ink-3">
+              Showing the start. The assistant reads all of it.
+            </p>
+          )}
         </>
       ) : (
         <div className="grid place-items-center py-10">

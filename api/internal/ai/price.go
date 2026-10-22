@@ -25,6 +25,8 @@ var prices = []struct {
 	{"gpt-5-nano", Price{0.05, 0.40}},
 	{"gpt-5-mini", Price{0.25, 2.00}},
 	{"gpt-5", Price{1.25, 10.00}},
+	// Embeddings: input only.
+	{"text-embedding-3-small", Price{0.02, 0}},
 }
 
 var unknownPrice = Price{1.25, 10.00}

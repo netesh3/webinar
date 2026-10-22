@@ -64,10 +64,15 @@ func Terms(question string) []string {
 func TSQuery(question string) string {
 	var parts []string
 	for _, t := range Terms(question) {
-		if r := []rune(t); len(r) > 3 && r[len(r)-1] == 's' && r[len(r)-2] != 's' {
-			t = string(r[:len(r)-1])
-		}
-		parts = append(parts, t+":*")
+		parts = append(parts, singular(t)+":*")
 	}
 	return strings.Join(parts, " | ")
+}
+
+// singular is a plural's singular, crudely: "fees" is "fee", "class" stays "class".
+func singular(t string) string {
+	if r := []rune(t); len(r) > 3 && r[len(r)-1] == 's' && r[len(r)-2] != 's' {
+		return string(r[:len(r)-1])
+	}
+	return t
 }

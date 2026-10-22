@@ -140,3 +140,18 @@ func TestAIMonthlyCaps(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Embeddings come from OpenAI only: its key, whichever way the chain was configured.
+func TestEmbeddingsProviderIsOpenAIOnly(t *testing.T) {
+	if c := load(t, map[string]string{"GROQ_API_KEY": "gsk_test"}); c.AIEmbeddings != nil {
+		t.Fatalf("without OpenAI: %+v", c.AIEmbeddings)
+	}
+	c := load(t, map[string]string{"OPENAI_API_KEY": "sk-x", "GROQ_API_KEY": "gsk_test"})
+	if c.AIEmbeddings == nil || c.AIEmbeddings.APIKey != "sk-x" || c.AIEmbeddings.BaseURL != openAIBaseURL {
+		t.Fatalf("with OpenAI: %+v", c.AIEmbeddings)
+	}
+	c = load(t, map[string]string{"AI_PROVIDERS": `[{"id":"oa","baseUrl":"https://api.openai.com/v1","apiKey":"sk-y","model":"gpt-5-nano","disabled":true}]`})
+	if c.AIEmbeddings != nil {
+		t.Fatalf("switched off: %+v", c.AIEmbeddings)
+	}
+}

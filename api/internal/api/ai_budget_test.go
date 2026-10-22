@@ -61,6 +61,41 @@ func (f *fakeOpenAI) callCount() int {
 	return f.calls
 }
 
+// schemaOf is a request body's structured-output schema name ("" for none).
+func schemaOf(body map[string]any) string {
+	if rf, _ := body["response_format"].(map[string]any); rf != nil {
+		if js, _ := rf["json_schema"].(map[string]any); js != nil {
+			return fmt.Sprint(js["name"])
+		}
+	}
+	return ""
+}
+
+// callsFor is how many calls asked for the schema called name.
+func (f *fakeOpenAI) callsFor(name string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, b := range f.bodies {
+		if schemaOf(b) == name {
+			n++
+		}
+	}
+	return n
+}
+
+// lastBodyFor is the last call that asked for the schema called name.
+func (f *fakeOpenAI) lastBodyFor(name string) map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.bodies) - 1; i >= 0; i-- {
+		if schemaOf(f.bodies[i]) == name {
+			return f.bodies[i]
+		}
+	}
+	return nil
+}
+
 func (f *fakeOpenAI) lastBody() map[string]any {
 	f.mu.Lock()
 	defer f.mu.Unlock()
