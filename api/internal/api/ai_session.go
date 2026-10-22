@@ -25,9 +25,10 @@ import (
  */
 
 // sessionAIAllowed reports whether this session may be processed by AI: the host's account has
-// the ai feature AND the session's own switch (controls.aiEnabled) is on.
+// the ai feature AND the session's own switch (controls.aiEnabled) is on AND it was never
+// switched off during the live session (controls.aiOffThisSession, migration 0133).
 func (s *Server) sessionAIAllowed(ctx context.Context, wb types.Webinar) bool {
-	if !wb.Controls.AIEnabled {
+	if !wb.Controls.AIEnabled || wb.Controls.AIOffThisSession {
 		return false
 	}
 	host, err := s.store.UserByID(ctx, wb.Host.ID)

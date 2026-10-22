@@ -2486,6 +2486,12 @@ export interface SessionControls {
    * show the switch. Read-only: it follows the account, not PATCH /controls.
    */
   aiAvailable: boolean;
+  /**
+   *  AIOffThisSession is set once the switch has been off at any point of the live session
+   * 	 * (migration 0133). The whole session then stays out of AI even if AI is switched back
+   * 	 * on: no recap, leads, follow-ups or Q&A assistant. Read-only; reset at the next go-live.
+   */
+  aiOffThisSession?: boolean;
   locked: boolean;
   /**
    * ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
