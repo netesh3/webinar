@@ -2368,7 +2368,48 @@ export interface SessionControls {
    * with, so switching the setting never rewrites history.
    */
   chatDestination: ChatDestination;
+  /**
+   *  AudienceLayout is how the composite arranges the stage: the picture edge (LL-HLS)
+   * 	 * viewers, CDN viewers and recordings get, drawn by the egress from
+   * 	 * web/app/recorder-template. The egress page is in the room and reads this from room
+   * 	 * metadata, so a change re-lays the composite live without restarting the egress.
+   * 	 * Panelists' own views are not affected. Missing means AudienceLayoutAuto.
+   */
+  audienceLayout: AudienceLayout;
 }
+/**
+ * AudienceLayout names a composite layout; web/lib/composite-layouts.ts draws each one.
+ */
+export type AudienceLayout = string;
+/**
+ * AudienceLayoutAuto is the layout the composite always had: a share next to (or, on
+ * edge, under) the cameras, otherwise the active speaker with a strip.
+ */
+export const AudienceLayoutAuto: AudienceLayout = "auto";
+/**
+ * AudienceLayoutSpeaker is the active speaker large with a filmstrip.
+ */
+export const AudienceLayoutSpeaker: AudienceLayout = "speaker";
+/**
+ * AudienceLayoutGrid is equal tiles, one page at most.
+ */
+export const AudienceLayoutGrid: AudienceLayout = "grid";
+/**
+ * AudienceLayoutShareOnly is the share alone; speaker when nobody shares.
+ */
+export const AudienceLayoutShareOnly: AudienceLayout = "share_only";
+/**
+ * AudienceLayoutShareSpeaker is the share with the active speaker in a corner bubble.
+ */
+export const AudienceLayoutShareSpeaker: AudienceLayout = "share_speaker";
+/**
+ * AudienceLayoutSideBySide is the share on the left two thirds, the speaker on the right.
+ */
+export const AudienceLayoutSideBySide: AudienceLayout = "side_by_side";
+/**
+ * AudienceLayoutVideoOnly is cameras only; a share is ignored.
+ */
+export const AudienceLayoutVideoOnly: AudienceLayout = "video_only";
 /**
  * ChatDestination is the audience for a chat message.
  */
@@ -2402,6 +2443,10 @@ export interface ControlsPatch {
    * everyone" are different requests.
    */
   chatDestination?: ChatDestination;
+  /**
+   * Refused unless Valid: see AudienceLayout.
+   */
+  audienceLayout?: AudienceLayout;
 }
 /**
  * PollKind separates a poll from a quiz.

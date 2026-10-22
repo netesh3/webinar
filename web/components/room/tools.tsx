@@ -4,6 +4,7 @@ import { useMemo, type ReactNode } from "react";
 import type { ToolId } from "@/lib/tools";
 import { TOOL_IDS } from "@/lib/tools";
 import { meetingTools } from "@/lib/meeting-room";
+import { streamingAudienceTools } from "@/lib/audience-tools";
 import {
   ChatIcon,
   HandIcon,
@@ -343,19 +344,25 @@ export function useAvailableTools(input: {
   /** A meeting (JoinResponse.meeting): no raise hand and no streaming — see
    *  lib/meeting-room.ts meetingTools. */
   meeting?: boolean;
+  /** A streaming viewer (edge or CDN room): no participants, invite or settings — see
+   *  lib/audience-tools.ts. */
+  streaming?: boolean;
 }): ToolId[] {
-  const { isHost, controls, whiteboard = false, meeting = false } = input;
+  const { isHost, controls, whiteboard = false, meeting = false, streaming = false } = input;
   return useMemo(
     () =>
-      meetingTools(
-        availableTools({
-          isHost,
-          pollsEnabled: controls.pollsEnabled,
-          reactionsEnabled: controls.reactionsEnabled,
-          raiseHandEnabled: controls.raiseHandEnabled,
-          whiteboard,
-        }),
-        meeting,
+      streamingAudienceTools(
+        meetingTools(
+          availableTools({
+            isHost,
+            pollsEnabled: controls.pollsEnabled,
+            reactionsEnabled: controls.reactionsEnabled,
+            raiseHandEnabled: controls.raiseHandEnabled,
+            whiteboard,
+          }),
+          meeting,
+        ),
+        streaming,
       ),
     [
       isHost,
@@ -364,6 +371,7 @@ export function useAvailableTools(input: {
       controls.raiseHandEnabled,
       whiteboard,
       meeting,
+      streaming,
     ],
   );
 }

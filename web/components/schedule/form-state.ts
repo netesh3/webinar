@@ -253,6 +253,7 @@ export function initialState(
       captionsEnabled: false,
       serverCaptions: false,
       locked: false,
+      audienceLayout: "auto",
     },
     streamKey: "",
     streamWatchUrl: "",

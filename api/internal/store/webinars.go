@@ -29,7 +29,7 @@ const webinarColumns = `
 	w.chat_destination,
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.captions_enabled, (w.server_captions AND w.server_captions_live),
-	w.locked, w.sfu_project, w.image_key,
+	w.locked, w.audience_layout, w.sfu_project, w.image_key,
 	w.simulive_recording_id::text,
 	w.stream_watch, w.stream_on, (w.stream_ingest <> ''),
 	coalesce(w.venue, 'app'), coalesce(w.zoom_id, ''), w.delivery,
@@ -79,7 +79,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.ChatDestination,
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
 		&c.PollsEnabled, &c.CaptionsEnabled, &c.ServerCaptions,
-		&c.Locked, &w.SFUProject, &imageKey,
+		&c.Locked, &c.AudienceLayout, &w.SFUProject, &imageKey,
 		&simuliveID,
 		&streamWatch, &streamOn, &streamSaved,
 		&w.Venue, &w.ZoomID, &w.Delivery,
@@ -113,6 +113,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		w.ImageURL = "/api/webinars/" + w.ID + "/image?v=" + imageKey
 	}
 	w.StartsAt = startsAt.Format(time.RFC3339)
+	c.AudienceLayout = c.AudienceLayout.OrDefault()
 	w.Controls = c
 	if startedAt != nil {
 		w.StartedAt = startedAt.Format(time.RFC3339)
@@ -877,6 +878,11 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 		v := string(*p.ChatDestination)
 		chatDestination = &v
 	}
+	var audienceLayout *string
+	if p.AudienceLayout != nil {
+		v := string(*p.AudienceLayout)
+		audienceLayout = &v
+	}
 
 	// COALESCE against a nullable parameter is how a partial update stays one
 	// statement: a nil pointer arrives as SQL NULL and the column keeps its
@@ -894,11 +900,12 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 			chat_destination   = coalesce($10, chat_destination),
 			polls_enabled      = coalesce($11, polls_enabled),
 			captions_enabled   = coalesce($12, captions_enabled),
+			audience_layout    = coalesce($13, audience_layout),
 			updated_at         = now()
 		 WHERE slug = $1`,
 		slug, p.HideAttendees, p.MuteOnEntry, p.AllowUnmute, p.ChatEnabled,
 		p.QAEnabled, p.RaiseHandEnabled, p.ReactionsEnabled, p.Locked,
-		chatDestination, p.PollsEnabled, p.CaptionsEnabled)
+		chatDestination, p.PollsEnabled, p.CaptionsEnabled, audienceLayout)
 	if err != nil {
 		return types.Webinar{}, err
 	}

@@ -66,6 +66,7 @@ const CONTROLS: SessionControls = {
   serverCaptions: false,
   pollsEnabled: true,
   locked: false,
+  audienceLayout: "auto",
   chatDestination: "everyone",
 };
 

@@ -1,10 +1,18 @@
 "use client";
 
-import { Component, Suspense, useEffect, useState, useMemo, useRef } from "react";
+import { Component, Suspense, useEffect, useState, useMemo, useRef, useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { EdgeClock } from "@/components/room/edge-clock";
 import { useServerClockOffset } from "@/lib/edge-events";
-import { cameraIsOn, compositeLayout, isEdgeTemplatePath } from "@/lib/composite-layout";
+import {
+  audienceLayoutFromMetadata,
+  cameraIsOn,
+  isEdgeTemplatePath,
+  isStageTile,
+  placeStage,
+  SHARE_ID,
+  type AudienceLayoutId,
+} from "@/lib/composite-layouts";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -15,7 +23,14 @@ import {
   type TrackReference,
   type TrackReferenceOrPlaceholder,
 } from "@livekit/components-react";
-import { Track, RoomEvent, type Participant } from "livekit-client";
+import {
+  Track,
+  RoomEvent,
+  ParticipantKind,
+  VideoQuality,
+  type Participant,
+  type Room,
+} from "livekit-client";
 
 export default function RecorderTemplatePage() {
   return (
@@ -45,8 +60,8 @@ function RecorderTemplateInner() {
    * the edge player shows too. A path segment because LiveKit appends its own query. */
   const path = usePathname() ?? "";
   const debugClock = /\/clock\/?$/.test(path);
-  /* <template>/edge is an edge webinar's mix: the share fills the frame and the cameras sit
-   * over a corner (lib/composite-layout.ts). Recordings keep the side strip. */
+  /* <template>/edge is an edge webinar's mix. Only the auto layout draws it differently (the
+   * share fills the frame, cameras over a corner); see lib/composite-layouts.ts. */
   const edgeLayout = isEdgeTemplatePath(path);
   let url = searchParams.get("url") || "";
   let token = searchParams.get("token") || "";
@@ -125,6 +140,8 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
   const room = useRoomContext();
   const [activeSpeakerId, setActiveSpeakerId] = useState<string>("");
   const startedRef = useRef(false);
+  const layoutId = useAudienceLayout(room);
+  const frame = useFrameSize();
 
   useEffect(() => {
     if (!room) return;
@@ -179,8 +196,13 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
       Boolean(ref.publication?.isSubscribed),
   );
 
+  /* The tiles: who is on the stage (lib/composite-layouts.ts isStageTile) — not this egress,
+   * not the caption agent, not an attendee watching over WebRTC. useTracks with
+   * onlySubscribed false returns a placeholder for every participant, this one included. */
   const cameraRefs = useMemo(() => {
-    const cams = trackRefs.filter((ref) => ref.source === Track.Source.Camera);
+    const cams = trackRefs.filter(
+      (ref) => ref.source === Track.Source.Camera && onStage(ref.participant),
+    );
     // Sort cameras: active speaker on top, then by identity
     return [...cams].sort((a, b) => {
       const aActive = a.participant.identity === activeSpeakerId || a.participant.isSpeaking;
@@ -191,22 +213,27 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
     });
   }, [trackRefs, activeSpeakerId]);
 
-  /* Sharing puts the screen in the main area with everyone down the side;
-   * otherwise the loudest person takes the main area and the rest sit along the
-   * top. Both cases are the same two boxes in a different direction, and that
-   * is deliberate.
+  /* The host's layout (SessionControls.audienceLayout, from room metadata) turns the stage
+   * into boxes, and every box is drawn in ONE tree of absolutely positioned elements keyed by
+   * identity, in a stable order.
    *
    * These used to be two separate trees returned from two branches. Swapping
    * between them unmounted and remounted every VideoTrack, so each time a share
    * started or stopped, every tile detached its track and attached a new
    * element — seconds of black frames, on the one machine with no CPU to spare,
    * while RoomAudioRenderer carried on. That is the moment hosts reported the
-   * recording breaking and the audio drifting out of step. One tree keyed by
-   * identity means a share toggle relocates at most a single tile. */
-  const primarySpeaker = screenShareRef ? undefined : cameraRefs[0];
-  const stripRefs = screenShareRef ? cameraRefs : cameraRefs.slice(1);
+   * recording breaking and the audio drifting out of step. With one keyed tree, a
+   * share toggle or a layout switch only moves boxes. Someone the layout leaves out is
+   * not drawn at all, which bounds what the egress decodes (one page of grid at most). */
+  const tiles = cameraRefs.map((ref) => ({ id: ref.participant.identity, cameraOn: cameraIsOn(ref) }));
+  const result = placeStage(layoutId, {
+    frame,
+    share: Boolean(screenShareRef),
+    cameras: tiles,
+    edge: edgeLayout,
+  });
 
-  if (!screenShareRef && !primarySpeaker) {
+  if (result.placements.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-black text-zinc-600 font-mono text-sm">
         Waiting for webinar presenter to start video...
@@ -214,53 +241,114 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
     );
   }
 
-  const layout = compositeLayout({ edge: edgeLayout, sharing: Boolean(screenShareRef) });
-  const stripCandidates = layout.camerasOnly ? stripRefs.filter(cameraIsOn) : stripRefs;
-  const shownStrip =
-    layout.maxTiles === undefined ? stripCandidates : stripCandidates.slice(0, layout.maxTiles);
+  const byId = new Map(cameraRefs.map((ref) => [ref.participant.identity, ref]));
+  // DOM order by id, never by layout: React moving a <video> is what this tree avoids.
+  const ordered = [...result.placements].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   return (
-    <div className={layout.root}>
-      {/* Main area: the shared screen, or the active speaker. */}
-      <div className={layout.main}>
-        {screenShareRef ? (
-          <VideoTrack trackRef={screenShareRef} className="size-full object-contain" />
-        ) : primarySpeaker ? (
-          <SpeakerTile
-            trackRef={primarySpeaker}
-            isSpeaking={
-              primarySpeaker.participant.identity === activeSpeakerId ||
-              primarySpeaker.participant.isSpeaking
-            }
-            className="size-full"
-            fit="contain"
-          />
-        ) : null}
-      </div>
-
-      {/* Filmstrip: down the right while sharing (over the corner for edge), along the top
-          otherwise. */}
-      {(screenShareRef || stripRefs.length > 0) && (
-        <div className={layout.strip}>
-          {shownStrip.length > 0 ? (
-            shownStrip.map((ref) => {
-              const isSpeaking =
-                ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
-              return (
-                <div key={ref.participant.identity} className={layout.tile}>
-                  <SpeakerTile trackRef={ref} isSpeaking={isSpeaking} compact={layout.compactTiles} />
-                </div>
-              );
-            })
-          ) : layout.emptyNote ? (
-            <div className="flex flex-1 items-center justify-center text-xs text-zinc-600">
-              No camera published
+    <div className="relative h-full w-full overflow-hidden bg-black">
+      {ordered.map((p) => {
+        const style = {
+          left: p.rect.x,
+          top: p.rect.y,
+          width: p.rect.w,
+          height: p.rect.h,
+          zIndex: p.z,
+        };
+        if (p.id === SHARE_ID) {
+          return screenShareRef ? (
+            <div key={p.id} className="absolute flex items-center justify-center bg-black" style={style}>
+              <VideoTrack trackRef={screenShareRef} className="size-full object-contain" />
             </div>
-          ) : null}
+          ) : null;
+        }
+        const ref = byId.get(p.id);
+        if (!ref) return null;
+        const isSpeaking = ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
+        const small = p.rect.h < SMALL_TILE_PX;
+        return (
+          <div
+            key={p.id}
+            className={`absolute ${p.role === "pip" ? "shadow-[0_2px_10px_rgba(0,0,0,0.6)]" : ""}`}
+            style={style}
+          >
+            <SpeakerTile
+              trackRef={ref}
+              isSpeaking={isSpeaking}
+              aspect=""
+              className={`size-full ${p.role === "pip" ? "rounded-2xl" : ""}`}
+              compact={small}
+              fit={p.role === "main" ? "contain" : "cover"}
+              small={small}
+            />
+          </div>
+        );
+      })}
+      {result.note && (
+        <div
+          className="absolute flex items-center justify-center text-xs text-zinc-600"
+          style={{ left: result.note.x, top: result.note.y, width: result.note.w, height: result.note.h }}
+        >
+          No camera published
         </div>
       )}
     </div>
   );
+}
+
+/** Below this height a tile asks for the low simulcast layer (about 180p): the egress decodes
+ *  every tile it draws, and a thumbnail does not need a full-size camera. */
+const SMALL_TILE_PX = 300;
+
+function onStage(p: Participant): boolean {
+  const kind = p.kind;
+  const perm = p.permissions;
+  const sources = (perm?.canPublishSources ?? []).map((s) => Track.sourceFromProto(s));
+  return isStageTile({
+    isLocal: p.isLocal,
+    isAgentOrEgress: kind === ParticipantKind.EGRESS || kind === ParticipantKind.AGENT,
+    hasVideoPublication:
+      Boolean(p.getTrackPublication(Track.Source.Camera)) ||
+      Boolean(p.getTrackPublication(Track.Source.ScreenShare)),
+    // An empty list means every source.
+    canPublishVideo:
+      Boolean(perm?.canPublish) && (sources.length === 0 || sources.includes(Track.Source.Camera)),
+  });
+}
+
+/** The host's layout, from room metadata, live: RoomMetadataChanged re-lays the composite
+ *  without restarting the egress. */
+function useAudienceLayout(room: Room | undefined): AudienceLayoutId {
+  const [id, setId] = useState<AudienceLayoutId>(() => audienceLayoutFromMetadata(room?.metadata));
+  useEffect(() => {
+    if (!room) return;
+    const read = (raw?: string) => setId(audienceLayoutFromMetadata(raw || room.metadata));
+    const onConnected = () => read();
+    read();
+    room.on(RoomEvent.RoomMetadataChanged, read);
+    room.on(RoomEvent.Connected, onConnected);
+    return () => {
+      room.off(RoomEvent.RoomMetadataChanged, read);
+      room.off(RoomEvent.Connected, onConnected);
+    };
+  }, [room]);
+  return id;
+}
+
+function subscribeResize(onChange: () => void) {
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
+const readFrame = () => `${window.innerWidth}x${window.innerHeight}`;
+const readFrameOnServer = () => "1920x1080";
+
+/** The egress viewport in CSS pixels: what the layout's rects are measured in. */
+function useFrameSize(): { w: number; h: number } {
+  const raw = useSyncExternalStore(subscribeResize, readFrame, readFrameOnServer);
+  return useMemo(() => {
+    const [w, h] = raw.split("x").map(Number);
+    return { w: w || 1920, h: h || 1080 };
+  }, [raw]);
 }
 
 function SpeakerTile({
@@ -270,6 +358,7 @@ function SpeakerTile({
   className = "",
   compact = false,
   fit = "cover",
+  small = false,
 }: {
   trackRef: TrackReferenceOrPlaceholder;
   isSpeaking: boolean;
@@ -281,8 +370,15 @@ function SpeakerTile({
    * the audience saw a zoomed, cropped picture of what the host sees whole. Strip tiles are
    * 16:9 boxes, where "cover" only trims a camera that is not 16:9. */
   fit?: "cover" | "contain";
+  /** A thumbnail: ask for the low simulcast layer rather than decoding a full camera. */
+  small?: boolean;
 }) {
   const { participant, publication } = trackRef;
+  useEffect(() => {
+    if (publication && "setVideoQuality" in publication && typeof publication.setVideoQuality === "function") {
+      publication.setVideoQuality(small ? VideoQuality.LOW : VideoQuality.HIGH);
+    }
+  }, [publication, small]);
   const hasVideo = publication?.isSubscribed && !publication?.isMuted && publication?.track;
   const name = participant.name || participant.identity || "Speaker";
   const initials = getInitials(name);

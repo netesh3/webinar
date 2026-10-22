@@ -156,7 +156,7 @@ export function EdgeAudienceRoom({
   });
   const clockOffset = useServerClockOffset(Boolean(join.debugClock));
 
-  const availableTools = useAvailableTools({ isHost: false, controls });
+  const availableTools = useAvailableTools({ isHost: false, controls, streaming: true });
   const tools = useToolLayout(availableTools);
   const raisedHands = useRaisedHandsController(tools);
   const compact = useCompact();

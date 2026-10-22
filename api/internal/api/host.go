@@ -1503,6 +1503,13 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Refused for the same reason: a typo should not silently become "auto".
+	if p.AudienceLayout != nil && !p.AudienceLayout.Valid() {
+		httpx.Fields(w, map[string]string{
+			"audienceLayout": "Not a layout this server knows.",
+		})
+		return
+	}
 	/* Hiding the audience has nobody to hide in a meeting — everyone is on the stage — and a
 	 * meeting's guests would vanish from each other's grids. Refused before anything is saved;
 	 * turning it off is already the state and goes through. */
