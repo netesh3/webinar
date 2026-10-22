@@ -142,11 +142,14 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 		t.Fatalf("before the end: %+v", got)
 	}
 	h.endSession(wb.ID)
-	if got := h.getRecap(wb.ID); got.Status != types.RecapPending {
-		t.Fatalf("just ended: %+v", got)
+	// The host's Results page polls GET /recap; a recap that is due is written inside that
+	// poll (recapNow), without waiting for the tick — Cloud Run gives the tick no CPU between
+	// requests.
+	if got := h.getRecap(wb.ID); got.Status != types.RecapReady || got.EmailedAt == "" {
+		t.Fatalf("just ended, polled: %+v", got)
 	}
 
-	h.runRecaps()
+	h.runRecaps() // nothing left for the tick
 	if model.callCount() != 1 {
 		t.Fatalf("model calls = %d, want 1", model.callCount())
 	}
@@ -463,5 +466,50 @@ func TestRecapChunksALongTranscript(t *testing.T) {
 	}
 	if got := h.getRecap(wb.ID); got.Status != types.RecapReady || len(h.recapMails(wb.ID)) != 2 {
 		t.Fatalf("recap = %+v", got)
+	}
+}
+
+/* The after-session transcript is the one request that comes when a captioned recap becomes
+ * due, so the recap is written and mailed inside it — no tick, no poll. */
+func TestRecapIsWrittenWhenTheTranscriptArrives(t *testing.T) {
+	h, model := aiHarness(t, recapReply, captionsConfig)
+	ctx := context.Background()
+	host := recapHost(t, h)
+	wb := h.newWebinar("Captioned and recapped", nil)
+	h.goLive(wb.ID)
+	if err := h.store.SetServerCaptions(ctx, wb.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	h.endSession(wb.ID)
+	if got := h.getRecap(wb.ID); got.Status != types.RecapPending {
+		t.Fatalf("waiting for the transcript: %+v", got)
+	}
+	if model.callCount() != 0 {
+		t.Fatal("wrote the recap before the transcript arrived")
+	}
+
+	start := time.Now().Add(-time.Minute).UnixMilli()
+	res, raw := h.agentPost("/api/internal/transcripts", testCaptionsSecret, map[string]any{
+		"room": "webinar_" + wb.ID, "model": "large-v3-turbo",
+		"segments": []map[string]any{{"identity": "user_" + host.ID, "name": "Priya", "start": start, "end": start + 3000, "text": "aaj hum budget banayenge"}},
+	})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("transcript: %d %s", res.StatusCode, raw)
+	}
+	if model.callCount() != 1 {
+		t.Fatalf("model calls after the transcript = %d, want 1 (inline, no tick)", model.callCount())
+	}
+	if got := h.getRecap(wb.ID); got.Status != types.RecapReady || got.Source != "server_transcript" {
+		t.Fatalf("after the transcript: %+v", got)
+	}
+	// One email, to the host (the other session_recap row is the in-app alert, no address).
+	var emails []string
+	for _, m := range h.recapMails(wb.ID) {
+		if m.Email != "" {
+			emails = append(emails, m.Email)
+		}
+	}
+	if len(emails) != 1 || emails[0] != host.Email {
+		t.Fatalf("recap emails = %v, want one to the host", emails)
 	}
 }
