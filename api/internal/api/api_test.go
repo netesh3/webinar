@@ -723,6 +723,9 @@ func newHarnessWith(
 		// The production floor rather than the relaxed development one, so the rule
 		// under test is the one a real deployment applies.
 		MinPasswordLength: 10,
+		// The production defaults (config.Load), which a zero would turn into "no AI".
+		AIMonthlyUSD:     20,
+		AIHostMonthlyUSD: 2,
 	}
 	for _, fn := range tweak {
 		fn(&cfg)
@@ -1214,7 +1217,7 @@ func truncateAll(ctx context.Context, dsn string) error {
 	defer pool.Close()
 	_, err = pool.Exec(ctx,
 		`TRUNCATE recordings, registrations, custom_questions, webinar_panelists, webinars, users, sweep_leases,
-		          trial_claims, razorpay_plans, billing_subscriptions CASCADE`)
+		          trial_claims, razorpay_plans, billing_subscriptions, ai_usage CASCADE`)
 	return err
 }
 

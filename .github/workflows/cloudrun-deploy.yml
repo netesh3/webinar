@@ -38,9 +38,12 @@
 #     Connect Zoom. All four or the card stays "Zoom is not configured".
 #     ZOOM_WEBHOOK_SECRET signs POST /api/webhooks/zoom; unset, that route
 #     refuses the body. See docs/zoom-app-checklist.md.
-#   CLOUDFLARE_AI_ACCOUNT_ID / CLOUDFLARE_AI_TOKEN, GROQ_API_KEY, OPENROUTER_API_KEY (+ optional OPENROUTER_MODEL)
-#     — the sales chat's AI, tried in that order (or AI_PROVIDERS, one JSON list). All optional;
-#     without any the chat hands every visitor to a person. *_MODEL as repo Variables.
+#   OPENAI_API_KEY, CLOUDFLARE_AI_ACCOUNT_ID / CLOUDFLARE_AI_TOKEN, GROQ_API_KEY, OPENROUTER_API_KEY
+#     — the AI features (sales chat, "Write with AI"), tried in that order (or AI_PROVIDERS, one
+#     JSON list). OpenAI (gpt-5-nano by default) is the paid one; the rest are free-tier
+#     fallbacks. All optional; without any the chat hands every visitor to a person.
+#     *_MODEL (OPENAI_MODEL, …) as repo Variables. AI_MONTHLY_USD (default 20) and
+#     AI_HOST_MONTHLY_USD (default 2), repo Variables, cap the estimated monthly spend.
 #   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET — self-serve plans (Buy on /pricing).
 #     Both or neither. RAZORPAY_WEBHOOK_SECRET signs POST /api/webhooks/razorpay.
 #     BILLING_GST_PERCENT (repo Variable, default 18) is added to INR prices.
@@ -177,6 +180,10 @@ jobs:
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       INBOX_WEBHOOK_SECRET: ${{ secrets.INBOX_WEBHOOK_SECRET }}
       AI_PROVIDERS: ${{ secrets.AI_PROVIDERS }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      AI_MONTHLY_USD: ${{ vars.AI_MONTHLY_USD }}
+      AI_HOST_MONTHLY_USD: ${{ vars.AI_HOST_MONTHLY_USD }}
       CLOUDFLARE_AI_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_AI_ACCOUNT_ID }}
       CLOUDFLARE_AI_TOKEN: ${{ secrets.CLOUDFLARE_AI_TOKEN }}
       CLOUDFLARE_AI_MODEL: ${{ vars.CLOUDFLARE_AI_MODEL }}

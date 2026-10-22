@@ -34,6 +34,47 @@ export interface AIStatus {
    */
   enabled: boolean;
   providers: AIProviderStatus[];
+  /**
+   * Month is this calendar month's (UTC) AI use, against the caps.
+   */
+  month: AIMonthUsage;
+}
+/**
+ * AI feature names, as recorded in ai_usage and reported per feature.
+ */
+export const AIFeatureSalesChat = "sales_chat";
+/**
+ * AI feature names, as recorded in ai_usage and reported per feature.
+ */
+export const AIFeatureWebinarSetup = "webinar_setup";
+/**
+ * AIFeatureUsage is one AI feature's calls this month.
+ */
+export interface AIFeatureUsage {
+  feature: string;
+  /**
+   * Calls counts every call; Failed the ones no provider answered.
+   */
+  calls: number /* int */;
+  failed: number /* int */;
+  promptTokens: number /* int64 */;
+  completionTokens: number /* int64 */;
+  costUsd: number /* float64 */;
+}
+/**
+ *  AIMonthUsage is month-to-date spend, estimated from token counts. The caps are what
+ *  * the server refuses past: MonthlyCapUSD for the instance, HostMonthlyCapUSD for any
+ *  * one host.
+ */
+export interface AIMonthUsage {
+  /**
+   * Since is the start of the month (RFC 3339, UTC).
+   */
+  since: string;
+  spendUsd: number /* float64 */;
+  monthlyCapUsd: number /* float64 */;
+  hostMonthlyCapUsd: number /* float64 */;
+  features: AIFeatureUsage[];
 }
 
 //////////
@@ -3014,6 +3055,16 @@ export const FeatureWhiteboard = "whiteboard";
  * 	 * docs/edge-delivery.md.
  */
 export const FeatureEdgeDelivery = "edge_delivery";
+/**
+ *  FeatureAI is the AI writing help: "Write with AI" when scheduling, and the AI
+ * 	 * features after it. Each call counts against the monthly AI caps
+ * 	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
+ * 	 *
+ * 	 * ON by default, in every tier (migrations/0126), like the whiteboard: the caps bound
+ * 	 * what it can spend. Off for an account means no AI buttons, and the AI routes
+ * 	 * answer 403 feature_off.
+ */
+export const FeatureAI = "ai";
 /**
  * Delivery modes (Webinar.Delivery).
  */

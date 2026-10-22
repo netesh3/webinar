@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"testing"
@@ -37,7 +38,8 @@ func TestFeatureConversionKeepsEveryonesFeatures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := slices.Clone(old)
+		// Plus AI writing, which every tier has given since migrations/0126.
+		want := append(slices.Clone(old), types.FeatureAI)
 		slices.Sort(want)
 		if !slices.Equal(u.Features, want) {
 			t.Errorf("%s: features after conversion = %v, want %v", email, u.Features, want)
@@ -73,7 +75,13 @@ func TestPlanDecidesFeaturesAndOverridesWin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = h.store.SetPlanFeatures(t.Context(), original) })
+	// Not t.Context(): that is already cancelled when cleanups run, and the restore
+	// would fail silently and leave the next test on this matrix.
+	t.Cleanup(func() {
+		if err := h.store.SetPlanFeatures(context.Background(), original); err != nil {
+			t.Errorf("restore plan features: %v", err)
+		}
+	})
 
 	// Anonymous and non-admin callers are refused.
 	h.logout()

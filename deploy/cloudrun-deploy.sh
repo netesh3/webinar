@@ -209,10 +209,15 @@ ENV_VARS=(
 # Connect Zoom. The API offers Connect only when id, secret, redirect, and
 # token key are all set. The webhook secret is separate: unset, the webhook
 # route refuses the body and the rest of the API still boots.
-# AI for the home page's sales chat (api/internal/config/ai.go). All optional; unset
-# means the chat hands every visitor to a person. Tried in order, falling to the next
-# when a free allowance runs out.
+# AI for the sales chat and "Write with AI" (api/internal/config/ai.go). All optional;
+# unset means the chat hands every visitor to a person. Tried in order — OpenAI first,
+# then the free tiers — falling to the next when one fails or runs out. The two caps
+# bound the estimated monthly spend (defaults 20 and 2 US dollars).
 [[ -n "${AI_PROVIDERS:-}" ]] && ENV_VARS+=("AI_PROVIDERS=${AI_PROVIDERS}")
+[[ -n "${OPENAI_API_KEY:-}" ]] && ENV_VARS+=("OPENAI_API_KEY=${OPENAI_API_KEY}")
+[[ -n "${OPENAI_MODEL:-}" ]] && ENV_VARS+=("OPENAI_MODEL=${OPENAI_MODEL}")
+[[ -n "${AI_MONTHLY_USD:-}" ]] && ENV_VARS+=("AI_MONTHLY_USD=${AI_MONTHLY_USD}")
+[[ -n "${AI_HOST_MONTHLY_USD:-}" ]] && ENV_VARS+=("AI_HOST_MONTHLY_USD=${AI_HOST_MONTHLY_USD}")
 [[ -n "${CLOUDFLARE_AI_ACCOUNT_ID:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_ACCOUNT_ID=${CLOUDFLARE_AI_ACCOUNT_ID}")
 [[ -n "${CLOUDFLARE_AI_TOKEN:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_TOKEN=${CLOUDFLARE_AI_TOKEN}")
 [[ -n "${CLOUDFLARE_AI_MODEL:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_MODEL=${CLOUDFLARE_AI_MODEL}")

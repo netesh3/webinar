@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/livekit/protocol/livekit"
+
+	"github.com/netkumar/webcast/api/internal/ai"
 )
 
 // SetMaintenanceHook runs f first in every maintenance lane, so a test can stand in
@@ -33,3 +36,11 @@ func ActiveBroadcast(slug string) string {
 	defer broadcastMu.Unlock()
 	return activeBroadcasts[slug]
 }
+
+// AIComplete is aiComplete, for the budget tests: one AI call on behalf of hostID.
+func AIComplete(s *Server, ctx context.Context, feature, hostID string, req ai.Request) (ai.Reply, error) {
+	return s.aiComplete(ctx, feature, hostID, req)
+}
+
+// IsAILimit reports whether err is a monthly AI cap.
+func IsAILimit(err error) bool { return errors.Is(err, errAILimit) }

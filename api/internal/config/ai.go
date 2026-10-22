@@ -15,18 +15,30 @@ import (
  * The same shape as LIVEKIT_PROJECTS, for the same reason: a free allowance runs out, and
  * when it does the next one should take over without a deploy. Unlike LiveKit, the switch
  * is automatic and per request — see internal/ai — so the order here is simply the order
- * of preference, cheapest first.
+ * of preference.
  *
  * Two spellings, one result.
  *
  * The short one is a pair of variables per provider, read in a fixed order:
  *
- *   CLOUDFLARE_AI_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN [CLOUDFLARE_AI_MODEL]   tried first
+ *   OPENAI_API_KEY [OPENAI_MODEL]                                          tried first
+ *   CLOUDFLARE_AI_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN [CLOUDFLARE_AI_MODEL]
  *   GROQ_API_KEY [GROQ_MODEL]
  *   OPENROUTER_API_KEY [OPENROUTER_MODEL]
  *   OLLAMA_URL [OLLAMA_MODEL]                                              tried last
  *
  * Set the ones you have; unset ones are not in the chain.
+ *
+ * OpenAI is first because it is the one that is paid: gpt-5-nano costs a fraction of a
+ * cent per answer and writes noticeably better copy than the free models, and the
+ * monthly caps (AI_MONTHLY_USD, AI_HOST_MONTHLY_USD, see Config) bound what it can
+ * spend. The free chain behind it answers when OpenAI is down or refuses.
+ *
+ * Request style. OpenAI's reasoning models (gpt-5*, o1/o3/o4) take a different body
+ * (max_completion_tokens, no temperature, reasoning_effort). A provider on
+ * api.openai.com with such a model gets that style automatically; any other provider
+ * can ask for it with "style":"openai-reasoning" in AI_PROVIDERS. "structuredOutput":
+ * true says a provider honours response_format json_schema; api.openai.com always does.
  *
  * The long one replaces all of that with an explicit list, for a different order, a
  * second Cloudflare account, or any other OpenAI-compatible endpoint:
@@ -51,7 +63,18 @@ type AIProvider struct {
 	APIKey   string `json:"apiKey,omitempty"`
 	Model    string `json:"model"`
 	Disabled bool   `json:"disabled,omitempty"`
+	// Style is "" / "chat" or "openai-reasoning" (internal/ai). Empty is decided
+	// from the endpoint and model; see normaliseAIProviders.
+	Style string `json:"style,omitempty"`
+	// StructuredOutput: the provider honours response_format json_schema.
+	StructuredOutput bool `json:"structuredOutput,omitempty"`
 }
+
+// The request styles, as internal/ai names them.
+const (
+	aiStyleChat      = "chat"
+	aiStyleReasoning = "openai-reasoning"
+)
 
 /* Default models, chosen for a short, factual sales answer at the lowest cost.
  *
@@ -65,6 +88,7 @@ type AIProvider struct {
  * fp8-fast prices at 4,119/M against 25,608/M). On the free 10,000 Neurons a day that is
  * roughly 800 replies instead of 160. */
 const (
+	defaultOpenAIModel     = "gpt-5-nano"
 	defaultCloudflareModel = "@cf/meta/llama-3.1-8b-instruct-fp8-fast"
 	defaultGroqModel       = "openai/gpt-oss-20b"
 	defaultOllamaModel     = "qwen2.5:7b"
@@ -92,6 +116,12 @@ func loadAIProviders() ([]AIProvider, error) {
 	}
 
 	var list []AIProvider
+	if key := env("OPENAI_API_KEY", ""); key != "" {
+		list = append(list, AIProvider{
+			ID: "openai", BaseURL: openAIBaseURL,
+			APIKey: key, Model: env("OPENAI_MODEL", defaultOpenAIModel),
+		})
+	}
 	if acct, tok := env("CLOUDFLARE_AI_ACCOUNT_ID", ""), env("CLOUDFLARE_AI_TOKEN", ""); acct != "" || tok != "" {
 		list = append(list, AIProvider{
 			ID:      "cloudflare",
@@ -131,9 +161,27 @@ func normaliseAIProviders(list []AIProvider) []AIProvider {
 		p.BaseURL = strings.TrimRight(strings.TrimSpace(p.BaseURL), "/")
 		p.APIKey = strings.TrimSpace(p.APIKey)
 		p.Model = strings.TrimSpace(p.Model)
+		p.Style = strings.ToLower(strings.TrimSpace(p.Style))
+		if u, err := url.Parse(p.BaseURL); err == nil && strings.EqualFold(u.Hostname(), "api.openai.com") {
+			p.StructuredOutput = true
+			if p.Style == "" && isOpenAIReasoningModel(p.Model) {
+				p.Style = aiStyleReasoning
+			}
+		}
 		out = append(out, p)
 	}
 	return out
+}
+
+const openAIBaseURL = "https://api.openai.com/v1"
+
+// isOpenAIReasoningModel: gpt-5 and its variants, and the o-series (o1, o3, o4-mini…).
+func isOpenAIReasoningModel(model string) bool {
+	m := strings.ToLower(model)
+	if strings.HasPrefix(m, "gpt-5") {
+		return true
+	}
+	return len(m) >= 2 && m[0] == 'o' && m[1] >= '1' && m[1] <= '9'
 }
 
 /* validateAIProviders refuses at boot what would otherwise fail at a visitor's first
@@ -160,6 +208,9 @@ func validateAIProviders(list []AIProvider, dev bool) error {
 		}
 		if p.Model == "" {
 			errs = append(errs, fmt.Errorf("%s: model is required", where))
+		}
+		if p.Style != "" && p.Style != aiStyleChat && p.Style != aiStyleReasoning {
+			errs = append(errs, fmt.Errorf("%s: style must be %q or %q", where, aiStyleChat, aiStyleReasoning))
 		}
 		u, err := url.Parse(p.BaseURL)
 		switch {

@@ -23,4 +23,35 @@ type AIStatus struct {
 	// Enabled is false when no provider is configured at all.
 	Enabled   bool               `json:"enabled"`
 	Providers []AIProviderStatus `json:"providers"`
+	// Month is this calendar month's (UTC) AI use, against the caps.
+	Month AIMonthUsage `json:"month"`
+}
+
+// AI feature names, as recorded in ai_usage and reported per feature.
+const (
+	AIFeatureSalesChat    = "sales_chat"
+	AIFeatureWebinarSetup = "webinar_setup"
+)
+
+// AIFeatureUsage is one AI feature's calls this month.
+type AIFeatureUsage struct {
+	Feature string `json:"feature"`
+	// Calls counts every call; Failed the ones no provider answered.
+	Calls            int     `json:"calls"`
+	Failed           int     `json:"failed"`
+	PromptTokens     int64   `json:"promptTokens"`
+	CompletionTokens int64   `json:"completionTokens"`
+	CostUSD          float64 `json:"costUsd"`
+}
+
+/* AIMonthUsage is month-to-date spend, estimated from token counts. The caps are what
+ * the server refuses past: MonthlyCapUSD for the instance, HostMonthlyCapUSD for any
+ * one host. */
+type AIMonthUsage struct {
+	// Since is the start of the month (RFC 3339, UTC).
+	Since             string           `json:"since"`
+	SpendUSD          float64          `json:"spendUsd"`
+	MonthlyCapUSD     float64          `json:"monthlyCapUsd"`
+	HostMonthlyCapUSD float64          `json:"hostMonthlyCapUsd"`
+	Features          []AIFeatureUsage `json:"features"`
 }
