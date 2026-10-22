@@ -128,6 +128,13 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 	host := recapHost(t, h)
 	wb := h.newWebinar("Money basics for young earners", nil)
 	h.goLive(wb.ID)
+	// Ten minutes in, so the chapters (at 0:00 and 5:00) fall inside the session. Left at
+	// "just now", start and end are a second apart whenever they straddle a second boundary
+	// (both are stored to the second), and every chapter after 0:00 would be dropped.
+	if _, err := h.store.Pool().Exec(ctx,
+		`UPDATE webinars SET started_at = now() - interval '10 minutes' WHERE slug = $1`, wb.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	// An attendee who registered: they must get no recap.
 	h.logout()
