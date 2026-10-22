@@ -205,29 +205,44 @@ const IDLE: NetworkHealth = {
  * speaker; Full HD 1080p is gated (Business/Enterprise-class plans, often Support-enabled,
  * i7-class CPU, fullscreen speaker mode — see Zoom KB "Enabling HD video for Zoom Meetings").
  * Our speaker tile on a desktop stage regularly exceeds 720 CSS px (and more on retina), so
- * a 1080p top layer is not empty pixels for the featured face. Grids and filmstrips stay on
- * 720p / 360p via subscriber quality selection + dynacast.
+ * a 1080p top layer is not empty pixels for the featured face.
  *
- *            360p     720p@30    1080p@30   total
- *   full     600      2000        3200       5800 kbps
- *   reduced  600      2000        off        2600 kbps   ← while sharing / mild congestion
- *   minimal  600      off         off         600 kbps
+ * WHY 180p at the bottom (2026-10-22). Simulcast has three layers at most, and they used to
+ * be 360p / 720p / 1080p, so the smallest anything could be was 360p at 600 kbps — a 50-person
+ * grid pulled ~5 Mbps per viewer where Zoom's gallery (90p–180p tiles, ~100–250 kbps) pulls
+ * ~1.5–2. Big grids and filmstrips now get a real thumbnail layer; 3–9 tiles get 360p; the
+ * speaker keeps HD. The price is the 720p rung: a tile between 360p and 1080p gets one of
+ * those two (qualityFor, adaptiveStream).
  *
- * 1080p maxBitrate ~3.2 Mbps sits under Zoom's documented ~3.8 Mbps send requirement for
- * Full HD; 720p mid stays in Zoom's common HD band. maintain-framerate still applies: faces
- * prefer motion over a sharp slideshow.
+ *            180p@15   360p@20   1080p@30   total
+ *   full     200       640       3200       4040 kbps
+ *   reduced  200       640       off         840 kbps   ← while sharing / mild congestion
+ *   minimal  off       640       off         640 kbps   ← a weak uplink keeps 360p, not 180p
+ *
+ * The bitrates keep each step at 5x or less (network.test.mts: no cliff between layers), so a
+ * congested subscriber steps down one layer rather than falling from 1080p to a thumbnail.
+ * 1080p ~3.2 Mbps sits under Zoom's documented ~3.8 Mbps Full HD send. maintain-framerate
+ * still applies: faces prefer motion over a sharp slideshow.
+ *
+ * A device that should not encode 1080 (canCaptureCamera1080) captures 720p and publishes
+ * CAMERA_720 as its top layer, so its speaker tile is 720p rather than 360p.
  */
-/** Mid simulcast rung — Zoom-comparable 720p when the tile is not large enough for 1080. */
+/** Thumbnail rung: large grids, filmstrips. In Zoom's gallery range. */
+export const CAMERA_180_BITRATE = 200_000;
+/** Mid rung: grids of 3–9, spotlight beside content. */
+export const CAMERA_360_BITRATE = 640_000;
+/** The top layer of a device that captures 720p instead of 1080p. */
 export const CAMERA_720_BITRATE = 2_000_000;
 /** Featured-speaker 1080p — under Zoom's ~3.8 Mbps Full HD send floor. */
 export const CAMERA_1080_BITRATE = 3_200_000;
 
 export const CAMERA_LAYERS = [
-  new VideoPreset(640, 360, 600_000, 20),
-  new VideoPreset(1280, 720, CAMERA_720_BITRATE, 30),
+  new VideoPreset(320, 180, CAMERA_180_BITRATE, 15),
+  new VideoPreset(640, 360, CAMERA_360_BITRATE, 20),
 ];
 
 export const CAMERA_TOP = new VideoPreset(1920, 1080, CAMERA_1080_BITRATE, 30);
+export const CAMERA_720 = new VideoPreset(1280, 720, CAMERA_720_BITRATE, 30);
 
 /**
  * Coarse Zoom-like Full HD gate: phones skip 1080 capture; machines with fewer than
@@ -248,9 +263,9 @@ export function canCaptureCamera1080(): boolean {
   return true;
 }
 
-/** Capture resolution/encoding for getUserMedia — 1080 when allowed, else the 720 mid rung. */
+/** Capture resolution and top encoding — 1080 when allowed, else 720. */
 export function cameraCapturePreset(): VideoPreset {
-  return canCaptureCamera1080() ? CAMERA_TOP : CAMERA_LAYERS[1];
+  return canCaptureCamera1080() ? CAMERA_TOP : CAMERA_720;
 }
 
 /* Exported for one test, which pins the property that matters and cannot be read off the
@@ -262,21 +277,22 @@ export const LADDER: Record<
 > = {
   // Three layers as published. The SFU chooses between them per subscriber.
   full: [
-    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 3 },
-    { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 2 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 6 },
+    { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 3 },
     { maxBitrate: CAMERA_TOP.encoding.maxBitrate, scaleDown: 1 },
   ],
-  // The top (1080p) layer goes. 720p remains so a large tile does not fall to 360p.
+  // The top layer goes; the thumbnail and 360p stay.
   reduced: [
-    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 3 },
-    { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 2 },
+    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 6 },
+    { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 3 },
     { maxBitrate: 0, scaleDown: 1 },
   ],
-  // One small layer. Everything left goes to keeping a recognisable moving picture and
-  // to protecting the audio, which is untouched at every rung.
+  // One layer, and it is 360p, not the thumbnail: a weak presenter is still somebody's
+  // speaker tile. Everything left goes to keeping a recognisable moving picture and to
+  // protecting the audio, which is untouched at every rung.
   minimal: [
-    { maxBitrate: CAMERA_LAYERS[0].encoding.maxBitrate, scaleDown: 3 },
-    { maxBitrate: 0, scaleDown: 2 },
+    { maxBitrate: 0, scaleDown: 6 },
+    { maxBitrate: CAMERA_LAYERS[1].encoding.maxBitrate, scaleDown: 3 },
     { maxBitrate: 0, scaleDown: 1 },
   ],
 };
@@ -636,10 +652,15 @@ export function useNetworkHealth(
         const params = sender.getParameters();
         if (!params.encodings?.length) return;
         const wanted = LADDER[next];
+        // A 720p device's top layer is CAMERA_720, not the 1080p the table assumes.
+        const top = cameraCapturePreset().encoding.maxBitrate;
         params.encodings.forEach((encoding, i) => {
           const rung = wanted[i] ?? wanted[wanted.length - 1];
           encoding.active = rung.maxBitrate > 0;
-          if (rung.maxBitrate > 0) encoding.maxBitrate = rung.maxBitrate;
+          if (rung.maxBitrate > 0) {
+            encoding.maxBitrate =
+              i === params.encodings!.length - 1 ? Math.min(rung.maxBitrate, top) : rung.maxBitrate;
+          }
         });
         await sender.setParameters(params);
       } catch {
@@ -862,11 +883,11 @@ export function useNetworkHealth(
 
       if (publishing && camera) {
         const at = TIERS.indexOf(tier.current);
-        /* While screen-sharing, or on a device that should not encode 1080, keep the
-         * camera off the top rung. Thumbnails do not need 1080; low-power machines
-         * should not encode it. Cap at `reduced` (360+720) and refuse to climb to
-         * `full` until the share ends / the device is allowed 1080. */
-        const cameraBest = share || !canCaptureCamera1080() ? 1 : 0;
+        /* While screen-sharing, keep the camera off the top rung: next to a share it is a
+         * thumbnail. Cap at `reduced` (180+360) until the share ends. A device that should
+         * not encode 1080 is not capped here any more: its top layer is 720p already
+         * (cameraCapturePreset), which is what it used to send as the mid rung. */
+        const cameraBest = share ? 1 : 0;
         if (at < cameraBest) {
           badSamples.current = 0;
           goodSamples.current = 0;

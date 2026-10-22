@@ -16,6 +16,8 @@
 import { ConnectionQuality } from "livekit-client";
 import {
   CAMERA_1080_BITRATE,
+  CAMERA_360_BITRATE,
+  CAMERA_720,
   CAMERA_720_BITRATE,
   CAMERA_TOP,
   LADDER,
@@ -595,18 +597,26 @@ console.log("\ncamera layer budgets");
   );
   eq(
     LADDER.full[1].maxBitrate,
-    CAMERA_720_BITRATE,
-    "camera mid rung is the 720p layer",
+    CAMERA_360_BITRATE,
+    "camera mid rung is the 360p layer",
   );
   ok(
-    LADDER.full[1].maxBitrate >= 1_800_000,
-    "camera mid layer stays in Zoom's common 720p HD band",
-    `${LADDER.full[1].maxBitrate}`,
+    LADDER.full[0].maxBitrate <= 250_000,
+    "camera bottom rung is a thumbnail in Zoom's gallery range (<= 250 kbps)",
+    `${LADDER.full[0].maxBitrate}`,
+  );
+  eq(LADDER.minimal[1].maxBitrate, CAMERA_360_BITRATE, "a weak uplink keeps 360p, not the thumbnail");
+  eq(LADDER.minimal[0].maxBitrate, 0, "minimal sends one layer");
+  ok(
+    CAMERA_720.height === 720 && CAMERA_720.encoding.maxBitrate === CAMERA_720_BITRATE &&
+      CAMERA_720_BITRATE >= 1_800_000,
+    "a 720p device's top layer stays in Zoom's common 720p HD band",
+    `${CAMERA_720.width}x${CAMERA_720.height} ${CAMERA_720.encoding.maxBitrate}`,
   );
   eq(
     LADDER.reduced[2].maxBitrate,
     0,
-    "reduced turns off 1080p and keeps 720p for large-but-not-full tiles",
+    "reduced turns off the top layer and keeps 180p + 360p",
   );
 }
 
