@@ -118,8 +118,13 @@ export default function RecordingReplayPage({
       : "";
   const playerSources =
     recording?.unlocked && playable.length > 0
-      ? recordingSources(recording, (id) =>
-          api.publicRecordingStreamURL(slug, id, passcode || undefined),
+      ? recordingSources(
+          recording,
+          (id) => api.publicRecordingStreamURL(slug, id, passcode || undefined),
+          // The session's own captions, when the host shows them on replays.
+          recording.captions
+            ? (part) => api.publicRecordingCaptionsURL(slug, recording.id, passcode || undefined, part)
+            : undefined,
         )
       : [];
 

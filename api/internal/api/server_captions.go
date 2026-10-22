@@ -97,6 +97,13 @@ func (s *Server) handleHostServerCaptions(w http.ResponseWriter, r *http.Request
 		s.failSFU(w, r, wb, err)
 		return
 	}
+	/* A simulive plays a recording: there is nobody speaking to caption, and its CC is the
+	 * original session's captions (recording_captions.go). The agent is never sent in. */
+	if req.On && wb.Kind == types.KindSimulive {
+		httpx.Error(w, http.StatusConflict, "simulive_captions",
+			"A simulive shows its recording's own captions. There's nothing live to caption.")
+		return
+	}
 	dispatcher, ok := dispatcherFor(sfu)
 	if req.On && (!s.serverCaptionsConfigured() || !ok) {
 		// The browser falls back to on-device captions on this answer.

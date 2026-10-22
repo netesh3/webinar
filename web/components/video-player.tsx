@@ -3,6 +3,9 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { formatClock } from "@/lib/format";
 import { chapterAt, type PlayerChapter } from "@/lib/recap";
+import { CAPTIONS_LABEL, showCaptions } from "@/lib/caption-track";
+import { useCaptionTrack } from "@/lib/use-caption-track";
+import { CcButton } from "./cc-button";
 import {
   FullscreenExitIcon,
   FullscreenIcon,
@@ -19,6 +22,8 @@ import {
 interface VideoSource {
   src: string;
   durationMs?: number;
+  /** This file's captions (WebVTT), from the session's own (lib/caption-track.ts). */
+  captions?: string;
 }
 
 /** What a parent can do to the player: jump to a moment (a chapter) and play from it. */
@@ -77,6 +82,12 @@ export function VideoPlayer({
   const partIndexRef = useRef(0);
   const pendingSeekRef = useRef<number | null>(null);
   const playAfterLoadRef = useRef(false);
+  // The session's own captions on the file now playing, and whether they are shown.
+  const captionTrack = useCaptionTrack(playlist[partIndex]?.captions);
+  const [ccOn, setCcOn] = useState(true);
+  useEffect(() => {
+    showCaptions(videoRef.current, ccOn);
+  }, [ccOn, captionTrack]);
   const [partDurations, setPartDurations] = useState(() =>
     playlist.map((p) => (p.durationMs && p.durationMs > 0 ? p.durationMs / 1000 : 0)),
   );
@@ -486,7 +497,19 @@ export function VideoPlayer({
         onError={onError}
         onClick={togglePlay}
         className="aspect-video size-full cursor-pointer bg-black object-contain"
-      />
+      >
+        {captionTrack && (
+          <track
+            key={captionTrack}
+            kind="captions"
+            label={CAPTIONS_LABEL}
+            srcLang="und"
+            src={captionTrack}
+            default={ccOn}
+            onLoad={() => showCaptions(videoRef.current, ccOn)}
+          />
+        )}
+      </video>
 
       {/* Buffering Spinner */}
       {buffering && (
@@ -638,6 +661,7 @@ export function VideoPlayer({
           </div>
 
           <div className="flex items-center gap-3">
+            {captionTrack && <CcButton on={ccOn} onToggle={() => setCcOn((v) => !v)} />}
             {/* Speed Selector */}
             <div className="relative">
               <button

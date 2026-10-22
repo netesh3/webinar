@@ -64,6 +64,9 @@ import { FileShareBar } from "./file-share-bar";
 import { MeetingLimitBanner, endedByLimit } from "./meeting-limit-banner";
 import { RoomHeader } from "./webinar-room";
 import { useScreenWakeLock } from "@/lib/wake-lock";
+import { CAPTIONS_LABEL, showCaptions } from "@/lib/caption-track";
+import { useCaptionTrack } from "@/lib/use-caption-track";
+import { CcButton } from "../cc-button";
 
 function resolveBroadcastUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
@@ -490,6 +493,10 @@ export function CdnAttendeeRoom({
                         lowLatency={Boolean(join.cdnLowLatency)}
                         coverUrl={initialImageUrl}
                         onVideo={setVideoEl}
+                        // A simulive's CC: the original session's captions (lib/caption-track.ts).
+                        captionsUrl={
+                          join.simuliveCaptions ? api.simuliveCaptionsURL(slug, joinKey) : undefined
+                        }
                         // A simulive is one shared clock: joining late starts where everybody
                         // else is, not at the top of the recording.
                         sharedStartMs={
@@ -551,12 +558,14 @@ function BroadcastPlayer({
   coverUrl,
   onVideo,
   sharedStartMs,
+  captionsUrl,
 }: {
   streamUrl: string;
   lowLatency?: boolean;
   coverUrl?: string;
   onVideo?: (video: HTMLVideoElement | null) => void;
   sharedStartMs?: () => number | null;
+  captionsUrl?: string;
 }) {
   return (
     <HlsPlayer
@@ -565,6 +574,7 @@ function BroadcastPlayer({
       coverUrl={coverUrl}
       onVideo={onVideo}
       sharedStartMs={sharedStartMs}
+      captionsUrl={captionsUrl}
     />
   );
 }
@@ -579,10 +589,13 @@ function HlsPlayer({
   coverUrl,
   onVideo,
   sharedStartMs,
+  captionsUrl,
 }: {
   streamUrl: string;
   lowLatency?: boolean;
   coverUrl?: string;
+  /** A WebVTT file for a <track> on the element, with a CC switch (lib/caption-track.ts). */
+  captionsUrl?: string;
   /** Hands the element up: a simulive's replay is scheduled against its position. */
   onVideo?: (video: HTMLVideoElement | null) => void;
   /** A simulive's shared position, read when the media loads: a late joiner starts there. */
@@ -833,6 +846,7 @@ function HlsPlayer({
       }}
       unmute={unmute}
       toggleMute={toggleMute}
+      captionsUrl={captionsUrl}
     />
   );
 }
@@ -847,6 +861,7 @@ export function StagePlayerChrome({
   onReady,
   unmute,
   toggleMute,
+  captionsUrl,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   loading: boolean;
@@ -857,6 +872,7 @@ export function StagePlayerChrome({
   onReady?: () => void;
   unmute: () => void;
   toggleMute: () => void;
+  captionsUrl?: string;
 }) {
   /* Fullscreen belongs to the chrome, not to each player: the players could differ
    * in how they fill the video element and in nothing else, and the two copies
@@ -865,6 +881,12 @@ export function StagePlayerChrome({
   const containerRef = useRef<HTMLDivElement>(null);
   const { notify } = useToast();
   const { isFullscreen, toggle } = useFullscreen(containerRef, videoRef);
+  // Captions as a native track: they follow the playback position, seeks included.
+  const captionTrack = useCaptionTrack(captionsUrl);
+  const [ccOn, setCcOn] = useState(true);
+  useEffect(() => {
+    showCaptions(videoRef.current, ccOn);
+  }, [ccOn, captionTrack, videoRef]);
 
   return (
     <div
@@ -900,7 +922,19 @@ export function StagePlayerChrome({
         onVolumeChange={(e) => {
           onMutedChange((e.target as HTMLVideoElement).muted);
         }}
-      />
+      >
+        {captionTrack && (
+          <track
+            key={captionTrack}
+            kind="captions"
+            label={CAPTIONS_LABEL}
+            srcLang="und"
+            src={captionTrack}
+            default={ccOn}
+            onLoad={() => showCaptions(videoRef.current, ccOn)}
+          />
+        )}
+      </video>
 
       {loading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white gap-3 pointer-events-none z-10">
@@ -946,6 +980,9 @@ export function StagePlayerChrome({
 
       {!loading && (
         <div className="absolute bottom-4 right-4 z-20 flex items-center gap-1 rounded-full bg-black/55 p-1 backdrop-blur">
+          {captionTrack && (
+            <CcButton on={ccOn} onToggle={() => setCcOn((v) => !v)} className="mx-1.5" />
+          )}
           <button
             type="button"
             onClick={toggleMute}

@@ -2444,6 +2444,12 @@ func (s *Server) handleAppendCaption(w http.ResponseWriter, r *http.Request) {
 	if len(text) > 280 {
 		text = text[:280]
 	}
+	// A simulive's captions are its recording's (recording_captions.go): nothing said in its
+	// room is a caption of it, so nothing is stored.
+	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && wb.Kind == types.KindSimulive {
+		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ignored"})
+		return
+	}
 	if err := s.store.AppendCaption(r.Context(), slug, from.Identity, text); err != nil {
 		s.fail(w, r, "caption", err)
 		return

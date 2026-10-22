@@ -3635,6 +3635,9 @@ type JoinResponse struct {
 	 * /api/webinars/{slug}/replay. */
 	Simulive     bool `json:"simulive,omitempty"`
 	ReplayEngage bool `json:"replayEngage,omitempty"`
+	/* SimuliveCaptions says the simulive's recording has captions from its original session
+	 * (GET /api/webinars/{slug}/captions.vtt), so the player offers CC. */
+	SimuliveCaptions bool `json:"simuliveCaptions,omitempty"`
 }
 
 // ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -3876,6 +3879,11 @@ type Recording struct {
 	// ExpiresAt is when this file will be deleted from cloud storage, RFC3339.
 	// Empty when retention is disabled or createdAt could not be parsed.
 	ExpiresAt string `json:"expiresAt,omitempty"`
+	/* CaptionsAvailable says the session has a transcript or live captions its replay's CC
+	 * can be made from; ShowCaptions whether the host shows them on replays (default: on when
+	 * captions were shown live, off when the transcript was only kept for the AI). */
+	CaptionsAvailable bool `json:"captionsAvailable,omitempty"`
+	ShowCaptions      bool `json:"showCaptions,omitempty"`
 	// Parts is every take in this session, oldest first. Stop-then-record-again
 	// appends a part rather than listing a second recording. A session with a
 	// single take still has one entry, so the player does not have to special-case
@@ -3904,6 +3912,8 @@ type StartRecordingRequest struct {
 type ShareRecordingRequest struct {
 	IsPublic *bool   `json:"isPublic,omitempty"`
 	Passcode *string `json:"passcode,omitempty"`
+	// ShowCaptions is "Show captions on replays", for the session's recordings and simulives.
+	ShowCaptions *bool `json:"showCaptions,omitempty"`
 }
 
 // PublicRecording is the sanitized recording metadata returned to anonymous viewers.
@@ -3929,6 +3939,10 @@ type PublicRecording struct {
 	 * onto the recording's parts by their createdAt. */
 	Chapters         []RecapChapter `json:"chapters,omitempty"`
 	SessionStartedAt string         `json:"sessionStartedAt,omitempty"`
+	/* Captions says the session's own captions are served for this replay (captions.vtt
+	 * beside /stream): the host shows them on replays and there is a transcript. Only once
+	 * unlocked. */
+	Captions bool `json:"captions,omitempty"`
 }
 
 // ------------------------------------------------------------ host: in-session

@@ -404,6 +404,8 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/webinars/{slug}/image", s.handleWebinarImage)
 		r.Get("/webinars/{slug}/recordings/{id}/public", s.handlePublicRecording)
 		r.Get("/webinars/{slug}/recordings/{id}/stream", s.handlePublicStreamRecording)
+		// The replay's CC, from the session's own captions (recording_captions.go).
+		r.Get("/webinars/{slug}/recordings/{id}/captions.vtt", s.handlePublicRecordingCaptions)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
@@ -494,6 +496,8 @@ func (s *Server) Routes() http.Handler {
 		// A simulive's Auto mode: the asker's browser, a few seconds after a question, asks
 		// for the waiting batch to be answered — inline, in this request. See qa_auto.go.
 		r.Post("/webinars/{slug}/qa/auto", s.handleQAAuto)
+		// A simulive's CC: its original session's captions. Same credential.
+		r.Get("/webinars/{slug}/captions.vtt", s.handleSimuliveCaptions)
 		// An image and the message carrying it, in one request: an upload endpoint that
 		// hands back a handle for a second call leaves orphaned bytes every time the second
 		// call does not happen.
@@ -622,6 +626,7 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/webinars/{slug}/recordings/{id}/chunks", s.handleRecordingChunk)
 				r.Post("/webinars/{slug}/recordings/{id}/complete", s.handleCompleteRecording)
 				r.Get("/webinars/{slug}/recordings/{id}/file", s.handleDownloadRecording)
+				r.Get("/webinars/{slug}/recordings/{id}/captions.vtt", s.handleRecordingCaptions)
 				r.Patch("/webinars/{slug}/recordings/{id}/share", s.handleUpdateRecordingShare)
 				r.Delete("/webinars/{slug}/recordings/{id}", s.handleDeleteRecording)
 			})

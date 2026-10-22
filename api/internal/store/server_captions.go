@@ -21,6 +21,7 @@ func (s *Store) SetServerCaptions(ctx context.Context, slug string, on bool) err
 			server_captions      = $2,
 			server_captions_live = CASE WHEN $2 THEN server_captions_live ELSE false END,
 			captions_enabled     = CASE WHEN $2 THEN true ELSE captions_enabled END,
+			captions_shown_live  = captions_shown_live OR ($2 AND status = 'live'),
 			updated_at           = now()
 		 WHERE slug = $1`, slug, on)
 	if err != nil {

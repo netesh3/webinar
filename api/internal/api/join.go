@@ -796,15 +796,16 @@ func (s *Server) issueToken(
 		Whiteboard: publishes && !spec.Promoted &&
 			!(isMeeting(wb) && joinKeyFromIdentity(spec.Identity) != "") &&
 			s.hostFeature(r.Context(), wb.Host.ID, types.FeatureWhiteboard),
-		JoinKey:        joinKeyFromIdentity(spec.Identity),
-		MaxDurationMin: wb.MaxDurationMin,
-		CdnBroadcast:   cdnBroadcast,
-		CdnStreamURL:   cdnStreamURL,
-		CdnLowLatency:  cdnLowLatency,
-		EdgeWebinar:    wb.Delivery == types.DeliveryEdge && !isMeeting(wb),
-		Meeting:        isMeeting(wb),
-		Simulive:       simulive,
-		ReplayEngage:   simulive && s.replayAvailable(r.Context(), wb),
+		JoinKey:          joinKeyFromIdentity(spec.Identity),
+		MaxDurationMin:   wb.MaxDurationMin,
+		CdnBroadcast:     cdnBroadcast,
+		CdnStreamURL:     cdnStreamURL,
+		CdnLowLatency:    cdnLowLatency,
+		EdgeWebinar:      wb.Delivery == types.DeliveryEdge && !isMeeting(wb),
+		Meeting:          isMeeting(wb),
+		Simulive:         simulive,
+		ReplayEngage:     simulive && s.replayAvailable(r.Context(), wb),
+		SimuliveCaptions: simulive && s.simuliveHasCaptions(r.Context(), wb),
 	})
 	return true
 }

@@ -19,12 +19,18 @@ export function playableRecordingParts(
   return parts.filter((p) => p.status === "ready" && p.sizeBytes > 0);
 }
 
+/* The player's playlist. captionsFor, when the session has captions, is each take's own
+ * captions file: the player swaps the file at each take and the <track> goes with it. One take
+ * plays the session's file (no part), so it is the same URL the whole session has. */
 export function recordingSources(
   rec: Pick<Recording, "id" | "status" | "sizeBytes" | "durationMs" | "parts"> | PublicRecording,
   urlFor: (id: string) => string,
-): { src: string; durationMs: number }[] {
-  return playableRecordingParts(rec).map((p) => ({
+  captionsFor?: (partId: string | undefined) => string,
+): { src: string; durationMs: number; captions?: string }[] {
+  const parts = playableRecordingParts(rec);
+  return parts.map((p) => ({
     src: urlFor(p.id),
     durationMs: p.durationMs,
+    ...(captionsFor ? { captions: captionsFor(parts.length > 1 ? p.id : undefined) } : {}),
   }));
 }

@@ -288,6 +288,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The AI recap: chapter times, chapters mapped onto a recording's takes, and what
 	# the recap card says when there is no recap yet.
 	cd web && node --experimental-strip-types --no-warnings lib/recap.test.mts
+	# Captions on replays: the captions file's address, each take's own file on the
+	# playlist, and switching only our track (not one hls.js made).
+	cd web && node --experimental-strip-types --no-warnings lib/caption-track.test.mts
 	# Hot leads and the follow-up writer: tags, signal chips, the ranked CSV, the groups,
 	# their empty states, and a draft turned into WhatsApp template wording.
 	cd web && node --experimental-strip-types --no-warnings lib/leads.test.mts

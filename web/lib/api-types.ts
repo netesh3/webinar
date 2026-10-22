@@ -7140,6 +7140,11 @@ export interface JoinResponse {
    */
   simulive?: boolean;
   replayEngage?: boolean;
+  /**
+   *  SimuliveCaptions says the simulive's recording has captions from its original session
+   * 	 * (GET /api/webinars/{slug}/captions.vtt), so the player offers CC.
+   */
+  simuliveCaptions?: boolean;
 }
 /**
  * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -7358,6 +7363,13 @@ export interface Recording {
    */
   expiresAt?: string;
   /**
+   *  CaptionsAvailable says the session has a transcript or live captions its replay's CC
+   * 	 * can be made from; ShowCaptions whether the host shows them on replays (default: on when
+   * 	 * captions were shown live, off when the transcript was only kept for the AI).
+   */
+  captionsAvailable?: boolean;
+  showCaptions?: boolean;
+  /**
    * Parts is every take in this session, oldest first. Stop-then-record-again
    * appends a part rather than listing a second recording. A session with a
    * single take still has one entry, so the player does not have to special-case
@@ -7390,6 +7402,10 @@ export interface StartRecordingRequest {
 export interface ShareRecordingRequest {
   isPublic?: boolean;
   passcode?: string;
+  /**
+   * ShowCaptions is "Show captions on replays", for the session's recordings and simulives.
+   */
+  showCaptions?: boolean;
 }
 /**
  * PublicRecording is the sanitized recording metadata returned to anonymous viewers.
@@ -7418,6 +7434,12 @@ export interface PublicRecording {
    */
   chapters?: RecapChapter[];
   sessionStartedAt?: string;
+  /**
+   *  Captions says the session's own captions are served for this replay (captions.vtt
+   * 	 * beside /stream): the host shows them on replays and there is a transcript. Only once
+   * 	 * unlocked.
+   */
+  captions?: boolean;
 }
 /**
  * LiveParticipant is one row of the host's participant panel.
