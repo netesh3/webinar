@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Modal, Spinner } from "../controls";
+import { Modal, Spinner, Toggle } from "../controls";
 import { useSession } from "../providers";
 import { Button } from "../ui";
 import { RecordingThumb } from "../recordings-tab";
@@ -11,6 +11,7 @@ import { FeatureReplayEngage, type Recording } from "@/lib/api-types";
 import { formatClock, formatDuration } from "@/lib/format";
 import { useHydrated } from "@/lib/clock";
 import { eligibleRecordings, switchRecording } from "@/lib/simulive-create";
+import { assistantLabelFor, autoAnswerDisclosure, autoModeAvailable } from "@/lib/qa-auto";
 import { FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
 
@@ -38,6 +39,7 @@ export function SimuliveSourceSection({
   const { account } = useSession();
   const hydrated = useHydrated();
   const replay = (account?.features ?? []).includes(FeatureReplayEngage);
+  const autoMode = autoModeAvailable(account?.features);
   const [library, setLibrary] = useState<Recording[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -143,6 +145,18 @@ export function SimuliveSourceSection({
             <>Video only. Engagement replay is a premium feature.</>
           )}
         </p>
+
+        {/* Auto mode (lib/qa-auto.ts): needs ai and replay_engage; off by default. */}
+        {autoMode && (
+          <div className="rounded-lg border border-line px-2 py-1">
+            <Toggle
+              checked={form.options.simuliveAutoAnswer === true}
+              onChange={(next) => set("options", { ...form.options, simuliveAutoAnswer: next })}
+              label="✨ Auto mode — the assistant answers new questions from your knowledge"
+              description={autoAnswerDisclosure(assistantLabelFor(account?.name))}
+            />
+          </div>
+        )}
       </div>
 
       <Modal

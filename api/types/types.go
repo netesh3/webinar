@@ -283,6 +283,11 @@ type WebinarOptions struct {
 	 * MaxReminders. Missing from a stored webinar means DefaultReminders; an empty list
 	 * means no timed reminders. */
 	Reminders []int `json:"reminders"`
+	/* SimuliveAutoAnswer is a simulive's Auto mode: the assistant answers new audience
+	 * questions its host's AI knowledge covers, signed "✨ <First name>'s assistant", without
+	 * the host. Off by default; only acts with the account features ai AND replay_engage,
+	 * and only for a simulive (cleared on anything else). See api/internal/api/qa_auto.go. */
+	SimuliveAutoAnswer bool `json:"simuliveAutoAnswer,omitempty"`
 }
 
 // SessionControls are the things a host flips *during* the session.
@@ -724,6 +729,10 @@ type SendMessageResponse struct {
 	// Recipients is how many identities the SFU was given. Zero means the whole
 	// room, because a broadcast carries no list.
 	Recipients int `json:"recipients"`
+	/* AutoAnswerInMs is set on a question that Auto mode will consider (a simulive with the
+	 * assistant on): the asker's browser calls POST /api/webinars/{slug}/qa/auto after this
+	 * long, and that request is where the batch is answered. See qa_auto.go. */
+	AutoAnswerInMs int `json:"autoAnswerInMs,omitempty"`
 }
 
 type WebinarReport struct {
@@ -776,6 +785,10 @@ type SessionQuestion struct {
 	Anonymous bool   `json:"anonymous,omitempty"`
 	Answered  bool   `json:"answered"`
 	Answer    string `json:"answer,omitempty"`
+	/* AnswerBy signs an answer that is not the host team's: the Auto mode assistant's label,
+	 * "✨ <First name>'s assistant", exactly as everyone sees it. Empty for the host team. The
+	 * room shows it as the author of the answer, never the host's name or avatar. */
+	AnswerBy  string `json:"answerBy,omitempty"`
 	Pinned    bool   `json:"pinned,omitempty"`
 	Dismissed bool   `json:"dismissed,omitempty"`
 	Upvotes   int    `json:"upvotes"`

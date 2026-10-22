@@ -29,9 +29,14 @@ export function questionAuthor(
 
 /** "live" is a question the stage marked answered without writing anything —
  *  what the host's tick does once they have said the answer out loud. "text" is
- *  one with a written reply. The data holds nothing else: no answerer and no
- *  answer time, so the card cannot say who answered. */
-export function answerKind(q: Pick<Question, "answered" | "answer">): "live" | "text" | null {
+ *  one with a written reply from the host team: the data names no person, so the
+ *  card cannot say who answered. "assistant" is a written reply from a simulive's
+ *  Auto mode, signed by the assistant (answerBy), never by the host. */
+export function answerKind(
+  q: Pick<Question, "answered" | "answer"> & { answerBy?: string },
+): "live" | "text" | "assistant" | null {
   if (!q.answered) return null;
-  return q.answer.trim() ? "text" : "live";
+  if (!q.answer.trim()) return "live";
+  // A simulive's Auto mode (qa-auto.ts): signed by the assistant, never by a person.
+  return q.answerBy?.trim() ? "assistant" : "text";
 }

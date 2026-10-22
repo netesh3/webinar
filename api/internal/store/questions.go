@@ -70,10 +70,10 @@ func (s *Store) RoomQuestions(
 	ctx context.Context, slug, viewer string, forStage bool,
 ) (types.RoomQuestions, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, identity, name, body, anonymous, answered, answer, pinned, dismissed,
+		SELECT id, identity, name, body, anonymous, answered, answer, answer_by, pinned, dismissed,
 		       upvotes, created_at, role, voted
 		  FROM (
-			SELECT q.id, q.identity, q.name, q.body, q.anonymous, q.answered, q.answer,
+			SELECT q.id, q.identity, q.name, q.body, q.anonymous, q.answered, q.answer, q.answer_by,
 			       q.pinned, q.dismissed, q.upvotes, q.created_at, q.role,
 			       EXISTS (SELECT 1 FROM session_question_votes v
 			                WHERE v.question_id = q.id AND v.identity = $2) AS voted
@@ -98,7 +98,7 @@ func (s *Store) RoomQuestions(
 			role string
 		)
 		if err := rows.Scan(&q.ID, &q.Identity, &q.Name, &q.Text, &q.Anonymous, &q.Answered,
-			&q.Answer, &q.Pinned, &q.Dismissed, &q.Upvotes, &at, &role, &q.VotedByMe); err != nil {
+			&q.Answer, &q.AnswerBy, &q.Pinned, &q.Dismissed, &q.Upvotes, &at, &role, &q.VotedByMe); err != nil {
 			return types.RoomQuestions{}, err
 		}
 		q.CreatedAt = at.Format(time.RFC3339Nano)

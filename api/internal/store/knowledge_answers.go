@@ -89,7 +89,10 @@ type HarvestQuestion struct {
  * answered when any of its questions is. */
 func (s *Store) HarvestQuestions(ctx context.Context, webinarID string) ([]HarvestQuestion, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT q.id, q.body, q.answer, q.answered, q.upvotes,
+		-- An answer the Auto mode assistant posted (answer_by, 0137) came from the knowledge
+		-- already: it is not the host's own, so it is not harvested as one.
+		SELECT q.id, q.body, CASE WHEN q.answer_by = '' THEN q.answer ELSE '' END,
+		       q.answered AND q.answer_by = '', q.upvotes,
 		       COALESCE(q.cluster_id, ''), COALESCE(c.canonical, '')
 		  FROM session_questions q
 		  LEFT JOIN session_qa_clusters c ON c.id = q.cluster_id

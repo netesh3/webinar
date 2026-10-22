@@ -24,11 +24,10 @@ import (
  * Live chat and questions from the new audience go through /say as in any session and are
  * interleaved with the replayed items in the browser.
  *
- * AUTO MODE (not built): an assistant that answers the new audience's questions, signed
- * "✨ <Coach>'s assistant", would hang off the MsgQuestion case in say.go for a simulive with
- * FeatureReplayEngage (and FeatureAI) on — the same place qaAssistOn's clustering is
- * triggered — answering through UpdateSessionQuestion so the answer reaches the room the way
- * a host's does. The replay itself needs nothing from it.
+ * AUTO MODE (qa_auto.go): an assistant that answers the new audience's questions from the
+ * host's knowledge, signed "✨ <Coach>'s assistant", hangs off the MsgQuestion case in say.go
+ * for a simulive with FeatureReplayEngage and FeatureAI on. The replay itself needs nothing
+ * from it.
  */
 
 // replayAvailable reports whether this webinar plays an engagement replay at all.

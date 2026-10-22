@@ -955,6 +955,8 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	in.SimuliveRecordingID = strings.TrimSpace(in.SimuliveRecordingID)
 	if in.Kind != types.KindSimulive {
 		in.SimuliveRecordingID = ""
+		// Auto mode is a simulive's too (qa_auto.go).
+		in.Options.SimuliveAutoAnswer = false
 	}
 	if in.Kind == types.KindSimulive && in.SimuliveRecordingID == "" {
 		fields["simuliveRecordingId"] = "Pick a recording to play as the live session."

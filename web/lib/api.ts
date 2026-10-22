@@ -112,6 +112,10 @@ import type {
   EdgeStatus,
   ServerTime,
   ReplayHideRequest,
+  SimuliveAutoAnswer,
+  SimuliveAutoAnswerRequest,
+  QAAutoRequest,
+  QAAutoResponse,
   ReplayTimeline,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
@@ -449,6 +453,21 @@ export const api = {
   /** Hides one item of the replay from the audience, or shows it again. */
   setReplayHidden: (slug: string, key: string, hidden: boolean) =>
     put<ReplayTimeline>(`/api/host/webinars/${seg(slug)}/replay/hidden`, { key, hidden } satisfies ReplayHideRequest),
+
+  /** A simulive's Auto mode: the assistant answering new questions from the knowledge. */
+  simuliveAuto: (slug: string) =>
+    request<SimuliveAutoAnswer>(`/api/host/webinars/${seg(slug)}/replay/auto`, fresh),
+  setSimuliveAuto: (slug: string, enabled: boolean) =>
+    put<SimuliveAutoAnswer>(`/api/host/webinars/${seg(slug)}/replay/auto`, { enabled } satisfies SimuliveAutoAnswerRequest),
+
+  /** The asker's browser, a few seconds after a question in Auto mode, asking the server to
+   *  answer the waiting batch (inline, in this request: see api/internal/api/qa_auto.go). */
+  qaAuto: (slug: string, joinKey?: string) =>
+    post<QAAutoResponse>(`/api/webinars/${seg(slug)}/qa/auto`, (joinKey ? { joinKey } : {}) satisfies QAAutoRequest),
+
+  /** Takes the assistant's answer back off a question (host and co-hosts). */
+  retractAutoAnswer: (slug: string, id: string) =>
+    post<StatusResponse>(`/api/host/webinars/${seg(slug)}/questions/${seg(id)}/retract`, {}),
 
   /** Uploads an image and posts it as a message, in one request.
    *

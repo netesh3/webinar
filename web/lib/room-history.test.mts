@@ -127,6 +127,21 @@ const list: RoomQuestions = {
   eq(snap.questions[0].at, Date.parse("2026-09-27T10:00:00Z"), "questions keep the time they were asked");
 }
 {
+  // A simulive's Auto mode answer keeps the assistant's signature on a reload.
+  const snap = questionSnapshot({
+    questions: [
+      {
+        id: "qa1", identity: "att_x", name: "X", text: "Fee?", anonymous: false, answered: true,
+        answer: "499 rupees.", answerBy: "✨ Asha's assistant", upvotes: 0,
+      },
+      { id: "qa2", identity: "att_x", name: "X", text: "Open?", anonymous: false, answered: false, answerBy: "stale", upvotes: 0 },
+    ],
+    hidden: [],
+  } as RoomQuestions);
+  eq(snap.mods.qa1?.answerBy, "✨ Asha's assistant", "the assistant's signature comes back with its answer");
+  eq(snap.mods.qa2?.answerBy, undefined, "no signature on an open question");
+}
+{
   const bad = questionSnapshot({
     questions: [{ id: "", text: "x", name: "", anonymous: false, answered: false, upvotes: 0 }],
     hidden: [],

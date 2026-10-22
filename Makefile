@@ -321,6 +321,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-replay.test.mts
 	# Scheduling a simulive from a recording: which recordings qualify, and the form's prefill.
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-create.test.mts
+	# Simulive Auto mode: the follow-up call's timing and the assistant's signature.
+	cd web && node --experimental-strip-types --no-warnings lib/qa-auto.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
