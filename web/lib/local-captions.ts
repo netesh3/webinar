@@ -147,9 +147,16 @@ async function loadTranscriber(
  * Runs Whisper against `track` while `active` is true, and pushes recognised
  * lines through `send` / the captions log. `track` may be missing (mic off);
  * we wait rather than opening a second capture.
+ *
+ * `display` false is the silent mode the room's AI switch uses (lib/ai-session.ts):
+ * the lines are only stored, for the AI recap, never sent to the room, and nothing is
+ * reported to the speaker — they did not ask for captions. A ref, so captions being
+ * shown or hidden mid-sentence switches the mode without restarting the engine.
  */
 export function useLocalCaptions(opts: {
   active: boolean;
+  /** Broadcast lines as captions. Defaults to true. */
+  display?: boolean;
   track: MediaStreamTrack | undefined;
   slug: string;
   joinKey: string | undefined;
@@ -160,10 +167,18 @@ export function useLocalCaptions(opts: {
   useEffect(() => {
     send.current = opts.send;
   }, [opts.send]);
-  const report = useRef(opts.report);
+  const display = useRef(opts.display ?? true);
   useEffect(() => {
-    report.current = opts.report;
+    display.current = opts.display ?? true;
+  }, [opts.display]);
+  const loud = useRef(opts.report);
+  useEffect(() => {
+    loud.current = opts.report;
   }, [opts.report]);
+  // Silent while only capturing for the AI: no toasts about captions nobody turned on.
+  const report = useRef((key: string, message: string, tone?: "error" | "info") => {
+    if (display.current) loud.current(key, message, tone);
+  });
 
   const trackId = opts.track?.id;
   const { active, track, slug, joinKey } = opts;
@@ -196,7 +211,7 @@ export function useLocalCaptions(opts: {
        * sentence twice. */
       if (clean === last || last.includes(clean)) return;
       last = clean;
-      void send.current(clean);
+      if (display.current) void send.current(clean);
       const now = Date.now();
       if (now - lastPersistedAt > 2500) {
         lastPersistedAt = now;

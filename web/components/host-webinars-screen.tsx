@@ -102,6 +102,8 @@ function instantWebinarInput(
       reactionsEnabled: true,
       captionsEnabled: false,
       serverCaptions: false,
+      aiEnabled: false,
+      aiAvailable: false,
       locked: false,
     },
   };

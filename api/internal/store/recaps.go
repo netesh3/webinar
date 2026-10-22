@@ -50,6 +50,19 @@ func (s *Store) ScheduleRecap(ctx context.Context, slug string, delay, waitFor t
 	return tag.RowsAffected() > 0, nil
 }
 
+/* SkipRecap records, at the end of a session, that it gets no recap: the row is written
+ * skipped with reason straight away (the room's AI switch was off), so the Results page says
+ * so at once rather than showing "processing". A row already settled is left alone. */
+func (s *Store) SkipRecap(ctx context.Context, slug, reason string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO session_recaps (webinar_id, status, reason)
+		SELECT w.id, 'skipped', $2 FROM webinars w WHERE w.slug = $1
+		ON CONFLICT (webinar_id) DO UPDATE
+		   SET status = 'skipped', reason = excluded.reason, claimed_until = NULL
+		 WHERE session_recaps.status = 'pending'`, slug, reason)
+	return err
+}
+
 // NudgeRecap makes a pending recap due now: the transcript it was waiting for has arrived.
 func (s *Store) NudgeRecap(ctx context.Context, slug string) error {
 	_, err := s.pool.Exec(ctx, `
@@ -118,7 +131,7 @@ func (s *Store) DeferRecap(ctx context.Context, webinarID string, due time.Time,
 }
 
 /* SettleRecap ends a recap without one: status skipped or failed, with the reason. Only
- * a pending row moves, so a recap a host has regenerated meanwhile is not undone. */
+ * a pending row moves, so a recap written meanwhile is not undone. */
 func (s *Store) SettleRecap(ctx context.Context, webinarID, status, reason string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE session_recaps
@@ -127,9 +140,8 @@ func (s *Store) SettleRecap(ctx context.Context, webinarID, status, reason strin
 	return err
 }
 
-/* SaveRecap stores a written recap, creating the row if the session never had one (a
- * Regenerate on a session that ended before recaps existed). emailed_at is left alone:
- * a regenerated recap is not mailed again. */
+/* SaveRecap stores a written recap, creating the row if the session never had one.
+ * emailed_at is left alone: a recap is mailed once. */
 func (s *Store) SaveRecap(ctx context.Context, slug string, recap types.SessionRecap, source, model string) error {
 	body, err := json.Marshal(recap)
 	if err != nil {

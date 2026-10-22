@@ -1406,6 +1406,11 @@ export const RecapReasonProcessing = "processing";
  */
 export const RecapReasonAIOff = "ai_off";
 /**
+ * RecapReasonAISessionOff is the room's AI switch (SessionControls.AIEnabled) being off
+ * when the session ended: the host kept this one session out of AI.
+ */
+export const RecapReasonAISessionOff = "ai_session_off";
+/**
  *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
  *  * processing go with pending; the others with skipped, failed or none.
  */
@@ -1498,10 +1503,9 @@ export interface SessionRecap {
   notice?: string;
 }
 /**
- *  SessionRecapResponse is GET /api/host/webinars/{slug}/recap, and what POST …/recap
- *  * (Regenerate) returns. Status is none, pending, ready, skipped or failed; Reason says
- *  * why it is not ready. Regenerate errors: 403 feature_off, 409 not_ended, 429 ai_limit
- *  * or rate_limited, 503 ai_unavailable.
+ *  SessionRecapResponse is GET /api/host/webinars/{slug}/recap. The recap is written
+ *  * automatically after the session; there is no way to ask for another. Status is none,
+ *  * pending, ready, skipped or failed; Reason says why it is not ready.
  */
 export interface SessionRecapResponse {
   status: string;
@@ -2356,6 +2360,23 @@ export interface SessionControls {
    * 	 * /controls.
    */
   serverCaptions: boolean;
+  /**
+   *  AIEnabled is the room's "AI" switch: whether this session is in AI at all. On, a
+   * 	 * transcript is captured for the AI recap even with captions (CaptionsEnabled, which is
+   * 	 * only whether people SEE the lines) off — by the server caption agent in a transcript-only
+   * 	 * mode, or silently by the speakers' browsers where no agent runs. Off at the end of the
+   * 	 * session, no recap is written and nothing of the session goes to a model.
+   * 	 *
+   * 	 * On by default (webinars.ai_enabled, migration 0129), but only ever true when the host's
+   * 	 * account has the ai feature: an account without it reads false here and AIAvailable
+   * 	 * false, and the room shows no switch.
+   */
+  aiEnabled: boolean;
+  /**
+   * AIAvailable is whether the host's account has the ai feature, so the room knows to
+   * show the switch. Read-only: it follows the account, not PATCH /controls.
+   */
+  aiAvailable: boolean;
   locked: boolean;
   /**
    * ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
@@ -2396,6 +2417,11 @@ export interface ControlsPatch {
   reactionsEnabled?: boolean;
   pollsEnabled?: boolean;
   captionsEnabled?: boolean;
+  /**
+   * AIEnabled is the room's AI switch (SessionControls.AIEnabled). Refused for an account
+   * without the ai feature.
+   */
+  aiEnabled?: boolean;
   locked?: boolean;
   /**
    * A pointer for the same reason as the others: "not mentioned" and "set to

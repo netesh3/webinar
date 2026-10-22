@@ -282,6 +282,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The AI recap: chapter times, chapters mapped onto a recording's takes, and what
 	# the recap card says when there is no recap yet.
 	cd web && node --experimental-strip-types --no-warnings lib/recap.test.mts
+	# The room's AI switch: who sees it, and whether this browser's caption engine runs,
+	# shows its lines, or only keeps them for the AI (display and capture are separate).
+	cd web && node --experimental-strip-types --no-warnings lib/ai-session.test.mts
 	# The Accounts tab's Hosts / Attendees chips: search and chip combine, and the
 	# chip counts follow the search text.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-accounts-filter.test.mts

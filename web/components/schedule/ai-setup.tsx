@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState, type ReactNode } from "react";
 import { Alert } from "../controls";
+import { SparklesIcon } from "../icons";
 import { useSession, useToast } from "../providers";
 import { Button } from "../ui";
 import { ApiError, api } from "@/lib/api";
@@ -88,7 +89,7 @@ export function WriteWithAI({ form, set }: { form: FormState; set: SetForm }) {
     return (
       <div className="flex justify-end">
         <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(true)}>
-          <SparkIcon />
+          <SparklesIcon className="size-3.5 text-brand" />
           Write with AI
         </Button>
       </div>
@@ -99,7 +100,10 @@ export function WriteWithAI({ form, set }: { form: FormState; set: SetForm }) {
     <div className="grid gap-3 rounded-xl border border-brand-line bg-brand-soft/40 p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[13.5px] font-medium text-ink">Write with AI</p>
+          <p className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-ink">
+            <SparklesIcon className="size-3.5 text-brand" />
+            Write with AI
+          </p>
           <p className="text-[12px] text-ink-3">
             Fills in the topic and description. Edit anything — nothing is saved until you save.
           </p>
@@ -245,16 +249,5 @@ function CopyBlock({
       </div>
       <div className="text-[13px] text-ink-2">{children}</div>
     </div>
-  );
-}
-
-function SparkIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.4l-1.8-4.9L5 9.7l5.2-1.8L12 3zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"
-        fill="currentColor"
-      />
-    </svg>
   );
 }

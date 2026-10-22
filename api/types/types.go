@@ -323,7 +323,20 @@ type SessionControls struct {
 	 * POST /api/host/webinars/{slug}/captions/server and by the agent, never by PATCH
 	 * /controls. */
 	ServerCaptions bool `json:"serverCaptions"`
-	Locked         bool `json:"locked"`
+	/* AIEnabled is the room's "AI" switch: whether this session is in AI at all. On, a
+	 * transcript is captured for the AI recap even with captions (CaptionsEnabled, which is
+	 * only whether people SEE the lines) off — by the server caption agent in a transcript-only
+	 * mode, or silently by the speakers' browsers where no agent runs. Off at the end of the
+	 * session, no recap is written and nothing of the session goes to a model.
+	 *
+	 * On by default (webinars.ai_enabled, migration 0129), but only ever true when the host's
+	 * account has the ai feature: an account without it reads false here and AIAvailable
+	 * false, and the room shows no switch. */
+	AIEnabled bool `json:"aiEnabled"`
+	// AIAvailable is whether the host's account has the ai feature, so the room knows to
+	// show the switch. Read-only: it follows the account, not PATCH /controls.
+	AIAvailable bool `json:"aiAvailable"`
+	Locked      bool `json:"locked"`
 
 	// ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
 	// to the stage only. The host owns it, which is the point — an attendee picking
@@ -383,7 +396,10 @@ type ControlsPatch struct {
 	ReactionsEnabled *bool `json:"reactionsEnabled,omitempty"`
 	PollsEnabled     *bool `json:"pollsEnabled,omitempty"`
 	CaptionsEnabled  *bool `json:"captionsEnabled,omitempty"`
-	Locked           *bool `json:"locked,omitempty"`
+	// AIEnabled is the room's AI switch (SessionControls.AIEnabled). Refused for an account
+	// without the ai feature.
+	AIEnabled *bool `json:"aiEnabled,omitempty"`
+	Locked    *bool `json:"locked,omitempty"`
 	// A pointer for the same reason as the others: "not mentioned" and "set to
 	// everyone" are different requests.
 	ChatDestination *ChatDestination `json:"chatDestination,omitempty"`
@@ -1222,7 +1238,7 @@ var Features = []Feature{
 	{
 		Key:         FeatureAI,
 		Label:       "AI writing",
-		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI. Counts against the monthly AI limit. Off means no AI buttons.",
+		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off means no AI buttons and no recaps.",
 	},
 }
 
