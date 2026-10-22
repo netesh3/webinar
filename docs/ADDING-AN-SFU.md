@@ -1,7 +1,9 @@
 # Adding a second video server (SFU)
 
 Today production runs one self-hosted LiveKit SFU on Hetzner (fsn1), configured with the
-legacy `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` secrets. Every webinar created
+legacy `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` secrets. Two more are registered in
+`LIVEKIT_PROJECTS` for testing: `india` (Mumbai, GCP) and `do-blr` (Bangalore, DigitalOcean —
+see [deploy/digitalocean/README.md](../deploy/digitalocean/README.md)). Every webinar created
 so far is pinned to the project id **`default`**. Nothing here is needed until a second server
 exists.
 
