@@ -36,13 +36,13 @@ func init() {
 func recapHost(t *testing.T, h *harness) types.Account {
 	t.Helper()
 	acct := h.signup("Priya Recap", "recap-host-"+strings.ReplaceAll(t.Name(), "/", "-")+"@test.dev", true)
-	enableAI(t, h, acct.ID)
+	enableAIForUser(t, h, acct.ID)
 	return acct
 }
 
-/* enableAI turns the ai switch on for one account, as an admin does. Explicit rather than
+/* enableAIForUser turns the ai switch on for one account, as an admin does. Explicit rather than
  * relying on the tier default, because the switch is meant to be opt-in per host. */
-func enableAI(t *testing.T, h *harness, userID string) {
+func enableAIForUser(t *testing.T, h *harness, userID string) {
 	t.Helper()
 	on := true
 	if _, err := h.store.SetFeatureOverride(context.Background(), userID, types.FeatureAI, &on); err != nil {
@@ -244,7 +244,7 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 func TestRecapAfterMeetingFromEngagementOnly(t *testing.T) {
 	h, model := aiHarness(t, recapReply, nil)
 	host := meetingHost(t, h)
-	enableAI(t, h, host.ID)
+	enableAIForUser(t, h, host.ID)
 	wb := h.instantMeeting("Weekly stand-up", nil)
 	h.goLive(wb.ID)
 	h.question(wb.ID, "mq1", "When is the next release?", 2)
