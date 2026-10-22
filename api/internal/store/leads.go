@@ -139,8 +139,11 @@ func (s *Store) LeadRows(ctx context.Context, slug string) ([]LeadRow, error) {
 		SELECT identity, body, upvotes FROM (
 		  SELECT identity, body, upvotes, created_at,
 		         row_number() OVER (PARTITION BY identity ORDER BY created_at DESC) AS n
-		    FROM session_questions
-		   WHERE webinar_id = $1 AND starts_with(identity, 'att_') AND NOT dismissed) q
+		    FROM session_questions sq
+		   WHERE webinar_id = $1 AND starts_with(identity, 'att_') AND NOT dismissed
+		     -- The words go to the model: none asked while AI was paused (ai_off.go). The
+		     -- counts below are only counted, and keep everything.
+		     AND NOT `+aiOffAtSQL("sq.webinar_id", "sq.created_at")+`) q
 		 WHERE n <= $2 ORDER BY identity, created_at`, webinarID, LeadTextsPerPerson)
 	if err != nil {
 		return nil, err
@@ -212,9 +215,10 @@ func (s *Store) LeadRows(ctx context.Context, slug string) ([]LeadRow, error) {
 		SELECT sender_identity, content FROM (
 		  SELECT sender_identity, content, seq,
 		         row_number() OVER (PARTITION BY sender_identity ORDER BY seq DESC) AS n
-		    FROM chat_messages
+		    FROM chat_messages cm
 		   WHERE webinar_id = $1 AND deleted_at IS NULL AND starts_with(sender_identity, 'att_')
-		     AND message_type = 'text' AND btrim(content) <> '') m
+		     AND message_type = 'text' AND btrim(content) <> ''
+		     AND NOT `+aiOffAtSQL("cm.webinar_id", "cm.created_at")+`) m
 		 WHERE n <= $2 ORDER BY sender_identity, seq`, webinarID, LeadTextsPerPerson)
 	if err != nil {
 		return nil, err

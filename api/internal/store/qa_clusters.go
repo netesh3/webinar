@@ -41,6 +41,8 @@ func (s *Store) QAQuestions(ctx context.Context, slug string, openOnly bool, lim
 			  JOIN webinars w ON w.id = q.webinar_id
 			  LEFT JOIN session_qa_clusters c ON c.id = q.cluster_id
 			 WHERE w.slug = $1 AND (NOT $2 OR (NOT q.answered AND NOT q.dismissed))
+			   -- Asked while AI was paused: out of the assistant (ai_off.go).
+			   AND NOT `+aiOffAtSQL("q.webinar_id", "q.created_at")+`
 			 ORDER BY q.created_at DESC, q.id DESC
 			 LIMIT $3
 		  ) recent
@@ -77,6 +79,7 @@ func (s *Store) QAPending(ctx context.Context, slug string, limit int) (int, tim
 			  FROM session_questions q
 			  JOIN webinars w ON w.id = q.webinar_id
 			 WHERE w.slug = $1 AND NOT q.answered AND NOT q.dismissed
+			   AND NOT `+aiOffAtSQL("q.webinar_id", "q.created_at")+`
 			 ORDER BY q.created_at DESC, q.id DESC
 			 LIMIT $2
 		  ) recent`, slug, limit).Scan(&n, &oldest)
@@ -134,6 +137,7 @@ func (s *Store) QAQuestionTexts(ctx context.Context, slug, clusterID string, lim
 		SELECT q.body FROM session_questions q
 		  JOIN webinars w ON w.id = q.webinar_id
 		 WHERE w.slug = $1 AND q.cluster_id = $2
+		   AND NOT `+aiOffAtSQL("q.webinar_id", "q.created_at")+`
 		 ORDER BY q.created_at, q.id
 		 LIMIT $3`, slug, clusterID, limit)
 	if err != nil {
@@ -151,13 +155,15 @@ func (s *Store) QAQuestionTexts(ctx context.Context, slug, clusterID string, lim
 	return out, rows.Err()
 }
 
-// QAQuestionText is one question's text, scoped to the session; ErrNotFound otherwise.
+// QAQuestionText is one question's text, scoped to the session; ErrNotFound otherwise, and for
+// one asked while AI was paused (ai_off.go).
 func (s *Store) QAQuestionText(ctx context.Context, slug, id string) (string, error) {
 	var body string
 	err := s.pool.QueryRow(ctx, `
 		SELECT q.body FROM session_questions q
 		  JOIN webinars w ON w.id = q.webinar_id
-		 WHERE w.slug = $1 AND q.id = $2`, slug, id).Scan(&body)
+		 WHERE w.slug = $1 AND q.id = $2
+		   AND NOT `+aiOffAtSQL("q.webinar_id", "q.created_at")+``, slug, id).Scan(&body)
 	if noRows(err) {
 		return "", ErrNotFound
 	}

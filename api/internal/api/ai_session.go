@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/types"
@@ -11,7 +12,7 @@ import (
 /* The room's AI switch (types.SessionControls.AIEnabled).
  *
  * Shown to the host and co-hosts of an account with the ai feature, on by default. It decides
- * two things about one session:
+ * three things about one session:
  *
  *   capture   while it is on and the session is live, a transcript is kept for the AI even
  *             when nobody is shown captions. Display and capture are separate switches:
@@ -22,27 +23,36 @@ import (
  *             speakers' browsers run their on-device engine silently (web/lib/ai-session.ts).
  *   use       off when the session ends, no recap is written (skipped, ai_session_off) and
  *             nothing of the session goes to a model.
+ *   pause     off DURING the live session pauses AI until the host turns it back on. Each
+ *             pause is a window (store.AIOffWindows, migration 0143) and everything said,
+ *             asked or chatted inside one stays out of every AI input: the transcript reads
+ *             (store.TranscriptSince, RecapCaptions), the Q&A assistant and auto-answer reads
+ *             (QAQuestions, QAPending, ClaimAutoQuestions), the harvest (HarvestQuestions), the
+ *             hot-lead reasons' words (LeadRows) and the recap's questions and chat
+ *             (AIOffItems). The hot-lead RANKING still counts everything: it is arithmetic,
+ *             not a model. The caption agent leaves on a pause (with captions hidden) and is
+ *             dispatched again on resume.
  */
 
-// sessionAIAllowed reports whether this session may be processed by AI: the host's account has
-// the ai feature AND the session's own switch (controls.aiEnabled) is on AND it was never
-// switched off during the live session (controls.aiOffThisSession, migration 0133).
+// sessionAIAllowed reports whether this session may be processed by AI now: the host's account
+// has the ai feature AND the session's own switch (controls.aiEnabled) is on, so not paused.
 func (s *Server) sessionAIAllowed(ctx context.Context, wb types.Webinar) bool {
 	return s.sessionAIBlock(ctx, wb) == ""
 }
 
 /* sessionAIBlock is why sessionAIAllowed says no, so a screen can say the right thing:
  * ai_off when the host's ACCOUNT does not have the ai feature (an admin decides),
- * ai_session_off when the account has it but this session's own switch was off at the end
- * or at any point while live (the host decided), "" when AI may be used. The account is
- * asked first: a session's switch on an account without AI is not the reason. */
+ * ai_session_off when the account has it but this session's own switch is off — paused while
+ * live, or off at the end (the host decided), "" when AI may be used. The account is asked
+ * first: a session's switch on an account without AI is not the reason. */
 func (s *Server) sessionAIBlock(ctx context.Context, wb types.Webinar) string {
 	host, err := s.store.UserByID(ctx, wb.Host.ID)
 	if err != nil || !host.HasFeature(types.FeatureAI) {
 		return types.RecapReasonAIOff
 	}
 	/* AIEnabled as read is already false on an account without AI (store: AIEnabled &&
-	 * AIAvailable), so it is only the session's own switch here. */
+	 * AIAvailable), so it is only the session's own switch here. AIOffThisSession (paused
+	 * right now) goes with AIEnabled off; read as well so the two can never disagree. */
 	if !wb.Controls.AIEnabled || wb.Controls.AIOffThisSession {
 		return types.RecapReasonAISessionOff
 	}
@@ -51,8 +61,9 @@ func (s *Server) sessionAIBlock(ctx context.Context, wb types.Webinar) string {
 
 /* syncAITranscript brings the caption agent in line with the session's switches, for a live
  * session: dispatched (transcript only, captions left as they are) while AI is on; removed when
- * AI is off and captions are not shown either. With captions shown the agent stays, as it would
- * have without AI. Nothing to do where no agent is set up: the browsers capture instead.
+ * AI is off and captions are not shown either; dispatched again when AI is resumed. With captions
+ * shown the agent stays, as it would have without AI, and its lines while paused are stored for
+ * the captions but left out of the AI's reads. Nothing to do where no agent is set up: the browsers capture instead.
  * Reports whether the stored state changed, so the caller re-reads before pushing metadata. */
 func (s *Server) syncAITranscript(ctx context.Context, wb types.Webinar, sfu RoomManager) bool {
 	// A simulive has no speakers: its captions are the original session's, never the agent's.
@@ -91,4 +102,14 @@ func (s *Server) syncAITranscript(ctx context.Context, wb types.Webinar, sfu Roo
 	}
 	s.log.Info("ai transcript: caption agent dispatched", "slug", slug, "agent", s.captionAgentName())
 	return true
+}
+
+// aiPausedMin is how long AI was paused during the session behind slug, for the Results
+// notes; 0 when it never was or the windows cannot be read.
+func (s *Server) aiPausedMin(ctx context.Context, slug string) int {
+	ws, err := s.store.AIOffWindows(ctx, slug)
+	if err != nil {
+		return 0
+	}
+	return ws.Minutes(time.Now())
 }

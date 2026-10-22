@@ -78,7 +78,10 @@ func (s *Store) StartSimuliveIfDue(ctx context.Context, slug string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
+	if tag.RowsAffected() != 1 {
+		return false, nil
+	}
+	return true, s.afterWentLive(ctx, slug)
 }
 
 // EndSimuliveIfDue marks a simulive whose session has played through ended, and reports
@@ -92,7 +95,10 @@ func (s *Store) EndSimuliveIfDue(ctx context.Context, slug string) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
+	if tag.RowsAffected() != 1 {
+		return false, nil
+	}
+	return true, s.afterEnded(ctx, slug)
 }
 
 // SimuliveEndsAt is when a live simulive is over (see above). False when it is not a live
@@ -185,7 +191,10 @@ func (s *Store) StartSimuliveNow(ctx context.Context, slug string) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
+	if tag.RowsAffected() != 1 {
+		return false, nil
+	}
+	return true, s.afterWentLive(ctx, slug)
 }
 
 /* SetSimulivePendingStart sets (at non-nil) or clears (nil) the start the host chose from the
@@ -264,7 +273,10 @@ func (s *Store) EndSimuliveHostGone(ctx context.Context, slug string, grace time
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, nil
+	if tag.RowsAffected() != 1 {
+		return false, nil
+	}
+	return true, s.afterEnded(ctx, slug)
 }
 
 // SimuliveLengthMs is how long a simulive's recording plays (simuliveLengthSQL), 0 if unknown.

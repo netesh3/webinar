@@ -15,33 +15,53 @@ import type { SessionControls } from "./api-types.ts";
 
 export const AI_TOGGLE_TOOLTIP = "AI recap and notes for this session. Turn off to keep this session out of AI.";
 
-/** The switch once AI has been off at any point of the live session: the server keeps the
- *  whole session out of AI from then on (controls.aiOffThisSession, migration 0133), even with
- *  the switch back on, so the room says so instead of showing a switch that does nothing. */
-export const AI_OFF_THIS_SESSION_TOOLTIP =
-  "AI was switched off during this session, so it stays off until the session ends: no Q&A assistant, recap or notes. It is back on for the next session.";
+/** The switch while AI is paused in a live session (controls.aiOffThisSession). */
+export const AI_PAUSED_TOOLTIP =
+  "AI is paused. Turn it back on to resume; anything said or asked while it was off stays out of AI.";
 
-/** Asked before AI is switched off in a live session, because it cannot be undone there. */
+/** Asked before AI is switched off in a live session: it pauses, it does not end. */
 export const AI_OFF_CONFIRM =
-  "Turn AI off for the rest of this session?\n\nThe Q&A assistant, recap and notes stop, and switching AI back on won't bring them back until the next session.";
+  "Pause AI for this session?\n\nAI pauses until you turn it back on; what's said meanwhile stays out of AI.";
 
-/** Whether AI is actually in use for this session: the account has it, the room's switch is
- *  on, and it has not been off at any point while live. aiEnabled alone is not enough: after
- *  an off and an on during the live session it reads true while the server refuses every AI
- *  use (sessionAIBlock), which is how the Q&A assistant silently disappeared mid-session. */
+/** Asked before AI is switched back on in a live session. */
+export const AI_RESUME_CONFIRM =
+  "Resume AI for this session?\n\nAnything said or asked while AI was off stays out of AI.";
+
+/** The Q&A panel's line while AI is paused. */
+export const AI_PAUSED_NOTE = "AI is paused";
+
+/** Whether AI is in use for this session right now: the account has it, the room's switch is
+ *  on, and it is not paused (migration 0143: a pause during the live session lasts until the
+ *  host turns AI back on). aiOffThisSession is read as well as aiEnabled so the two can never
+ *  disagree on screen: an "on" switch over a session the server treats as paused is how the
+ *  Q&A assistant once vanished mid-session with nothing saying why. */
 export function sessionAIOn(
   controls: Pick<SessionControls, "aiAvailable" | "aiEnabled" | "aiOffThisSession">,
 ): boolean {
   return controls.aiAvailable === true && controls.aiEnabled === true && controls.aiOffThisSession !== true;
 }
 
-/** Whether the room's switch is locked off: AI was off at some point of this live session.
- *  Only while live: the next go-live starts clean (the server resets the mark). */
-export function aiLockedOff(
-  controls: Pick<SessionControls, "aiAvailable" | "aiOffThisSession">,
+/** Whether AI is paused right now: the switch is off during the live session. Only while
+ *  live: off before or after a session is just the switch. */
+export function aiPaused(
+  controls: Pick<SessionControls, "aiAvailable" | "aiEnabled" | "aiOffThisSession">,
   status: string | null,
 ): boolean {
-  return controls.aiAvailable === true && controls.aiOffThisSession === true && status === "live";
+  return controls.aiAvailable === true && status === "live" && !sessionAIOn(controls);
+}
+
+/** What a live session's switch asks before it flips: pausing or resuming. Null when it
+ *  flips without asking (not live). */
+export function aiToggleConfirm(on: boolean, status: string | null): string | null {
+  if (status !== "live") return null;
+  return on ? AI_OFF_CONFIRM : AI_RESUME_CONFIRM;
+}
+
+/** The Results note for a session AI was paused in (aiPausedMin on the recap and leads),
+ *  or null when it never was. */
+export function aiPausedResultsNote(min: number | undefined): string | null {
+  if (!min || min <= 0) return null;
+  return `AI was paused for ${min} min; that part isn't included.`;
 }
 
 /** Whether this person gets the room's AI switch: the host or a co-host, and only for a
@@ -65,7 +85,7 @@ export function captionEngine(
   canPublish: boolean,
 ): CaptionEngine {
   const display = controls.captionsEnabled === true;
-  // A session already out of AI keeps no transcript for it, whatever the switch says now.
+  // Paused: no transcript is kept for the AI until it is resumed.
   const capture = controls.aiEnabled === true && controls.aiOffThisSession !== true;
   const run = canPublish && !controls.serverCaptions && (display || capture);
   return { run, display: run && display, store: run };

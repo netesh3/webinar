@@ -103,4 +103,8 @@ type SessionRecapResponse struct {
 	GeneratedAt string        `json:"generatedAt,omitempty"`
 	EmailedAt   string        `json:"emailedAt,omitempty"`
 	Recap       *SessionRecap `json:"recap,omitempty"`
+	/* AIPausedMin is how long the room's AI switch was off during the live session (the
+	 * session_ai_off_intervals windows, migration 0143), rounded up; 0 when never. What was
+	 * said, asked or chatted then is not in the recap, and the Results page says so. */
+	AIPausedMin int `json:"aiPausedMin,omitempty"`
 }

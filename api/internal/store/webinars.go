@@ -962,7 +962,7 @@ func (s *Store) SetStatus(ctx context.Context, slug string, status types.Webinar
 	var col string
 	switch status {
 	case types.StatusLive:
-		// A new live session starts AI-clean, unless the switch is already off.
+		// A session going live with the switch off starts paused (afterWentLive below).
 		col = `started_at = coalesce(started_at, now()), ended_at = NULL, empty_since = NULL,
 		       simulive_start_at = NULL,
 		       ai_off_this_session = NOT ai_enabled,
@@ -985,6 +985,15 @@ func (s *Store) SetStatus(ctx context.Context, slug string, status types.Webinar
 	}
 	if tag.RowsAffected() == 0 {
 		return types.Webinar{}, ErrNotFound
+	}
+	// The AI-off windows (ai_off.go): live with AI off opens one, any other move closes one.
+	if status == types.StatusLive {
+		err = s.afterWentLive(ctx, slug)
+	} else {
+		err = s.afterEnded(ctx, slug)
+	}
+	if err != nil {
+		return types.Webinar{}, err
 	}
 	return s.WebinarBySlug(ctx, slug)
 }
@@ -1024,7 +1033,9 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 			captions_enabled   = coalesce($12, captions_enabled),
 			captions_shown_live = captions_shown_live OR (status = 'live' AND coalesce($12, captions_enabled)),
 			ai_enabled         = coalesce($13, ai_enabled),
-			ai_off_this_session = ai_off_this_session OR (status = 'live' AND $13::boolean IS FALSE),
+			-- "Paused right now": only while live; the window itself is written below.
+			ai_off_this_session = CASE WHEN status = 'live' AND $13::boolean IS NOT NULL
+			                           THEN NOT $13::boolean ELSE ai_off_this_session END,
 			audience_layout    = coalesce($14, audience_layout),
 			updated_at         = now()
 		 WHERE slug = $1`,
@@ -1036,6 +1047,17 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 	}
 	if tag.RowsAffected() == 0 {
 		return types.Webinar{}, ErrNotFound
+	}
+	/* The AI switch while live pauses and resumes AI (ai_off.go): off opens a window, on
+	 * closes it. Not live, it only sets the switch. */
+	if p.AIEnabled != nil {
+		q := resumeAIOffSQL
+		if !*p.AIEnabled {
+			q = openAIOffSQL
+		}
+		if _, err := s.pool.Exec(ctx, q, slug); err != nil {
+			return types.Webinar{}, err
+		}
 	}
 	return s.WebinarBySlug(ctx, slug)
 }

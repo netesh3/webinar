@@ -167,13 +167,28 @@ func TestAISwitchKeepsATranscriptWithCaptionsHidden(t *testing.T) {
 		t.Fatalf("caption after off: %d, want 409", code)
 	}
 
-	// AI back on mid-session: the session was switched off once, so it stays out of AI
-	// (AIOffThisSession) — no transcript agent comes back for it.
+	// AI back on mid-session resumes it: the transcript agent is dispatched again, in
+	// transcript-only mode, and its lines are stored again.
 	if res, raw := h.patchAI(wb.ID, true); res.StatusCode != http.StatusOK {
 		t.Fatalf("ai on: %d %s", res.StatusCode, raw)
 	}
+	if name, ok := h.rooms.dispatched(room); !ok || name != "webinar-captions" {
+		t.Fatalf("dispatch on resume = %q %v, want the caption agent back", name, ok)
+	}
+	h.rooms.mu.Lock()
+	meta = h.rooms.dispatchMeta[room]
+	h.rooms.mu.Unlock()
+	if !strings.Contains(meta, `"mode":"transcript"`) {
+		t.Fatalf("dispatch metadata on resume = %s, want transcript mode", meta)
+	}
+	if code := post("after the resume"); code != http.StatusOK {
+		t.Fatalf("caption after resume: %d", code)
+	}
+
+	// AI off again with captions hidden: the agent leaves again.
+	h.patchAI(wb.ID, false)
 	if _, ok := h.rooms.dispatched(room); ok {
-		t.Fatal("AI back on after an off brought the transcript agent back")
+		t.Fatal("agent still dispatched after a second pause")
 	}
 
 	// Captions shown (the room's CC button) bring the agent back for the captions alone, and
@@ -213,46 +228,6 @@ func TestAISwitchOffMeansNoRecap(t *testing.T) {
 	}
 }
 
-/* Any "off" while live keeps the whole session out of AI, even if AI is switched back on
- * before the end (decided 2026-10-22). The next session starts clean. */
-func TestAISwitchOffDuringTheSessionBlocksItEvenIfTurnedBackOn(t *testing.T) {
-	h, model := aiHarness(t, recapReply, nil)
-	recapHost(t, h)
-	wb := h.newWebinar("Off then on again", nil)
-
-	// Off before the session starts is not "during": a session started with AI on is clean.
-	h.patchAI(wb.ID, false)
-	h.patchAI(wb.ID, true)
-	h.goLive(wb.ID)
-	if got := mustWebinar(t, h, wb.ID); got.Controls.AIOffThisSession {
-		t.Fatal("a session started with AI on begins marked off")
-	}
-
-	h.caption(wb.ID, "user_x", "a line said while AI was briefly off")
-	h.question(wb.ID, "oo1", "Is this summarised?", 1)
-	h.patchAI(wb.ID, false)
-	if res, raw := h.patchAI(wb.ID, true); res.StatusCode != http.StatusOK {
-		t.Fatalf("ai back on: %d %s", res.StatusCode, raw)
-	}
-	if got := mustWebinar(t, h, wb.ID); !got.Controls.AIEnabled || !got.Controls.AIOffThisSession {
-		t.Fatalf("controls after off/on = %+v, want AI on but marked off this session", got.Controls)
-	}
-	h.endSession(wb.ID)
-	h.runRecaps()
-	if got := h.getRecap(wb.ID); got.Status != types.RecapSkipped || got.Reason != types.RecapReasonAISessionOff {
-		t.Fatalf("recap = %+v, want skipped ai_session_off", got)
-	}
-	if model.callCount() != 0 {
-		t.Fatalf("model calls = %d, want none", model.callCount())
-	}
-
-	// The next live session starts clean.
-	h.goLive(wb.ID)
-	if got := mustWebinar(t, h, wb.ID); got.Controls.AIOffThisSession {
-		t.Fatal("the flag survived into the next session")
-	}
-}
-
 func mustWebinar(t *testing.T, h *harness, slug string) types.Webinar {
 	t.Helper()
 	wb, err := h.store.WebinarBySlug(context.Background(), slug)
@@ -265,9 +240,9 @@ func mustWebinar(t *testing.T, h *harness, slug string) types.Webinar {
 /* The room's AI state reaches every browser in room metadata, and the web decides whether the
  * host gets the Q&A assistant from it alone (web/lib/qa-clusters.ts qaAssistOn). So every
  * write of it carries aiAvailable and aiEnabled — after a controls PATCH, a stage promotion
- * and the AI switch — and, once AI was off during the live session, aiOffThisSession, which is
- * what tells the room the assistant is gone for the rest of the session (instant-webinar-4277,
- * 2026-10-22: AI off then on within a second; the switch read on, the assistant vanished). */
+ * and the AI switch — and, while AI is paused in the live session, aiOffThisSession, which is
+ * what tells the room the assistant is paused (instant-webinar-4277, 2026-10-22: AI off then on
+ * within a second; the switch read on, the assistant vanished). */
 func TestRoomMetadataAlwaysCarriesTheAIState(t *testing.T) {
 	h := newHarness(t)
 	email := "aimeta-host@test.dev"
@@ -314,7 +289,8 @@ func TestRoomMetadataAlwaysCarriesTheAIState(t *testing.T) {
 	}
 	check("stage promote", true, false)
 
-	// The AI switch: off, then back on. The session stays out of AI and the metadata says so.
+	// The AI switch: off pauses AI (aiOffThisSession), back on resumes it, and the metadata
+	// says so each time.
 	if res, raw := h.patchAI(wb.ID, false); res.StatusCode != http.StatusOK {
 		t.Fatalf("ai off: %d %s", res.StatusCode, raw)
 	}
@@ -322,5 +298,5 @@ func TestRoomMetadataAlwaysCarriesTheAIState(t *testing.T) {
 	if res, raw := h.patchAI(wb.ID, true); res.StatusCode != http.StatusOK {
 		t.Fatalf("ai on: %d %s", res.StatusCode, raw)
 	}
-	check("ai back on", true, true)
+	check("ai back on", true, false)
 }

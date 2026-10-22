@@ -10,8 +10,8 @@ import type { QACluster, QADraft, SessionControls } from "./api-types.ts";
 import type { Question } from "./realtime.ts";
 
 /** Whether this person gets the assistant: the host or a co-host, in a session whose
- *  account has AI, whose room AI switch is on, and which has not been out of AI at any point
- *  while live (sessionAIOn). Otherwise the panel is the plain list. */
+ *  account has AI, whose room AI switch is on, and which is not paused (sessionAIOn).
+ *  Otherwise the panel is the plain list; a resume brings the assistant back. */
 export function qaAssistOn(
   isHost: boolean,
   controls: Pick<SessionControls, "aiAvailable" | "aiEnabled" | "aiOffThisSession">,

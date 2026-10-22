@@ -33,7 +33,8 @@ import (
  *               transaction that sets emailed_at: once per session, whatever retries.
  *
  * Off when the host's "ai" switch is off (no model call, row skipped ai_off) or the room's
- * AI switch was off when the session ended (skipped ai_session_off at once, ai_session.go), and skipped
+ * AI switch was off when the session ended (skipped ai_session_off at once, ai_session.go),
+ * and without whatever was said, asked or chatted while it was paused mid-session; skipped
  * rather than retried when a cap is reached. A session with nothing at all to recap
  * (nobody spoke with captions on, no questions, polls or chat) is skipped without a call.
  */
@@ -303,6 +304,17 @@ func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Ti
 	if err != nil {
 		return in, "", time.Time{}, err
 	}
+	/* A transcript posted while live is the agent leaving on an AI pause; the one it posts on
+	 * leaving at the end is still to come, so it is waited for as if there were none. */
+	if found && wait != nil && time.Now().Before(*wait) && !ended.IsZero() {
+		final, err := s.store.TranscriptAfterEnd(ctx, slug)
+		if err != nil {
+			return in, "", time.Time{}, err
+		}
+		if !final {
+			return in, "", *wait, nil
+		}
+	}
 	switch {
 	case found && len(segs) > 0:
 		source = types.RecapSourceServerTranscript
@@ -333,12 +345,18 @@ func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Ti
 		}
 	}
 
+	// The transcript reads above already leave out what was said while AI was paused; the
+	// questions and chat are the export's reads, so their paused part is left out here.
+	offQuestions, offChat, err := s.store.AIOffItems(ctx, slug)
+	if err != nil {
+		return in, "", time.Time{}, err
+	}
 	questions, err := s.store.SessionQuestions(ctx, slug)
 	if err != nil {
 		return in, "", time.Time{}, err
 	}
 	for _, q := range questions {
-		if q.Dismissed {
+		if q.Dismissed || offQuestions[q.ID] {
 			continue
 		}
 		in.Questions = append(in.Questions, aiwrite.RecapQuestionIn{Text: q.Text, Upvotes: q.Upvotes, Answered: q.Answered, Answer: q.Answer})
@@ -358,7 +376,7 @@ func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Ti
 		return in, "", time.Time{}, err
 	}
 	for _, m := range chat {
-		if m.Type != types.ChatText || m.Destination == types.ChatToPanelists {
+		if m.Type != types.ChatText || m.Destination == types.ChatToPanelists || offChat[m.ID] {
 			continue
 		}
 		in.Chat = append(in.Chat, aiwrite.RecapChatIn{Name: m.SenderName, Text: m.Message})
@@ -487,7 +505,9 @@ func (s *Server) handleGetRecap(w http.ResponseWriter, r *http.Request) {
 	if row.Status != types.RecapPending {
 		s.harvestAloudForSlug(r.Context(), slug)
 	}
-	httpx.JSON(w, http.StatusOK, recapResponse(row))
+	out := recapResponse(row)
+	out.AIPausedMin = s.aiPausedMin(r.Context(), slug)
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 func (s *Server) recapHost(ctx context.Context, slug string) (store.User, bool) {
