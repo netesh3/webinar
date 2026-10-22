@@ -78,6 +78,7 @@ import { useAppConfig, useToast } from "../providers";
 import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
 import { planRecovery, RECOVERY_BACKOFF_MS } from "@/lib/recovery";
+import { usePresenceFallback } from "@/lib/presence";
 import { ActiveSpeakerProvider } from "./active-speaker";
 import { AIToggle } from "./ai-toggle";
 import { ChatNotifications } from "./chat-notifications";
@@ -823,6 +824,49 @@ function ConnectedRoom({
     roomName: slug,
   });
 
+  /* While the connection is down an attendee can still chat and raise a hand (/say), so the
+   * host must still see them and be able to bring them up: lib/presence.ts keeps them on the
+   * host's roster and replays a stage invite the data channel could not carry. Once the host
+   * has put them on the stage, reconnect now with a fresh credential — the join reads the
+   * grant and returns the stage token — rather than at the ladder's next rung. */
+  const reconnectForStage = useCallback(() => {
+    attempts.current = Math.max(attempts.current, 1);
+    setAttempt((n) => n + 1);
+  }, []);
+  const reportStreamOnly = useCallback(() => {
+    if (telemetryEnabled) {
+      trackEvent("presence_fallback", { userId: join.identity, roomName: slug }, { state: room.state });
+    }
+  }, [telemetryEnabled, join.identity, slug, room]);
+  // Read by the connect effect through a ref, so the flag is not one of its dependencies.
+  const reportConnectFailure = useRef<(attempt: number, err: unknown) => void>(() => {});
+  useEffect(() => {
+    reportConnectFailure.current = (attempt, err) => {
+      if (!telemetryEnabled) return;
+      trackEvent("connect_failed", { userId: join.identity, roomName: slug }, {
+        attempt,
+        message: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+      });
+    };
+  }, [telemetryEnabled, join.identity, slug]);
+  usePresenceFallback({
+    room,
+    slug,
+    joinKey,
+    identity: join.identity,
+    // Not once the ladder has given up or they have left: the room is gone from their screen,
+    // so they must not linger on the host's.
+    enabled:
+      join.role === "attendee" &&
+      !join.meeting &&
+      !join.simulive &&
+      !join.simuliveLive &&
+      failure === null &&
+      exit === null,
+    onStageGranted: reconnectForStage,
+    onStart: reportStreamOnly,
+  });
+
   // The audience's route out. Their tokens carry canPublishData=false, so the SFU
   // refuses a packet they publish themselves and this is how their chat, questions,
   // hands and reactions reach the room — with the server choosing the recipients,
@@ -1152,6 +1196,9 @@ function ConnectedRoom({
          * treated as final. It is retried on the same schedule: the common reason for the
          * first attempt failing is that the network was not ready yet, which is exactly what
          * a second attempt a second later fixes. */
+        // Reported, because a connect that never lands is otherwise invisible: join_attempt
+        // without join_success says it happened, not why.
+        reportConnectFailure.current(attempts.current, err);
         const plan = planRecovery("lost", attempts.current);
         if (plan.action === "retry") {
           attempts.current = plan.attempt;

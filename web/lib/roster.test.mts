@@ -6,11 +6,13 @@
  * box that appears for three people — those are the cases this exists for.
  */
 
-import type { LiveParticipant } from "./api-types.ts";
+import type { LiveParticipant, LiveRoom } from "./api-types.ts";
 import type { RaisedHand } from "./realtime.ts";
 import {
   handWaitLabel,
   matchRosterQuery,
+  mergeRosterSnapshot,
+  rosterConnectionLabel,
   normalizeRosterText,
   partitionHostRoster,
   rosterBadge,
@@ -214,6 +216,66 @@ console.log("\nhandWaitLabel");
   eq(handWaitLabel(t, t + 5 * 60_000 + 59_000), "5 min", "whole minutes, rounded down");
   eq(handWaitLabel(t, t + 125 * 60_000), "2 h 5 min", "hours past the hour");
   eq(handWaitLabel(t, t - 10_000), "just now", "a clock slightly behind never goes negative");
+}
+
+console.log("\nrosterConnectionLabel");
+eq(rosterConnectionLabel(person("att_e", "E", { via: "stream" })), "Watching via stream", "edge viewer");
+eq(rosterConnectionLabel(person("att_l", "L", { via: "limited" })), "Limited connection", "video down, still polling");
+eq(rosterConnectionLabel(person("att_a", "A")), null, "on the video server: nothing to say");
+
+console.log("\nmergeRosterSnapshot");
+{
+  const room = (participants: LiveParticipant[], extra: Partial<LiveRoom> = {}): LiveRoom => ({
+    room: "webinar_x",
+    status: "live",
+    controls: {} as LiveRoom["controls"],
+    participants,
+    attendees: participants.filter((p) => p.role === "attendee").length,
+    onStage: participants.filter((p) => p.role !== "attendee").length,
+    ...extra,
+  });
+  const host = person("user_h", "Host", { role: "host" });
+  const sfuBob = person("att_bob", "Bob");
+  const streamAl = person("att_al", "Al", { via: "stream" });
+  const full = room([host, sfuBob, streamAl]);
+
+  ok(mergeRosterSnapshot(null, full) === full, "a full read with no duplicates is taken as is");
+
+  const partial = room([person("att_al", "Al", { via: "stream" }), person("att_cy", "Cy", { via: "stream" })], {
+    partial: true,
+  });
+  const merged = mergeRosterSnapshot(full, partial);
+  eq(
+    merged.participants.map((p) => p.identity),
+    ["user_h", "att_bob", "att_al", "att_cy"],
+    "a partial read keeps the last video-server rows and takes the new viewers",
+  );
+  eq([merged.attendees, merged.onStage], [3, 1], "counts recomputed from the merged rows");
+  eq(
+    mergeRosterSnapshot(full, room([streamAl], { partial: true })).participants.filter((p) => p.identity === "att_al").length,
+    1,
+    "a viewer already listed is not doubled",
+  );
+  eq(
+    mergeRosterSnapshot(null, partial).participants.map((p) => p.identity),
+    ["att_al", "att_cy"],
+    "a first read that is partial shows what it has",
+  );
+
+  // Duplicates in one read (the video server and a viewer row for the same person): the
+  // first, the video server's, wins and the counts follow.
+  const dup = room([sfuBob, person("att_bob", "Bob", { via: "limited" })], { attendees: 2 });
+  const deduped = mergeRosterSnapshot(null, dup);
+  eq(deduped.participants.map((p) => p.via ?? ""), [""], "one row per identity, the video server's");
+  eq(deduped.attendees, 1, "and counted once");
+
+  // After a partial read, the next full one replaces it: somebody who left the stage meanwhile is gone.
+  const later = room([host, streamAl]);
+  eq(
+    mergeRosterSnapshot(merged, later).participants.map((p) => p.identity),
+    ["user_h", "att_al"],
+    "a full read drops rows the partial one carried over",
+  );
 }
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);

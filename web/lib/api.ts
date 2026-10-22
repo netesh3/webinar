@@ -104,6 +104,8 @@ import type {
   ShareRecordingRequest,
   StageAllResponse,
   StatusResponse,
+  PresenceRequest,
+  PresenceResponse,
   SetStreamRequest,
   AudienceSurvey,
   HostSurvey,
@@ -1027,6 +1029,10 @@ export const api = {
     slug: string,
     body: { joinKey?: string; accept: boolean },
   ) => post<StatusResponse>(`/api/webinars/${seg(slug)}/stage-invite`, body),
+
+  /** Still here while the LiveKit connection is down (lib/presence.ts). */
+  presence: (slug: string, body: PresenceRequest) =>
+    post<PresenceResponse>(`/api/webinars/${seg(slug)}/presence`, body),
 
   patchQuestion: (slug: string, id: string, body: QuestionPatch) =>
     patch<StatusResponse>(

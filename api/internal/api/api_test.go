@@ -84,6 +84,8 @@ type fakeRooms struct {
 	lastSpec lk.Spec
 
 	roster []types.LiveParticipant
+	// participantsErr makes Participants fail, as a video server that times out does.
+	participantsErr error
 	// promoted tracks, per identity, whether their stage seat came from the
 	// host lifting them out of the audience rather than a scheduled panelist
 	// slot — the real SFU carries this in the participant's own metadata
@@ -221,6 +223,9 @@ func (f *fakeRooms) ParticipantCount(context.Context, string) (int, error) {
 func (f *fakeRooms) Participants(context.Context, string) ([]types.LiveParticipant, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.participantsErr != nil {
+		return nil, f.participantsErr
+	}
 	out := make([]types.LiveParticipant, len(f.roster))
 	copy(out, f.roster)
 	return out, nil

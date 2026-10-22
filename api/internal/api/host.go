@@ -1799,9 +1799,19 @@ func (s *Server) handleParticipants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list, err := sfu.Participants(r.Context(), lk.RoomName(slug))
+	partial := false
 	if err != nil {
-		s.fail(w, r, "participants", err)
-		return
+		/* An edge audience is not on the video server at all, so a video server that cannot
+		 * be read (instant-webinar-4178: 669 roster reads failed on a ListParticipants
+		 * timeout) must not take the viewers with it. The panel keeps its last stage rows
+		 * (Partial). A standard webinar has nobody to list without it: the error stands. */
+		if wb.Delivery != types.DeliveryEdge {
+			s.fail(w, r, "participants", err)
+			return
+		}
+		s.log.Warn("participants: video server unreadable, listing the stream only",
+			"slug", slug, "error", err)
+		list, partial = []types.LiveParticipant{}, true
 	}
 
 	attendees, onStage := 0, 0
@@ -1818,32 +1828,41 @@ func (s *Server) handleParticipants(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.TouchAttendanceMany(r.Context(), slug, seen)
 	}
 
-	// Edge viewers watch the feed and are never on the video server, so they are listed
-	// from their open event streams. A promoted viewer is on both until their stream
-	// closes; the video server's row wins.
+	/* Everyone the host can reach that the video server does not list, de-duplicated by
+	 * identity with the video server's row winning (a promoted viewer is on both until their
+	 * stream closes):
+	 *
+	 *   edge viewers, from their open event streams and beats (OpenEdgeViewers, the same
+	 *   visits the attendance numbers and the edge badge count);
+	 *   any attendee whose browser has told us it is here in the last presenceWindow while
+	 *   its video connection is down (the presence poll).
+	 *
+	 * Without the second, somebody who could still chat and raise a hand was missing from the
+	 * panel, and the host had no row to bring onto the stage from. */
+	var viewers []store.EdgeViewer
+	via := map[string]string{}
 	if wb.Delivery == types.DeliveryEdge {
-		viewers, err := s.store.OpenEdgeViewers(r.Context(), slug)
+		edge, err := s.store.OpenEdgeViewers(r.Context(), slug)
 		if err != nil {
 			s.log.Warn("participants: edge viewers", "slug", slug, "error", err)
 		}
-		inRoom := make(map[string]bool, len(list))
-		for _, p := range list {
-			inRoom[p.Identity] = true
+		for _, v := range edge {
+			via[v.Identity] = viaStream
 		}
-		for _, v := range viewers {
-			if inRoom[v.Identity] {
-				continue
-			}
-			list = append(list, types.LiveParticipant{
-				Identity:   v.Identity,
-				Name:       v.Name,
-				Role:       types.RoleAttendee,
-				JoinedAt:   v.JoinedAt.UTC().Format(time.RFC3339),
-				Publishing: []string{},
-			})
-			attendees++
+		viewers = append(viewers, edge...)
+	}
+	present, err := s.store.PresentViewers(r.Context(), slug, presenceWindow)
+	if err != nil {
+		s.log.Warn("participants: present viewers", "slug", slug, "error", err)
+	}
+	for _, v := range present {
+		if _, ok := via[v.Identity]; !ok {
+			via[v.Identity] = viaFor(wb)
 		}
 	}
+	viewers = append(viewers, present...)
+	list, extra := mergeViewers(list, viewers, via)
+	attendees += extra
 
 	httpx.JSON(w, http.StatusOK, types.LiveRoom{
 		Room:         lk.RoomName(slug),
@@ -1852,7 +1871,36 @@ func (s *Server) handleParticipants(w http.ResponseWriter, r *http.Request) {
 		Participants: list,
 		Attendees:    attendees,
 		OnStage:      onStage,
+		Partial:      partial,
 	})
+}
+
+/* mergeViewers appends the viewers the video server does not list to its roster, once each,
+ * and reports how many it added. The video server's row always wins: it has the role, the
+ * tracks and the permissions, which a viewer row cannot know. */
+func mergeViewers(list []types.LiveParticipant, viewers []store.EdgeViewer, via map[string]string) ([]types.LiveParticipant, int) {
+	seen := make(map[string]bool, len(list)+len(viewers))
+	for _, p := range list {
+		seen[p.Identity] = true
+	}
+	added := 0
+	for _, v := range viewers {
+		if v.Identity == "" || seen[v.Identity] {
+			continue
+		}
+		seen[v.Identity] = true
+		list = append(list, types.LiveParticipant{
+			Identity:   v.Identity,
+			Name:       v.Name,
+			Role:       types.RoleAttendee,
+			JoinedAt:   v.JoinedAt.UTC().Format(time.RFC3339),
+			Publishing: []string{},
+			AudioMuted: true,
+			Via:        via[v.Identity],
+		})
+		added++
+	}
+	return list, added
 }
 
 // handleMuteAll mutes every microphone in the room except the host's own.
@@ -2305,8 +2353,13 @@ func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.
 		 * participant to change. The grant below is the whole promotion for them: the
 		 * stage-granted packet tells their browser to join again, and that join reads
 		 * the grant and returns a stage token. A demotion of someone already back on
-		 * the feed only has to clear the grant. */
-		if !errors.Is(err, lk.ErrNotInRoom) || wb.Delivery != types.DeliveryEdge {
+		 * the feed only has to clear the grant.
+		 *
+		 * The same for an attendee on a standard webinar whose video connection is down
+		 * but who is still polling us (offRoomReachable): their poll reads the grant
+		 * (PresenceResponse.OnStage) and their browser joins again for a stage token.
+		 * Anybody else not in the room has left, and that is still the answer. */
+		if !errors.Is(err, lk.ErrNotInRoom) || !s.offRoomReachable(ctx, wb, identity) {
 			return err
 		}
 		kind := "stage-granted"

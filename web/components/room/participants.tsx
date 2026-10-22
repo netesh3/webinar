@@ -13,8 +13,10 @@ import type { Realtime } from "@/lib/realtime";
 import {
   handWaitLabel,
   matchRosterQuery,
+  mergeRosterSnapshot,
   partitionHostRoster,
   rosterBadge,
+  rosterConnectionLabel,
   shouldShowRosterSearch,
   withLocalOnRoster,
 } from "@/lib/roster";
@@ -113,7 +115,8 @@ export function useHostRoster(slug: string, enabled: boolean, room: Room | null)
     if (inFlight.current) return;
     inFlight.current = true;
     try {
-      setLive(await api.participants(slug));
+      const snapshot = await api.participants(slug);
+      setLive((prev) => mergeRosterSnapshot(prev, snapshot));
       setError(false);
     } catch {
       setError(true);
@@ -138,7 +141,7 @@ export function useHostRoster(slug: string, enabled: boolean, room: Room | null)
         .participants(slug)
         .then((snapshot) => {
           if (!active) return;
-          setLive(snapshot);
+          setLive((prev) => mergeRosterSnapshot(prev, snapshot));
           setError(false);
           schedule(ROSTER_POLL_MS);
         })
@@ -641,6 +644,9 @@ function HostRosterRow({
     p.role === "panelist" && !isHost && p.identity.startsWith("user_");
   // A meeting guest is not a "Panelist" to anyone; the host and co-hosts keep theirs.
   const badge = meeting && !isHost && !p.coHost ? null : rosterBadge(p);
+  // Somebody the video server does not list (an edge viewer, or a dropped connection that
+  // still reaches us): said here, so "why can't I see their tile" has an answer.
+  const connection = rosterConnectionLabel(p);
 
   return (
     <li
@@ -668,8 +674,9 @@ function HostRosterRow({
         </span>
         {/* What they are doing right now. The role that used to open this line is
             the badge above; an attendee with nothing going on gets no second line. */}
-        {(sharing || silenced || canSpeak) && (
+        {(sharing || silenced || canSpeak || connection) && (
           <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-ink-3">
+            {connection && <span>{connection}</span>}
             {sharing && <span className="text-brand">Sharing screen</span>}
             {silenced && <span className="text-warn">Muted by you</span>}
             {canSpeak && hasMic && !p.audioMuted && <span className="text-ok">Live</span>}
