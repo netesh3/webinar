@@ -118,6 +118,9 @@ func (s *Server) handleHostServerCaptions(w http.ResponseWriter, r *http.Request
 			return
 		}
 		s.log.Info("server captions: dispatched", "slug", slug, "agent", s.captionAgentName())
+	} else if wb.Status == types.StatusLive && s.sessionAIAllowed(r.Context(), wb) {
+		// The session's AI switch still wants the transcript: the agent stays, transcript only.
+		s.log.Info("server captions: off requested, agent kept for the AI transcript", "slug", slug)
 	} else {
 		if err := s.store.SetServerCaptions(r.Context(), slug, false); err != nil {
 			s.fail(w, r, "server captions: save", err)
@@ -244,10 +247,14 @@ func (s *Server) handleInternalCaption(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "internal caption: state", err)
 		return
 	}
-	/* Refused, not stored, once the host has switched off: the agent can be a few seconds
-	 * behind the switch, and a line arriving after "off" must not appear on screen. 409 tells
-	 * the agent to stop sending; it leaves when its dispatch is removed. */
-	if !requested || !wb.Controls.CaptionsEnabled || wb.Status != types.StatusLive {
+	/* Two switches decide (ai_session.go): captions shown (captionsEnabled) fans the line out
+	 * to the room; the session's AI switch (aiEnabled) keeps it for the AI. With neither, it
+	 * is refused, not stored: the agent can be a few seconds behind the switch, and a line
+	 * arriving after "off" must not appear on screen or be kept. 409 tells the agent to stop
+	 * sending; it leaves when its dispatch is removed. */
+	display := wb.Controls.CaptionsEnabled
+	keep := display || wb.Controls.AIEnabled
+	if !requested || !keep || wb.Status != types.StatusLive {
 		httpx.Error(w, http.StatusConflict, "captions_off", "Server captions are off for this session.")
 		return
 	}
@@ -258,6 +265,11 @@ func (s *Server) handleInternalCaption(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.store.AppendCaption(r.Context(), slug, identity, text); err != nil {
 		s.fail(w, r, "internal caption: store", err)
+		return
+	}
+	if !display {
+		// Transcript only: kept for the AI recap, shown to nobody.
+		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
 		return
 	}
 	from := s.captionSpeaker(r.Context(), sfu, slug, identity)

@@ -97,7 +97,7 @@ func (in RecapInput) HasEngagement() bool {
 }
 
 // NoCaptionsNotice is the recap's note when nothing said could be used.
-const NoCaptionsNotice = "Turn on captions next time for a full AI recap: this one was written from the Q&A, polls and chat only."
+const NoCaptionsNotice = "Nothing anyone said was captured, so this AI recap was written from the Q&A, polls and chat only. Keep the room's AI switch on, and speakers' microphones on, for a full one."
 
 const recapPrompt = `You write the recap of a live session for the person who hosted it: a coach, teacher or small-business owner in India, who reads it on their phone right after the session ends.
 

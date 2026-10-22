@@ -252,6 +252,8 @@ export function initialState(
       // it on create, so the form does not have to keep the two in step itself.
       captionsEnabled: false,
       serverCaptions: false,
+      aiEnabled: false,
+      aiAvailable: false,
       locked: false,
       audienceLayout: "auto",
     },

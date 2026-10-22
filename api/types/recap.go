@@ -26,11 +26,14 @@ const (
 	RecapReasonWaitingTranscript = "waiting_transcript"
 	RecapReasonProcessing        = "processing"
 	RecapReasonAIOff             = "ai_off"
-	RecapReasonAILimit           = "ai_limit"
-	RecapReasonAIUnavailable     = "ai_unavailable"
-	RecapReasonEmpty             = "empty"
-	RecapReasonFailed            = "failed"
-	RecapReasonNotEnded          = "not_ended"
+	// RecapReasonAISessionOff is the room's AI switch (SessionControls.AIEnabled) being off
+	// when the session ended: the host kept this one session out of AI.
+	RecapReasonAISessionOff  = "ai_session_off"
+	RecapReasonAILimit       = "ai_limit"
+	RecapReasonAIUnavailable = "ai_unavailable"
+	RecapReasonEmpty         = "empty"
+	RecapReasonFailed        = "failed"
+	RecapReasonNotEnded      = "not_ended"
 )
 
 // Who an action item is for.
@@ -89,10 +92,9 @@ type SessionRecap struct {
 	Notice        string            `json:"notice,omitempty"`
 }
 
-/* SessionRecapResponse is GET /api/host/webinars/{slug}/recap, and what POST …/recap
- * (Regenerate) returns. Status is none, pending, ready, skipped or failed; Reason says
- * why it is not ready. Regenerate errors: 403 feature_off, 409 not_ended, 429 ai_limit
- * or rate_limited, 503 ai_unavailable. */
+/* SessionRecapResponse is GET /api/host/webinars/{slug}/recap. The recap is written
+ * automatically after the session; there is no way to ask for another. Status is none,
+ * pending, ready, skipped or failed; Reason says why it is not ready. */
 type SessionRecapResponse struct {
 	Status      string        `json:"status"`
 	Reason      string        `json:"reason,omitempty"`

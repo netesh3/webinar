@@ -971,12 +971,6 @@ export const api = {
   sessionRecap: (slug: string, signal?: AbortSignal) =>
     request<SessionRecapResponse>(`/api/host/webinars/${seg(slug)}/recap`, { ...fresh, signal }),
 
-  /** Write the AI recap again, now. Counted against the AI caps; never re-emailed.
-   *  Refusals: 403 feature_off, 409 not_ended, 422 empty, 429 ai_limit / rate_limited,
-   *  503 ai_unavailable. */
-  regenerateRecap: (slug: string) =>
-    post<SessionRecapResponse>(`/api/host/webinars/${seg(slug)}/recap`),
-
   hostSurvey: (slug: string) =>
     request<HostSurvey>(`/api/host/webinars/${seg(slug)}/survey`, fresh),
 

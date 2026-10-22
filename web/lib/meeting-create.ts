@@ -75,6 +75,8 @@ export function meetingInputBase(): Omit<
       captionsEnabled: false,
       // Server captions are switched on from the room (POST …/captions/server), not at creation.
       serverCaptions: false,
+      aiEnabled: false,
+      aiAvailable: false,
       locked: false,
       audienceLayout: "auto",
     },

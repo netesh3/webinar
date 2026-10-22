@@ -69,6 +69,7 @@ import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
 import { planRecovery, RECOVERY_BACKOFF_MS } from "@/lib/recovery";
 import { ActiveSpeakerProvider } from "./active-speaker";
+import { AIToggle } from "./ai-toggle";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
@@ -1865,6 +1866,8 @@ export function RoomHeader() {
             <span className="hidden sm:inline">Controls</span>
           </button>
         )}
+        {/* The room's AI switch: host and co-hosts of an account with AI, top right. */}
+        <AIToggle />
       </div>
     </header>
   );
