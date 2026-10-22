@@ -76,17 +76,24 @@ Before this was understood, pressing Record during a CDN broadcast was refused
 before the job started. Nothing appeared in the egress logs, and the host was
 told only that the recording had failed.
 
-So when a room already has a broadcast, the API does not ask for a second
-compositor. It stops the stream-only egress and starts one carrying **both**
-outputs — RTMP to MediaMTX and MP4 to the bucket — then puts the stream-only
-one back when recording stops. See `startEgressRecording` in
-`api/internal/api/cdn_broadcast.go` and `StartCombinedEgress` in
-`api/internal/lk/lk.go`.
+The API used to answer that by stopping the stream-only egress and starting one
+carrying **both** outputs, then putting the stream-only one back when recording
+stopped. That cut every viewer off twice (on Record and on Stop) and, for edge
+webinars, swapped `<template>/edge` for the plain template, so the audience's
+layout changed too (2026-10-22, DigitalOcean BLR). LiveKit cannot add a file
+output to a running egress, so there is no restart-free way to fold a recording
+into a mix.
 
-The trade: while recording, the file inherits the broadcast's encoding — 720p
-H.264 Baseline rather than 1080p Main — because one encoder feeds both and the
-RTMP side has to stay playable over WebRTC. Rooms with no broadcast still
-record at the full `RECORDINGS_EGRESS_PRESET`.
+So a running mix is never touched. With a mix up, the recording is its own 720p
+compositor on the same template path (and the same room-metadata layout) as the
+mix. Where the box has no room for it, LiveKit refuses it, the host gets
+`503 recording_no_capacity` ("record on this computer instead"), and the
+audience keeps watching. Recording beside a live mix therefore needs either a
+second egress worker (remote-egress mode) or a box with room for two composites.
+With no mix running yet but somewhere to push (an edge origin, a saved
+platform), one combined egress still carries both, on the mix's template. See
+`startEgressRecording` in `api/internal/api/cdn_broadcast.go`. Rooms with nothing
+to push record at the full `RECORDINGS_EGRESS_PRESET`.
 
 ---
 

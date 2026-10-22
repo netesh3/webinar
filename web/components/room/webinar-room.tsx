@@ -1963,8 +1963,9 @@ export function RoomHeader() {
             cdnStage: Boolean(cdnStage),
           }) && <MeetingInfo />}
           <LiveClock />
-          {/* Everyone sees this, including the audience — consent is not something
-              to leave to the browser that pressed the button. */}
+          {/* Everyone on the stage sees this — consent is not something to leave to
+              the browser that pressed the button. Not the audience, who are not in
+              the file (showsRecordingState). */}
           <RecordingIndicator />
           {isHost && !join.meeting && <EdgeBadge />}
           {/* Somebody at a meeting's door. Up here because the host is looking at the

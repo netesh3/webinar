@@ -19,6 +19,7 @@ import {
   recordAvailability,
   recordingDetail,
   recordingTag,
+  showsRecordingState,
   type RecordCapabilities,
 } from "./record-target.ts";
 
@@ -166,6 +167,16 @@ const all: RecordCapabilities = {
   );
   ok(recordingDetail("local", "0:03", null) === "Recording to this computer · 0:03", "no size before the first chunk");
   ok(recordingDetail(null, null, null) === "Recording to the cloud", "unknown start time → no clock");
+}
+
+// ------------------------------------------------------------ who sees REC
+{
+  const audience = { isHost: false, canRecord: false, canPublish: false };
+  ok(!showsRecordingState(audience), "an audience viewer sees no recording banner or pill");
+  ok(showsRecordingState({ ...audience, isHost: true }), "the host sees it");
+  ok(showsRecordingState({ ...audience, canRecord: true }), "anyone allowed to record sees it");
+  ok(showsRecordingState({ ...audience, canPublish: true }), "a panelist or promoted attendee (in the file) sees it");
+  ok(showsRecordingState({ ...audience, mine: true }), "whoever pressed Record sees it");
 }
 
 console.log(`record-target: ${checks - failures}/${checks} checks passed`);

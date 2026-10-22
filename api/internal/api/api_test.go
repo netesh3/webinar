@@ -105,7 +105,12 @@ type fakeRooms struct {
 	deleted       []string
 	egressCalls   []string
 	stoppedEgress []string
-	egressErr     error
+	// templates is the CustomBaseUrl of every egress started, "kind=url", in order.
+	templates []string
+	egressErr error
+	// recordErr refuses only recording-only egress (StartRoomCompositeEgress): LiveKit with
+	// no room for a second compositor beside a running mix.
+	recordErr error
 	// liveEgress is what LiveKit would report for the room: the thing the
 	// broadcast sweeper trusts over the API's own map of what it once started.
 	liveEgress []*livekit.EgressInfo
@@ -410,12 +415,16 @@ func (f *fakeRooms) DeleteRoom(_ context.Context, room string) error {
 	return nil
 }
 
-func (f *fakeRooms) StartRoomCompositeEgress(_ context.Context, roomName, storageKey string, _ lk.EgressS3Options, _ string, _ livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error) {
+func (f *fakeRooms) StartRoomCompositeEgress(_ context.Context, roomName, storageKey string, _ lk.EgressS3Options, template string, _ livekit.EncodingOptionsPreset) (*livekit.EgressInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.egressErr != nil {
 		return nil, f.egressErr
 	}
+	if f.recordErr != nil {
+		return nil, f.recordErr
+	}
+	f.templates = append(f.templates, "record="+template)
 	f.egressCalls = append(f.egressCalls, roomName+":"+storageKey)
 	return &livekit.EgressInfo{
 		EgressId: "EG_fake_" + roomName,
@@ -430,12 +439,13 @@ func (f *fakeRooms) StartBroadcastEgressEncoded(ctx context.Context, roomName st
 	return f.StartBroadcastEgress(ctx, roomName, template, livekit.EncodingOptionsPreset_H264_720P_30, rtmpURL, extraURLs)
 }
 
-func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string, extraURLs []string) (*livekit.EgressInfo, error) {
+func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, template string, _ livekit.EncodingOptionsPreset, rtmpURL string, extraURLs []string) (*livekit.EgressInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.egressErr != nil {
 		return nil, f.egressErr
 	}
+	f.templates = append(f.templates, "mix="+template)
 	f.egressCalls = append(f.egressCalls, roomName+":"+rtmpURL)
 	if len(extraURLs) > 0 {
 		f.egressCalls = append(f.egressCalls, "extra:"+strings.Join(extraURLs, ","))
@@ -446,12 +456,13 @@ func (f *fakeRooms) StartBroadcastEgress(_ context.Context, roomName string, _ s
 	}, nil
 }
 
-func (f *fakeRooms) StartCombinedEgress(_ context.Context, roomName string, _ string, _ livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, _ lk.EgressS3Options, extraURLs []string) (*livekit.EgressInfo, error) {
+func (f *fakeRooms) StartCombinedEgress(_ context.Context, roomName string, template string, _ livekit.EncodingOptionsPreset, rtmpURL string, storageKey string, _ lk.EgressS3Options, extraURLs []string) (*livekit.EgressInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.egressErr != nil {
 		return nil, f.egressErr
 	}
+	f.templates = append(f.templates, "both="+template)
 	f.egressCalls = append(f.egressCalls, roomName+":"+rtmpURL+":"+storageKey)
 	if len(extraURLs) > 0 {
 		f.egressCalls = append(f.egressCalls, "extra:"+strings.Join(extraURLs, ","))
