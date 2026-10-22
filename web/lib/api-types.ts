@@ -3101,6 +3101,20 @@ export interface SimuliveStartRequest {
   doorsOpenMin?: number /* int */;
 }
 /**
+ *  SimuliveScheduleRequest is PUT /api/host/webinars/{slug}/simulive/start-at: the room's
+ *  * "Start in N min" (InMin), "Delay N min" (DelayMin: after the pending start, or the scheduled
+ *  * one for an automatic simulive) or an exact moment (At, RFC3339). Exactly one.
+ */
+export interface SimuliveScheduleRequest {
+  at?: string;
+  inMin?: number /* int */;
+  delayMin?: number /* int */;
+}
+/**
+ * MaxSimulivePendingStartMin is how far ahead, in minutes, the room may set a simulive's start.
+ */
+export const MaxSimulivePendingStartMin = 24 * 60;
+/**
  * How a simulive starts (WebinarOptions.SimuliveStart).
  */
 export const SimuliveStartAuto = "auto";
@@ -3732,6 +3746,24 @@ export interface Webinar {
    * when Kind is simulive.
    */
   simuliveRecordingId?: string;
+  /**
+   *  SimuliveStartAt is a start the host or a co-host set from the room ("Start in 5 min",
+   * 	 * "Delay 5 min"), RFC3339; empty when none is pending. It replaces starts_at as the
+   * 	 * moment the simulive goes live (manual or auto alike), and the waiting screen counts
+   * 	 * down to it. Cleared once the session starts.
+   */
+  simuliveStartAt?: string;
+  /**
+   *  SimuliveDoorsOpen: the host pressed "Open doors now", so the audience may come in and
+   * 	 * wait before the doors would open by themselves (Options.SimuliveDoorsOpenMin).
+   */
+  simuliveDoorsOpen?: boolean;
+  /**
+   *  SimuliveLiveAt: the recording played to its end with the host or a co-host in the room,
+   * 	 * and the session carried on live with them on the stage (RFC3339, when it switched). The
+   * 	 * audience leaves the recording for the ordinary live room. Empty while it plays.
+   */
+  simuliveLiveAt?: string;
   host: Person;
   panelists: Person[];
   agenda: AgendaItem[];
@@ -7196,6 +7228,22 @@ export interface JoinResponse {
    */
   startsAt?: string;
   simuliveManual?: boolean;
+  /**
+   * SimuliveStartAt is a start the host set from the room (Webinar.SimuliveStartAt): the
+   * waiting screen counts down to it instead. Room metadata carries later changes.
+   */
+  simuliveStartAt?: string;
+  /**
+   *  SimuliveLengthMs is how long the recording plays in this session (the original's length,
+   * 	 * store.simuliveLengthSQL): the player stops there, for everyone, rather than run on.
+   */
+  simuliveLengthMs?: number /* int64 */;
+  /**
+   *  SimuliveLive: a simulive whose recording has ended and which carries on live with the
+   * 	 * host team on the stage — an ordinary live room, never recorded (CanRecord false). The
+   * 	 * host team enters it with the microphone and camera off.
+   */
+  simuliveLive?: boolean;
 }
 /**
  * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -7366,6 +7414,20 @@ export interface RoomMeta {
    * MaxDurationMin is the maximum allowed duration for this session in minutes.
    */
   maxDurationMin?: number /* int */;
+  /**
+   *  A scheduled simulive's pending start (Webinar.SimuliveStartAt) and whether the host
+   * 	 * opened its doors early, so a waiting room's countdown follows the host's "Start in 5
+   * 	 * min" / "Delay" / cancel at once rather than on its next poll.
+   */
+  simuliveStartAt?: string;
+  simuliveDoorsOpen?: boolean;
+  /**
+   *  SimuliveLiveAt: the recording has ended and the session is now live with the host team
+   * 	 * (Webinar.SimuliveLiveAt); every client re-joins for the live room. SimuliveLiveWith is
+   * 	 * the host's first name, for the "Live with …" transition.
+   */
+  simuliveLiveAt?: string;
+  simuliveLiveWith?: string;
 }
 export type RecordingStatus = string;
 export const RecordingActive: RecordingStatus = "recording";

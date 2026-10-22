@@ -391,10 +391,16 @@ func TestSimuliveEndsAtTheOriginalEndUnlessTheHostIsThere(t *testing.T) {
 		t.Fatalf("the tick ended it with the host in the room: %s", wb.Status)
 	}
 
-	// The host leaves: the next tick ends it.
+	// It went on live with the host (simulive_host.go). The host leaves: the next tick starts
+	// the grace, and once that has run it ends.
 	h.rooms.mu.Lock()
 	h.rooms.roster = nil
 	h.rooms.mu.Unlock()
+	h.server.RunTick(context.Background())
+	if wb := h.publicWebinar(sim.ID); wb.Status != types.StatusLive || wb.SimuliveLiveAt == "" {
+		t.Fatalf("ended before the grace: %+v", wb)
+	}
+	h.exec(`UPDATE webinars SET simulive_host_gone_at = now() - interval '3 minutes' WHERE slug = $1`, sim.ID)
 	h.server.RunTick(context.Background())
 	if wb := h.publicWebinar(sim.ID); wb.Status != types.StatusEnded {
 		t.Fatalf("after the host left: %s", wb.Status)

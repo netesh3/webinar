@@ -26,11 +26,16 @@ import (
  *
  *   start   an automatic simulive whose starts_at has come goes live, its clock starting at
  *           starts_at, and its room is made and told (room metadata) so every waiting
- *           player begins at the shared position at once. A manual one never starts here.
- *   end     once the original session's length has played (plus a grace), it ends — unless
- *           the host or a co-host is in the room, in which case it waits for them to end it
- *           or leave (the participant_left webhook, the sweeper and the next request all
- *           ask again).
+ *           player begins at the shared position at once. A manual one never starts here,
+ *           unless the host set a start from the room (simulive_host.go: "Start in 5 min",
+ *           "Delay"), which replaces starts_at as the moment for either kind.
+ *   end     once the original session's length has played (plus a grace), the recording is
+ *           over for everyone. With nobody of the host team in the room the session ends.
+ *           With the host or a co-host there it carries on LIVE with them (live after,
+ *           simulive_host.go): the host team gets the stage, the audience the ordinary live
+ *           room, and it ends with End webinar — or simuliveLiveAfterGrace after the last of
+ *           the host team leaves (the participant_left webhook, the sweeper and the next
+ *           request all ask).
  *   polls   the replay's polls open and close at the original's moments (syncReplayPolls).
  *
  * Each transition is a guarded UPDATE in the store, so two instances, two requests or a
@@ -70,14 +75,47 @@ func simuliveManual(wb types.Webinar) bool {
 	return wb.Options.SimuliveStart == types.SimuliveStartManual
 }
 
+/* simuliveTarget is when a scheduled simulive goes live by itself: the start the host set
+ * from the room (Webinar.SimuliveStartAt), else starts_at for an automatic one. False for a
+ * manual one with nothing pending. The Go twin of store.simuliveTargetSQL. */
+func simuliveTarget(wb types.Webinar) (time.Time, bool) {
+	if wb.SimuliveStartAt != "" {
+		if at, err := time.Parse(time.RFC3339, wb.SimuliveStartAt); err == nil {
+			return at, true
+		}
+	}
+	if simuliveManual(wb) {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339, wb.StartsAt)
+	return at, err == nil
+}
+
+/* simuliveDoorsOpenAt is when a scheduled simulive's audience may come in: doors-open minutes
+ * before the earlier of starts_at and a pending start (a host who says "Start in 2 min" ten
+ * minutes early brings the doors forward with it). Zero once the host opened them by hand. */
+func simuliveDoorsOpenAt(wb types.Webinar) (time.Time, error) {
+	if wb.SimuliveDoorsOpen {
+		return time.Time{}, nil
+	}
+	startsAt, err := time.Parse(time.RFC3339, wb.StartsAt)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if at, err := time.Parse(time.RFC3339, wb.SimuliveStartAt); err == nil && at.Before(startsAt) {
+		startsAt = at
+	}
+	return startsAt.Add(-simuliveDoorsOpen(wb)), nil
+}
+
 // simuliveDoorsAreOpen: a scheduled simulive whose doors have opened, so its audience may wait
 // in the room and chat before the recording starts.
 func simuliveDoorsAreOpen(wb types.Webinar, now time.Time) bool {
 	if wb.Kind != types.KindSimulive || wb.Status != types.StatusScheduled || wb.DidntGoLive {
 		return false
 	}
-	startsAt, err := time.Parse(time.RFC3339, wb.StartsAt)
-	return err == nil && !now.Before(startsAt.Add(-simuliveDoorsOpen(wb)))
+	opens, err := simuliveDoorsOpenAt(wb)
+	return err == nil && !now.Before(opens)
 }
 
 /* syncSimulive brings a simulive up to date (see above) and returns it as it now is. Anything
@@ -91,13 +129,12 @@ func (s *Server) syncSimulive(ctx context.Context, wb types.Webinar) types.Webin
 	slug := wb.ID
 	switch {
 	case wb.Status == types.StatusScheduled || wb.DidntGoLive:
-		if simuliveManual(wb) {
-			return wb
-		}
-		startsAt, err := time.Parse(time.RFC3339, wb.StartsAt)
+		// A manual simulive with nothing pending waits for the host: entering the room is
+		// not starting it. Nor is anything due before its start.
+		startsAt, ok := simuliveTarget(wb)
 		// A day past the start is past any recording; the read rewrote it as not having
 		// gone live, and asking again on every page view would be a write for nothing.
-		if err != nil || now.Before(startsAt) || now.After(startsAt.Add(24*time.Hour)) {
+		if !ok || now.Before(startsAt) || now.After(startsAt.Add(24*time.Hour)) {
 			return wb
 		}
 		claimed, err := s.store.StartSimuliveIfDue(ctx, slug)
@@ -109,11 +146,23 @@ func (s *Server) syncSimulive(ctx context.Context, wb types.Webinar) types.Webin
 			s.log.Info("simulive started", "slug", slug)
 			s.afterSimuliveStarted(ctx, slug)
 		}
-	case wb.Status == types.StatusLive:
-		if !s.simuliveOver(ctx, wb, now) || s.simuliveHostPresent(ctx, wb, "") {
+	case wb.Status == types.StatusLive && wb.SimuliveLiveAt != "":
+		// Live after the recording: it ends a grace after the host team has gone.
+		if !s.simuliveLiveAfterGraceOver(wb, now) {
 			return wb
 		}
-		s.endSimuliveIfDue(ctx, slug)
+		s.endSimuliveIfHostGone(ctx, wb)
+	case wb.Status == types.StatusLive:
+		if !s.simuliveOver(ctx, wb, now) {
+			return wb
+		}
+		// The recording has played. With the host team in the room the session carries on
+		// live with them; without, it is over.
+		if s.simuliveHostPresent(ctx, wb, "") {
+			s.goSimuliveLiveIfOver(ctx, slug)
+		} else {
+			s.endSimuliveIfDue(ctx, slug)
+		}
 	default:
 		return wb
 	}
@@ -208,11 +257,20 @@ func (s *Server) endSimuliveIfDue(ctx context.Context, slug string) bool {
 }
 
 /* simuliveHostLeft is the SFU saying somebody on the host team left. If that was a live
- * simulive past its end, and nobody else on the host team is still there, it ends now. The
- * leaver is excluded because the SFU may still list them while the webhook is in flight. */
+ * simulive past its end, and nobody else on the host team is still there, it ends now; in
+ * live-after the grace starts. The leaver is excluded because the SFU may still list them
+ * while the webhook is in flight. */
 func (s *Server) simuliveHostLeft(ctx context.Context, slug, identity string) {
 	wb, err := s.store.WebinarBySlug(ctx, slug)
 	if err != nil || wb.Kind != types.KindSimulive || wb.Status != types.StatusLive {
+		return
+	}
+	if wb.SimuliveLiveAt != "" {
+		if !s.simuliveHostPresent(ctx, wb, identity) {
+			if err := s.store.MarkSimuliveHostGone(ctx, slug); err != nil {
+				s.log.Warn("simulive: could not note the host team leaving", "slug", slug, "error", err)
+			}
+		}
 		return
 	}
 	if !s.simuliveOver(ctx, wb, time.Now()) || s.simuliveHostPresent(ctx, wb, identity) {
@@ -294,7 +352,8 @@ const replayPollRecheck = 30 * time.Second
  * polls at each poll moment, which is what brings a session with no sweeper to each one on
  * time. Tells the room when something changed. */
 func (s *Server) syncReplayPolls(ctx context.Context, wb types.Webinar) {
-	if wb.Kind != types.KindSimulive || wb.Status != types.StatusLive || wb.StartedAt == "" || wb.SimuliveRecordingID == "" {
+	if wb.Kind != types.KindSimulive || wb.Status != types.StatusLive || wb.StartedAt == "" || wb.SimuliveRecordingID == "" ||
+		wb.SimuliveLiveAt != "" {
 		return
 	}
 	started, err := time.Parse(time.RFC3339, wb.StartedAt)
@@ -352,6 +411,12 @@ func (s *Server) sweepLiveSimulives(ctx context.Context) {
 		}
 		wb, err := s.store.WebinarBySlug(ctx, slug)
 		if err != nil {
+			continue
+		}
+		// A missed participant_left webhook: the tick notices the host team has gone.
+		if wb.Status == types.StatusLive && wb.SimuliveLiveAt != "" && wb.SimuliveHostGoneAt == "" &&
+			!s.simuliveHostPresent(ctx, wb, "") {
+			_ = s.store.MarkSimuliveHostGone(ctx, slug)
 			continue
 		}
 		wb = s.syncSimulive(ctx, wb)

@@ -165,8 +165,11 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A simulive whose doors are open takes chat while its audience waits for the start
-	// (simulive_live.go): they are in the room, with nothing playing yet.
-	if wb.Status != types.StatusLive && !simuliveDoorsAreOpen(wb, time.Now()) {
+	// (simulive_live.go): they are in the room, with nothing playing yet. Before the doors
+	// open the room is the host team's alone (simulive_host.go), and they may talk in it.
+	hostTeamEarly := wb.Kind == types.KindSimulive && wb.Status == types.StatusScheduled && !wb.DidntGoLive &&
+		(from.Role == types.RoleHost || from.Role == types.RolePanelist)
+	if wb.Status != types.StatusLive && !simuliveDoorsAreOpen(wb, time.Now()) && !hostTeamEarly {
 		httpx.Error(w, http.StatusConflict, "not_live", "This webinar isn't running.")
 		return
 	}

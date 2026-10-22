@@ -1366,7 +1366,7 @@ func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
 		Room:     room,
 		Identity: identity,
 		Name:     target.Name,
-		NoMedia:  wb.Kind == types.KindSimulive,
+		NoMedia:  simuliveReplaying(wb),
 	}); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
 		s.log.Warn("transfer host: could not promote new host in the room",
 			"slug", slug, "identity", identity, "error", err)
@@ -1376,7 +1376,7 @@ func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
 		Room:     room,
 		Identity: fromIdentity,
 		Name:     user.Name,
-		NoMedia:  wb.Kind == types.KindSimulive,
+		NoMedia:  simuliveReplaying(wb),
 	}); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
 		s.log.Warn("transfer host: could not demote previous host in the room",
 			"slug", slug, "identity", fromIdentity, "error", err)
@@ -2785,7 +2785,7 @@ func (s *Server) handleSetCoHost(w http.ResponseWriter, r *http.Request) {
 			CoHost:      body.CoHost,
 			MutedByHost: grant.MutedByHost,
 			Hidden:      lk.HiddenFor(types.RolePanelist, wb.Controls.HideAttendees),
-			NoMedia:     wb.Kind == types.KindSimulive,
+			NoMedia:     simuliveReplaying(wb),
 		}
 		if err := sfu.SetRole(r.Context(), spec); err != nil && !errors.Is(err, lk.ErrNotInRoom) {
 			s.log.Warn("set co-host: apply live", "slug", slug, "user", userID, "error", err)

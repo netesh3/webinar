@@ -674,6 +674,16 @@ export function useSessionControls(
   recordingStartedAt: string | null;
   /** The maximum meeting duration in minutes for this session. */
   maxDurationMin: number | null;
+  /** A simulive's room state (api/internal/api/simulive_host.go): the start the host set from
+   *  the room, whether they opened the doors early, and — once the recording has ended with
+   *  the host team there — when it went live with them, and the host's first name. Undefined
+   *  until metadata arrives. */
+  simulive?: {
+    startAt: string | null;
+    doorsOpen: boolean;
+    liveAt: string | null;
+    liveWith: string | null;
+  };
 } {
   const [meta, setMeta] = useState<RoomMeta | null>(null);
 
@@ -716,6 +726,14 @@ export function useSessionControls(
       recording: meta?.recording === true,
       recordingStartedAt: meta?.recording === true ? meta.recordingStartedAt || null : null,
       maxDurationMin: meta?.maxDurationMin ?? joinMaxDurationMin ?? null,
+      simulive: meta
+        ? {
+            startAt: meta.simuliveStartAt || null,
+            doorsOpen: meta.simuliveDoorsOpen === true,
+            liveAt: meta.simuliveLiveAt || null,
+            liveWith: meta.simuliveLiveWith || null,
+          }
+        : undefined,
     }),
     [meta, fallback, joinMaxDurationMin],
   );

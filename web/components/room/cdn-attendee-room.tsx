@@ -61,6 +61,9 @@ import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
 import { SimuliveWaiting } from "./simulive-waiting";
+import { SimuliveHostBar } from "./simulive-host-bar";
+import { SimuliveFinished, useSimuliveFinished } from "./simulive-finished";
+import { waitingCount } from "@/lib/simulive-host";
 import { SurveyPopup } from "./survey-popup";
 import { SessionSurvey } from "../survey/session-survey";
 import { useAudienceSurvey } from "@/lib/use-audience-survey";
@@ -96,6 +99,7 @@ export function CdnAttendeeRoom({
   onLeave,
   onPromoted,
   presenter = false,
+  onSimuliveLive,
 }: {
   join: JoinResponse;
   slug: string;
@@ -108,6 +112,9 @@ export function CdnAttendeeRoom({
    *  recording like the audience, and chat, answer and moderate as the host. Their grant
    *  publishes no audio or video (lk.Spec.NoMedia), so nothing of theirs reaches anyone. */
   presenter?: boolean;
+  /** A simulive's recording ended with the host team there, and it carries on live with them
+   *  (api/internal/api/simulive_host.go): re-join for the live room. */
+  onSimuliveLive?: (hostName?: string) => void;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
   // A phone left to watch must not auto-lock mid-webinar (lib/wake-lock.ts).
@@ -139,6 +146,7 @@ export function CdnAttendeeRoom({
     endedAt,
     status,
     maxDurationMin,
+    simulive: simuliveMeta,
   } = useSessionControls(room, join.controls, join.maxDurationMin);
 
   // Live roles & permissions
@@ -282,6 +290,21 @@ export function CdnAttendeeRoom({
   const [polledStart, setPolledStart] = useState<string | null>(null);
   const liveStart = startedAt || polledStart || join.startedAt || null;
   const waiting = simuliveWaiting(Boolean(join.simulive), liveStart);
+  /* The recording's end, for everyone at once: the player goes, and the room waits for the
+   * server to say live-with-the-host or ended (SimuliveFinished, lib/simulive-host.ts). */
+  const finished = useSimuliveFinished(join.simulive ? liveStart : null, join.simuliveLengthMs);
+  const pendingStartAt = simuliveMeta ? simuliveMeta.startAt : join.simuliveStartAt || null;
+  const simuliveLiveAt = simuliveMeta?.liveAt;
+  const simuliveLiveWith = simuliveMeta?.liveWith ?? undefined;
+  const onSimuliveLiveRef = useRef(onSimuliveLive);
+  useEffect(() => {
+    onSimuliveLiveRef.current = onSimuliveLive;
+  }, [onSimuliveLive]);
+  useEffect(() => {
+    if (join.simulive && simuliveLiveAt) onSimuliveLiveRef.current?.(simuliveLiveWith);
+  }, [join.simulive, simuliveLiveAt, simuliveLiveWith]);
+  const simuliveGoLive = useCallback((name?: string) => onSimuliveLiveRef.current?.(name), []);
+  const simuliveEnded = useCallback(() => setExit("ended"), []);
 
   /* A simulive's engagement replay (lib/simulive-replay.ts): the original session's chat and
    * Q&A, scheduled against this player's own position and folded into the room's
@@ -509,14 +532,33 @@ export function CdnAttendeeRoom({
                   >
                     {/* CDN Stream Player */}
                     <div className={STAGE_PLAYER_FRAME}>
+                      {isHost && join.simulive && (
+                        <SimuliveHostBar
+                          slug={slug}
+                          view={waiting ? "waiting" : finished ? "finished" : "playing"}
+                          manual={Boolean(join.simuliveManual)}
+                          startsAt={join.startsAt}
+                          pendingStartAt={pendingStartAt}
+                          doorsOpen={simuliveMeta?.doorsOpen}
+                          waiting={roster.live?.attendees ?? waitingCount(roster.live?.participants)}
+                          onStarted={setPolledStart}
+                        />
+                      )}
                       {waiting ? (
                         <SimuliveWaiting
                           slug={slug}
                           startsAt={join.startsAt}
+                          pendingStartAt={pendingStartAt}
                           manual={Boolean(join.simuliveManual)}
-                          canStart={isHost && Boolean(join.simuliveManual)}
                           coverUrl={initialImageUrl}
                           onStarted={setPolledStart}
+                        />
+                      ) : finished ? (
+                        <SimuliveFinished
+                          slug={slug}
+                          coverUrl={initialImageUrl}
+                          onLive={simuliveGoLive}
+                          onEnded={simuliveEnded}
                         />
                       ) : (
                       <BroadcastPlayer

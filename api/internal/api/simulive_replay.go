@@ -218,7 +218,8 @@ func refuseSimuliveRecording(w http.ResponseWriter, wb types.Webinar) bool {
 // refuseInSimulive refuses to put anyone on a simulive's stage: the audience watches the
 // recording, and nothing anybody publishes reaches them.
 func refuseInSimulive(w http.ResponseWriter, wb types.Webinar) bool {
-	if wb.Kind != types.KindSimulive {
+	// Live after the recording it has a stage like any live session.
+	if !simuliveReplaying(wb) {
 		return false
 	}
 	httpx.Error(w, http.StatusUnprocessableEntity, "simulive_no_stage",

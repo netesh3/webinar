@@ -530,8 +530,9 @@ export function RecordButton() {
   }, [open]);
 
   // A simulive plays a recording and is never recorded again — not to the cloud, not to
-  // this computer. The server refuses it too (refuseSimuliveRecording).
-  if (join.simulive) return null;
+  // this computer — nor its live part with the host after the recording (simuliveLive).
+  // The server refuses it too (refuseSimuliveRecording).
+  if (join.simulive || join.simuliveLive) return null;
   if (!join.canRecord && !isHost) return null;
   if (connection !== ConnectionState.Connected) return null;
 

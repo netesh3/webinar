@@ -306,6 +306,18 @@ type SimuliveStartRequest struct {
 	DoorsOpenMin  *int   `json:"doorsOpenMin,omitempty"`
 }
 
+/* SimuliveScheduleRequest is PUT /api/host/webinars/{slug}/simulive/start-at: the room's
+ * "Start in N min" (InMin), "Delay N min" (DelayMin: after the pending start, or the scheduled
+ * one for an automatic simulive) or an exact moment (At, RFC3339). Exactly one. */
+type SimuliveScheduleRequest struct {
+	At       string `json:"at,omitempty"`
+	InMin    int    `json:"inMin,omitempty"`
+	DelayMin int    `json:"delayMin,omitempty"`
+}
+
+// MaxSimulivePendingStartMin is how far ahead, in minutes, the room may set a simulive's start.
+const MaxSimulivePendingStartMin = 24 * 60
+
 // How a simulive starts (WebinarOptions.SimuliveStart).
 const (
 	SimuliveStartAuto   = "auto"
@@ -889,6 +901,20 @@ type Webinar struct {
 	// SimuliveRecordingID is the ready recording played as the audience video
 	// when Kind is simulive.
 	SimuliveRecordingID string `json:"simuliveRecordingId,omitempty"`
+	/* SimuliveStartAt is a start the host or a co-host set from the room ("Start in 5 min",
+	 * "Delay 5 min"), RFC3339; empty when none is pending. It replaces starts_at as the
+	 * moment the simulive goes live (manual or auto alike), and the waiting screen counts
+	 * down to it. Cleared once the session starts. */
+	SimuliveStartAt string `json:"simuliveStartAt,omitempty"`
+	/* SimuliveDoorsOpen: the host pressed "Open doors now", so the audience may come in and
+	 * wait before the doors would open by themselves (Options.SimuliveDoorsOpenMin). */
+	SimuliveDoorsOpen bool `json:"simuliveDoorsOpen,omitempty"`
+	/* SimuliveLiveAt: the recording played to its end with the host or a co-host in the room,
+	 * and the session carried on live with them on the stage (RFC3339, when it switched). The
+	 * audience leaves the recording for the ordinary live room. Empty while it plays. */
+	SimuliveLiveAt string `json:"simuliveLiveAt,omitempty"`
+	// SimuliveHostGoneAt: in live-after, when the host team was last seen leaving. Internal.
+	SimuliveHostGoneAt string `json:"-"`
 
 	Host      Person   `json:"host"`
 	Panelists []Person `json:"panelists"`
@@ -3674,6 +3700,16 @@ type JoinResponse struct {
 	 * once the server says it is live. */
 	StartsAt       string `json:"startsAt,omitempty"`
 	SimuliveManual bool   `json:"simuliveManual,omitempty"`
+	// SimuliveStartAt is a start the host set from the room (Webinar.SimuliveStartAt): the
+	// waiting screen counts down to it instead. Room metadata carries later changes.
+	SimuliveStartAt string `json:"simuliveStartAt,omitempty"`
+	/* SimuliveLengthMs is how long the recording plays in this session (the original's length,
+	 * store.simuliveLengthSQL): the player stops there, for everyone, rather than run on. */
+	SimuliveLengthMs int64 `json:"simuliveLengthMs,omitempty"`
+	/* SimuliveLive: a simulive whose recording has ended and which carries on live with the
+	 * host team on the stage — an ordinary live room, never recorded (CanRecord false). The
+	 * host team enters it with the microphone and camera off. */
+	SimuliveLive bool `json:"simuliveLive,omitempty"`
 }
 
 // ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -3870,6 +3906,16 @@ type RoomMeta struct {
 	RecordingStartedAt string `json:"recordingStartedAt,omitempty"`
 	// MaxDurationMin is the maximum allowed duration for this session in minutes.
 	MaxDurationMin int `json:"maxDurationMin,omitempty"`
+	/* A scheduled simulive's pending start (Webinar.SimuliveStartAt) and whether the host
+	 * opened its doors early, so a waiting room's countdown follows the host's "Start in 5
+	 * min" / "Delay" / cancel at once rather than on its next poll. */
+	SimuliveStartAt   string `json:"simuliveStartAt,omitempty"`
+	SimuliveDoorsOpen bool   `json:"simuliveDoorsOpen,omitempty"`
+	/* SimuliveLiveAt: the recording has ended and the session is now live with the host team
+	 * (Webinar.SimuliveLiveAt); every client re-joins for the live room. SimuliveLiveWith is
+	 * the host's first name, for the "Live with …" transition. */
+	SimuliveLiveAt   string `json:"simuliveLiveAt,omitempty"`
+	SimuliveLiveWith string `json:"simuliveLiveWith,omitempty"`
 }
 
 // ------------------------------------------------------------------ recordings

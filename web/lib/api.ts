@@ -123,6 +123,7 @@ import type {
   QAAutoResponse,
   ReplayHideResponse,
   ReplayPage,
+  SimuliveScheduleRequest,
   SimuliveStartRequest,
   ReplayTimeline,
 } from "./api-types";
@@ -478,6 +479,26 @@ export const api = {
   /** How a scheduled simulive starts: by itself or by the host, and when its doors open. */
   setSimuliveStart: (slug: string, req: SimuliveStartRequest) =>
     put<Webinar>(`/api/host/webinars/${seg(slug)}/simulive-start`, req),
+
+  /** The host in a simulive's room before it starts (api/internal/api/simulive_host.go):
+   *  start now, start in N minutes / delay / at a moment, cancel that, open the doors early,
+   *  and end. Each answers with the webinar as it now is. */
+  simuliveStartNow: async (slug: string) => {
+    const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/start-now`);
+    dropHostWebinarLists();
+    return webinar;
+  },
+  simuliveStartAt: (slug: string, req: SimuliveScheduleRequest) =>
+    put<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/start-at`, req),
+  simuliveCancelStart: (slug: string) =>
+    del<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/start-at`),
+  simuliveOpenDoors: (slug: string) =>
+    post<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/open-doors`),
+  simuliveEnd: async (slug: string) => {
+    const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/end`);
+    dropHostWebinarLists();
+    return webinar;
+  },
 
   /** A simulive's Auto mode: the assistant answering new questions from the knowledge. */
   simuliveAuto: (slug: string) =>
