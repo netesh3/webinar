@@ -6,6 +6,7 @@ import { ScheduleForm } from "./schedule/schedule-form";
 import { Alert, Spinner } from "./controls";
 import { ArrowLeftIcon } from "./icons";
 import { ButtonLink, Card } from "./ui";
+import { SimuliveInfoButton } from "./simulive-info";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 
@@ -83,9 +84,18 @@ export function EditWebinarScreen({ slug }: { slug: string }) {
         <ArrowLeftIcon className="size-3.5" />
         {webinar.kind === "meeting" ? "Back to the meeting" : "Back to the webinar"}
       </Link>
-      <h1 className="mb-1 text-[22px] font-semibold tracking-[-0.02em] sm:text-[24px]">
-        {webinar.kind === "meeting" ? "Edit meeting" : "Edit webinar"}
-      </h1>
+      {webinar.kind === "simulive" ? (
+        <div className="mb-1 flex items-center gap-1.5">
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] sm:text-[24px]">
+            Edit Simulive
+          </h1>
+          <SimuliveInfoButton />
+        </div>
+      ) : (
+        <h1 className="mb-1 text-[22px] font-semibold tracking-[-0.02em] sm:text-[24px]">
+          {webinar.kind === "meeting" ? "Edit meeting" : "Edit webinar"}
+        </h1>
+      )}
       <p className="mb-3 text-[13.5px] text-ink-2">{webinar.topic}</p>
 
       {webinar.status === "live" && (

@@ -326,6 +326,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-create.test.mts
 	# Simulive Auto mode: the follow-up call's timing and the assistant's signature.
 	cd web && node --experimental-strip-types --no-warnings lib/qa-auto.test.mts
+	# Finding simulive: the cross-session picker, the Results card and its dismissal.
+	cd web && node --experimental-strip-types --no-warnings lib/simulive-discover.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
