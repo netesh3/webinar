@@ -64,7 +64,7 @@ func recapStats(a types.RecapAttendance, meeting bool) []recapStat {
 func RecapEmail(n RecapNotice) (subject, text, html string) {
 	product := productName(n.Product)
 	topic := oneLine(n.Topic)
-	subject = "Your AI recap: " + topic
+	subject = "✨ Your AI recap: " + topic
 	kind := "webinar"
 	if n.Meeting {
 		kind = "meeting"
@@ -194,7 +194,7 @@ var recapHTML = template.Must(template.New("recap").Parse(`<!DOCTYPE html>
 <tr><td class="wl-card" bgcolor="#ffffff" style="background-color:#ffffff;border:1px solid #e3e7ef;border-radius:16px;overflow:hidden;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
   <tr><td class="wl-hero wl-pad" bgcolor="#0b5cff" style="background-color:#0b5cff;background-image:linear-gradient(135deg,#0b5cff 0%,#3b7bff 100%);border-radius:15px 15px 0 0;padding:34px 40px 32px 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-    <p style="margin:0 0 12px 0;font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#cfe0ff;">Your AI recap</p>
+    <p style="margin:0 0 12px 0;font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#cfe0ff;">&#10024; Your AI recap</p>
     <h1 class="wl-h1" style="margin:0;font-size:28px;line-height:35px;font-weight:700;letter-spacing:-0.5px;color:#ffffff;">{{.Topic}}</h1>
   </td></tr>
 

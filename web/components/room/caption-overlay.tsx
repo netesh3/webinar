@@ -5,6 +5,7 @@ import { Track } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
 import { api } from "@/lib/api";
 import type { ControlsPatch } from "@/lib/api-types";
+import { captionEngine } from "@/lib/ai-session";
 import { useLocalCaptions } from "@/lib/local-captions";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
@@ -101,12 +102,13 @@ export function CaptionOverlay() {
 }
 
 /** Keeps on-device recognition running for every publisher while captions are
- *  on. Mount once in the control bar — not inside More — so closing the menu
- *  never tears the recogniser down. Renders nothing. */
+ *  on, or while the room's AI switch wants a transcript (silently: stored for the
+ *  AI recap, not shown — lib/ai-session.ts). Mount once in the control bar — not
+ *  inside More — so closing the menu never tears the recogniser down. Renders
+ *  nothing. */
 export function CaptionsSession() {
   const { permissions, slug, joinKey, realtime, controls } = useRoomUI();
   const { notify } = useToast();
-  const on = controls.captionsEnabled;
 
   /* Trouble is reported to whoever it happened to, because it is their machine
    * that has to be fixed — a host cannot grant a panelist's microphone from
@@ -132,8 +134,12 @@ export function CaptionsSession() {
   // egress host, multilingual, has said it is live) and takes over again the
   // moment it is not — switched off, never picked up, or paused because the
   // box needed the CPU for video.
+  // One engine for both: captions shown is the same recogniser as the AI's silent
+  // capture, with its lines broadcast as well as stored.
+  const engine = captionEngine(controls, permissions.canPublish);
   useLocalCaptions({
-    active: on && permissions.canPublish && !controls.serverCaptions,
+    active: engine.run,
+    display: engine.display,
     track: mic,
     slug,
     joinKey,

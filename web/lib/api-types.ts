@@ -1515,6 +1515,11 @@ export const RecapReasonProcessing = "processing";
  */
 export const RecapReasonAIOff = "ai_off";
 /**
+ * RecapReasonAISessionOff is the room's AI switch (SessionControls.AIEnabled) being off
+ * when the session ended: the host kept this one session out of AI.
+ */
+export const RecapReasonAISessionOff = "ai_session_off";
+/**
  *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
  *  * processing go with pending; the others with skipped, failed or none.
  */
@@ -1607,10 +1612,9 @@ export interface SessionRecap {
   notice?: string;
 }
 /**
- *  SessionRecapResponse is GET /api/host/webinars/{slug}/recap, and what POST …/recap
- *  * (Regenerate) returns. Status is none, pending, ready, skipped or failed; Reason says
- *  * why it is not ready. Regenerate errors: 403 feature_off, 409 not_ended, 429 ai_limit
- *  * or rate_limited, 503 ai_unavailable.
+ *  SessionRecapResponse is GET /api/host/webinars/{slug}/recap. The recap is written
+ *  * automatically after the session; there is no way to ask for another. Status is none,
+ *  * pending, ready, skipped or failed; Reason says why it is not ready.
  */
 export interface SessionRecapResponse {
   status: string;
@@ -2465,6 +2469,23 @@ export interface SessionControls {
    * 	 * /controls.
    */
   serverCaptions: boolean;
+  /**
+   *  AIEnabled is the room's "AI" switch: whether this session is in AI at all. On, a
+   * 	 * transcript is captured for the AI recap even with captions (CaptionsEnabled, which is
+   * 	 * only whether people SEE the lines) off — by the server caption agent in a transcript-only
+   * 	 * mode, or silently by the speakers' browsers where no agent runs. Off at the end of the
+   * 	 * session, no recap is written and nothing of the session goes to a model.
+   * 	 *
+   * 	 * On by default (webinars.ai_enabled, migration 0129), but only ever true when the host's
+   * 	 * account has the ai feature: an account without it reads false here and AIAvailable
+   * 	 * false, and the room shows no switch.
+   */
+  aiEnabled: boolean;
+  /**
+   * AIAvailable is whether the host's account has the ai feature, so the room knows to
+   * show the switch. Read-only: it follows the account, not PATCH /controls.
+   */
+  aiAvailable: boolean;
   locked: boolean;
   /**
    * ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
@@ -2477,7 +2498,48 @@ export interface SessionControls {
    * with, so switching the setting never rewrites history.
    */
   chatDestination: ChatDestination;
+  /**
+   *  AudienceLayout is how the composite arranges the stage: the picture edge (LL-HLS)
+   * 	 * viewers, CDN viewers and recordings get, drawn by the egress from
+   * 	 * web/app/recorder-template. The egress page is in the room and reads this from room
+   * 	 * metadata, so a change re-lays the composite live without restarting the egress.
+   * 	 * Panelists' own views are not affected. Missing means AudienceLayoutAuto.
+   */
+  audienceLayout: AudienceLayout;
 }
+/**
+ * AudienceLayout names a composite layout; web/lib/composite-layouts.ts draws each one.
+ */
+export type AudienceLayout = string;
+/**
+ * AudienceLayoutAuto is the layout the composite always had: a share next to (or, on
+ * edge, under) the cameras, otherwise the active speaker with a strip.
+ */
+export const AudienceLayoutAuto: AudienceLayout = "auto";
+/**
+ * AudienceLayoutSpeaker is the active speaker large with a filmstrip.
+ */
+export const AudienceLayoutSpeaker: AudienceLayout = "speaker";
+/**
+ * AudienceLayoutGrid is equal tiles, one page at most.
+ */
+export const AudienceLayoutGrid: AudienceLayout = "grid";
+/**
+ * AudienceLayoutShareOnly is the share alone; speaker when nobody shares.
+ */
+export const AudienceLayoutShareOnly: AudienceLayout = "share_only";
+/**
+ * AudienceLayoutShareSpeaker is the share with the active speaker in a corner bubble.
+ */
+export const AudienceLayoutShareSpeaker: AudienceLayout = "share_speaker";
+/**
+ * AudienceLayoutSideBySide is the share on the left two thirds, the speaker on the right.
+ */
+export const AudienceLayoutSideBySide: AudienceLayout = "side_by_side";
+/**
+ * AudienceLayoutVideoOnly is cameras only; a share is ignored.
+ */
+export const AudienceLayoutVideoOnly: AudienceLayout = "video_only";
 /**
  * ChatDestination is the audience for a chat message.
  */
@@ -2505,12 +2567,21 @@ export interface ControlsPatch {
   reactionsEnabled?: boolean;
   pollsEnabled?: boolean;
   captionsEnabled?: boolean;
+  /**
+   * AIEnabled is the room's AI switch (SessionControls.AIEnabled). Refused for an account
+   * without the ai feature.
+   */
+  aiEnabled?: boolean;
   locked?: boolean;
   /**
    * A pointer for the same reason as the others: "not mentioned" and "set to
    * everyone" are different requests.
    */
   chatDestination?: ChatDestination;
+  /**
+   * Refused unless Valid: see AudienceLayout.
+   */
+  audienceLayout?: AudienceLayout;
 }
 /**
  * PollKind separates a poll from a quiz.

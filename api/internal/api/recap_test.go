@@ -198,7 +198,7 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 	if email.Email != strings.ToLower(host.Email) || email.UserID != "" {
 		t.Errorf("email = %+v", email)
 	}
-	if email.Subject != "Your AI recap: Money basics for young earners" ||
+	if email.Subject != "✨ Your AI recap: Money basics for young earners" ||
 		!strings.Contains(email.Body, "Share the budgeting sheet") ||
 		!strings.Contains(email.Body, "/host/"+wb.ID+"?tab=results") ||
 		!strings.Contains(email.HTML, "Which SIP should I start with?") {
@@ -218,7 +218,7 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 		t.Errorf("recap email delivery = %q (%v), want the outbox to have taken it", delivery, err)
 	}
 
-	// Idempotent: another pass, another end, a regenerate — still one email, no new automatic call.
+	// Idempotent: another pass, another end — still one email, no new call.
 	h.runRecaps()
 	h.goLive(wb.ID)
 	h.endSession(wb.ID)
@@ -226,21 +226,14 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 	if model.callCount() != 1 {
 		t.Fatalf("model calls after re-runs = %d, want 1", model.callCount())
 	}
-	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recap", nil)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("regenerate: %d %s", res.StatusCode, raw)
-	}
-	if model.callCount() != 2 {
-		t.Fatalf("regenerate made %d calls in all, want 2", model.callCount())
-	}
 	if len(h.recapMails(wb.ID)) != 2 {
-		t.Fatal("regenerate emailed again")
+		t.Fatal("a second end emailed again")
 	}
 	// Counted against the month as feature "recap".
 	var calls int
 	_ = h.store.Pool().QueryRow(ctx, `SELECT count(*) FROM ai_usage WHERE feature = 'recap' AND host_id = $1`, host.ID).Scan(&calls)
-	if calls != 2 {
-		t.Errorf("recap usage rows = %d, want 2", calls)
+	if calls != 1 {
+		t.Errorf("recap usage rows = %d, want 1", calls)
 	}
 }
 
@@ -265,11 +258,11 @@ func TestRecapAfterMeetingFromEngagementOnly(t *testing.T) {
 	if got.Status != types.RecapReady || got.Source != types.RecapSourceEngagementOnly {
 		t.Fatalf("recap = %+v", got)
 	}
-	if len(got.Recap.Chapters) != 0 || len(got.Recap.NotableQuotes) != 0 || !strings.Contains(got.Recap.Notice, "Turn on captions") {
+	if len(got.Recap.Chapters) != 0 || len(got.Recap.NotableQuotes) != 0 || !strings.Contains(got.Recap.Notice, "AI switch on") {
 		t.Errorf("engagement-only recap = %+v", got.Recap)
 	}
 	mails := h.recapMails(wb.ID)
-	if len(mails) != 2 || mails[1].Email != strings.ToLower(host.Email) || !strings.Contains(mails[1].Body, "Turn on captions") {
+	if len(mails) != 2 || mails[1].Email != strings.ToLower(host.Email) || !strings.Contains(mails[1].Body, "AI switch on") {
 		t.Fatalf("mails = %+v", mails)
 	}
 }
@@ -365,10 +358,6 @@ func TestRecapRespectsTheSwitchTheCapAndAnEmptySession(t *testing.T) {
 	if got := h.getRecap(capped.ID); got.Status != types.RecapSkipped || got.Reason != types.RecapReasonAILimit {
 		t.Fatalf("capped = %+v", got)
 	}
-	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+capped.ID+"/recap", nil)
-	if res.StatusCode != http.StatusTooManyRequests || errorCode(t, raw) != "ai_limit" {
-		t.Fatalf("regenerate over the cap: %d %s", res.StatusCode, raw)
-	}
 
 	// The switch off: no call at all.
 	off := false
@@ -383,10 +372,6 @@ func TestRecapRespectsTheSwitchTheCapAndAnEmptySession(t *testing.T) {
 	if got := h.getRecap(dark.ID); got.Status != types.RecapSkipped || got.Reason != types.RecapReasonAIOff {
 		t.Fatalf("ai off = %+v", got)
 	}
-	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+dark.ID+"/recap", nil)
-	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {
-		t.Fatalf("regenerate with ai off: %d %s", res.StatusCode, raw)
-	}
 
 	if model.callCount() != 0 {
 		t.Fatalf("model calls = %d, want none", model.callCount())
@@ -398,48 +383,38 @@ func TestRecapRespectsTheSwitchTheCapAndAnEmptySession(t *testing.T) {
 	}
 }
 
-func TestRecapRegenerateGuards(t *testing.T) {
+/* Only the session's own host reads its recap, and there is no Regenerate: the recap is
+ * written once, automatically, and POST …/recap is not a route. */
+func TestRecapAccessAndNoRegenerate(t *testing.T) {
 	h, model := aiHarness(t, recapReply, nil)
 	host := recapHost(t, h)
 	wb := h.newWebinar("Guarded", nil)
 	h.goLive(wb.ID)
 	h.question(wb.ID, "gq1", "A question", 1)
-
-	// Not ended yet.
-	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recap", nil)
-	if res.StatusCode != http.StatusConflict || errorCode(t, raw) != "not_ended" {
-		t.Fatalf("live: %d %s", res.StatusCode, raw)
-	}
 	h.endSession(wb.ID)
 
-	// Another host cannot read or regenerate it.
+	// No Regenerate route.
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recap", nil)
+	if res.StatusCode != http.StatusMethodNotAllowed && res.StatusCode != http.StatusNotFound {
+		t.Fatalf("POST recap: %d %s, want 405 or 404", res.StatusCode, raw)
+	}
+
+	// Another host cannot read it.
 	h.logout()
 	h.signup("Someone Else", "someone-else-recap@test.dev", true)
-	for _, m := range []string{http.MethodGet, http.MethodPost} {
-		if res, _ := h.do(m, "/api/host/webinars/"+wb.ID+"/recap", nil); res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusForbidden {
-			t.Fatalf("%s by another host: %d", m, res.StatusCode)
-		}
+	if res, _ := h.do(http.MethodGet, "/api/host/webinars/"+wb.ID+"/recap", nil); res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET by another host: %d", res.StatusCode)
 	}
 	h.logout()
 	h.login(host.Email)
 
-	// Three in ten minutes, then rate limited.
-	for i := 0; i < 3; i++ {
-		if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recap", nil); res.StatusCode != http.StatusOK {
-			t.Fatalf("regenerate %d: %d %s", i, res.StatusCode, raw)
-		}
-	}
-	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/recap", nil)
-	if res.StatusCode != http.StatusTooManyRequests || errorCode(t, raw) != "rate_limited" {
-		t.Fatalf("fourth: %d %s", res.StatusCode, raw)
-	}
-	if model.callCount() != 3 {
-		t.Fatalf("model calls = %d, want 3", model.callCount())
-	}
-	// A regenerate before the lane ran made it ready; the lane neither rewrites nor mails it.
+	// The host's own poll writes it, once.
 	h.runRecaps()
-	if model.callCount() != 3 || len(h.recapMails(wb.ID)) != 0 {
-		t.Fatalf("lane after regenerate: calls %d mails %d", model.callCount(), len(h.recapMails(wb.ID)))
+	if got := h.getRecap(wb.ID); got.Status != types.RecapReady {
+		t.Fatalf("recap = %+v, want ready", got)
+	}
+	if model.callCount() != 1 {
+		t.Fatalf("model calls = %d, want 1", model.callCount())
 	}
 }
 

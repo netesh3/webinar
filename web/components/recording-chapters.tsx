@@ -1,6 +1,7 @@
 "use client";
 
 import { formatChapterTime, type PlayerChapter } from "@/lib/recap";
+import { SparklesIcon } from "./icons";
 
 /* The AI recap's chapters under a recording: each one jumps the player to where that part
  * of the session starts. The times are the recording's own (lib/recap.ts chapterSeekTimes),
@@ -16,7 +17,10 @@ export function RecordingChapters({
   return (
     <div className="border-t border-line px-4 py-3">
       <p className="mb-1.5 text-[12px] font-semibold tracking-wide text-ink-3 uppercase">
-        Chapters <span className="font-normal normal-case">· by AI</span>
+        Chapters{" "}
+        <span className="inline-flex items-center gap-1 font-normal normal-case">
+          · <SparklesIcon className="size-3 text-brand" /> by AI
+        </span>
       </p>
       <ol className="grid gap-0.5 sm:grid-cols-2">
         {chapters.map((c) => (

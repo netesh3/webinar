@@ -323,7 +323,20 @@ type SessionControls struct {
 	 * POST /api/host/webinars/{slug}/captions/server and by the agent, never by PATCH
 	 * /controls. */
 	ServerCaptions bool `json:"serverCaptions"`
-	Locked         bool `json:"locked"`
+	/* AIEnabled is the room's "AI" switch: whether this session is in AI at all. On, a
+	 * transcript is captured for the AI recap even with captions (CaptionsEnabled, which is
+	 * only whether people SEE the lines) off — by the server caption agent in a transcript-only
+	 * mode, or silently by the speakers' browsers where no agent runs. Off at the end of the
+	 * session, no recap is written and nothing of the session goes to a model.
+	 *
+	 * On by default (webinars.ai_enabled, migration 0129), but only ever true when the host's
+	 * account has the ai feature: an account without it reads false here and AIAvailable
+	 * false, and the room shows no switch. */
+	AIEnabled bool `json:"aiEnabled"`
+	// AIAvailable is whether the host's account has the ai feature, so the room knows to
+	// show the switch. Read-only: it follows the account, not PATCH /controls.
+	AIAvailable bool `json:"aiAvailable"`
+	Locked      bool `json:"locked"`
 
 	// ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
 	// to the stage only. The host owns it, which is the point — an attendee picking
@@ -335,6 +348,58 @@ type SessionControls struct {
 	// change without polling. Messages still carry the destination they were sent
 	// with, so switching the setting never rewrites history.
 	ChatDestination ChatDestination `json:"chatDestination"`
+
+	/* AudienceLayout is how the composite arranges the stage: the picture edge (LL-HLS)
+	 * viewers, CDN viewers and recordings get, drawn by the egress from
+	 * web/app/recorder-template. The egress page is in the room and reads this from room
+	 * metadata, so a change re-lays the composite live without restarting the egress.
+	 * Panelists' own views are not affected. Missing means AudienceLayoutAuto. */
+	AudienceLayout AudienceLayout `json:"audienceLayout"`
+}
+
+// AudienceLayout names a composite layout; web/lib/composite-layouts.ts draws each one.
+type AudienceLayout string
+
+const (
+	// AudienceLayoutAuto is the layout the composite always had: a share next to (or, on
+	// edge, under) the cameras, otherwise the active speaker with a strip.
+	AudienceLayoutAuto AudienceLayout = "auto"
+	// AudienceLayoutSpeaker is the active speaker large with a filmstrip.
+	AudienceLayoutSpeaker AudienceLayout = "speaker"
+	// AudienceLayoutGrid is equal tiles, one page at most.
+	AudienceLayoutGrid AudienceLayout = "grid"
+	// AudienceLayoutShareOnly is the share alone; speaker when nobody shares.
+	AudienceLayoutShareOnly AudienceLayout = "share_only"
+	// AudienceLayoutShareSpeaker is the share with the active speaker in a corner bubble.
+	AudienceLayoutShareSpeaker AudienceLayout = "share_speaker"
+	// AudienceLayoutSideBySide is the share on the left two thirds, the speaker on the right.
+	AudienceLayoutSideBySide AudienceLayout = "side_by_side"
+	// AudienceLayoutVideoOnly is cameras only; a share is ignored.
+	AudienceLayoutVideoOnly AudienceLayout = "video_only"
+)
+
+// AudienceLayouts is every layout this server accepts, in the order the picker shows them.
+var AudienceLayouts = []AudienceLayout{
+	AudienceLayoutAuto, AudienceLayoutSpeaker, AudienceLayoutGrid, AudienceLayoutShareOnly,
+	AudienceLayoutShareSpeaker, AudienceLayoutSideBySide, AudienceLayoutVideoOnly,
+}
+
+// Valid reports whether l is a layout the composite knows how to draw.
+func (l AudienceLayout) Valid() bool {
+	for _, v := range AudienceLayouts {
+		if l == v {
+			return true
+		}
+	}
+	return false
+}
+
+// OrDefault is l, or auto for an unset or unknown value.
+func (l AudienceLayout) OrDefault() AudienceLayout {
+	if l.Valid() {
+		return l
+	}
+	return AudienceLayoutAuto
 }
 
 // ChatDestination is the audience for a chat message.
@@ -383,10 +448,15 @@ type ControlsPatch struct {
 	ReactionsEnabled *bool `json:"reactionsEnabled,omitempty"`
 	PollsEnabled     *bool `json:"pollsEnabled,omitempty"`
 	CaptionsEnabled  *bool `json:"captionsEnabled,omitempty"`
-	Locked           *bool `json:"locked,omitempty"`
+	// AIEnabled is the room's AI switch (SessionControls.AIEnabled). Refused for an account
+	// without the ai feature.
+	AIEnabled *bool `json:"aiEnabled,omitempty"`
+	Locked    *bool `json:"locked,omitempty"`
 	// A pointer for the same reason as the others: "not mentioned" and "set to
 	// everyone" are different requests.
 	ChatDestination *ChatDestination `json:"chatDestination,omitempty"`
+	// Refused unless Valid: see AudienceLayout.
+	AudienceLayout *AudienceLayout `json:"audienceLayout,omitempty"`
 }
 
 // ------------------------------------------------------------------- polls
@@ -1222,7 +1292,7 @@ var Features = []Feature{
 	{
 		Key:         FeatureAI,
 		Label:       "AI writing",
-		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI. Counts against the monthly AI limit. Off means no AI buttons.",
+		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off means no AI buttons and no recaps.",
 	},
 }
 

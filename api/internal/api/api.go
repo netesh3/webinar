@@ -177,8 +177,6 @@ type Server struct {
 	salesMsgLimit   *httpx.RateLimiter
 	// aiWriteLimit caps a host's AI drafts a minute ("Write with AI" and the like).
 	aiWriteLimit *httpx.RateLimiter
-	// recapLimit caps a host's Regenerate presses on the AI recap (recap.go).
-	recapLimit *httpx.RateLimiter
 
 	// rt carries session events to edge-delivery viewers (edge.go). Never nil.
 	rt *realtime.Bus
@@ -265,8 +263,6 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		salesMsgLimit:   httpx.NewRateLimiter(12, time.Minute),
 		// Six drafts a minute is a host trying wordings; more is a button stuck down.
 		aiWriteLimit: httpx.NewRateLimiter(6, time.Minute),
-		// A recap is a long read for the model: three rewrites in ten minutes is plenty.
-		recapLimit: httpx.NewRateLimiter(3, 10*time.Minute),
 	}
 	srv.initEngagement()
 
@@ -721,9 +717,8 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/engagement/attendees/{identity}", s.handleEngagementAttendee)
 					r.Get("/engagement.csv", s.handleEngagementCSV)
 					r.Get("/transcript.txt", s.handleTranscript)
-					// The AI recap, and Regenerate. See recap.go.
+					// The AI recap, written automatically after the session. See recap.go.
 					r.Get("/recap", s.handleGetRecap)
-					r.Post("/recap", s.handleRegenerateRecap)
 					// Hot leads and the follow-up writer. See leads.go and followups.go.
 					r.Get("/leads", s.handleGetLeads)
 					r.Get("/followups", s.handleGetFollowups)

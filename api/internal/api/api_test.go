@@ -114,8 +114,10 @@ type fakeRooms struct {
 	// a panelist-only message actually reaches.
 	sent []sentPacket
 	// dispatches is the caption agent dispatches currently open, by room (server_captions_test.go).
-	dispatches  map[string]string
-	dispatchErr error
+	dispatches map[string]string
+	// dispatchMeta is the metadata each open dispatch was created with, by room.
+	dispatchMeta map[string]string
+	dispatchErr  error
 }
 
 type sentPacket struct {
@@ -2038,6 +2040,75 @@ func TestControlsPatchIsPartial(t *testing.T) {
 	}
 	if !updated.Controls.QAEnabled || !updated.Controls.HideAttendees {
 		t.Errorf("an unmentioned control was reset: %+v", updated.Controls)
+	}
+}
+
+// The audience layout starts as auto, is refused when unknown, and once set is both
+// persisted and pushed to room metadata, which is how the egress page re-lays the composite
+// without restarting.
+func TestAudienceLayoutControl(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Layout Host", "layout@test.dev", true)
+	wb := h.newWebinar("Layout Session", nil)
+	if wb.Controls.AudienceLayout != types.AudienceLayoutAuto {
+		t.Fatalf("new webinar audienceLayout = %q, want auto", wb.Controls.AudienceLayout)
+	}
+
+	bad := types.AudienceLayout("mosaic")
+	res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/controls",
+		types.ControlsPatch{AudienceLayout: &bad})
+	if res.StatusCode != http.StatusBadRequest && res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown layout: status %d body %s, want a refusal", res.StatusCode, raw)
+	}
+	if !strings.Contains(string(raw), "audienceLayout") {
+		t.Errorf("refusal does not name the field: %s", raw)
+	}
+
+	for _, l := range types.AudienceLayouts {
+		l := l
+		res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/controls",
+			types.ControlsPatch{AudienceLayout: &l})
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("layout %q: status %d body %s", l, res.StatusCode, raw)
+		}
+		var updated types.Webinar
+		h.decode(raw, &updated)
+		if updated.Controls.AudienceLayout != l {
+			t.Errorf("layout %q: response says %q", l, updated.Controls.AudienceLayout)
+		}
+		if meta := h.rooms.roomMeta(t, lk.RoomName(wb.ID)); meta.Controls.AudienceLayout != l {
+			t.Errorf("layout %q: room metadata says %q", l, meta.Controls.AudienceLayout)
+		}
+	}
+
+	// Persisted, and left alone by a patch that does not mention it.
+	off := false
+	if res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/controls",
+		types.ControlsPatch{ChatEnabled: &off}); res.StatusCode != http.StatusOK {
+		t.Fatalf("chat off: status %d body %s", res.StatusCode, raw)
+	}
+	stored, err := h.store.WebinarBySlug(context.Background(), wb.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Controls.AudienceLayout != types.AudienceLayoutVideoOnly {
+		t.Errorf("stored audienceLayout = %q, want video_only", stored.Controls.AudienceLayout)
+	}
+}
+
+func TestAudienceLayoutValid(t *testing.T) {
+	for _, l := range types.AudienceLayouts {
+		if !l.Valid() {
+			t.Errorf("%q is listed but not valid", l)
+		}
+	}
+	for _, l := range []types.AudienceLayout{"", "Auto", "mosaic"} {
+		if l.Valid() {
+			t.Errorf("%q should not be valid", l)
+		}
+		if l.OrDefault() != types.AudienceLayoutAuto {
+			t.Errorf("%q.OrDefault() = %q", l, l.OrDefault())
+		}
 	}
 }
 

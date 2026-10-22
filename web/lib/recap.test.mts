@@ -101,14 +101,22 @@ assert.equal(
 
 // recapEmptyState
 assert.equal(recapEmptyState({ status: "ready", recap: { summary: "s" } as never }), null);
-assert.equal(recapEmptyState({ status: "none", reason: "not_ended" })?.canGenerate, false);
+assert.equal(recapEmptyState({ status: "none", reason: "not_ended" })?.pending, false);
 assert.match(recapEmptyState({ status: "pending", reason: "waiting_transcript" })!.title, /Still processing/);
 assert.equal(recapEmptyState({ status: "pending", reason: "processing" })?.pending, true);
 assert.match(recapEmptyState({ status: "skipped", reason: "ai_off" })!.title, /switched off/);
 assert.match(recapEmptyState({ status: "skipped", reason: "ai_limit" })!.title, /limit/);
-assert.match(recapEmptyState({ status: "skipped", reason: "empty" })!.detail, /Turn on captions/);
-assert.equal(recapEmptyState({ status: "failed", reason: "ai_unavailable" })?.canGenerate, true);
-assert.equal(recapEmptyState({ status: "none" })?.canGenerate, true);
+assert.match(recapEmptyState({ status: "skipped", reason: "empty" })!.title, /Nothing to recap/);
+assert.match(recapEmptyState({ status: "skipped", reason: "ai_session_off" })!.title, /AI was off for this session/);
+assert.match(recapEmptyState({ status: "failed", reason: "ai_unavailable" })!.title, /couldn't be written/);
+// The recap is automatic: no state tells the host to generate or regenerate one.
+for (const reason of ["not_ended", "waiting_transcript", "ai_off", "ai_session_off", "ai_limit", "empty", "ai_unavailable", "failed", undefined]) {
+  for (const status of ["none", "pending", "skipped", "failed"]) {
+    const st = recapEmptyState({ status, reason } as never)!;
+    assert.doesNotMatch(st.title + " " + st.detail, /regenerat|generate/i, `${status}/${reason}`);
+    assert.equal("canGenerate" in st, false);
+  }
+}
 
 assert.match(recapSourceLabel("engagement_only"), /Q&A/);
 assert.equal(recapSourceLabel(undefined), "");

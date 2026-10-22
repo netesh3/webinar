@@ -69,6 +69,7 @@ import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
 import { planRecovery, RECOVERY_BACKOFF_MS } from "@/lib/recovery";
 import { ActiveSpeakerProvider } from "./active-speaker";
+import { AIToggle } from "./ai-toggle";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
@@ -103,6 +104,7 @@ import { SidePanel } from "./side-panel";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
+import { showsMeetingInfo } from "@/lib/audience-tools";
 import { WhiteboardProvider } from "./whiteboard/whiteboard-context";
 import { WhiteboardStage } from "./whiteboard/whiteboard-stage";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
@@ -1814,7 +1816,14 @@ export function RoomHeader() {
     >
       <div className="pointer-events-auto min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <MeetingInfo />
+          {/* Not for the audience (lib/audience-tools.ts): the ID and invite link are the
+              stage's to hand out, and a viewer of the stream has the landing page already. */}
+          {showsMeetingInfo({
+            isHost,
+            canPublish: permissions.canPublish,
+            meeting: Boolean(join.meeting),
+            cdnStage: Boolean(cdnStage),
+          }) && <MeetingInfo />}
           <LiveClock />
           {/* Everyone sees this, including the audience — consent is not something
               to leave to the browser that pressed the button. */}
@@ -1857,6 +1866,8 @@ export function RoomHeader() {
             <span className="hidden sm:inline">Controls</span>
           </button>
         )}
+        {/* The room's AI switch: host and co-hosts of an account with AI, top right. */}
+        <AIToggle />
       </div>
     </header>
   );

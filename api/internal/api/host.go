@@ -1137,6 +1137,8 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	// EnsureRoom only carries metadata when it creates the room, so an existing
 	// room needs the update pushed explicitly.
 	s.pushRoomMetadata(r, sfu, wb)
+	// AI on for this session: the caption agent joins for the transcript, captions or not.
+	s.syncAITranscript(r.Context(), wb, sfu)
 
 	if wb.Kind != types.KindSimulive {
 		if wb.Options.Multistream && s.youtube != nil {
@@ -1443,7 +1445,7 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	}
 
 	// The AI recap for the host, written by the recap lane once the session has settled.
-	s.scheduleRecap(ctx, slug, serverCaptions)
+	s.scheduleRecap(ctx, wb, serverCaptions)
 
 	s.log.Info("webinar ended", "slug", slug)
 	return wb, nil
@@ -1503,6 +1505,33 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Refused for the same reason: a typo should not silently become "auto".
+	if p.AudienceLayout != nil && !p.AudienceLayout.Valid() {
+		httpx.Fields(w, map[string]string{
+			"audienceLayout": "Not a layout this server knows.",
+		})
+		return
+	}
+	// The AI switch is for an account that has AI. Turning it off is always allowed.
+	if p.AIEnabled != nil && *p.AIEnabled {
+		hostID, err := s.store.HostIDFor(r.Context(), slug)
+		if errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+			return
+		}
+		if err != nil {
+			s.fail(w, r, "update controls: host", err)
+			return
+		}
+		host, err := s.store.UserByID(r.Context(), hostID)
+		if err != nil {
+			s.fail(w, r, "update controls: host", err)
+			return
+		}
+		if !s.featureAllowed(w, host, types.FeatureAI) {
+			return
+		}
+	}
 	/* Hiding the audience has nobody to hide in a meeting — everyone is on the stage — and a
 	 * meeting's guests would vanish from each other's grids. Refused before anything is saved;
 	 * turning it off is already the state and goes through. */
@@ -1546,11 +1575,21 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Captions off is captions off, whichever engine was producing them: the caption agent
-	// leaves with the switch rather than transcribing a room nobody shows the lines in.
-	if p.CaptionsEnabled != nil && !*p.CaptionsEnabled && s.turnOffServerCaptions(r.Context(), slug, sfu) {
-		if fresh, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
-			wb = fresh
+	/* The caption agent follows both switches (syncAITranscript): captions off is captions off,
+	 * whichever engine was producing them, unless the session's AI switch still wants the
+	 * transcript, in which case the agent stays and its lines are only stored. AI turned on
+	 * mid-session brings the agent in; AI off with captions off sends it away. */
+	if p.CaptionsEnabled != nil || p.AIEnabled != nil {
+		changed := false
+		if wb.Status == types.StatusLive {
+			changed = s.syncAITranscript(r.Context(), wb, sfu)
+		} else if p.CaptionsEnabled != nil && !*p.CaptionsEnabled {
+			changed = s.turnOffServerCaptions(r.Context(), slug, sfu)
+		}
+		if changed {
+			if fresh, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+				wb = fresh
+			}
 		}
 	}
 

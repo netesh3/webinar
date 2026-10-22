@@ -1,4 +1,4 @@
-from webcaptions.selection import SpeakerSelector
+from webcaptions.selection import SHARE_SUFFIX, SpeakerSelector, pipeline_key, wants_audio
 
 
 def make(n=2, linger=3.0):
@@ -66,3 +66,16 @@ def test_remove_frees_the_slot():
 def test_duplicates_and_blanks_ignored():
     s = make(2)
     assert s.update(["a", "a", "", "b"], now=0) == {"a", "b"}
+
+
+def test_share_audio_is_always_wanted_mics_follow_the_selection():
+    chosen = {"user_a"}
+    assert wants_audio("user_b", True, chosen)  # a video played into a share, mic not speaking
+    assert wants_audio("user_a", False, chosen)
+    assert not wants_audio("user_b", False, chosen)
+
+
+def test_mic_and_share_audio_get_separate_pipelines():
+    assert pipeline_key("user_a", False) == "user_a"
+    assert pipeline_key("user_a", True) == "user_a" + SHARE_SUFFIX
+    assert pipeline_key("user_a", True) != pipeline_key("user_a", False)

@@ -21,7 +21,7 @@ func TestRecapEmail(t *testing.T) {
 		RecordingURL: "https://app.test/host/money?tab=recording",
 	}
 	subject, text, html := RecapEmail(n)
-	if subject != "Your AI recap: Money <basics>" {
+	if subject != "✨ Your AI recap: Money <basics>" {
 		t.Errorf("subject = %q", subject)
 	}
 	for _, want := range []string{

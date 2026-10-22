@@ -24,7 +24,7 @@ const testCaptionsSecret = "captions-secret-captions-secret-0123456789"
 func captionsConfig(c *config.Config) { c.CaptionsSecret = testCaptionsSecret }
 
 // The fake's half of agentDispatcher: one dispatch per room, like lk.Client.DispatchAgent.
-func (f *fakeRooms) DispatchAgent(_ context.Context, room, agentName, _ string) (string, error) {
+func (f *fakeRooms) DispatchAgent(_ context.Context, room, agentName, metadata string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.dispatchErr != nil {
@@ -34,6 +34,10 @@ func (f *fakeRooms) DispatchAgent(_ context.Context, room, agentName, _ string) 
 		f.dispatches = map[string]string{}
 	}
 	f.dispatches[room] = agentName
+	if f.dispatchMeta == nil {
+		f.dispatchMeta = map[string]string{}
+	}
+	f.dispatchMeta[room] = metadata
 	return "AD_" + room, nil
 }
 

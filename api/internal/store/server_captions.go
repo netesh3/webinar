@@ -32,6 +32,21 @@ func (s *Store) SetServerCaptions(ctx context.Context, slug string, on bool) err
 	return nil
 }
 
+/* RequestCaptionAgent records that the caption agent has been asked into the room for the AI's
+ * transcript only: server_captions on, like SetServerCaptions(true), but captions_enabled —
+ * whether people see the lines — left as it is. */
+func (s *Store) RequestCaptionAgent(ctx context.Context, slug string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE webinars SET server_captions = true, updated_at = now() WHERE slug = $1`, slug)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ServerCaptionsRequested reports whether the host has asked for server captions.
 func (s *Store) ServerCaptionsRequested(ctx context.Context, slug string) (bool, error) {
 	var on bool

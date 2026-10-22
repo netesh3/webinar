@@ -98,57 +98,58 @@ export function actionItemsText(items: readonly RecapActionItem[]): string {
 export type RecapEmptyState = {
   title: string;
   detail: string;
-  /** Whether a Generate / Regenerate button makes sense here. */
-  canGenerate: boolean;
   /** Still being written: worth checking again shortly. */
   pending: boolean;
 };
 
-/** What the recap card says when there is no recap to show. Null when there is one. */
+/* What the recap card says when there is no recap to show. Null when there is one.
+ *
+ * The recap is written automatically when a session ends; there is no button to ask for
+ * another, so none of these tells the host to generate or regenerate anything. */
 export function recapEmptyState(r: SessionRecapResponse): RecapEmptyState | null {
   if (r.status === "ready" && r.recap) return null;
   switch (r.reason) {
     case "not_ended":
       return {
         title: "The AI recap comes after the session",
-        detail: "When this session ends, an AI recap is written from the captions, Q&A, polls and chat, and emailed to you.",
-        canGenerate: false,
+        detail: "When this session ends, an AI recap is written automatically from what was said, the Q&A, polls and chat, and emailed to you.",
         pending: false,
       };
     case "waiting_transcript":
       return {
         title: "Still processing",
-        detail: "Waiting for the full transcript, which takes up to 30 minutes after the session ends. The recap follows straight after, and we'll email it to you.",
-        canGenerate: true,
+        detail: "Waiting for the full transcript, which takes up to 30 minutes after the session ends. The recap follows automatically, and we'll email it to you.",
         pending: true,
       };
     case "ai_off":
       return {
         title: "AI is switched off for this account",
-        detail: "Ask us to turn on AI features and every session will get a recap.",
-        canGenerate: false,
+        detail: "Ask us to turn on AI features and every session will get a recap automatically.",
+        pending: false,
+      };
+    case "ai_session_off":
+      return {
+        title: "AI was off for this session",
+        detail: "The AI switch in the room was off when this session ended, so it was kept out of AI and has no recap. Sessions with the switch on get one automatically.",
         pending: false,
       };
     case "ai_limit":
       return {
         title: "AI limit reached for this month",
         detail: "This session's recap wasn't written because this month's AI allowance is used up. It resets on the 1st.",
-        canGenerate: true,
         pending: false,
       };
     case "empty":
       return {
         title: "Nothing to recap",
-        detail: "This session had no captions, questions, polls or chat. Turn on captions next time for a full AI recap.",
-        canGenerate: true,
+        detail: "Nothing was said, asked, polled or chatted in this session, so there was nothing for an AI recap.",
         pending: false,
       };
     case "ai_unavailable":
     case "failed":
       return {
         title: "The recap couldn't be written",
-        detail: "The AI service didn't answer. Try Regenerate in a minute.",
-        canGenerate: true,
+        detail: "The AI service didn't answer after several tries, so this session has no recap.",
         pending: false,
       };
   }
@@ -156,14 +157,12 @@ export function recapEmptyState(r: SessionRecapResponse): RecapEmptyState | null
     return {
       title: "Writing your AI recap…",
       detail: "It's usually ready a minute or two after the session ends. We'll email it to you too.",
-      canGenerate: false,
       pending: true,
     };
   }
   return {
-    title: "No AI recap yet",
-    detail: "This session ended before AI recaps were switched on. Generate one now from its captions, Q&A, polls and chat.",
-    canGenerate: true,
+    title: "No AI recap for this session",
+    detail: "AI recaps are written automatically after every session that ends with AI on. This one ended before they were.",
     pending: false,
   };
 }

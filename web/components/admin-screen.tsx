@@ -14,6 +14,7 @@ import {
 import { COSTS, FEATURE_COSTS, stageCostText } from "@/lib/admin-costs";
 import {
   DefaultMediaQuotaMB,
+  FeatureAI,
   FeatureInstantWebinar,
   MaxMediaQuotaMB,
   PlanBusiness,
@@ -66,7 +67,7 @@ import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 import { AdminSales } from "./admin-sales";
 import { AdminCostCalculator } from "./admin-cost-calculator";
-import { ArrowLeftIcon } from "./icons";
+import { ArrowLeftIcon, SparklesIcon } from "./icons";
 
 /* The admin panel: a dashboard first, then the two lists.
  *
@@ -1021,6 +1022,7 @@ function FeatureToggle({
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <div className="text-[13px] font-medium text-ink-1">
+          {row.id === FeatureAI && <SparklesIcon className="mr-1 inline size-3.5 align-[-2px] text-brand" />}
           {row.label}{" "}
           <span className={`text-[11px] font-normal ${effective ? "text-ok" : "text-ink-3"}`}>
             · {effective ? "on" : "off"}
@@ -1247,7 +1249,10 @@ function PlanMatrix() {
               {featureCatalogue.map((f) => (
                 <tr key={f.key} className="border-b border-line last:border-0">
                   <td className="px-4 py-2.5">
-                    <div className="font-medium text-ink-1">{f.label}</div>
+                    <div className="font-medium text-ink-1">
+                      {f.key === FeatureAI && <SparklesIcon className="mr-1 inline size-3.5 align-[-2px] text-brand" />}
+                      {f.label}
+                    </div>
                     <div className="text-[12px] text-ink-3">{f.description}</div>
                   </td>
                   {TIER_COLUMNS.map((c) => (
