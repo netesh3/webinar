@@ -312,6 +312,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The Accounts tab's Hosts / Attendees chips: search and chip combine, and the
 	# chip counts follow the search text.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-accounts-filter.test.mts
+	# The host home's list filters in the URL: tab, search and dates survive a refresh or
+	# the back button, defaults stay out of the address, bad dates read as unset.
+	cd web && node --experimental-strip-types --no-warnings lib/host-list-url.test.mts
 	# The virtual background's presenter lock: a hand the mask cut off from the arm stays,
 	# other people (apart, beside, walking behind) still go.
 	cd web && node --experimental-strip-types --no-warnings lib/presenter-lock.test.mts

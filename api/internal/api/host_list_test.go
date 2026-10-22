@@ -474,3 +474,52 @@ func pendingSubject(t *testing.T, h *harness, subject string) bool {
 	}
 	return false
 }
+
+// Drafts run by last edit, newest first, and page down that order: the draft a
+// host just touched is the one at the top, whatever placeholder date it holds.
+func TestHostListDraftsAreLastEditedFirst(t *testing.T) {
+	h := newHarness(t)
+	h.signup("Draft Host", "drafts@test.dev", true)
+
+	day := time.Now().AddDate(0, 0, 6).UTC().Truncate(time.Minute)
+	early := h.createAt("Starts first", day.Format(time.RFC3339), "draft")
+	middle := h.createAt("Starts second", day.Add(time.Hour).Format(time.RFC3339), "draft")
+	late := h.createAt("Starts last", day.Add(2*time.Hour).Format(time.RFC3339), "draft")
+	for slug, hoursAgo := range map[string]int{late: 3, early: 1, middle: 2} {
+		if _, err := h.store.Pool().Exec(t.Context(),
+			`UPDATE webinars SET updated_at = now() - make_interval(hours => $2) WHERE slug = $1`,
+			slug, hoursAgo); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	want := []string{early, middle, late}
+	got := h.hostPage("?tab=drafts")
+	if len(got.Items) != 3 {
+		t.Fatalf("drafts = %v, want three", topics(got.Items))
+	}
+	for i, slug := range want {
+		if got.Items[i].ID != slug {
+			t.Fatalf("drafts order = %v, want last edited first", topics(got.Items))
+		}
+	}
+
+	var paged []string
+	cursor := ""
+	for range 4 {
+		q := "?tab=drafts&limit=1"
+		if cursor != "" {
+			q += "&cursor=" + url.QueryEscape(cursor)
+		}
+		p := h.hostPage(q)
+		for _, w := range p.Items {
+			paged = append(paged, w.ID)
+		}
+		if cursor = p.NextCursor; cursor == "" {
+			break
+		}
+	}
+	if len(paged) != 3 || paged[0] != early || paged[1] != middle || paged[2] != late {
+		t.Errorf("paging drafts one at a time = %v, want %v", paged, want)
+	}
+}

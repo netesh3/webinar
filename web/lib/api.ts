@@ -29,6 +29,7 @@ import type {
   SalesInbox,
   ChatMessage as ChatTranscriptMessage,
   Account,
+  AttendingPage,
   AccountKind,
   AdminAccountCounts,
   SetAccountKindRequest,
@@ -245,6 +246,25 @@ function hostWebinarsPath(params: HostWebinarQuery): string {
   if (params.cursor) qs.set("cursor", params.cursor);
   const s = qs.toString();
   return `/api/host/webinars${s ? `?${s}` : ""}`;
+}
+
+export type AttendingQuery = {
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+};
+
+function attendingPath(params: AttendingQuery): string {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.cursor) qs.set("cursor", params.cursor);
+  const s = qs.toString();
+  return `/api/me/attending${s ? `?${s}` : ""}`;
 }
 
 // ------------------------------------------------------------------- public
@@ -692,6 +712,13 @@ export const api = {
       ttl: TTL_SESSION,
       force,
     }),
+
+  /** One page of the host portal's Attending tab: other people's sessions this
+   *  account registered for, live first then newest start first. `q` matches
+   *  the topic or the host's name; `from`/`to`/`cursor` as on hostWebinars.
+   *  Not cached: a registration made in another tab has to show up. */
+  attending: (params: AttendingQuery = {}) =>
+    request<AttendingPage>(attendingPath(params), fresh),
 
   // ------------------------------------------------------------------ host
 
@@ -1639,6 +1666,7 @@ export const api = {
 
 export type {
   Account,
+  AttendingPage,
   AppConfig,
   JoinResponse,
   LiveRoom,

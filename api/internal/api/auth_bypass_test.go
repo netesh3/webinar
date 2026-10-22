@@ -72,6 +72,7 @@ func TestAuthIsEnforcedWhenBypassIsOff(t *testing.T) {
 	for _, path := range []string{
 		"/api/auth/me",
 		"/api/me/registrations",
+		"/api/me/attending",
 		"/api/host/webinars",
 		"/api/host/stage",
 	} {

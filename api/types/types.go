@@ -3472,6 +3472,23 @@ type RegisteredWebinar struct {
 	Registration Registration `json:"registration"`
 }
 
+/* AttendingPage is one screen of the host portal's Attending tab: sessions other
+ * people host that this account registered for, newest first.
+ *
+ * GET /api/me/registrations still answers with every row, for WatchList and the
+ * top nav. This is the paged, searchable, date-filtered read for a list that
+ * only grows. Live sessions sort above the rest so the one the person can join
+ * right now is never on page three; everything else runs by start, latest first.
+ */
+type AttendingPage struct {
+	Items []RegisteredWebinar `json:"items"`
+	// NextCursor resumes after the last item, and is empty on the last page.
+	// Opaque, like HostWebinarPage's.
+	NextCursor string `json:"nextCursor,omitempty"`
+	// Total is how many rows match the search and dates, across every page.
+	Total int `json:"total"`
+}
+
 // LookupRequest resolves the join keys a browser is holding back into
 // registrations. Registering without an account is still supported — the join
 // key is the credential, exactly like the personal link Zoom emails out.

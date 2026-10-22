@@ -550,6 +550,7 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/me", func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Get("/registrations", s.handleMyRegistrations)
+			r.Get("/attending", s.handleAttending)
 			r.Post("/host-request", s.handleHostRequest)
 			r.Get("/billing", s.handleMyBilling)
 			r.Post("/billing/cancel", s.handleCancelSubscription)

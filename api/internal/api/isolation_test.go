@@ -225,6 +225,7 @@ func TestNoListEndpointLeaksAForeignWebinar(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/webinars", "the webinar list"},
 		{http.MethodGet, "/api/me/registrations", "this account's registrations"},
+		{http.MethodGet, "/api/me/attending", "sessions this account attends"},
 		{http.MethodGet, "/api/host/webinars", "the host's own webinars"},
 		{http.MethodGet, "/api/host/stage", "webinars this account presents on"},
 	} {

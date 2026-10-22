@@ -161,7 +161,7 @@ export function MyWebinarsList({
   );
 }
 
-function RegisteredCard({
+export function RegisteredCard({
   webinar: w,
   registration: r,
   past = false,
