@@ -26,6 +26,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
+      # rec/* recordings of the edge mix, collected by the mix recorder (docker-compose.mixrec.yml).
+      - ./recordings:/recordings
 
   # LiveKit Egress worker: runs headless Chromium to render the Zoom-style template,
   # captures audio & video streams, encodes to H.264/MP4, and uploads directly to Backblaze B2.

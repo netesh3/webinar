@@ -100,6 +100,21 @@ that already carries the SFU and an edge composite the live `small` model (~1.5â
 speakers) is the first thing to load-test; `CAPTIONS_MODEL=base` halves it. Memory: up to 4 GB
 (`CAPTIONS_MEMORY`) of the 8. Sizing in `deploy/captions/README.md`.
 
+## Cloud recording of edge webinars (optional, off)
+
+This box has room for one compositor, so a recording that needs a second (the pre-mix-recorder
+behaviour) is refused with `recording_no_capacity`. The mix recorder records the edge mix that
+is already running instead: no second Chrome, the audience's stream untouched. To enable it,
+put the same 32+ character secret in the API's Cloud Run env as `MIXREC_SECRET` and in
+`/opt/livekit/.env` here as `MIXREC_SECRET` (plus `MIXREC_API_URL` if the API is not
+`https://webinarliv.com`), then `redeploy.sh` (or push: the workflow syncs `mixrec/` with the rest
+of `deploy/livekit-hetzner/`). The API finds it at this box's live origin with `/live` replaced
+by `/mixrec`, i.e. `https://<reserved-ip>.sslip.io/mixrec`, or the `do-blr` project's
+`mixRecorderUrl`. The API also needs `RECORDINGS_BACKEND=s3` (R2): the recorder uploads through
+a URL the API signs, so no bucket credentials live here. Recordings wait as fMP4 segments under
+`/opt/livekit/recordings/` until they are uploaded (~0.8 GB an hour of mix). How it works and the
+fallbacks: `deploy/livekit-hetzner/README.md`, "Recording from the mix".
+
 ## When to grow (not needed yet)
 
 Decided 2026-10-22: one c-4 SFU here, the API stays on Cloud Run. Revisit when usage or the

@@ -199,6 +199,10 @@ ENV_VARS=(
 # host's Captions button keeps using on-device captions.
 [[ -n "${CAPTIONS_SECRET:-}" ]] && ENV_VARS+=("CAPTIONS_SECRET=${CAPTIONS_SECRET}")
 [[ -n "${CAPTIONS_AGENT_NAME:-}" ]] && ENV_VARS+=("CAPTIONS_AGENT_NAME=${CAPTIONS_AGENT_NAME}")
+# Cloud recording from the edge mix (deploy/livekit-hetzner/mixrec): the mix recorder's shared
+# secret. Unset, an edge recording starts a compositor of its own, as before.
+[[ -n "${MIXREC_SECRET:-}" ]] && ENV_VARS+=("MIXREC_SECRET=${MIXREC_SECRET}")
+[[ -n "${MIXREC_URL:-}" ]] && ENV_VARS+=("MIXREC_URL=${MIXREC_URL}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")

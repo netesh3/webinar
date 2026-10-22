@@ -19,6 +19,10 @@ Host ─WebRTC─▶ SFU box (LiveKit, Redis, MediaMTX) ──▶ Bunny ──�
 - **The API** starts a stopped worker when a host clicks Start on an Edge webinar on that
   project, stops workers when no Edge webinar has been live there for a while, and emails the
   operators when the pool is full or GCP cannot start a worker.
+- **Cloud recording** of an Edge webinar needs nothing here: with the mix recorder on the SFU
+  box (`deploy/livekit-hetzner/README.md`, "Recording from the mix") the API adds a second RTMP
+  output, `rec/<slug>`, to the worker's running mix, pushed to the SFU box's MediaMTX over the
+  same VPC route as the mix. No second composite, so a one-composite worker can record.
 - **Pool size** = number of worker VMs. Add more with the workflow; delete a VM to shrink it.
 - **Server captions (optional):** with instance metadata `captions-image` and `captions-secret`
   set, `startup.sh` also runs the caption agent (`deploy/captions`) beside egress, capped at half

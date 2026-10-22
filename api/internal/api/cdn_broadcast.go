@@ -116,6 +116,8 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 
 	s.log.Info("cdn broadcast started", "slug", wb.ID, "egress", info.EgressId)
 	s.attachDestinations(ctx, wb.ID, sfu, info.EgressId, rest)
+	// A recording taken from the mix this one replaces carries on in it.
+	s.reattachMixRecording(ctx, wb, sfu, info.EgressId)
 }
 
 /* broadcastEgressRunning asks LiveKit whether this room still has a live mix.
@@ -222,6 +224,7 @@ func (s *Server) startEgressRecording(
 	ctx context.Context,
 	wb types.Webinar,
 	sfu RoomManager,
+	recordingID string,
 	storageKey string,
 	s3Opts lk.EgressS3Options,
 ) (info *livekit.EgressInfo, carriesMix bool, err error) {
@@ -234,6 +237,17 @@ func (s *Server) startEgressRecording(
 	 * as one: a recording that cannot start is a message to the host, an audience cut off is
 	 * a room full of people on a spinner. */
 	if listErr != nil || len(running) > 0 || starting {
+		/* First choice with an edge mix running: record that mix, no second compositor
+		 * (mixrec.go). Unavailable — not configured, the recorder down, the mix refusing the
+		 * extra output — falls through to a compositor of the recording's own. */
+		if listErr == nil && len(running) > 0 && s.mixRecorderFor(ctx, wb) != "" {
+			info, err = s.startMixRecording(ctx, wb, sfu, recordingID, running)
+			if err == nil {
+				return info, false, nil
+			}
+			s.log.Warn("recording: could not record from the mix, starting its own compositor",
+				"slug", wb.ID, "error", err)
+		}
 		// 720p, as the file was while folded into the mix: the lighter second compositor is
 		// the one more likely to fit beside the first.
 		info, err = sfu.StartRoomCompositeEgress(ctx, lk.RoomName(wb.ID), storageKey, s3Opts,

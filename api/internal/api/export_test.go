@@ -8,6 +8,7 @@ import (
 	"github.com/livekit/protocol/livekit"
 
 	"github.com/netkumar/webcast/api/internal/ai"
+	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -94,3 +95,11 @@ func SetBroadcastRestartDelay(d time.Duration) func() {
 	broadcastRestartDelay = d
 	return func() { broadcastRestartDelay = old }
 }
+
+// SetRecordings puts m in place of the server's recording storage (a store that can sign
+// uploads, for the record-from-mix tests).
+func SetRecordings(s *Server, m media.Store) { s.recordings = m }
+
+// ForgetMixRestarts clears a slug's mix restart backoff, which is process-wide and would
+// otherwise carry over from an earlier test that used the same slug.
+func ForgetMixRestarts(slug string) { forgetMixRestarts(slug) }

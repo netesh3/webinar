@@ -1429,6 +1429,15 @@ func (s *Server) afterSessionEnded(ctx context.Context, slug string, wb types.We
 	// Stop any active Egress recording before deleting the room so it uploads cleanly.
 	if recs, err := s.store.Recordings(ctx, slug); err == nil {
 		for _, r := range recs {
+			if r.Status == types.RecordingActive && isMixRecording(r.EgressID) {
+				// Recorded from the mix (mixrec.go): the recorder finishes the file.
+				sfu, err := s.sfuFor(ctx, wb)
+				if err != nil {
+					sfu = nil
+				}
+				s.stopMixRecording(ctx, wb, sfu, r.ID)
+				continue
+			}
 			if r.Status == types.RecordingActive && r.EgressID != "" {
 				if sfu, err := s.sfuFor(ctx, wb); err == nil {
 					if _, err := sfu.StopEgress(ctx, r.EgressID); err != nil {

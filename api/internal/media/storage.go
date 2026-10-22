@@ -58,6 +58,13 @@ type Presigner interface {
 	PresignedGetURL(ctx context.Context, key, filename, contentType string, inline bool, expires time.Duration) (string, error)
 }
 
+// PutPresigner is an optional capability: a URL another machine can upload one object to
+// directly. Only object storage has it; the disk backend cannot take a recording that is
+// produced somewhere else, so record-from-mix is off with it (api/mixrec.go).
+type PutPresigner interface {
+	PresignedPutURL(ctx context.Context, key, contentType string, expires time.Duration) (string, error)
+}
+
 var (
 	ErrNotFound = errors.New("no such object")
 	ErrBadKey   = errors.New("unsafe storage key")

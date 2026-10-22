@@ -335,6 +335,29 @@ func (o *S3) PresignedGetURL(ctx context.Context, key, filename, contentType str
 	return req.URL, nil
 }
 
+/* PresignedPutURL is a time-limited URL another machine can PUT one object to, with this
+ * Content-Type, without holding the bucket's credentials: the mix recorder on an SFU box
+ * uploads a recording this way (api/mixrec.go). One PUT, so at most 5 GiB. */
+func (o *S3) PresignedPutURL(ctx context.Context, key, contentType string, expires time.Duration) (string, error) {
+	if o.client == nil {
+		return "", errors.New("s3 client is not initialized")
+	}
+	input := &s3.PutObjectInput{
+		Bucket: aws.String(o.bucket),
+		Key:    aws.String(key),
+	}
+	if contentType != "" {
+		input.ContentType = aws.String(contentType)
+	}
+	req, err := s3.NewPresignClient(o.client).PresignPutObject(ctx, input, func(opts *s3.PresignOptions) {
+		opts.Expires = expires
+	})
+	if err != nil {
+		return "", fmt.Errorf("presign put %s: %w", key, err)
+	}
+	return req.URL, nil
+}
+
 // Finalize uploads the complete staged file in one call and then removes it.
 func (o *S3) Finalize(ctx context.Context, key string) error {
 	return o.FinalizeWithProgress(ctx, key, nil)
