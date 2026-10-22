@@ -2,12 +2,14 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { clusterIdFor, groupOpenQuestions, qaAssistOn, topQuestions } from "@/lib/qa-clusters";
 import { answerKind, questionAuthor } from "@/lib/qa-view";
 import { Alert } from "../controls";
 import { ArrowUpIcon, CheckIcon, EyeOffIcon, PinIcon, SendIcon } from "../icons";
 import { GlyphAvatar, SenderAvatar } from "../sender-avatar";
 import { RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
+import { ClusterCard, QALimitNote, SuggestAnswer, TopQuestionsStrip, useQAClusters } from "./qa-assist";
 import type { Question } from "@/lib/realtime";
 
 const MAX_CHARS = 600;
@@ -31,6 +33,16 @@ export function QAPanel() {
   const visible = realtime.questions.filter((q) => isHost || !q.dismissed);
   const open = visible.filter((q) => !q.answered);
   const done = visible.filter((q) => q.answered);
+
+  // The live Q&A assistant (qa-assist.tsx): host and co-hosts, with the room's AI on. Until
+  // the server says enabled, and whenever it does not, the list below is the plain one.
+  const qa = useQAClusters(slug, realtime.qaClustersRevision, qaAssistOn(isHost, controls));
+  const assist = qa?.enabled ? qa : null;
+  const items = assist ? groupOpenQuestions(open, assist.clusters) : null;
+  const top = assist ? topQuestions(assist.top, assist.clusters, open) : [];
+  const markAnswered = (ids: string[]) => {
+    for (const id of ids) void persist(id, { answered: true, answer: "" });
+  };
 
   async function persist(
     id: string,
@@ -77,21 +89,64 @@ export function QAPanel() {
           </p>
         ) : (
           <div className="space-y-2.5">
+            {assist?.limited && <QALimitNote />}
+            {assist && <TopQuestionsStrip items={top} slug={slug} onAnswered={markAnswered} />}
             {done.length > 0 && open.length > 0 && <SectionLabel title="Open" count={open.length} />}
-            {open.map((q) => (
-              <QuestionCard
-                key={q.id}
-                question={q}
-                isHost={isHost}
-                myIdentity={me.identity}
-                onUpvote={() => void realtime.upvote(q.id)}
-                onAnswered={(answer) =>
-                  void persist(q.id, { answered: true, answer })
-                }
-                onPin={() => void persist(q.id, { pinned: !q.pinned })}
-                onDismiss={() => void persist(q.id, { dismissed: true })}
-              />
-            ))}
+            {items
+              ? items.map((item) =>
+                  item.kind === "cluster" ? (
+                    <ClusterCard
+                      key={item.id}
+                      item={item}
+                      slug={slug}
+                      onAnswered={markAnswered}
+                      renderQuestion={(q) => (
+                        <QuestionCard
+                          key={q.id}
+                          question={q}
+                          isHost={isHost}
+                          myIdentity={me.identity}
+                          onUpvote={() => void realtime.upvote(q.id)}
+                          onAnswered={(answer) => void persist(q.id, { answered: true, answer })}
+                          onPin={() => void persist(q.id, { pinned: !q.pinned })}
+                          onDismiss={() => void persist(q.id, { dismissed: true })}
+                        />
+                      )}
+                    />
+                  ) : (
+                    <QuestionCard
+                      key={item.question.id}
+                      question={item.question}
+                      isHost={isHost}
+                      myIdentity={me.identity}
+                      onUpvote={() => void realtime.upvote(item.question.id)}
+                      onAnswered={(answer) => void persist(item.question.id, { answered: true, answer })}
+                      onPin={() => void persist(item.question.id, { pinned: !item.question.pinned })}
+                      onDismiss={() => void persist(item.question.id, { dismissed: true })}
+                      extra={
+                        <SuggestAnswer
+                          slug={slug}
+                          clusterId={clusterIdFor(item.question.id, assist?.clusters ?? [])}
+                          onAnswered={() => markAnswered([item.question.id])}
+                        />
+                      }
+                    />
+                  ),
+                )
+              : open.map((q) => (
+                  <QuestionCard
+                    key={q.id}
+                    question={q}
+                    isHost={isHost}
+                    myIdentity={me.identity}
+                    onUpvote={() => void realtime.upvote(q.id)}
+                    onAnswered={(answer) =>
+                      void persist(q.id, { answered: true, answer })
+                    }
+                    onPin={() => void persist(q.id, { pinned: !q.pinned })}
+                    onDismiss={() => void persist(q.id, { dismissed: true })}
+                  />
+                ))}
 
             {done.length > 0 && (
               <>
@@ -199,6 +254,7 @@ function QuestionCard({
   onAnswered,
   onPin,
   onDismiss,
+  extra,
 }: {
   question: Question;
   isHost: boolean;
@@ -207,6 +263,8 @@ function QuestionCard({
   onAnswered: (answer: string) => void;
   onPin: () => void;
   onDismiss: () => void;
+  /** Host-side extras under the actions: the Q&A assistant's Suggest an answer. */
+  extra?: React.ReactNode;
 }) {
   const [answer, setAnswer] = useState("");
   const author = questionAuthor(q, myIdentity);
@@ -373,6 +431,7 @@ function QuestionCard({
           )}
         </div>
       )}
+      {isHost && !q.answered && extra}
     </article>
   );
 }

@@ -9,6 +9,8 @@ import type {
   AIStatus,
   AIWebinarSetup,
   AIWebinarSetupRequest,
+  QAClustersResponse,
+  QASuggestResponse,
   SalesChat,
   SalesConversationDetail,
   SalesInbox,
@@ -854,6 +856,15 @@ export const api = {
       `/api/host/webinars/${seg(slug)}/questions/${seg(id)}`,
       body,
     ),
+
+  /** The live Q&A assistant (host and co-hosts): duplicate questions grouped, and the Top
+   *  questions strip. enabled is false while the session may not use AI. */
+  qaClusters: (slug: string, signal?: AbortSignal) =>
+    request<QAClustersResponse>(`/api/host/webinars/${seg(slug)}/qa/clusters`, { ...fresh, signal }),
+
+  /** A private draft answer for one cluster: shown to this host only, never posted. */
+  suggestQAAnswer: (slug: string, clusterId: string) =>
+    post<QASuggestResponse>(`/api/host/webinars/${seg(slug)}/qa/clusters/${seg(clusterId)}/suggest`, {}),
 
   appendCaption: (slug: string, body: { joinKey?: string; text: string }) =>
     post<StatusResponse>(`/api/webinars/${seg(slug)}/captions`, body),

@@ -182,6 +182,9 @@ type Server struct {
 	rt *realtime.Bus
 	// deliveryCache remembers which webinars are on edge delivery (isEdge).
 	deliveryCache deliveryCacheMap
+	// qaSessions is the Q&A assistant's per-session pass state (qa_assist.go), slug to
+	// *qaSession. The zero value is ready.
+	qaSessions sync.Map
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -720,6 +723,10 @@ func (s *Server) Routes() http.Handler {
 					// The AI recap, written automatically after the session. See recap.go.
 					r.Get("/recap", s.handleGetRecap)
 					r.Patch("/questions/{id}", s.handlePatchQuestion)
+					// The live Q&A assistant: duplicate questions grouped, a Top
+					// questions strip, and a private draft answer. See qa_assist.go.
+					r.Get("/qa/clusters", s.handleQAClusters)
+					r.Post("/qa/clusters/{id}/suggest", s.handleQASuggest)
 					r.Post("/registrants/approve-all", s.handleApproveAll)
 
 					// A meeting's lobby: who is waiting, and letting them in (meeting.go).

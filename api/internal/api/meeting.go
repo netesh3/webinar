@@ -264,15 +264,7 @@ func (s *Server) announceLobby(ctx context.Context, wb types.Webinar) {
 		s.log.Warn("lobby: count", "slug", wb.ID, "error", err)
 		return
 	}
-	to := []string{hostIdentity(wb.Host.ID)}
-	if parts, err := sfu.Participants(ctx, lk.RoomName(wb.ID)); err == nil {
-		for _, p := range parts {
-			if p.CoHost && p.Identity != to[0] {
-				to = append(to, p.Identity)
-			}
-		}
-	}
-	if err := s.sendRoomPacket(ctx, sfu, wb.ID, to, map[string]any{
+	if err := s.sendRoomPacket(ctx, sfu, wb.ID, s.hostTeam(ctx, sfu, wb), map[string]any{
 		"kind":    "lobby",
 		"waiting": waiting,
 		"at":      time.Now().UnixMilli(),

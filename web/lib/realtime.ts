@@ -240,6 +240,14 @@ type ChatDeletedMessage = { kind: "chat-deleted"; id: string };
  * one that got through anyway would only cost the host an extra read. */
 type LobbyMessage = { kind: "lobby"; waiting: number };
 
+/* "The Q&A clusters changed — re-read them."
+ *
+ * Sent only by the SERVER (announceQAClusters in api/internal/api/qa_assist.go), addressed to
+ * the host and co-hosts alone: the audience never sees a cluster. No payload, like
+ * PollsChangedMessage; the panel re-reads GET /qa/clusters. A copy with a sender is a
+ * participant claiming it, and is dropped on receipt. */
+type QAClustersMessage = { kind: "qa-clusters" };
+
 export type RoomMessage =
   | ChatMessage
   | QuestionMessage
@@ -260,7 +268,8 @@ export type RoomMessage =
   | CaptionMessage
   | StageInviteMessage
   | StageInviteClearMessage
-  | LobbyMessage;
+  | LobbyMessage
+  | QAClustersMessage;
 
 /** The reactions a client may send. Anything else is dropped on receipt, so one
  *  patched client cannot push arbitrary strings into everyone's UI. */
@@ -485,6 +494,8 @@ function decode(bytes: Uint8Array): RoomMessage | null {
     }
     case "polls-changed":
       return { kind: "polls-changed" };
+    case "qa-clusters":
+      return { kind: "qa-clusters" };
     case "survey-changed":
       return { kind: "survey-changed" };
     case "hands-cleared": {
@@ -727,6 +738,8 @@ export type Realtime = {
   pollsRevision: number;
   /** Bumped when the server says the post-event survey changed. Same idea as pollsRevision. */
   surveyRevision: number;
+  /** Bumped when the server says the Q&A assistant's clusters changed (host team only). */
+  qaClustersRevision: number;
   /** Merges a history batch into the conversation, de-duplicating by id. `deleted`
    *  is the ids moderation removed while this client was away (see ChatBacklog). */
   mergeBacklog: (messages: ChatMessage[], deleted?: readonly string[]) => void;
@@ -798,6 +811,7 @@ export function useRealtime(
   // changed"; what each client is entitled to see differs, so each fetches its own.
   const [pollsRevision, setPollsRevision] = useState(0);
   const [surveyRevision, setSurveyRevision] = useState(0);
+  const [qaClustersRevision, setQAClustersRevision] = useState(0);
 
   // Refs so the send helpers keep a stable identity across re-renders: they end
   // up in the dependency arrays of components that would otherwise re-subscribe
@@ -966,6 +980,9 @@ export function useRealtime(
         case "survey-changed":
           setSurveyRevision((n) => n + 1);
           break;
+        case "qa-clusters":
+          setQAClustersRevision((n) => n + 1);
+          break;
         case "hands-cleared":
           setHandMap({});
           notify.current?.onHandsCleared?.();
@@ -1023,7 +1040,7 @@ export function useRealtime(
       const msg = decode(payload);
       // The lobby count is the server's to give: a packet with a sender is a participant
       // claiming it, and is dropped (see LobbyMessage).
-      if (msg?.kind === "lobby" && _p) return;
+      if ((msg?.kind === "lobby" || msg?.kind === "qa-clusters") && _p) return;
       if (msg) apply(msg);
     };
 
@@ -1397,6 +1414,7 @@ export function useRealtime(
     clearHands,
     pollsRevision,
     surveyRevision,
+    qaClustersRevision,
     mergeBacklog,
     mergeQuestions,
     chatCursor,
