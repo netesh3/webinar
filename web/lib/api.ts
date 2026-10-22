@@ -124,6 +124,7 @@ import type {
   ReplayTimeline,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
+import { captionsURL } from "./caption-track";
 
 /* Typed fetch client for the Go API.
  *
@@ -1149,6 +1150,19 @@ export const api = {
     const qs = passcode ? `?passcode=${encodeURIComponent(passcode)}` : "";
     return `${API_BASE}/api/webinars/${seg(slug)}/recordings/${seg(id)}/stream${qs}`;
   },
+
+  /** A replay's CC, from the session's own captions (lib/caption-track.ts). part is one
+   *  take's own file, for the <track> on it. */
+  publicRecordingCaptionsURL: (slug: string, id: string, passcode?: string, part?: string) =>
+    captionsURL(`${API_BASE}/api/webinars/${seg(slug)}/recordings/${seg(id)}/captions.vtt`, { passcode, part }),
+
+  /** The stage's preview of the same, whether or not the host shows them on replays. */
+  recordingCaptionsURL: (slug: string, id: string, part?: string) =>
+    captionsURL(`${API_BASE}/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/captions.vtt`, { part }),
+
+  /** A simulive's CC: its recording's original captions. Same credential as the replay. */
+  simuliveCaptionsURL: (slug: string, joinKey?: string) =>
+    captionsURL(`${API_BASE}/api/webinars/${seg(slug)}/captions.vtt`, { joinKey }),
 
   // ------------------------------------------------------------ registrants
 

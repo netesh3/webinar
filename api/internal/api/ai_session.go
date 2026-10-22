@@ -41,7 +41,8 @@ func (s *Server) sessionAIAllowed(ctx context.Context, wb types.Webinar) bool {
  * have without AI. Nothing to do where no agent is set up: the browsers capture instead.
  * Reports whether the stored state changed, so the caller re-reads before pushing metadata. */
 func (s *Server) syncAITranscript(ctx context.Context, wb types.Webinar, sfu RoomManager) bool {
-	if wb.Status != types.StatusLive || sfu == nil {
+	// A simulive has no speakers: its captions are the original session's, never the agent's.
+	if wb.Status != types.StatusLive || sfu == nil || wb.Kind == types.KindSimulive {
 		return false
 	}
 	slug := wb.ID

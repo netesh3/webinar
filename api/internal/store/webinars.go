@@ -853,7 +853,8 @@ func (s *Store) SetStatus(ctx context.Context, slug string, status types.Webinar
 	case types.StatusLive:
 		// A new live session starts AI-clean, unless the switch is already off.
 		col = `started_at = coalesce(started_at, now()), ended_at = NULL, empty_since = NULL,
-		       ai_off_this_session = NOT ai_enabled`
+		       ai_off_this_session = NOT ai_enabled,
+		       captions_shown_live = captions_shown_live OR captions_enabled`
 	case types.StatusEnded:
 		col = `ended_at = now(), empty_since = NULL`
 	case types.StatusScheduled, types.StatusDraft:
@@ -907,6 +908,7 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 			chat_destination   = coalesce($10, chat_destination),
 			polls_enabled      = coalesce($11, polls_enabled),
 			captions_enabled   = coalesce($12, captions_enabled),
+			captions_shown_live = captions_shown_live OR (status = 'live' AND coalesce($12, captions_enabled)),
 			ai_enabled         = coalesce($13, ai_enabled),
 			ai_off_this_session = ai_off_this_session OR (status = 'live' AND $13::boolean IS FALSE),
 			audience_layout    = coalesce($14, audience_layout),

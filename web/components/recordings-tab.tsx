@@ -177,7 +177,14 @@ export function RecordingsTab({
           <VideoPlayer
             key={playing.id}
             ref={player}
-            sources={recordingSources(playing, (id) => api.recordingFileURL(w.id, id))}
+            sources={recordingSources(
+              playing,
+              (id) => api.recordingFileURL(w.id, id),
+              // The session's own captions, previewed whether or not replays show them.
+              playing.captionsAvailable
+                ? (part) => api.recordingCaptionsURL(w.id, playing.id, part)
+                : undefined,
+            )}
             durationMs={playing.durationMs}
             chapters={chapters}
           />
@@ -297,6 +304,7 @@ function ShareRecordingModal({
   );
   const [isPublic, setIsPublic] = useState(rec.isPublic);
   const [passcode, setPasscode] = useState(rec.passcode ?? "");
+  const [showCaptions, setShowCaptions] = useState(rec.showCaptions ?? false);
   const [busy, setBusy] = useState(false);
 
   const shareUrl = hydrated
@@ -309,6 +317,7 @@ function ShareRecordingModal({
       await api.updateRecordingShare(w.id, rec.id, {
         isPublic,
         passcode,
+        ...(rec.captionsAvailable && showCaptions !== (rec.showCaptions ?? false) ? { showCaptions } : {}),
       });
       notify("Share settings updated.", "ok");
       await onSaved();
@@ -385,6 +394,17 @@ function ShareRecordingModal({
               Only while it is still private: once it is published the messages
               have gone, and switching it off and on again sends nothing, so
               repeating the warning would misdescribe what the button does. */}
+          {/* The session's own captions as CC on the replay and on any simulive of it. Off
+              by default when they were only kept for the AI and never shown live. */}
+          {rec.captionsAvailable && (
+            <Toggle
+              checked={showCaptions}
+              onChange={setShowCaptions}
+              label="Show captions on replays"
+              description="Viewers can turn on this session's captions (CC) on the replay and on simulives of it."
+            />
+          )}
+
           {tellsRegistrants && isPublic && !rec.isPublic && (
             <Alert tone="info">
               Saving this emails everyone who registered — and messages the ones

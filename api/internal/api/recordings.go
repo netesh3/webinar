@@ -392,6 +392,7 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.stampRecordings(list)
+	s.stampRecordingCaptions(r.Context(), slugFromContext(r.Context()), list)
 	// Cloud Run scales to zero, so the background sweepers may not have run for
 	// hours. Opening the tab that shows recordings is as good a trigger as a
 	// ticker, and it is the moment a stuck row is about to be noticed anyway.
@@ -705,6 +706,22 @@ func (s *Server) handleUpdateRecordingShare(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// "Show captions on replays" belongs to the session (webinars.replay_captions), so it is
+	// set before the share settings are read back. See recording_captions.go.
+	if body.ShowCaptions != nil {
+		if _, err := s.store.RecordingFor(r.Context(), slug, id); errors.Is(err, store.ErrNotFound) {
+			httpx.Error(w, http.StatusNotFound, "not_found", "No such recording.")
+			return
+		} else if err != nil {
+			s.fail(w, r, "update recording captions: lookup", err)
+			return
+		}
+		if err := s.store.SetReplayCaptions(r.Context(), slug, *body.ShowCaptions); err != nil {
+			s.fail(w, r, "update recording captions", err)
+			return
+		}
+	}
+
 	rec, err := s.store.UpdateRecordingShareSettings(r.Context(), slug, id, body.IsPublic, body.Passcode)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "No such recording.")
@@ -734,7 +751,9 @@ func (s *Server) handleUpdateRecordingShare(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.stampRecording(&rec)
-	httpx.JSON(w, http.StatusOK, rec)
+	one := []types.Recording{rec}
+	s.stampRecordingCaptions(r.Context(), slug, one)
+	httpx.JSON(w, http.StatusOK, one[0])
 }
 
 // handlePublicRecording returns public metadata about a recording.
@@ -824,6 +843,11 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 			if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && wb.StartedAt != "" {
 				res.Chapters, res.SessionStartedAt = chapters, wb.StartedAt
 			}
+		}
+		// The session's own captions, when the host shows them on replays.
+		if shown, err := s.replayCaptionsShown(r.Context(), session.Webinar); err == nil && shown {
+			has, err := s.store.HasCaptionSource(r.Context(), session.Webinar)
+			res.Captions = err == nil && has
 		}
 	}
 
