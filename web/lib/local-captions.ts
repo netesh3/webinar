@@ -91,10 +91,14 @@ async function loadTranscriber(
       env.allowLocalModels = false;
       env.useBrowserCache = true;
 
-      const device =
-        typeof navigator !== "undefined" && "gpu" in navigator
-          ? "webgpu"
-          : "wasm";
+      /* WASM only. WebGPU needs onnxruntime-web's asyncify build, which is not shipped:
+       * it is over Cloudflare Workers' 25 MiB per-file limit (public/onnxruntime/README.md).
+       * Trying it anyway 404'd on ort-wasm-simd-threaded.asyncify.mjs, and the failed
+       * WebGPU init left the WASM retry with "no available backend" — captions did not start
+       * at all on any browser with WebGPU (2026-10-22). tiny.en on WASM/q8 was measured at
+       * 1.1s a window, inside what a live caption tolerates; server captions
+       * (deploy/captions) are the better engine anyway where the box runs them. */
+      const device = "wasm" as "wasm" | "webgpu";
 
       /* The weight precision has to match the backend. It is not one setting
        * for both, and getting it wrong does not raise anything.
