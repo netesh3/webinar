@@ -33,6 +33,7 @@ import {
 import { readCache, TTL_LIST, writeCache } from "@/lib/http";
 import {
   FeatureInstantWebinar,
+  type HostRecordingSummary,
   type HostWebinarCounts,
   type HostWebinarPage,
   type Webinar,
@@ -44,7 +45,10 @@ import {
   listUrl,
   orderedRange,
   parseListUrl,
+  RECORDING_TAB,
+  urlRecording,
   type ListUrlState,
+  type RecordingFilter,
 } from "@/lib/host-list-url";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
@@ -128,6 +132,8 @@ type Filters = {
   q: string;
   from: string;
   to: string;
+  /** Completed only; ignored on the other tabs. */
+  recording: RecordingFilter;
 };
 
 /** The same thing in the form the API takes, with the empties dropped so an
@@ -140,6 +146,7 @@ type PageQuery = {
   q?: string;
   from?: string;
   to?: string;
+  recording?: "with" | "without";
 };
 
 /* pageQuery also normalises the date ends, ordering them rather than validating.
@@ -156,8 +163,16 @@ function pageQuery(f: Filters, kind: HostListKind, cursor?: string): PageQuery {
     q: f.q.trim() || undefined,
     from: range.from || undefined,
     to: range.to || undefined,
+    recording: (f.tab === RECORDING_TAB && f.recording) || undefined,
   };
 }
+
+/** The Completed tab's recording choices, in the API's words. */
+const RECORDING_OPTIONS: { id: RecordingFilter; label: string }[] = [
+  { id: "", label: "All" },
+  { id: "with", label: "With recording" },
+  { id: "without", label: "Without recording" },
+];
 
 export function HostWebinarBrowser({
   /** Bumped by the parent after it creates or starts a webinar, to pull the
@@ -228,6 +243,10 @@ export function HostWebinarBrowser({
   const [q, setQ] = useState(linked.q);
   const [from, setFrom] = useState(linked.from);
   const [to, setTo] = useState(linked.to);
+  /* Completed's recording filter. Kept while another tab is open, but only sent,
+   * written to the URL and counted as a filter on Completed itself. */
+  const [recordingPick, setRecording] = useState<RecordingFilter>(linked.recording);
+  const recording: RecordingFilter = tab === RECORDING_TAB ? recordingPick : "";
   if (linkKey !== seenLink) {
     setSeenLink(linkKey);
     if (!messagesLink && !peopleLink && reachable(askedTab)) setTabState(askedTab);
@@ -241,6 +260,8 @@ export function HostWebinarBrowser({
     }
     if (linked.from !== from) setFrom(linked.from);
     if (linked.to !== to) setTo(linked.to);
+    // A link to another tab carries no recording filter; leave the pick alone for it.
+    if (askedTab === RECORDING_TAB && linked.recording !== recordingPick) setRecording(linked.recording);
   }
 
   /* Mirrored with history.replaceState, not router.replace: a router navigation
@@ -276,12 +297,13 @@ export function HostWebinarBrowser({
   const setTab = useCallback(
     (next: ViewTab) => {
       setTabState(next);
-      writeUrl({ tab: next, q, from, to });
+      writeUrl({ tab: next, q, from, to, recording: recordingPick });
     },
-    [writeUrl, q, from, to],
+    [writeUrl, q, from, to, recordingPick],
   );
 
   const [items, setItems] = useState<Webinar[] | null>(null);
+  const [recordings, setRecordings] = useState<Record<string, HostRecordingSummary>>({});
   const [counts, setCounts] = useState<HostWebinarCounts>(NO_COUNTS);
   const [total, setTotal] = useState(0);
   const [pending, setPending] = useState(false);
@@ -296,7 +318,7 @@ export function HostWebinarBrowser({
   const seq = useRef(0);
 
   const listing = !ownList(tab);
-  const listKey = listing ? hostListFilterKey(tab, q, from, to, kind) : "";
+  const listKey = listing ? hostListFilterKey(tab, q, from, to, kind, recording) : "";
   const [seenList, setSeenList] = useState(listKey);
   const pageNow = listKey !== "" && listKey !== seenList ? rememberedPage(listKey) : page;
   if (listKey !== seenList) {
@@ -310,6 +332,7 @@ export function HostWebinarBrowser({
     const hit = readCache<HostWebinarPage>(cacheKey, TTL_LIST);
     if (hit) {
       setItems(hit.value.items ?? []);
+      setRecordings(hit.value.recordings ?? {});
       setCounts(hit.value.counts);
       setTotal(hit.value.total);
       setError(null);
@@ -331,7 +354,7 @@ export function HostWebinarBrowser({
   const viewTabs: readonly ViewTab[] =
     !meetings && attendingCount > 0 ? [...listTabs, ATTENDING] : listTabs;
 
-  const filtersActive = hasFilters({ q, from, to });
+  const filtersActive = hasFilters({ q, from, to, recording });
   const nothingAtAll =
     !filtersActive &&
     counts.upcoming === 0 &&
@@ -344,10 +367,10 @@ export function HostWebinarBrowser({
     if (typed === q) return;
     const t = setTimeout(() => {
       setQ(typed);
-      writeUrl({ tab, q: typed, from, to });
+      writeUrl({ tab, q: typed, from, to, recording });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [typed, q, tab, from, to, writeUrl]);
+  }, [typed, q, tab, from, to, recording, writeUrl]);
 
   const fetchPage = useCallback(
     (f: Filters, next?: string): Promise<HostWebinarPage> => {
@@ -372,10 +395,11 @@ export function HostWebinarBrowser({
 
     const mine = ++seq.current;
     const cursor = rememberedCursors(listKey)[pageNow];
-    fetchPage({ tab, q, from, to }, cursor)
+    fetchPage({ tab, q, from, to, recording }, cursor)
       .then((result) => {
         if (seq.current !== mine) return;
         setItems(result.items ?? []);
+        setRecordings(result.recordings ?? {});
         setCounts(result.counts);
         setTotal(result.total);
         setError(null);
@@ -400,7 +424,7 @@ export function HostWebinarBrowser({
       .finally(() => {
         if (seq.current === mine) setPending(false);
       });
-  }, [fetchPage, tab, q, from, to, listKey, cacheKey, pageNow, noun]);
+  }, [fetchPage, tab, q, from, to, recording, listKey, cacheKey, pageNow, noun]);
 
   const [listGen, setListGen] = useState(0);
   useEffect(load, [load, reloadToken, listGen]);
@@ -437,8 +461,14 @@ export function HostWebinarBrowser({
       setQ("");
       setFrom("");
       setTo("");
+      setRecording("");
     });
-    writeUrl({ tab, q: "", from: "", to: "" });
+    writeUrl({ tab, q: "", from: "", to: "", recording: "" });
+  }
+
+  function pickRecording(next: RecordingFilter) {
+    refilter(() => setRecording(next));
+    writeUrl({ tab, q, from, to, recording: next });
   }
 
   function setRange(nextFrom: string, nextTo: string) {
@@ -446,7 +476,7 @@ export function HostWebinarBrowser({
       setFrom(nextFrom);
       setTo(nextTo);
     });
-    writeUrl({ tab, q, from: nextFrom, to: nextTo });
+    writeUrl({ tab, q, from: nextFrom, to: nextTo, recording });
   }
 
   /* The Attending tab's own total under the current filters, once it has read
@@ -524,6 +554,24 @@ export function HostWebinarBrowser({
               onChange={setRange}
             />
 
+            {/* Completed only: nothing upcoming or drafted has a recording yet. */}
+            {tab === RECORDING_TAB && (
+              <label className="shrink-0">
+                <span className="sr-only">Filter {noun} by recording</span>
+                <select
+                  className={`field h-9 w-auto py-0 pr-7 pl-2.5 text-[12.5px] ${recording ? "border-brand-line text-brand" : ""}`}
+                  value={recording}
+                  onChange={(e) => pickRecording(urlRecording(e.target.value))}
+                >
+                  {RECORDING_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.id === "" ? "Any recording" : o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             {filtersActive && (
               <button
                 type="button"
@@ -597,7 +645,7 @@ export function HostWebinarBrowser({
             <div
               className={pending ? "opacity-50 transition-opacity" : undefined}
             >
-              <HostWebinarRows webinars={items} />
+              <HostWebinarRows webinars={items} recordings={recordings} />
             </div>
           )}
 
@@ -760,7 +808,12 @@ function bypassPage(p: PageQuery): HostWebinarPage {
     drafts: narrowed.filter((w) => w.status === "draft").length,
   };
 
+  // The fixtures carry no recordings: "with" is empty and "without" is everything.
+  const noneRecorded = p.tab === "past" && p.recording === "with";
+  if (noneRecorded) counts.past = 0;
+
   const inTab = narrowed
+    .filter(() => !noneRecorded)
     .filter((w) =>
       p.tab === "past"
         ? w.status === "ended"

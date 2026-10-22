@@ -73,7 +73,9 @@ const hostStartLead = 15 * time.Minute
  * host filtering "sessions in March" actually has — and to is read as the end
  * of that day, so the day the host asked for is included. cursor is opaque and
  * comes from a previous page's nextCursor. kind is webinar | meeting and splits
- * the portal's Webinars and Meetings lists; absent means both.
+ * the portal's Webinars and Meetings lists; absent means both. recording is
+ * with | without and narrows the Completed tab (and its count) to sessions that
+ * do, or do not, have a playable recording; other tabs ignore it.
  */
 func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
@@ -96,6 +98,15 @@ func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpx.Error(w, http.StatusUnprocessableEntity, "bad_kind",
 			"kind must be webinar or meeting.")
+		return
+	}
+
+	switch rec := store.HostRecordingFilter(q.Get("recording")); rec {
+	case "", store.HostRecordingWith, store.HostRecordingWithout:
+		filter.Recording = rec
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_recording",
+			"recording must be with or without.")
 		return
 	}
 

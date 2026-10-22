@@ -223,7 +223,7 @@ export function HostWebinarsScreen() {
   useEffect(() => {
     if (bypass) return;
     let live = true;
-    const key = hostListPageKey(hostListFilterKey(listTab, arrival.q, arrival.from, arrival.to, "webinar"), 0);
+    const key = hostListPageKey(hostListFilterKey(listTab, arrival.q, arrival.from, arrival.to, "webinar", arrival.recording), 0);
     api
       .hostWebinars({
         tab: listTab,
@@ -232,6 +232,7 @@ export function HostWebinarsScreen() {
         q: arrival.q || undefined,
         from: arrival.from || undefined,
         to: arrival.to || undefined,
+        recording: arrival.recording || undefined,
       })
       .then(() => {
         if (statusRef.current === "anonymous") dropCache(key);
@@ -274,7 +275,7 @@ export function HostWebinarsScreen() {
 
   useEffect(() => {
     if (status !== "anonymous") return;
-    dropCache(hostListPageKey(hostListFilterKey(listTab, arrival.q, arrival.from, arrival.to, "webinar"), 0));
+    dropCache(hostListPageKey(hostListFilterKey(listTab, arrival.q, arrival.from, arrival.to, "webinar", arrival.recording), 0));
     dropCache(followUpListCacheKey(HOST_LIST_PREFIX));
     dropCache("/api/me/registrations");
     /* After the effect, so this is not a setState in the effect body. The
