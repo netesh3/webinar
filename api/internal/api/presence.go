@@ -97,8 +97,7 @@ func (s *Server) handlePresence(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "presence: load webinar", err)
 		return
 	}
-	if removed, rerr := s.store.WasRemoved(r.Context(), slug, from.Identity); rerr == nil && removed {
-		httpx.Error(w, http.StatusForbidden, "removed", "The host removed you from this webinar.")
+	if s.refuseRemovedViewer(w, r, slug, from.Identity) {
 		return
 	}
 	// Outside a live session there is no roster to be on and no stage to be invited to.

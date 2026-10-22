@@ -345,6 +345,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# Speaker view (Zoom style) for edge viewers: the fixed mix geometry and its beacon, the
 	# sticky active speaker, the phone split's crop maths and the floating PiP's corners.
 	cd web && node --experimental-strip-types --no-warnings lib/speaker-view.test.mts
+	# Edge delivery's pure parts: hls.js settings, event routing, the clock offset, and the
+	# refused stream's rule (403 removed is final; 401 a fresh join; the rest backs off).
+	cd web && node --experimental-strip-types --no-warnings lib/edge.test.mts
 	# A streaming viewer's room: no Participants, Invite or Settings, and no meeting-info card.
 	cd web && node --experimental-strip-types --no-warnings lib/audience-tools.test.mts
 	# Simulive engagement replay: visible items at a playback position, late-join catch-up.

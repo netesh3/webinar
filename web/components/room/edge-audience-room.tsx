@@ -75,8 +75,9 @@ export function EdgeAudienceRoom({
   onLeave: () => void;
   onPromoted: () => void;
   onRemoved: () => void;
-  /** The event stream refused its token: join again for a fresh one. */
-  onRefreshJoin: () => void;
+  /** The event stream refused its token: join again for a fresh one. "removed" is the
+   *  server refusing that join because the host removed this viewer. */
+  onRefreshJoin: () => Promise<"removed" | void>;
 }) {
   const { prefs, update: updatePrefs } = useMediaPreferences();
   // A phone left to watch must not auto-lock mid-webinar (lib/wake-lock.ts).
@@ -140,6 +141,10 @@ export function EdgeAudienceRoom({
   // Never fires for a room that is not connected; kept so the UI reads the same shape.
   const permissions = useMediaPermissions(room, () => undefined);
 
+  const removedByHost = useCallback(() => {
+    setRemoved(true);
+    onRemoved();
+  }, [onRemoved]);
   const streamState = useEdgeEvents({
     room,
     slug,
@@ -149,11 +154,12 @@ export function EdgeAudienceRoom({
       selfHand.current?.({ kind: "stage", arrival: "stage" });
       onPromotedRef.current();
     }, []),
-    onRemoved: useCallback(() => {
-      setRemoved(true);
-      onRemoved();
-    }, [onRemoved]),
-    onExpired: onRefreshJoin,
+    onRemoved: removedByHost,
+    onExpired: useCallback(() => {
+      void onRefreshJoin().then((why) => {
+        if (why === "removed") removedByHost();
+      });
+    }, [onRefreshJoin, removedByHost]),
   });
   const clockOffset = useServerClockOffset(Boolean(join.debugClock));
 
@@ -280,7 +286,7 @@ export function EdgeAudienceRoom({
       <main className="grid min-h-dvh place-items-center bg-stage p-6 text-center">
         <div className="max-w-[420px]">
           <h1 className="text-[18px] font-semibold text-white">You were removed from this webinar</h1>
-          <p className="mt-2 text-[13.5px] text-white/60">The host removed you from the session.</p>
+          <p className="mt-2 text-[13.5px] text-white/60">The host removed you from this session.</p>
           <button
             onClick={onLeave}
             className="mt-5 rounded-lg bg-white/15 px-4 py-2 text-[13px] font-medium text-white hover:bg-white/25"

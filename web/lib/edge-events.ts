@@ -27,7 +27,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RoomEvent, type Room } from "livekit-client";
 import { api } from "./api";
-import { routeEdgeEvent } from "./edge-route";
+import { EDGE_MAX_REFRESHES, edgeRetryDelay, edgeStreamFailure, routeEdgeEvent } from "./edge-route";
 import { DATA_TOPIC } from "./realtime";
 
 export type EdgeStreamState = "connecting" | "open" | "retrying";
@@ -61,7 +61,8 @@ export function useEdgeEvents({
   onPromoted: () => void;
   onDemoted?: () => void;
   onRemoved: () => void;
-  /** The stream refused the token (expired, or the webinar changed). Join again for a new one. */
+  /** The stream refused the token (401). Join again for a new one, as an automatic join
+   *  (rejoin=1), so the server refuses it for a viewer the host removed. */
   onExpired: () => void;
 }): EdgeStreamState {
   const [state, setState] = useState<EdgeStreamState>("connecting");
@@ -69,6 +70,8 @@ export function useEdgeEvents({
   useEffect(() => {
     handlers.current = { onPromoted, onDemoted, onRemoved, onExpired };
   }, [onPromoted, onDemoted, onRemoved, onExpired]);
+  // Fresh joins asked for since a stream last opened. Outlives the token, which each join changes.
+  const refreshes = useRef(0);
 
   useEffect(() => {
     if (!token) return;
@@ -78,9 +81,24 @@ export function useEdgeEvents({
     let failures = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
 
+    // Terminal: the host removed this viewer. Nothing reconnects or joins again after it.
+    const removedNow = () => {
+      if (closed) return;
+      closed = true;
+      clearTimeout(retry);
+      clearInterval(beats);
+      source?.close();
+      handlers.current.onRemoved();
+    };
+
     const beat = () => {
       if (closed) return;
-      void fetch(api.edgeBeatUrl(slug, token), { method: "POST", keepalive: true }).catch(() => {});
+      void fetch(api.edgeBeatUrl(slug, token), { method: "POST", keepalive: true })
+        .then((res) => {
+          // The beat is refused for a removed viewer too: the stream may not have noticed yet.
+          if (edgeStreamFailure(res.status) === "removed") removedNow();
+        })
+        .catch(() => {});
     };
     const beats = setInterval(beat, EDGE_BEAT_MS);
     // A background tab's timers are throttled; say so the moment it is looked at again.
@@ -116,10 +134,7 @@ export function useEdgeEvents({
           handlers.current.onDemoted?.();
           break;
         case "removed":
-          closed = true;
-          clearInterval(beats);
-          source?.close();
-          handlers.current.onRemoved();
+          removedNow();
           break;
         default:
           break;
@@ -132,6 +147,7 @@ export function useEdgeEvents({
       source = es;
       es.onopen = () => {
         failures = 0;
+        refreshes.current = 0;
         setState("open");
         // A (re)connect may have missed events: read the backlogs again.
         room.emit(RoomEvent.Connected);
@@ -152,18 +168,49 @@ export function useEdgeEvents({
       es.onerror = () => {
         if (closed) return;
         setState("retrying");
-        // CLOSED means the server answered with an error (401/403/409) rather than dropping:
-        // EventSource will not retry that by itself, so ask for a new credential.
+        /* CLOSED means the server answered with an error rather than dropping, and EventSource
+         * will not retry that by itself. It cannot say which error either, so the same URL is
+         * asked once with fetch (edgeStreamFailure): a removal stops here for good, a bad
+         * token asks for a fresh join, anything else retries with backoff. */
         if (es.readyState === EventSource.CLOSED) {
           es.close();
           failures += 1;
-          if (failures >= 2) {
-            handlers.current.onExpired();
-            return;
-          }
-          retry = setTimeout(open, 2000);
+          void probe().then((status) => {
+            if (closed) return;
+            const why = edgeStreamFailure(status);
+            if (why === "removed") {
+              removedNow();
+              return;
+            }
+            clearTimeout(retry);
+            if (why === "expired" && refreshes.current < EDGE_MAX_REFRESHES) {
+              refreshes.current += 1;
+              retry = setTimeout(() => {
+                if (!closed) handlers.current.onExpired();
+              }, edgeRetryDelay(refreshes.current));
+              return;
+            }
+            retry = setTimeout(open, edgeRetryDelay(failures));
+          });
         }
       };
+    };
+
+    // The stream's status, read once with fetch and abandoned as soon as the headers arrive.
+    const probe = async (): Promise<number | null> => {
+      const ctl = new AbortController();
+      try {
+        const res = await fetch(api.edgeEventsUrl(slug, token), {
+          credentials: "include",
+          signal: ctl.signal,
+          cache: "no-store",
+        });
+        return res.status;
+      } catch {
+        return null;
+      } finally {
+        ctl.abort();
+      }
     };
 
     open();

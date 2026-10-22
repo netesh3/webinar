@@ -55,3 +55,39 @@ export function routeEdgeEvent(kind: string, data: string, identity: string): Ed
       return { type: "ignore" };
   }
 }
+
+/* What a refused event stream means (lib/edge-events.ts).
+ *
+ * EventSource cannot read a status, so when one closes the hook asks the same URL once with
+ * fetch and classifies the answer here:
+ *
+ *   removed  403: the host removed this viewer. Terminal: no retry and no fresh join; the room
+ *            says so. Retrying is how instant-webinar-4277 logged 181 refusals for one viewer,
+ *            each pair followed by a join that handed out a new token for the next refusal.
+ *   expired  401: the token is no good (expired, or the secret changed). Join again for a new
+ *            one — as an automatic join, which the server refuses for a removed viewer.
+ *   retry    anything else, a network failure included: try the stream again, backing off.
+ */
+export type EdgeStreamFailure = "removed" | "expired" | "retry";
+
+export function edgeStreamFailure(status: number | null): EdgeStreamFailure {
+  if (status === 403) return "removed";
+  if (status === 401) return "expired";
+  return "retry";
+}
+
+/** Base and ceiling of the stream's backoff. */
+export const EDGE_RETRY_BASE_MS = 2_000;
+export const EDGE_RETRY_MAX_MS = 60_000;
+/** Fresh joins in a row, with no stream opening between them, before the hook stops asking
+ *  for another and only retries the stream (still backing off). */
+export const EDGE_MAX_REFRESHES = 3;
+
+/** Delay before retry number `attempt` (1-based): doubling from the base, capped, less up to
+ *  a quarter of jitter so an audience that dropped together does not come back together.
+ *  `rand` is Math.random, injectable for the tests. */
+export function edgeRetryDelay(attempt: number, rand: () => number = Math.random): number {
+  const n = Math.max(1, Math.floor(attempt));
+  const base = Math.min(EDGE_RETRY_MAX_MS, EDGE_RETRY_BASE_MS * 2 ** Math.min(n - 1, 16));
+  return Math.round(base * (0.75 + 0.25 * rand()));
+}

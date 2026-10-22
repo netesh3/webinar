@@ -350,10 +350,13 @@ export function WebinarRoom({
       initialJoin.delivery === "edge" || initialJoin.edgeWebinar ||
         currentJoin.delivery === "edge" || currentJoin.edgeWebinar,
     );
-  const refreshEdgeJoin = useCallback(async () => {
+  /* A fresh event-stream token. An automatic join (rejoin=1), so the server refuses it for a
+   * viewer the host removed instead of handing out another token the stream will refuse. */
+  const refreshEdgeJoin = useCallback(async (): Promise<"removed" | void> => {
     try {
-      setCurrentJoin(await api.join(slug, joinKey));
-    } catch {
+      setCurrentJoin(await api.join(slug, joinKey, { rejoin: true }));
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "removed") return "removed";
       // The landing page handles a session that is over; nothing better to do here.
     }
   }, [slug, joinKey]);
