@@ -20,3 +20,6 @@ Host ─WebRTC─▶ SFU box (LiveKit, Redis, MediaMTX) ──▶ Bunny ──�
   project, stops workers when no Edge webinar has been live there for a while, and emails the
   operators when the pool is full or GCP cannot start a worker.
 - **Pool size** = number of worker VMs. Add more with the workflow; delete a VM to shrink it.
+- **Server captions (optional):** with instance metadata `captions-image` and `captions-secret`
+  set, `startup.sh` also runs the caption agent (`deploy/captions`) beside egress, capped at half
+  the vCPUs at low priority. See `deploy/captions/README.md`.

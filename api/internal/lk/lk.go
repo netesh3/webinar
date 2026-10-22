@@ -29,6 +29,7 @@ type Client struct {
 	tokenTTL  time.Duration
 	rooms     *lksdk.RoomServiceClient
 	egress    *lksdk.EgressClient
+	agents    *lksdk.AgentDispatchClient
 }
 
 // New builds a client. httpURL is the http(s) form used for the server-side
@@ -41,6 +42,7 @@ func New(wsURL, httpURL, apiKey, apiSecret string, tokenTTL time.Duration) *Clie
 		tokenTTL:  tokenTTL,
 		rooms:     lksdk.NewRoomServiceClient(httpURL, apiKey, apiSecret),
 		egress:    lksdk.NewEgressClient(httpURL, apiKey, apiSecret),
+		agents:    lksdk.NewAgentDispatchServiceClient(httpURL, apiKey, apiSecret),
 	}
 }
 
@@ -389,13 +391,13 @@ func (c *Client) SendData(ctx context.Context, room, topic string, data []byte, 
 // isEgressOrRecorder identifies internal LiveKit Egress or Recorder bot participants
 // so they are never counted as attendees or displayed in the moderation roster.
 func isEgressOrRecorder(p *livekit.ParticipantInfo) bool {
-	if strings.HasPrefix(p.Identity, "EG_") || strings.HasPrefix(p.Identity, "REC_") {
+	if strings.HasPrefix(p.Identity, "EG_") || strings.HasPrefix(p.Identity, "REC_") || strings.HasPrefix(p.Identity, CaptionAgentPrefix) {
 		return true
 	}
 	if p.Permission != nil && (p.Permission.Recorder || p.Permission.Agent) {
 		return true
 	}
-	if p.Kind == livekit.ParticipantInfo_EGRESS {
+	if p.Kind == livekit.ParticipantInfo_EGRESS || p.Kind == livekit.ParticipantInfo_AGENT {
 		return true
 	}
 	return false

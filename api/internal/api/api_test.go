@@ -113,6 +113,9 @@ type fakeRooms struct {
 	// recipient list. The list is the thing worth asserting: it is what decides who
 	// a panelist-only message actually reaches.
 	sent []sentPacket
+	// dispatches is the caption agent dispatches currently open, by room (server_captions_test.go).
+	dispatches  map[string]string
+	dispatchErr error
 }
 
 type sentPacket struct {

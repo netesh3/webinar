@@ -308,7 +308,16 @@ type SessionControls struct {
 	// only the person who pressed the button is ever transcribed. Initialised from
 	// the scheduled Options.Captions when the webinar is created.
 	CaptionsEnabled bool `json:"captionsEnabled"`
-	Locked          bool `json:"locked"`
+	/* ServerCaptions says the captions are coming from the server (deploy/captions: a
+	 * LiveKit agent on the egress host transcribing the active speakers), so a speaker's
+	 * browser must NOT run its own on-device Whisper as well. True only while the host has
+	 * asked for server captions AND the agent has reported itself live in the room; a
+	 * dispatch nobody picked up, or an agent paused by its CPU guard, reads false and the
+	 * browsers fall back to local captions. Read-only here: set by
+	 * POST /api/host/webinars/{slug}/captions/server and by the agent, never by PATCH
+	 * /controls. */
+	ServerCaptions bool `json:"serverCaptions"`
+	Locked         bool `json:"locked"`
 
 	// ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
 	// to the stage only. The host owns it, which is the point — an attendee picking
@@ -348,6 +357,12 @@ func (d ChatDestination) OrDefault() ChatDestination {
 		return d
 	}
 	return ChatToEveryone
+}
+
+// ServerCaptionsRequest is POST /api/host/webinars/{slug}/captions/server: the host asking
+// for the caption agent to join (On) or leave the room. Turning it on also turns captions on.
+type ServerCaptionsRequest struct {
+	On bool `json:"on"`
 }
 
 // ControlsPatch updates a subset of the controls. Pointers so that "not

@@ -17,6 +17,7 @@
 
 import type { Role } from "./api-types";
 import type { ChatDestination } from "./realtime";
+import { isBotOrEgress } from "./roster.ts";
 
 /** The one mention that is not an identity. Mirrors types.MentionEveryone. */
 export const MENTION_EVERYONE = "@everyone";
@@ -135,7 +136,7 @@ export function mentionCandidates(
   }
   for (const p of people) {
     if (!p.identity || seen.has(p.identity)) continue;
-    if (p.identity.startsWith("EG_") || p.identity.startsWith("REC_")) continue;
+    if (isBotOrEgress(p.identity)) continue;
     seen.add(p.identity);
     if (canMention(ctx, p)) out.push(p);
   }
