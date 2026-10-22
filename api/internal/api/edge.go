@@ -533,10 +533,10 @@ func (s *Server) removeEdgeViewer(ctx context.Context, sfu RoomManager, slug, id
  * LiveKit appends its own query (?url=…&token=…) to the base URL. */
 /* mixTemplateURL is the composite page an egress renders for this webinar.
  *
- * Edge webinars get <template>/edge: the screen share fills the whole frame with the cameras
- * as small tiles over a corner, because the edge mix is the audience's only picture and a
- * share squeezed beside a camera strip lost a third of its pixels (unreadable slides at
- * 720p). Recordings and the CDN broadcast keep the template as it is. /clock adds the
+ * Edge webinars get <template>/edge: with the auto layout a screen share is drawn as speaker
+ * view (the share and one active speaker at a fixed geometry, web/lib/speaker-view.ts), which
+ * phones split into the share and a floating speaker from the one stream. Recordings and the
+ * CDN broadcast keep the template as it is. /clock adds the
  * latency clock (EDGE_DEBUG_CLOCK). Path segments, because LiveKit appends its own query. */
 func (s *Server) mixTemplateURL(wb types.Webinar) string {
 	return s.compositeTemplateURL(wb, s.cfg.EdgeDebugClock)

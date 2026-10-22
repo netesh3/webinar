@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import {
   audienceLayoutFromMetadata,
   cameraIsOn,
-  EDGE_PIP_TILES,
   GRID_MAX,
   gridRects,
   isEdgeTemplatePath,
@@ -18,11 +17,13 @@ import {
   placeStage,
   SHARE_ID,
   thumbnailFor,
+  usesSpeakerView,
   type LayoutInput,
   type LayoutResult,
   type Rect,
   type StageTile,
 } from "./composite-layouts.ts";
+import { beaconCells, SV_SHARE, SV_SPEAKER, toPixels } from "./speaker-view.ts";
 
 const FRAMES = [
   { w: 1920, h: 1080 },
@@ -94,16 +95,43 @@ const at = (id: string, share: boolean, n: number, edge = false, cameras = cams(
   assert.ok(share.w < F.w * 0.8 && share.h > F.h * 0.95);
   assert.equal(at("auto", true, 0).note !== undefined, true, "empty strip says no camera");
 }
-// auto, edge share: the share fills the frame, at most three corner tiles, cameras that are on.
+// auto, edge share: speaker view, the default when the host has not chosen a layout.
 {
-  const out = at("auto", true, 5, true);
-  assert.deepEqual(out.placements[0].rect, { x: 0, y: 0, w: F.w, h: F.h });
-  assert.equal(out.placements.filter((p) => p.role === "pip").length, EDGE_PIP_TILES);
-  const mixed = [
-    { id: "a", cameraOn: false },
-    { id: "b", cameraOn: true },
-  ];
-  assert.deepEqual(ids(at("auto", true, 0, true, mixed)), [SHARE_ID, "b"]);
+  assert.deepEqual(at("auto", true, 5, true), at("speaker_view", true, 5, true));
+  assert.deepEqual(at("auto", true, 0, true), at("speaker_view", true, 0, true));
+}
+// speaker view: the share and ONE speaker at the fixed geometry, with the beacon.
+{
+  const out = at("speaker_view", true, 4);
+  assert.deepEqual(ids(out), [SHARE_ID, "p0"], "only the lead camera");
+  assert.deepEqual(out.placements[0].rect, toPixels(SV_SHARE, F));
+  assert.deepEqual(out.placements[1].rect, toPixels(SV_SPEAKER, F));
+  assert.equal(out.placements[1].bare, true);
+  assert.equal(out.beacon?.length, beaconCells().length);
+  // Same in the edge mix and the recording: the recorded file is the sidebar variant.
+  assert.deepEqual(at("speaker_view", true, 4, true), out);
+  // Nobody on stage beside the share: the share alone, no beacon (nothing for a phone to split).
+  const alone = at("speaker_view", true, 0);
+  assert.deepEqual(alone.placements.map((p) => p.rect), [{ x: 0, y: 0, w: F.w, h: F.h }]);
+  assert.equal(alone.beacon, undefined);
+  // No share: speaker view's no-share fallback is the speaker layout, no beacon.
+  assert.deepEqual(at("speaker_view", false, 3), at("speaker", false, 3));
+  // No other layout paints the beacon.
+  for (const def of LAYOUTS) {
+    if (def.id === "speaker_view" || def.id === "auto") continue;
+    for (const share of [false, true]) assert.equal(at(def.id, share, 3, true).beacon, undefined, def.id);
+  }
+  assert.equal(at("auto", true, 3, false).beacon, undefined, "auto in a standard recording");
+  assert.equal(at("auto", false, 3, true).beacon, undefined);
+}
+// usesSpeakerView: when the page puts the sticky speaker first.
+{
+  assert.equal(usesSpeakerView("speaker_view", true, false), true);
+  assert.equal(usesSpeakerView("auto", true, true), true);
+  assert.equal(usesSpeakerView("auto", true, false), false);
+  assert.equal(usesSpeakerView("speaker_view", false, true), false);
+  assert.equal(usesSpeakerView("grid", true, true), false);
+  assert.equal(usesSpeakerView("bogus", true, true), true, "unknown reads as auto");
 }
 // auto without a share is the same in both modes: speaker main, the others along the top.
 {
@@ -175,7 +203,7 @@ assert.equal(layoutById("mosaic").id, "auto");
 assert.equal(layoutById(undefined).id, "auto");
 assert.deepEqual(
   LAYOUTS.map((l) => l.id),
-  ["auto", "speaker", "grid", "share_only", "share_speaker", "side_by_side", "video_only"],
+  ["auto", "speaker", "grid", "share_only", "speaker_view", "share_speaker", "side_by_side", "video_only"],
 );
 for (const def of LAYOUTS) {
   const t = thumbnailFor(def);

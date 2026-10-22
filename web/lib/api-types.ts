@@ -3240,8 +3240,8 @@ export interface SessionControls {
  */
 export type AudienceLayout = string;
 /**
- * AudienceLayoutAuto is the layout the composite always had: a share next to (or, on
- * edge, under) the cameras, otherwise the active speaker with a strip.
+ * AudienceLayoutAuto is the layout the composite always had: a share next to the cameras
+ * (speaker view on the edge mix), otherwise the active speaker with a strip.
  */
 export const AudienceLayoutAuto: AudienceLayout = "auto";
 /**
@@ -3268,6 +3268,12 @@ export const AudienceLayoutSideBySide: AudienceLayout = "side_by_side";
  * AudienceLayoutVideoOnly is cameras only; a share is ignored.
  */
 export const AudienceLayoutVideoOnly: AudienceLayout = "video_only";
+/**
+ * AudienceLayoutSpeakerView is speaker view (Zoom style): the share and the active speaker
+ * at a fixed geometry the edge player splits on phones (web/lib/speaker-view.ts). auto
+ * draws it on the edge mix while somebody shares.
+ */
+export const AudienceLayoutSpeakerView: AudienceLayout = "speaker_view";
 /**
  * ChatDestination is the audience for a chat message.
  */

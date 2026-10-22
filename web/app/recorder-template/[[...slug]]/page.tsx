@@ -11,8 +11,17 @@ import {
   isStageTile,
   placeStage,
   SHARE_ID,
+  usesSpeakerView,
   type AudienceLayoutId,
 } from "@/lib/composite-layouts";
+import {
+  BEACON_COLOR,
+  NO_PICK,
+  pickRecheckDelay,
+  pickSpeaker,
+  type SpeakerCandidate,
+} from "@/lib/speaker-view";
+import { isPrivileged } from "@/lib/share-lock";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -60,8 +69,8 @@ function RecorderTemplateInner() {
    * the edge player shows too. A path segment because LiveKit appends its own query. */
   const path = usePathname() ?? "";
   const debugClock = /\/clock\/?$/.test(path);
-  /* <template>/edge is an edge webinar's mix. Only the auto layout draws it differently (the
-   * share fills the frame, cameras over a corner); see lib/composite-layouts.ts. */
+  /* <template>/edge is an edge webinar's mix. Only the auto layout draws it differently (speaker
+   * view while someone shares, which phones split); see lib/composite-layouts.ts. */
   const edgeLayout = isEdgeTemplatePath(path);
   let url = searchParams.get("url") || "";
   let token = searchParams.get("token") || "";
@@ -225,10 +234,32 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
    * recording breaking and the audio drifting out of step. With one keyed tree, a
    * share toggle or a layout switch only moves boxes. Someone the layout leaves out is
    * not drawn at all, which bounds what the egress decodes (one page of grid at most). */
-  const tiles = cameraRefs.map((ref) => ({ id: ref.participant.identity, cameraOn: cameraIsOn(ref) }));
+  const share = Boolean(screenShareRef);
+  /* Speaker view shows ONE camera, so which one matters more than in any other layout: the
+   * active speaker, held for a couple of seconds so a quick exchange does not flip the tile,
+   * falling back to the sharer and then the host (lib/speaker-view.ts pickSpeaker). */
+  const speakerView = usesSpeakerView(layoutId, share, edgeLayout);
+  const sharerId = screenShareRef?.participant.identity ?? null;
+  const candidates = useMemo<SpeakerCandidate[]>(
+    () =>
+      cameraRefs.map((ref) => ({
+        id: ref.participant.identity,
+        cameraOn: cameraIsOn(ref),
+        sharing: ref.participant.identity === sharerId,
+        host: isPrivileged(ref.participant),
+      })),
+    [cameraRefs, sharerId],
+  );
+  const stickyId = useStickySpeaker(room, candidates, speakerView);
+  const laidOut = useMemo(() => {
+    if (!speakerView || !stickyId) return cameraRefs;
+    const lead = cameraRefs.find((ref) => ref.participant.identity === stickyId);
+    return lead ? [lead, ...cameraRefs.filter((ref) => ref !== lead)] : cameraRefs;
+  }, [cameraRefs, speakerView, stickyId]);
+  const tiles = laidOut.map((ref) => ({ id: ref.participant.identity, cameraOn: cameraIsOn(ref) }));
   const result = placeStage(layoutId, {
     frame,
-    share: Boolean(screenShareRef),
+    share,
     cameras: tiles,
     edge: edgeLayout,
   });
@@ -266,6 +297,15 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
         if (!ref) return null;
         const isSpeaking = ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
         const small = p.rect.h < SMALL_TILE_PX;
+        if (p.bare) {
+          // Speaker view's tile: exactly its rect, nothing drawn outside the camera, because a
+          // phone crops the mix along this rect into its floating PiP.
+          return (
+            <div key={p.id} className="absolute" style={style}>
+              <SpeakerTile trackRef={ref} isSpeaking={false} aspect="" bare className="size-full" />
+            </div>
+          );
+        }
         return (
           <div
             key={p.id}
@@ -292,8 +332,66 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
           No camera published
         </div>
       )}
+      {/* Speaker view's beacon (lib/speaker-view.ts): tells an edge phone this frame can be
+          split. Above everything, in a corner no tile reaches. */}
+      {result.beacon?.map((r, i) => (
+        <div
+          key={`beacon${i}`}
+          aria-hidden
+          className="absolute"
+          style={{
+            left: r.x,
+            top: r.y,
+            width: r.w,
+            height: r.h,
+            zIndex: 2,
+            background: i % 2 === 0 ? BEACON_COLOR : "#000",
+          }}
+        />
+      ))}
     </div>
   );
+}
+
+/** Speaker view's lead (lib/speaker-view.ts pickSpeaker), folded from the SFU's active-speaker
+ *  list on every change and once more when a pending handover comes due. Null when off. */
+function useStickySpeaker(
+  room: Room | undefined,
+  candidates: SpeakerCandidate[],
+  enabled: boolean,
+): string | null {
+  const [current, setCurrent] = useState<string | null>(null);
+  const pickRef = useRef(NO_PICK);
+  const candidatesRef = useRef(candidates);
+  useEffect(() => {
+    candidatesRef.current = candidates;
+  }, [candidates]);
+  // Re-fold when the stage changes, not on every re-render that rebuilt the array.
+  const key = candidates
+    .map((c) => `${c.id}:${c.cameraOn ? 1 : 0}${c.sharing ? 1 : 0}${c.host ? 1 : 0}`)
+    .sort()
+    .join(",");
+  useEffect(() => {
+    if (!room || !enabled) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const fold = () => {
+      clearTimeout(timer);
+      const now = Date.now();
+      const speaking = room.activeSpeakers.map((p) => p.identity);
+      const next = pickSpeaker(pickRef.current, candidatesRef.current, speaking, now);
+      pickRef.current = next;
+      setCurrent(next.current);
+      const wait = pickRecheckDelay(next, now);
+      if (wait !== null) timer = setTimeout(fold, wait);
+    };
+    fold();
+    room.on(RoomEvent.ActiveSpeakersChanged, fold);
+    return () => {
+      clearTimeout(timer);
+      room.off(RoomEvent.ActiveSpeakersChanged, fold);
+    };
+  }, [room, enabled, key]);
+  return enabled ? current : null;
 }
 
 /** Below this height a tile asks for the low simulcast layer (about 180p): the egress decodes
@@ -359,6 +457,7 @@ function SpeakerTile({
   compact = false,
   fit = "cover",
   small = false,
+  bare = false,
 }: {
   trackRef: TrackReferenceOrPlaceholder;
   isSpeaking: boolean;
@@ -372,13 +471,16 @@ function SpeakerTile({
   fit?: "cover" | "contain";
   /** A thumbnail: ask for the low simulcast layer rather than decoding a full camera. */
   small?: boolean;
+  /** Speaker view's tile: edge to edge (no border, ring or rounding, the camera covering the
+   *  box) and the middle layer, enough for a phone's PiP cut out of the mix. */
+  bare?: boolean;
 }) {
   const { participant, publication } = trackRef;
   useEffect(() => {
     if (publication && "setVideoQuality" in publication && typeof publication.setVideoQuality === "function") {
-      publication.setVideoQuality(small ? VideoQuality.LOW : VideoQuality.HIGH);
+      publication.setVideoQuality(bare ? VideoQuality.MEDIUM : small ? VideoQuality.LOW : VideoQuality.HIGH);
     }
-  }, [publication, small]);
+  }, [publication, small, bare]);
   const hasVideo = publication?.isSubscribed && !publication?.isMuted && publication?.track;
   const name = participant.name || participant.identity || "Speaker";
   const initials = getInitials(name);
@@ -386,10 +488,14 @@ function SpeakerTile({
 
   return (
     <div
-      className={`relative ${aspect} rounded-lg overflow-hidden bg-zinc-900 border transition-all duration-200 ${
-        isSpeaking
-          ? "border-emerald-500 ring-2 ring-emerald-500/70 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
-          : "border-zinc-800/80"
+      className={`relative ${aspect} overflow-hidden bg-zinc-900 ${
+        bare
+          ? ""
+          : `rounded-lg border transition-all duration-200 ${
+              isSpeaking
+                ? "border-emerald-500 ring-2 ring-emerald-500/70 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+                : "border-zinc-800/80"
+            }`
       } ${className}`}
     >
       {hasVideo && isTrackReference(trackRef) ? (

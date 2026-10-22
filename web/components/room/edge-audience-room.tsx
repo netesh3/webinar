@@ -54,6 +54,7 @@ import { FileShareBar } from "./file-share-bar";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { RoomHeader } from "./webinar-room";
 import { EdgePlayer } from "./edge-player";
+import { mayBeSpeakerView } from "@/lib/speaker-view";
 
 export function EdgeAudienceRoom({
   join,
@@ -337,6 +338,7 @@ export function EdgeAudienceRoom({
                           debugClock={Boolean(join.debugClock)}
                           clockOffsetMs={clockOffset}
                           lowLatency={Boolean(join.lowLatency)}
+                          speakerView={mayBeSpeakerView(controls.audienceLayout)}
                         />
                         {streamState === "retrying" && (
                           <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full bg-black/60 px-3 py-1 text-[11.5px] text-white/80">

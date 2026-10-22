@@ -409,8 +409,8 @@ type SessionControls struct {
 type AudienceLayout string
 
 const (
-	// AudienceLayoutAuto is the layout the composite always had: a share next to (or, on
-	// edge, under) the cameras, otherwise the active speaker with a strip.
+	// AudienceLayoutAuto is the layout the composite always had: a share next to the cameras
+	// (speaker view on the edge mix), otherwise the active speaker with a strip.
 	AudienceLayoutAuto AudienceLayout = "auto"
 	// AudienceLayoutSpeaker is the active speaker large with a filmstrip.
 	AudienceLayoutSpeaker AudienceLayout = "speaker"
@@ -424,12 +424,16 @@ const (
 	AudienceLayoutSideBySide AudienceLayout = "side_by_side"
 	// AudienceLayoutVideoOnly is cameras only; a share is ignored.
 	AudienceLayoutVideoOnly AudienceLayout = "video_only"
+	// AudienceLayoutSpeakerView is speaker view (Zoom style): the share and the active speaker
+	// at a fixed geometry the edge player splits on phones (web/lib/speaker-view.ts). auto
+	// draws it on the edge mix while somebody shares.
+	AudienceLayoutSpeakerView AudienceLayout = "speaker_view"
 )
 
 // AudienceLayouts is every layout this server accepts, in the order the picker shows them.
 var AudienceLayouts = []AudienceLayout{
 	AudienceLayoutAuto, AudienceLayoutSpeaker, AudienceLayoutGrid, AudienceLayoutShareOnly,
-	AudienceLayoutShareSpeaker, AudienceLayoutSideBySide, AudienceLayoutVideoOnly,
+	AudienceLayoutSpeakerView, AudienceLayoutShareSpeaker, AudienceLayoutSideBySide, AudienceLayoutVideoOnly,
 }
 
 // Valid reports whether l is a layout the composite knows how to draw.
