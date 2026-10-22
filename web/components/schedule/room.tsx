@@ -25,7 +25,8 @@ export function RoomSection({
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
   const extras = (
     [
-      ...(cloudRecording
+      // A simulive plays a recording and is never recorded itself.
+      ...(cloudRecording && form.kind !== "simulive"
         ? ([["autoRecord", "Record automatically"]] as const)
         : []),
       ["captions", "Live captions"],

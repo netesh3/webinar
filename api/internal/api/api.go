@@ -481,6 +481,9 @@ func (s *Server) Routes() http.Handler {
 		// Q&A history, the same way: the room's questions as this caller may see them,
 		// with their own upvotes, so a rejoin gets the panel back as it was.
 		r.Get("/webinars/{slug}/questions", s.handleRoomQuestions)
+		// A simulive's engagement replay: the original session's chat, Q&A and polls on the
+		// video's timeline, privacy-shortened. Same credential. See simulive_replay.go.
+		r.Get("/webinars/{slug}/replay", s.handleReplayTimeline)
 		// An image and the message carrying it, in one request: an upload endpoint that
 		// hands back a handle for a second call leaves orphaned bytes every time the second
 		// call does not happen.
@@ -704,6 +707,10 @@ func (s *Server) Routes() http.Handler {
 					// spreadsheet, JSON for a pipeline.
 					r.Get("/chat", s.handleChatTranscript)
 					r.Get("/chat/stats", s.handleChatStats)
+
+					// A simulive's engagement replay, as the host curates it.
+					r.Get("/replay", s.handleHostReplayPreview)
+					r.Put("/replay/hidden", s.handleSetReplayHidden)
 
 					r.Get("/polls", s.handleListPolls)
 					r.Post("/polls", s.handleCreatePoll)

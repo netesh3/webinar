@@ -550,6 +550,14 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 	// only decides whether CLOUD recording works, and local, on-device
 	// recording needs no server storage — see AppConfig.CloudRecordingEnabled
 	// for the storage half of the question.
+	/* A simulive's host team drops in to watch, chat and answer: they get the recording the
+	 * audience plays and a grant with no audio or video at all (Spec.NoMedia), so nothing of
+	 * theirs can reach anyone. Nor a record control — a simulive is never recorded. */
+	simulive := wb.Kind == types.KindSimulive
+	streamURL := ""
+	if simulive {
+		streamURL = s.simulivePlaybackURL(r.Context(), wb)
+	}
 	s.issueToken(w, r, wb, sfu, lk.Spec{
 		Role:        role,
 		Room:        room,
@@ -557,7 +565,8 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		Name:        user.Name,
 		MutedByHost: muted,
 		CoHost:      coHost,
-	}, true, false, "", false)
+		NoMedia:     simulive,
+	}, !simulive, streamURL != "", streamURL, false)
 }
 
 // ensureRoom creates the room with the capacity ceiling and seeds its metadata
@@ -757,6 +766,10 @@ func (s *Server) issueToken(
 	s.log.Info("token issued",
 		"room", spec.Room, "role", spec.Role, "identity", spec.Identity,
 		"hidden", spec.Hidden, "audio_only", spec.AudioOnly, "cdn", cdnBroadcast)
+	simulive := wb.Kind == types.KindSimulive
+	publishes := lk.CanPublish(spec.Role) && !spec.NoMedia
+	// A simulive is never recorded, whoever asks (refuseSimuliveRecording).
+	canRecord = canRecord && !simulive
 	httpx.JSON(w, http.StatusOK, types.JoinResponse{
 		Token: tok,
 		// The project's OWN address, not a global one. This is why the client is threaded
@@ -767,7 +780,7 @@ func (s *Server) issueToken(
 		Role:        spec.Role,
 		Identity:    spec.Identity,
 		DisplayName: spec.Name,
-		CanPublish:  lk.CanPublish(spec.Role),
+		CanPublish:  publishes,
 		Controls:    wb.Controls,
 		Topic:       wb.Topic,
 		StartedAt:   wb.StartedAt,
@@ -780,7 +793,7 @@ func (s *Server) issueToken(
 		// board like the rest of the audience. See JoinResponse.Whiteboard.
 		// Nor a meeting guest: they are on the stage because everyone is, not because the host
 		// chose them to present, so the board stays with the host and the panelists.
-		Whiteboard: lk.CanPublish(spec.Role) && !spec.Promoted &&
+		Whiteboard: publishes && !spec.Promoted &&
 			!(isMeeting(wb) && joinKeyFromIdentity(spec.Identity) != "") &&
 			s.hostFeature(r.Context(), wb.Host.ID, types.FeatureWhiteboard),
 		JoinKey:        joinKeyFromIdentity(spec.Identity),
@@ -790,6 +803,8 @@ func (s *Server) issueToken(
 		CdnLowLatency:  cdnLowLatency,
 		EdgeWebinar:    wb.Delivery == types.DeliveryEdge && !isMeeting(wb),
 		Meeting:        isMeeting(wb),
+		Simulive:       simulive,
+		ReplayEngage:   simulive && s.replayAvailable(r.Context(), wb),
 	})
 	return true
 }

@@ -317,6 +317,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/composite-layouts.test.mts
 	# A streaming viewer's room: no Participants, Invite or Settings, and no meeting-info card.
 	cd web && node --experimental-strip-types --no-warnings lib/audience-tools.test.mts
+	# Simulive engagement replay: visible items at a playback position, late-join catch-up.
+	cd web && node --experimental-strip-types --no-warnings lib/simulive-replay.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

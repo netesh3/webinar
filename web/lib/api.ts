@@ -108,6 +108,8 @@ import type {
   WebinarInput,
   EdgeStatus,
   ServerTime,
+  ReplayHideRequest,
+  ReplayTimeline,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 
@@ -402,6 +404,22 @@ export const api = {
       `/api/webinars/${seg(slug)}/questions${joinKey ? `?joinKey=${seg(joinKey)}` : ""}`,
       fresh,
     ),
+
+  /** A simulive's engagement replay: the original session's chat, Q&A and polls at their
+   *  offsets into the video, privacy-shortened. `enabled` false for a session without it.
+   *  See lib/simulive-replay.ts for how the room schedules it. */
+  replayTimeline: (slug: string, joinKey?: string) =>
+    request<ReplayTimeline>(
+      `/api/webinars/${seg(slug)}/replay${joinKey ? `?joinKey=${seg(joinKey)}` : ""}`,
+    ),
+
+  /** The host's preview of the replay: every item with its key and whether it is hidden. */
+  hostReplayPreview: (slug: string) =>
+    request<ReplayTimeline>(`/api/host/webinars/${seg(slug)}/replay`, fresh),
+
+  /** Hides one item of the replay from the audience, or shows it again. */
+  setReplayHidden: (slug: string, key: string, hidden: boolean) =>
+    put<ReplayTimeline>(`/api/host/webinars/${seg(slug)}/replay/hidden`, { key, hidden } satisfies ReplayHideRequest),
 
   /** Uploads an image and posts it as a message, in one request.
    *

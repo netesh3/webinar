@@ -8,6 +8,7 @@ import { AIRecapCard } from "./ai-recap-card";
 import { SessionKnowledgeCard } from "./knowledge/session-knowledge-card";
 import { AILeadsAndFollowups } from "./ai-leads-followups";
 import { RecordingsTab } from "./recordings-tab";
+import { SimuliveReplayCard } from "./simulive-replay-card";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
@@ -201,6 +202,7 @@ export function HostWebinarTabs({
       )}
       {tab === "Setup" && !meeting && (
         <div className="grid gap-4">
+          {w.kind === "simulive" && <SimuliveReplayCard webinar={w} />}
           <Card className="p-5">
             <SectionTitle>Messages & follow-ups</SectionTitle>
             <p className="mt-1 mb-4 text-[12.5px] text-ink-2">
@@ -1151,7 +1153,8 @@ function SettingsTab({ webinar: w }: { webinar: Webinar }) {
     ...(openJoin
       ? ([["Registration required", w.registrationRequired]] as [string, boolean][])
       : []),
-    ...(cloudRecording
+    // A simulive is never recorded, so it has no "Record automatically" to show.
+    ...(cloudRecording && w.kind !== "simulive"
       ? ([["Record automatically", w.options.autoRecord]] as [string, boolean][])
       : []),
     ["Live captions", w.options.captions],

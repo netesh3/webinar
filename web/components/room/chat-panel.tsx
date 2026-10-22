@@ -315,7 +315,9 @@ export function ChatPanel() {
               myIdentity={me.identity}
               nameFor={nameFor}
               flash={flash}
-              canDelete={canModerate && group.from.role === "attendee"}
+              // A replayed line is not this room's to delete; the host curates the replay
+              // from the webinar's Setup tab instead.
+              canDelete={canModerate && group.from.role === "attendee" && !group.messages[0].replay}
               onDelete={setDeleteTarget}
             />
           ))

@@ -527,6 +527,9 @@ export function RecordButton() {
     list[i]?.focus({ preventScroll: true });
   }, [open]);
 
+  // A simulive plays a recording and is never recorded again — not to the cloud, not to
+  // this computer. The server refuses it too (refuseSimuliveRecording).
+  if (join.simulive) return null;
   if (!join.canRecord && !isHost) return null;
   if (connection !== ConnectionState.Connected) return null;
 

@@ -3680,6 +3680,18 @@ export const FeatureEdgeDelivery = "edge_delivery";
  */
 export const FeatureAI = "ai";
 /**
+ *  FeatureReplayEngage replays the original session's engagement in a simulive: the chat,
+ * 	 * Q&A, host answers and polls of the session the recording was made in, each at the same
+ * 	 * offset into the video as it happened (internal/replay). Attendee names are shortened to
+ * 	 * "Priya S." and phone numbers and emails scrubbed. The host previews the timeline and
+ * 	 * hides items from the webinar's Replay tab.
+ * 	 *
+ * 	 * Premium, opt-in: off for every account until an admin turns it on (Admin -> Accounts).
+ * 	 * Off means a simulive plays the video only, as before. The rule that a simulive is never
+ * 	 * recorded again applies regardless of this switch.
+ */
+export const FeatureReplayEngage = "replay_engage";
+/**
  * Delivery modes (Webinar.Delivery).
  */
 export const DeliveryStandard = "standard";
@@ -6678,6 +6690,15 @@ export interface JoinResponse {
    * 	 * room renders as a grid of equals rather than a stage and an audience.
    */
   meeting?: boolean;
+  /**
+   *  Simulive: the audience (and the host team, who drop in to chat and answer) watch the
+   * 	 * recording. Nobody publishes into this room and nothing records it, so the client shows
+   * 	 * no camera, microphone or record controls. ReplayEngage says the engagement replay is on
+   * 	 * for this session (FeatureReplayEngage); the timeline itself is GET
+   * 	 * /api/webinars/{slug}/replay.
+   */
+  simulive?: boolean;
+  replayEngage?: boolean;
 }
 /**
  * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -7454,4 +7475,60 @@ export interface IntegrationCard {
 }
 export interface IntegrationsResponse {
   integrations: IntegrationCard[];
+}
+/**
+ *  ReplayPoll is a poll as a simulive replay shows it: launched, and then (if the original
+ *  * shared them) its results. Counts and Total only on results; Correct only on a quiz's.
+ */
+export interface ReplayPoll {
+  question: string;
+  options: string[];
+  quiz?: boolean;
+  counts?: number /* int */[];
+  total?: number /* int */;
+  correct?: number /* int */;
+}
+/**
+ *  ReplayItem is one moment of a simulive's engagement replay.
+ *  *
+ *  * ID is this item's position in this timeline ("r1", "r2", …) — never a source id. Ref, on an
+ *  * answer or a poll's results, is the ID of the question or poll it belongs to. Name is already
+ *  * privacy-shortened ("Priya S."); there is no identity, email or join key anywhere in it.
+ *  *
+ *  * Key and Hidden are the host preview's only (GET /api/host/webinars/{slug}/replay): the
+ *  * source row an item came from, for PUT .../replay/hidden, and whether the host hid it.
+ */
+export interface ReplayItem {
+  id: string;
+  kind: string; // chat | question | answer | poll | poll_results
+  atMs: number /* int64 */;
+  name?: string;
+  role?: Role;
+  text?: string;
+  anonymous?: boolean;
+  ref?: string;
+  poll?: ReplayPoll;
+  key?: string;
+  hidden?: boolean;
+}
+/**
+ *  ReplayTimeline is the whole replay, sorted by AtMs. The client schedules it against the
+ *  * video's own playback position: everything at or before the position at once (a late
+ *  * joiner's catch-up), the rest as the video reaches it. Enabled false (with no items) is a
+ *  * session without the replay: not a simulive, the switch off, or no recording.
+ */
+export interface ReplayTimeline {
+  enabled: boolean;
+  /**
+   * The recording's length, 0 when unknown.
+   */
+  durationMs: number /* int64 */;
+  items: ReplayItem[];
+}
+/**
+ * ReplayHideRequest hides one item of a simulive's replay, or shows it again.
+ */
+export interface ReplayHideRequest {
+  key: string;
+  hidden: boolean;
 }

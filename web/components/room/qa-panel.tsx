@@ -265,7 +265,7 @@ function SectionLabel({
 
 function QuestionCard({
   question: q,
-  isHost,
+  isHost: hostView,
   myIdentity,
   onUpvote,
   onAnswered,
@@ -283,6 +283,11 @@ function QuestionCard({
   /** Host-side extras under the actions: the Q&A assistant's Suggest an answer. */
   extra?: React.ReactNode;
 }) {
+  /* A question replayed from a simulive's original session (lib/simulive-replay.ts) is
+   * read-only for everyone: no vote, pin, hide or answer — it was answered (or not) then.
+   * The host curates the replay from the webinar's Setup tab instead. The AUTO MODE hook
+   * (answering the new audience's questions) is server-side; see simulive_replay.go. */
+  const isHost = hostView && !q.replay;
   const [answer, setAnswer] = useState("");
   const author = questionAuthor(q, myIdentity);
   const answered = answerKind(q);
@@ -378,6 +383,7 @@ function QuestionCard({
         </div>
 
         {/* The upvote, as a pill: count and arrow together, filled once it is yours. */}
+        {!q.replay && (
         <button
           type="button"
           onClick={onUpvote}
@@ -397,6 +403,7 @@ function QuestionCard({
           <ArrowUpIcon className="size-3.5" />
           {q.votes}
         </button>
+        )}
       </div>
 
       {/* Full card width, under the upvote rather than beside it: a text field

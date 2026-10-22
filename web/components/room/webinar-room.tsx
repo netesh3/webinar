@@ -345,7 +345,11 @@ export function WebinarRoom({
     );
   }
 
-  if (webinarUsesCdn && !isScheduledPresenter && !promotedToStage) {
+  /* A simulive has no stage: the host team drops in to the same room as the audience —
+   * watching the recording, chatting and answering — with a grant that publishes no audio or
+   * video at all (JoinResponse.simulive, lk.Spec.NoMedia). */
+  const simulivePresenter = isScheduledPresenter && Boolean(currentJoin.simulive);
+  if (webinarUsesCdn && (!isScheduledPresenter || simulivePresenter) && !promotedToStage) {
     return (
       <CdnAttendeeRoom
         join={currentJoin}
@@ -355,6 +359,7 @@ export function WebinarRoom({
         joinKey={joinKey}
         onLeave={onLeave}
         onPromoted={handlePromoted}
+        presenter={simulivePresenter}
       />
     );
   }

@@ -111,7 +111,10 @@ func (s *Server) mixPlan(ctx context.Context, wb types.Webinar) (origin string, 
 	 * zone in front of it). The origin is the only push edge needs: a CDN mirrors it rather
 	 * than taking a second ingest. */
 	// A meeting pushes nowhere: no audience feed, and stream destinations are a webinar's.
-	if isMeeting(wb) {
+	// Nor a simulive: its audience plays the recording, and a mix of the room would be the
+	// host team pushed somewhere — an egress of a session that is never recorded
+	// (refuseSimuliveRecording).
+	if isMeeting(wb) || wb.Kind == types.KindSimulive {
 		return "", nil
 	}
 	if wb.Delivery == types.DeliveryEdge {

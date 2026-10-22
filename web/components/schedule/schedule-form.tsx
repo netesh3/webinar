@@ -574,7 +574,8 @@ function ScheduleFormBody({
       options: {
         ...form.options,
         postWebinarSurvey: survey.on,
-        ...((account?.features ?? []).includes(FeatureCloudRecording)
+        // Nor a simulive, which is never recorded (the server refuses it).
+        ...((account?.features ?? []).includes(FeatureCloudRecording) && form.kind !== "simulive"
           ? {}
           : { autoRecord: false }),
       },

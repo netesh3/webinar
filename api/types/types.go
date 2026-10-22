@@ -1233,6 +1233,16 @@ const (
 	 * that back (2026-10-22). Off means no AI buttons, the AI routes answer 403
 	 * feature_off, and no recap is made. */
 	FeatureAI = "ai"
+	/* FeatureReplayEngage replays the original session's engagement in a simulive: the chat,
+	 * Q&A, host answers and polls of the session the recording was made in, each at the same
+	 * offset into the video as it happened (internal/replay). Attendee names are shortened to
+	 * "Priya S." and phone numbers and emails scrubbed. The host previews the timeline and
+	 * hides items from the webinar's Replay tab.
+	 *
+	 * Premium, opt-in: off for every account until an admin turns it on (Admin -> Accounts).
+	 * Off means a simulive plays the video only, as before. The rule that a simulive is never
+	 * recorded again applies regardless of this switch. */
+	FeatureReplayEngage = "replay_engage"
 )
 
 // Delivery modes (Webinar.Delivery).
@@ -1297,6 +1307,11 @@ var Features = []Feature{
 		Key:         FeatureAI,
 		Label:       "AI writing",
 		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off means no AI buttons and no recaps.",
+	},
+	{
+		Key:         FeatureReplayEngage,
+		Label:       "Simulive engagement replay",
+		Description: "In a simulive session, replay the original session's chat, Q&A, answers and polls at the moment they happened in the video (names shortened, contact details removed), with a host preview to hide items. Off means a simulive plays the video only.",
 	},
 }
 
@@ -3600,6 +3615,13 @@ type JoinResponse struct {
 	 * a panelist's and an admitted guest's. Everyone in a meeting is on the stage, so the
 	 * room renders as a grid of equals rather than a stage and an audience. */
 	Meeting bool `json:"meeting,omitempty"`
+	/* Simulive: the audience (and the host team, who drop in to chat and answer) watch the
+	 * recording. Nobody publishes into this room and nothing records it, so the client shows
+	 * no camera, microphone or record controls. ReplayEngage says the engagement replay is on
+	 * for this session (FeatureReplayEngage); the timeline itself is GET
+	 * /api/webinars/{slug}/replay. */
+	Simulive     bool `json:"simulive,omitempty"`
+	ReplayEngage bool `json:"replayEngage,omitempty"`
 }
 
 // ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -4258,4 +4280,54 @@ type IntegrationCard struct {
 
 type IntegrationsResponse struct {
 	Integrations []IntegrationCard `json:"integrations"`
+}
+
+/* ReplayPoll is a poll as a simulive replay shows it: launched, and then (if the original
+ * shared them) its results. Counts and Total only on results; Correct only on a quiz's. */
+type ReplayPoll struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+	Quiz     bool     `json:"quiz,omitempty"`
+	Counts   []int    `json:"counts,omitempty"`
+	Total    int      `json:"total,omitempty"`
+	Correct  *int     `json:"correct,omitempty"`
+}
+
+/* ReplayItem is one moment of a simulive's engagement replay.
+ *
+ * ID is this item's position in this timeline ("r1", "r2", …) — never a source id. Ref, on an
+ * answer or a poll's results, is the ID of the question or poll it belongs to. Name is already
+ * privacy-shortened ("Priya S."); there is no identity, email or join key anywhere in it.
+ *
+ * Key and Hidden are the host preview's only (GET /api/host/webinars/{slug}/replay): the
+ * source row an item came from, for PUT .../replay/hidden, and whether the host hid it. */
+type ReplayItem struct {
+	ID        string      `json:"id"`
+	Kind      string      `json:"kind"` // chat | question | answer | poll | poll_results
+	AtMs      int64       `json:"atMs"`
+	Name      string      `json:"name,omitempty"`
+	Role      Role        `json:"role,omitempty"`
+	Text      string      `json:"text,omitempty"`
+	Anonymous bool        `json:"anonymous,omitempty"`
+	Ref       string      `json:"ref,omitempty"`
+	Poll      *ReplayPoll `json:"poll,omitempty"`
+	Key       string      `json:"key,omitempty"`
+	Hidden    bool        `json:"hidden,omitempty"`
+}
+
+/* ReplayTimeline is the whole replay, sorted by AtMs. The client schedules it against the
+ * video's own playback position: everything at or before the position at once (a late
+ * joiner's catch-up), the rest as the video reaches it. Enabled false (with no items) is a
+ * session without the replay: not a simulive, the switch off, or no recording. */
+type ReplayTimeline struct {
+	Enabled bool `json:"enabled"`
+	// The recording's length, 0 when unknown.
+	DurationMs int64        `json:"durationMs"`
+	Items      []ReplayItem `json:"items"`
+}
+
+// ReplayHideRequest hides one item of a simulive's replay, or shows it again.
+type ReplayHideRequest struct {
+	Key    string `json:"key"`
+	Hidden bool   `json:"hidden"`
 }
