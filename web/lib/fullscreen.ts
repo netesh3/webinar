@@ -20,7 +20,9 @@ import { useCallback, useEffect, useState, type RefObject } from "react";
  *     exists. iOS Safari does not implement the Fullscreen API on elements at
  *     all; a video can only go fullscreen into the native player. Our overlay
  *     is lost there, which is a real downgrade and still better than a button
- *     that does nothing.
+ *     that does nothing. Not for a simulive (`nativeVideo: false`): the native
+ *     player's scrubber would take an attendee off the shared clock, so there the
+ *     button is hidden instead (canElementFullscreen).
  */
 
 type WebkitElement = Element & {
@@ -39,6 +41,17 @@ type WebkitDocument = Document & {
   webkitFullscreenElement?: Element | null;
   webkitExitFullscreen?: () => Promise<void> | void;
 };
+
+/** Whether this browser can make an element (our container, with our chrome) fullscreen.
+ *  False on an iPhone, whose only fullscreen is the native video player. Client only. */
+export function canElementFullscreen(): boolean {
+  if (typeof document === "undefined") return false;
+  const doc = document as Document & { webkitFullscreenEnabled?: boolean };
+  const el = document.documentElement as WebkitElement;
+  const api =
+    typeof el.requestFullscreen === "function" || typeof el.webkitRequestFullscreen === "function";
+  return api && Boolean(doc.fullscreenEnabled || doc.webkitFullscreenEnabled);
+}
 
 /** Whether anything is currently fullscreen, including the iOS native player
  *  that no document property reports. */
@@ -67,6 +80,9 @@ function readFullscreen(video: HTMLVideoElement | null): boolean {
 export function useFullscreen(
   containerRef: RefObject<HTMLElement | null>,
   videoRef: RefObject<HTMLVideoElement | null>,
+  /** Whether the iPhone fallback, the native video player, is allowed. A simulive says no:
+   *  that player brings its own play button and scrubber (lib/simulive-clock.ts). */
+  { nativeVideo = true }: { nativeVideo?: boolean } = {},
 ): { isFullscreen: boolean; toggle: () => Promise<boolean> } {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -127,7 +143,7 @@ export function useFullscreen(
       }
     }
 
-    if (video?.webkitEnterFullscreen) {
+    if (nativeVideo && video?.webkitEnterFullscreen) {
       try {
         video.webkitEnterFullscreen();
         return true;
@@ -137,7 +153,7 @@ export function useFullscreen(
     }
 
     return false;
-  }, [containerRef, videoRef]);
+  }, [containerRef, videoRef, nativeVideo]);
 
   return { isFullscreen, toggle };
 }

@@ -10,7 +10,15 @@ import {
   RoomEvent,
 } from "livekit-client";
 import Hls from "hls.js";
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type RefObject,
+} from "react";
 import { API_BASE, api } from "@/lib/api";
 import type { JoinResponse } from "@/lib/api-types";
 import { useMediaPreferences } from "@/lib/media";
@@ -38,7 +46,8 @@ import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
 import { stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
-import { useFullscreen } from "@/lib/fullscreen";
+import { canElementFullscreen, useFullscreen } from "@/lib/fullscreen";
+import { playerControls, simuliveCorrection, SIMULIVE_BLOCKED_KEYS } from "@/lib/simulive-clock";
 import { useStageLayout } from "@/lib/layout";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { useToast } from "../providers";
@@ -639,6 +648,102 @@ function HlsPlayer({
   const [isMuted, setIsMuted] = useState(() => !isPlaylistUrl(streamUrl));
   const activeUrl = streamUrl;
   const ll = Boolean(lowLatency);
+  // A simulive: the recording on one shared clock, played like a live broadcast.
+  const simulive = Boolean(sharedStartMs);
+  // play() refused even muted (autoplay policy): the clock waits for the tap to join.
+  const blocked = useRef(false);
+
+  /* Back onto the shared clock (lib/simulive-clock.ts): a seek from the arrow keys, the media
+   * keys, the OS media card, a picture-in-picture window or devtools is put back, and a pause
+   * by the browser or the OS is resumed. Runs on the element's own events and once a second,
+   * for the drifts no event announces (a throttled background tab). */
+  const syncToClock = useCallback((force = false) => {
+    const video = videoRef.current;
+    const shared = sharedStart.current?.() ?? null;
+    if (!video || shared == null || video.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    if (video.playbackRate !== 1) video.playbackRate = 1;
+    const fix = simuliveCorrection({
+      positionSec: video.currentTime,
+      sharedSec: shared / 1000,
+      durationSec: video.duration,
+      paused: video.paused,
+      ended: video.ended,
+      blocked: blocked.current && !force,
+    });
+    if (fix.seekTo != null) video.currentTime = fix.seekTo;
+    if (fix.resume) {
+      video.play().then(
+        () => {
+          blocked.current = false;
+        },
+        () => {
+          // Refused with sound: muted is what autoplay allows; refused muted too, wait for a tap.
+          video.muted = true;
+          setIsMuted(true);
+          video.play().then(
+            () => {
+              blocked.current = false;
+            },
+            () => {
+              blocked.current = true;
+            },
+          );
+        },
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!simulive || !video) return;
+    const check = () => syncToClock();
+    // While buffering the position lags on its own; the next tick after it catches up.
+    const onTick = () => {
+      if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA || video.paused) syncToClock();
+    };
+    video.addEventListener("seeked", check);
+    video.addEventListener("pause", check);
+    video.addEventListener("ratechange", check);
+    video.addEventListener("ended", check);
+    const timer = setInterval(onTick, 1000);
+
+    /* The OS media card and media keys: no pause, no skip, no seek. Null hides a button where
+     * the browser has no default for it; pause gets a handler that does nothing, since null
+     * would hand it back to the browser, which pauses. Whatever still gets through (a PiP
+     * window's own controls, say) is put back by the checks above. */
+    const session =
+      typeof navigator !== "undefined" && "mediaSession" in navigator ? navigator.mediaSession : null;
+    const noop = () => {};
+    const actions: [MediaSessionAction, MediaSessionActionHandler | null][] = [
+      ["pause", noop],
+      ["seekbackward", null],
+      ["seekforward", null],
+      ["seekto", null],
+      ["previoustrack", null],
+      ["nexttrack", null],
+    ];
+    for (const [action, handler] of actions) {
+      try {
+        session?.setActionHandler(action, handler);
+      } catch {
+        // A browser that does not know the action.
+      }
+    }
+    return () => {
+      video.removeEventListener("seeked", check);
+      video.removeEventListener("pause", check);
+      video.removeEventListener("ratechange", check);
+      video.removeEventListener("ended", check);
+      clearInterval(timer);
+      for (const [action] of actions) {
+        try {
+          session?.setActionHandler(action, null);
+        } catch {
+          // As above.
+        }
+      }
+    };
+  }, [simulive, syncToClock, activeUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -840,7 +945,12 @@ function HlsPlayer({
     if (videoRef.current) {
       videoRef.current.muted = false;
       setIsMuted(false);
-      void videoRef.current.play();
+      // A simulive's tap to join starts where everybody is, however long the tap took.
+      if (simulive) {
+        blocked.current = false;
+        syncToClock(true);
+      }
+      void videoRef.current.play().catch(() => {});
     }
   };
 
@@ -867,9 +977,14 @@ function HlsPlayer({
       unmute={unmute}
       toggleMute={toggleMute}
       captionsUrl={captionsUrl}
+      simulive={simulive}
     />
   );
 }
+
+// A browser does not gain or lose the Fullscreen API while the page is open.
+const subscribeNothing = () => () => {};
+const serverCanFullscreen = () => true;
 
 export function StagePlayerChrome({
   videoRef,
@@ -882,6 +997,7 @@ export function StagePlayerChrome({
   unmute,
   toggleMute,
   captionsUrl,
+  simulive = false,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   loading: boolean;
@@ -893,6 +1009,9 @@ export function StagePlayerChrome({
   unmute: () => void;
   toggleMute: () => void;
   captionsUrl?: string;
+  /** A simulive: a broadcast on a shared clock. Its fullscreen is only ever our container
+   *  (never the iPhone's native player, which has a scrubber), and seek keys do nothing. */
+  simulive?: boolean;
 }) {
   /* Fullscreen belongs to the chrome, not to each player: the players could differ
    * in how they fill the video element and in nothing else, and the two copies
@@ -900,7 +1019,15 @@ export function StagePlayerChrome({
    * same eight lines twice. */
   const containerRef = useRef<HTMLDivElement>(null);
   const { notify } = useToast();
-  const { isFullscreen, toggle } = useFullscreen(containerRef, videoRef);
+  const { isFullscreen, toggle } = useFullscreen(containerRef, videoRef, { nativeVideo: !simulive });
+  // A capability, read like lib/pip.ts reads one: the server says yes (most browsers can),
+  // the client the truth, so the first client render matches the server HTML.
+  const elementFullscreen = useSyncExternalStore(
+    subscribeNothing,
+    canElementFullscreen,
+    serverCanFullscreen,
+  );
+  const shown = playerControls(simulive ? "simulive" : "live", elementFullscreen);
   // Captions as a native track: they follow the playback position, seeks included.
   const captionTrack = useCaptionTrack(captionsUrl);
   const [ccOn, setCcOn] = useState(true);
@@ -912,6 +1039,16 @@ export function StagePlayerChrome({
     <div
       ref={containerRef}
       className="relative h-full w-full flex items-center justify-center bg-black"
+      onKeyDownCapture={
+        simulive
+          ? (e) => {
+              // Keys a browser maps to seek or pause on a focused video. Our own buttons keep
+              // Enter and Space: only keys aimed at the picture itself are swallowed.
+              if (e.target instanceof HTMLButtonElement) return;
+              if (SIMULIVE_BLOCKED_KEYS.has(e.key)) e.preventDefault();
+            }
+          : undefined
+      }
     >
       {/* No `controls`. This is a live stage, not a file: a scrubber invites
         * seeking on a stream that has nowhere to seek to, and the native menu
@@ -925,6 +1062,8 @@ export function StagePlayerChrome({
         muted
         autoPlay
         disablePictureInPicture
+        // A cast session is a player of its own, off the shared clock; a live stage keeps it.
+        disableRemotePlayback={simulive}
         controlsList="nodownload noplaybackrate noremoteplayback"
         preload="auto"
         onPlay={() => onReady?.()}
@@ -1016,6 +1155,7 @@ export function StagePlayerChrome({
               <VolumeIcon className="size-4" />
             )}
           </button>
+          {shown.fullscreen && (
           <button
             type="button"
             onClick={() => {
@@ -1035,6 +1175,7 @@ export function StagePlayerChrome({
               <FullscreenIcon className="size-4" />
             )}
           </button>
+          )}
         </div>
       )}
     </div>
