@@ -5,7 +5,7 @@
  * many votes each has right now. Grouping here joins the two, so a vote cast a second ago is
  * counted without waiting for the next read of the clusters. Host and co-hosts only. */
 
-import type { QACluster, SessionControls } from "./api-types.ts";
+import type { QACluster, QADraft, SessionControls } from "./api-types.ts";
 import type { Question } from "./realtime.ts";
 
 /** Whether this person gets the assistant: the host or a co-host, in a session whose
@@ -120,6 +120,24 @@ export function topQuestions(
     });
   }
   return out.length >= 2 ? out : [];
+}
+
+/** The server's open draft for a cluster (or a provisional "q_" one), if it has one. */
+export function draftFor(clusterId: string, clusters: readonly QACluster[]): QADraft | undefined {
+  return clusters.find((c) => c.id === clusterId)?.draft;
+}
+
+/** The draft a card shows: the newer of this host's own suggestion and the server's (a
+ *  co-host's, or one written when the question arrived), leaving out the one this host just
+ *  posted or discarded until the next read drops it. */
+export function pickDraft(
+  mine: QADraft | null | undefined,
+  server: QADraft | null | undefined,
+  gone: string | null,
+): QADraft | null {
+  const live = [mine, server].filter((d): d is QADraft => !!d && d.id !== gone);
+  if (live.length === 0) return null;
+  return live.reduce((a, b) => (Date.parse(b.createdAt) > Date.parse(a.createdAt) ? b : a));
 }
 
 /** The sentence for a failed suggestion: the server's own for the ones it explains. */

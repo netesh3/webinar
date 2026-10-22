@@ -11,6 +11,11 @@ import type {
   AIWebinarSetupRequest,
   QAClustersResponse,
   QASuggestResponse,
+  QAPostDraftResponse,
+  KnowledgeDoc,
+  KnowledgeDocDetail,
+  KnowledgeLibrary,
+  SessionKnowledge,
   SalesChat,
   SalesConversationDetail,
   SalesInbox,
@@ -868,6 +873,47 @@ export const api = {
   /** A private draft answer for one cluster: shown to this host only, never posted. */
   suggestQAAnswer: (slug: string, clusterId: string) =>
     post<QASuggestResponse>(`/api/host/webinars/${seg(slug)}/qa/clusters/${seg(clusterId)}/suggest`, {}),
+
+  /** Posts a draft, as edited, as the host's answer on its cluster's open questions. The
+   *  only way a draft reaches the audience. Returns the questions now answered. */
+  postQADraft: (slug: string, draftId: string, answer: string) =>
+    post<QAPostDraftResponse>(`/api/host/webinars/${seg(slug)}/qa/drafts/${seg(draftId)}/post`, { answer }),
+
+  discardQADraft: (slug: string, draftId: string) =>
+    del<StatusResponse>(`/api/host/webinars/${seg(slug)}/qa/drafts/${seg(draftId)}`),
+
+  // ------------------------------------------------------------------ AI knowledge
+
+  /** The host's AI knowledge library (accounts with the ai feature). */
+  knowledgeLibrary: () => request<KnowledgeLibrary>("/api/host/knowledge", fresh),
+
+  addKnowledgeText: (title: string, text: string) =>
+    post<KnowledgeDoc>("/api/host/knowledge", { title, text }),
+
+  /** Uploads a PDF, DOCX, TXT or MD file as is; the server extracts its text. */
+  uploadKnowledge: (file: File, title = "") => {
+    const q = new URLSearchParams({ filename: file.name });
+    if (title.trim()) q.set("title", title.trim());
+    return request<KnowledgeDoc>(`/api/host/knowledge/upload?${q.toString()}`, {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+  },
+
+  knowledgeDoc: (id: string) => request<KnowledgeDocDetail>(`/api/host/knowledge/${seg(id)}`, fresh),
+
+  renameKnowledge: (id: string, title: string) =>
+    patch<KnowledgeDoc>(`/api/host/knowledge/${seg(id)}`, { title }),
+
+  deleteKnowledge: (id: string) => del<StatusResponse>(`/api/host/knowledge/${seg(id)}`),
+
+  /** The session host's library, each document ticked unless left out of this session. */
+  sessionKnowledge: (slug: string) =>
+    request<SessionKnowledge>(`/api/host/webinars/${seg(slug)}/knowledge`, fresh),
+
+  setSessionKnowledge: (slug: string, docId: string, included: boolean) =>
+    patch<SessionKnowledge>(`/api/host/webinars/${seg(slug)}/knowledge/${seg(docId)}`, { included }),
 
   appendCaption: (slug: string, body: { joinKey?: string; text: string }) =>
     post<StatusResponse>(`/api/webinars/${seg(slug)}/captions`, body),

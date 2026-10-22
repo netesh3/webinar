@@ -17,11 +17,7 @@ import (
  * grouped in batches (never a call per question), once at a time, persisted; host-only; off
  * with the room's AI switch; paused at a cap; a private suggested answer. */
 
-func (f *fakeOpenAI) setReply(reply string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.reply = reply
-}
+// setReply is in leads_test.go.
 
 func (f *fakeOpenAI) userPrompt(i int) string {
 	f.mu.Lock()
@@ -279,7 +275,7 @@ func TestQAAssistSuggestIsPrivateAndHostOnly(t *testing.T) {
 	cluster := h.qaClusters(wb.ID).Clusters[0]
 	h.caption(wb.ID, "user_"+host.ID, "The full course is 499 rupees, and early birds get 20 percent off.")
 
-	model.setReply("**Course** ki fee 499 rupees hai.\n- Early birds ko 20 percent off milta hai.")
+	model.setReply(`{"answer":"**Course** ki fee 499 rupees hai.\n- Early birds ko 20 percent off milta hai.","grounded":true,"sources":[]}`)
 	before := len(h.rooms.sent)
 	path := "/api/host/webinars/" + wb.ID + "/qa/clusters/" + cluster.ID + "/suggest"
 	res, raw := h.do(http.MethodPost, path, nil)
@@ -297,10 +293,19 @@ func TestQAAssistSuggestIsPrivateAndHostOnly(t *testing.T) {
 			t.Errorf("suggest prompt missing %q: %s", want, p)
 		}
 	}
-	// Private: nothing went to the room, and nothing was written on the question.
-	if len(h.rooms.sent) != before {
-		t.Fatal("a suggested answer was sent to the room")
+	// From the transcript, with no knowledge: grounded, no sources, no "Not in your knowledge".
+	if !out.Draft.Grounded || len(out.Draft.Sources) != 0 || out.Draft.Auto || out.Draft.Answer != out.Answer {
+		t.Fatalf("draft = %+v", out.Draft)
 	}
+	// Private: nothing but the host team's re-read nudge went to the room, and nothing was
+	// written on the question.
+	h.rooms.mu.Lock()
+	for _, pk := range h.rooms.sent[before:] {
+		if !strings.Contains(string(pk.data), `"qa-clusters"`) || len(pk.to) != 1 || pk.to[0] != "user_"+host.ID {
+			t.Errorf("a suggested answer went to the room: %s to %v", pk.data, pk.to)
+		}
+	}
+	h.rooms.mu.Unlock()
 	var answer string
 	if err := h.store.Pool().QueryRow(ctx, `SELECT answer FROM session_questions WHERE id = 'q-fee-0001'`).Scan(&answer); err != nil || answer != "" {
 		t.Fatalf("stored answer = %q %v", answer, err)

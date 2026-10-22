@@ -60,6 +60,10 @@ export const AIFeatureQACluster = "qa_cluster";
  */
 export const AIFeatureQAAnswer = "qa_answer";
 /**
+ * Draft answers the assistant writes unasked, from the AI knowledge, batched with grouping.
+ */
+export const AIFeatureQAAutoDraft = "qa_autodraft";
+/**
  * AIFeatureUsage is one AI feature's calls this month.
  */
 export interface AIFeatureUsage {
@@ -146,6 +150,53 @@ export interface QACluster {
   latestAt: string;
   score: number /* float64 */;
   provisional?: boolean;
+  /**
+   * Draft is the answer waiting for the host team's review, if any (host team only).
+   */
+  draft?: QADraft;
+}
+/**
+ *  QADraft is a draft answer to one cluster (or one ungrouped question), for the host and
+ *  * co-hosts only. Nothing reaches the audience until a host posts it (POST
+ *  * /qa/drafts/{id}/post), after editing it if they like; it is then the host's answer on each
+ *  * open question, through the ordinary answer path.
+ */
+export interface QADraft {
+  id: string;
+  answer: string;
+  /**
+   * Grounded is true when the answer comes from the host's AI knowledge (or what was said in
+   * the session). False is a general answer, and the answer then starts "Not in your
+   * knowledge — general answer:" when the session has knowledge to draw on.
+   */
+  grounded: boolean;
+  /**
+   * Sources are the titles of the knowledge documents the answer drew on.
+   */
+  sources: string[];
+  /**
+   * Auto is a draft written unasked, when the question arrived.
+   */
+  auto: boolean;
+  createdAt: string;
+}
+/**
+ * QAPostDraftRequest is POST /api/host/webinars/{slug}/qa/drafts/{id}/post: the answer as the
+ * host edited it (at most QAAnswerMaxRunes characters).
+ */
+export interface QAPostDraftRequest {
+  answer: string;
+}
+/**
+ * QAAnswerMaxRunes bounds a posted answer: what the room's answer packet carries.
+ */
+export const QAAnswerMaxRunes = 600;
+/**
+ * QAPostDraftResponse is the questions the answer was posted on, now answered.
+ */
+export interface QAPostDraftResponse {
+  questionIds: string[];
+  answer: string;
 }
 /**
  * QAClustersResponse is GET /api/host/webinars/{slug}/qa/clusters.
@@ -168,11 +219,124 @@ export interface QAClustersResponse {
   top: string[];
 }
 /**
- * QASuggestResponse is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: a private
- * draft for the host. Never posted, never stored.
+ *  QASuggestResponse is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: a draft for
+ *  * the host team, grounded in the session's AI knowledge where it covers the question. Kept as
+ *  * the cluster's draft (replacing an earlier one) until posted or discarded; never posted by
+ *  * itself. Answer is Draft.Answer.
  */
 export interface QASuggestResponse {
   answer: string;
+  draft: QADraft;
+}
+/**
+ * The library's limits. Separate from the media quota: no file is stored, only its text.
+ */
+export const KnowledgeMaxDocs = 50;
+/**
+ * The library's limits. Separate from the media quota: no file is stored, only its text.
+ */
+export const KnowledgeMaxDocWords = 50_000;
+/**
+ * The library's limits. Separate from the media quota: no file is stored, only its text.
+ */
+export const KnowledgeMaxWords = 250_000;
+/**
+ * The library's limits. Separate from the media quota: no file is stored, only its text.
+ */
+export const KnowledgeMaxUploadBytes = 10 << 20;
+/**
+ * The library's limits. Separate from the media quota: no file is stored, only its text.
+ */
+export const KnowledgeMaxTitleRunes = 120;
+/**
+ * KnowledgeDoc is one document in the library.
+ */
+export interface KnowledgeDoc {
+  id: string;
+  title: string;
+  /**
+   * Source is text (pasted), txt, md, pdf or docx.
+   */
+  source: string;
+  filename?: string;
+  bytes: number /* int64 */;
+  words: number /* int */;
+  chunks: number /* int */;
+  /**
+   * Preview is the start of the extracted text.
+   */
+  preview: string;
+  createdAt: string;
+  updatedAt: string;
+}
+/**
+ * KnowledgeLimits are the caps the library is held to.
+ */
+export interface KnowledgeLimits {
+  maxDocs: number /* int */;
+  maxDocWords: number /* int */;
+  maxWords: number /* int */;
+  maxUploadBytes: number /* int64 */;
+}
+/**
+ * KnowledgeLibrary is GET /api/host/knowledge: the host's documents, newest first.
+ */
+export interface KnowledgeLibrary {
+  docs: KnowledgeDoc[];
+  usedWords: number /* int */;
+  limits: KnowledgeLimits;
+}
+/**
+ * KnowledgeDocDetail is GET /api/host/knowledge/{id}: a document with its extracted text (the
+ * first KnowledgeTextPreviewRunes characters; Truncated when there is more).
+ */
+export interface KnowledgeDocDetail {
+  doc: KnowledgeDoc;
+  text: string;
+  truncated: boolean;
+}
+/**
+ * KnowledgeTextPreviewRunes bounds the text a document's detail returns.
+ */
+export const KnowledgeTextPreviewRunes = 20_000;
+/**
+ *  KnowledgeCreateRequest is POST /api/host/knowledge: pasted text. Uploads are POST
+ *  * /api/host/knowledge/upload?filename=…&title=… with the raw file as the body. Errors: 403
+ *  * feature_off, 413 too_large, 415 unsupported, 422 (fields title/text; unreadable, no_text,
+ *  * too_long, library_full).
+ */
+export interface KnowledgeCreateRequest {
+  title: string;
+  text: string;
+}
+/**
+ * KnowledgeRenameRequest is PATCH /api/host/knowledge/{id}.
+ */
+export interface KnowledgeRenameRequest {
+  title: string;
+}
+/**
+ * SessionKnowledgeDoc is one library document as a session sees it.
+ */
+export interface SessionKnowledgeDoc {
+  id: string;
+  title: string;
+  source: string;
+  words: number /* int */;
+  included: boolean;
+}
+/**
+ * SessionKnowledge is GET /api/host/webinars/{slug}/knowledge: the session host's library,
+ * each document ticked unless it was left out of this session.
+ */
+export interface SessionKnowledge {
+  docs: SessionKnowledgeDoc[];
+}
+/**
+ * SessionKnowledgePatch is PATCH /api/host/webinars/{slug}/knowledge/{docId}.
+ */
+export interface SessionKnowledgePatch {
+  included: boolean;
 }
 
 //////////

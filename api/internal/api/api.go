@@ -630,6 +630,15 @@ func (s *Server) Routes() http.Handler {
 				// one line. Saves nothing. See ai_webinar_setup.go.
 				r.Post("/ai/webinar-setup", s.handleAIWebinarSetup)
 
+				// The AI knowledge library: documents that ground the Q&A
+				// assistant's draft answers. See knowledge.go.
+				r.Get("/knowledge", s.handleKnowledgeLibrary)
+				r.Post("/knowledge", s.handleCreateKnowledge)
+				r.Post("/knowledge/upload", s.handleUploadKnowledge)
+				r.Get("/knowledge/{id}", s.handleKnowledgeDoc)
+				r.Patch("/knowledge/{id}", s.handleRenameKnowledge)
+				r.Delete("/knowledge/{id}", s.handleDeleteKnowledge)
+
 				r.Get("/youtube/connect", s.handleYouTubeConnect)
 				r.Delete("/youtube", s.handleYouTubeDisconnect)
 				r.Get("/zoom/connect", s.handleZoomConnect)
@@ -731,6 +740,13 @@ func (s *Server) Routes() http.Handler {
 					// questions strip, and a private draft answer. See qa_assist.go.
 					r.Get("/qa/clusters", s.handleQAClusters)
 					r.Post("/qa/clusters/{id}/suggest", s.handleQASuggest)
+					// Draft answers from the AI knowledge: host team only until a
+					// host posts one, as the host's answer. See qa_drafts.go.
+					r.Post("/qa/drafts/{id}/post", s.handleQAPostDraft)
+					r.Delete("/qa/drafts/{id}", s.handleQADiscardDraft)
+					// Which of the host's AI knowledge documents this session uses.
+					r.Get("/knowledge", s.handleSessionKnowledge)
+					r.Patch("/knowledge/{docId}", s.handlePatchSessionKnowledge)
 					r.Post("/registrants/approve-all", s.handleApproveAll)
 
 					// A meeting's lobby: who is waiting, and letting them in (meeting.go).

@@ -127,3 +127,39 @@ func TestParseQAClustersPlacesEveryQuestionOnce(t *testing.T) {
 		t.Fatalf("left-out question = %+v", g)
 	}
 }
+
+func TestPickKnowledgeKeepsTheBudget(t *testing.T) {
+	hits := []store.KnowledgeHit{{Seq: 0, Tokens: 1500}, {Seq: 1, Tokens: 1400}, {Seq: 2, Tokens: 900}, {Seq: 3, Tokens: 50}, {Seq: 4, Tokens: 50}}
+	got := pickKnowledge(hits, 5, 3000)
+	var seqs []int
+	for _, h := range got {
+		seqs = append(seqs, h.Seq)
+	}
+	// 1500 + 1400 = 2900; 900 would overflow and is passed over; the small ones fit.
+	if len(seqs) != 4 || seqs[0] != 0 || seqs[1] != 1 || seqs[2] != 3 || seqs[3] != 4 {
+		t.Fatalf("picked %v", seqs)
+	}
+	if got := pickKnowledge(hits, 2, 100000); len(got) != 2 {
+		t.Fatalf("n = %d", len(got))
+	}
+}
+
+func TestAttachQADrafts(t *testing.T) {
+	t0 := time.Now()
+	cs := []types.QACluster{
+		{ID: "qc_a", QuestionIDs: []string{"q1", "q2"}},
+		{ID: "q_q3", QuestionIDs: []string{"q3"}, Provisional: true},
+		{ID: "qc_b", QuestionIDs: []string{"q4"}},
+	}
+	attachQADrafts(cs, []store.QADraft{
+		{ID: "d1", ClusterKey: "qc_a", Answer: "old", CreatedAt: t0},
+		{ID: "d2", ClusterKey: "q_q2", Answer: "newer, while ungrouped", CreatedAt: t0.Add(time.Second)},
+		{ID: "d3", ClusterKey: "q_q3", Answer: "provisional", CreatedAt: t0},
+	})
+	if cs[0].Draft == nil || cs[0].Draft.ID != "d2" || cs[1].Draft == nil || cs[1].Draft.ID != "d3" || cs[2].Draft != nil {
+		t.Fatalf("attached: %+v %+v %+v", cs[0].Draft, cs[1].Draft, cs[2].Draft)
+	}
+	if cs[1].Draft.Sources == nil {
+		t.Fatal("sources should be [] not null")
+	}
+}

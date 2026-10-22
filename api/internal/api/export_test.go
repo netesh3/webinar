@@ -55,6 +55,13 @@ func SetRecapDelay(d time.Duration) func() {
 	return func() { recapDelay = old }
 }
 
+// SetQAAutoDraftCap sets the most automatic drafts a session gets; the returned func restores it.
+func SetQAAutoDraftCap(n int) func() {
+	old := qaAutoDraftCap
+	qaAutoDraftCap = n
+	return func() { qaAutoDraftCap = old }
+}
+
 // SetQAClusterTiming makes the Q&A assistant's check run on the request path (sync) and sets
 // how long a question waits for a pass; the returned func restores both.
 func SetQAClusterTiming(sync bool, every time.Duration) func() {

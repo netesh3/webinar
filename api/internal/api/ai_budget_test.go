@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +25,8 @@ type fakeOpenAI struct {
 	calls  int
 	reply  string
 	bodies []map[string]any
+	// bySchema, when it names a call's structured-output schema, is that call's reply instead.
+	bySchema map[string]string
 }
 
 func newFakeOpenAI(t *testing.T, reply string) (*fakeOpenAI, *httptest.Server) {
@@ -35,6 +38,13 @@ func newFakeOpenAI(t *testing.T, reply string) (*fakeOpenAI, *httptest.Server) {
 		f.calls++
 		f.bodies = append(f.bodies, body)
 		reply := f.reply
+		if rf, _ := body["response_format"].(map[string]any); rf != nil {
+			if js, _ := rf["json_schema"].(map[string]any); js != nil {
+				if r, ok := f.bySchema[fmt.Sprint(js["name"])]; ok {
+					reply = r
+				}
+			}
+		}
 		f.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{{"message": map[string]string{"role": "assistant", "content": reply}}},
