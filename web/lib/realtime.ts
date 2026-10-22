@@ -11,6 +11,7 @@ import type {
   SendMessageResponse,
   SessionControls,
 } from "./api-types";
+import { acceptCaption, rememberFinal, type CaptionLine } from "./caption-sync";
 import { lobbyWaitingFrom } from "./meeting-room";
 import { planReactionBurst, reactionBurstCount } from "./reaction-queue";
 import { mergeQuestions as mergeQuestionList, questionSnapshot, tallyVotes } from "./room-history";
@@ -145,7 +146,17 @@ type QModMessage = {
 export type CtaOffer = { id: string; title: string; url: string; label: string };
 type CtaMessage = { kind: "cta" } & CtaOffer;
 type CtaClearMessage = { kind: "cta-clear" };
-type CaptionMessage = { kind: "caption"; from: Sender; text: string };
+/** A caption line. id / partial / lagMs come from the server caption agent: interim text
+ *  for a line still being spoken (replaced by its final, same id) and how old the speech
+ *  was when sent (lib/caption-sync.ts). A browser's on-device caption has none of them. */
+type CaptionMessage = {
+  kind: "caption";
+  from: Sender;
+  text: string;
+  id?: string;
+  partial?: boolean;
+  lagMs?: number;
+};
 type StageInviteMessage = {
   kind: "stage-invite";
   identity: string;
@@ -462,7 +473,16 @@ function decode(bytes: Uint8Array): RoomMessage | null {
       const from = sender(msg.from);
       const text = str(msg.text, 280);
       if (!from || !text) return null;
-      return { kind: "caption", from, text };
+      const id = str(msg.id, 300);
+      const lagMs = typeof msg.lagMs === "number" && Number.isFinite(msg.lagMs) ? msg.lagMs : undefined;
+      return {
+        kind: "caption",
+        from,
+        text,
+        ...(id ? { id } : {}),
+        ...(msg.partial === true ? { partial: true } : {}),
+        ...(lagMs !== undefined ? { lagMs } : {}),
+      };
     }
     case "stage-invite": {
       const identity = str(msg.identity, 200);
@@ -729,7 +749,7 @@ export type Realtime = {
    *  Captions are never cleared by a packet — the speaker just stops sending —
    *  so the overlay decides for itself when a line has gone stale, and `at` is
    *  what it measures that against. */
-  captions: { identity: string; text: string; at: number } | null;
+  captions: CaptionLine | null;
   stageInvite: { audioOnly: boolean; recording: boolean } | null;
   dismissStageInvite: () => void;
   toggleHand: () => Promise<void>;
@@ -801,11 +821,11 @@ export function useRealtime(
     Record<string, { pinned: boolean; dismissed: boolean; answer: string }>
   >({});
   const [cta, setCta] = useState<CtaOffer | null>(null);
-  const [captions, setCaptions] = useState<{
-    identity: string;
-    text: string;
-    at: number;
-  } | null>(null);
+  const [captions, setCaptions] = useState<CaptionLine | null>(null);
+  // Lines whose final has arrived, so a late partial of one never replaces it; and the
+  // line on screen, read when the next packet arrives (outside render).
+  const finalisedCaptions = useRef<readonly string[]>([]);
+  const captionsRef = useRef<CaptionLine | null>(null);
   const [stageInvite, setStageInvite] = useState<{
     audioOnly: boolean;
     recording: boolean;
@@ -1016,8 +1036,23 @@ export function useRealtime(
           setChat((current) => current.filter((m) => m.id !== msg.id));
           break;
         case "caption":
-          setCaptions({ identity: msg.from.identity, text: msg.text, at: Date.now() });
+        {
+          const line: CaptionLine = {
+            identity: msg.from.identity,
+            text: msg.text,
+            at: Date.now(),
+            id: msg.id,
+            partial: msg.partial,
+            lagMs: msg.lagMs,
+          };
+          const finalised = finalisedCaptions.current;
+          finalisedCaptions.current = rememberFinal(finalised, line);
+          if (acceptCaption(captionsRef.current, line, finalised)) {
+            captionsRef.current = line;
+            setCaptions(line);
+          }
           break;
+        }
         case "stage-invite":
           if (msg.identity === meRef.current.identity) {
             setStageInvite({ audioOnly: msg.audioOnly === true, recording: msg.recording === true });

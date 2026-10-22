@@ -28,14 +28,26 @@ class FakeApi:
         self.transcripts = []
         self.caption_status = caption_status
         self.transcript_status = transcript_status
+        self.lines = []  # caption_line calls: finals and partials, with their flags
+        self.edge = False  # what the API answers about edge delivery
 
     def caption(self, room, identity, text, started_at_ms):
         self.captions.append((room, identity, text, started_at_ms))
         return self.caption_status
 
+    def caption_line(self, room, identity, text, started_at_ms, ended_at_ms, partial=False, published=False):
+        self.lines.append(dict(identity=identity, text=text, started=started_at_ms, ended=ended_at_ms,
+                               partial=partial, published=published))
+        if not partial:
+            self.captions.append((room, identity, text, started_at_ms))
+        return self.caption_status, {"status": "ok", "edge": self.edge}
+
     def status(self, room, state):
         self.statuses.append((room, state))
         return 200
+
+    def status_json(self, room, state):
+        return self.status(room, state), {"status": "ok", "edge": self.edge}
 
     def transcript(self, room, model, lines):
         self.transcripts.append((room, model, list(lines)))

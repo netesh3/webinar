@@ -75,8 +75,29 @@ class Config:
     # Energy gate (RMS of 16 kHz float audio, 0..1). Below it a frame is silence and costs
     # nothing beyond the RMS itself.
     energy_gate: float = 0.012
-    silence_end_s: float = 0.6
-    max_utterance_s: float = 6.0
+    # When a line is cut. 0.45 s of quiet ends a sentence (was 0.6): conversational pauses
+    # inside a sentence are mostly under 0.4 s, so this still rarely splits one, and every
+    # line reaches the screen 150 ms sooner. Past soft_utterance_s a breath (soft_silence_s)
+    # is enough, and max_utterance_s (was 6) is the hard cap for someone who never pauses.
+    silence_end_s: float = 0.45
+    max_utterance_s: float = 5.0
+    soft_utterance_s: float = 3.0
+    soft_silence_s: float = 0.25
+
+    # Interim captions: while the main speaker is mid-line, the line so far is decoded every
+    # partial_interval_s with partial_model (default: the fallback model, already loaded and
+    # several times cheaper than the live one) and shown until the final replaces it. Only
+    # in NORMAL, only for one speaker, only while captions are shown; never stored.
+    partials: bool = True
+    partial_interval_s: float = 1.0
+    partial_model: str = ""
+    # The model that picks English or Hindi in auto mode (default: the fallback). Detection
+    # is a full encoder pass of its own; on `small` it doubled those lines' decode.
+    detect_model: str = ""
+
+    # Publish each line straight to the room (the agent is in it, next to the SFU) instead
+    # of waiting on the API's relay; the API still gets every final, off the display path.
+    direct_publish: bool = True
 
     # CPU guard thresholds (percent of the whole host) and how long they must hold.
     cpu_high: float = 85.0
@@ -93,6 +114,14 @@ class Config:
     @property
     def cpu_threads(self) -> int:
         return max(1, int(self.cpus))
+
+    @property
+    def partial_model_name(self) -> str:
+        return self.partial_model or self.fallback_model
+
+    @property
+    def detect_model_name(self) -> str:
+        return self.detect_model or self.fallback_model
 
     @property
     def whisper_language(self) -> str | None:
@@ -131,8 +160,15 @@ class Config:
             max_rooms=_int(env, "CAPTIONS_MAX_ROOMS", 2),
             cpus=_float(env, "CAPTIONS_CPUS", 2.0),
             energy_gate=_float(env, "CAPTIONS_ENERGY_GATE", 0.012),
-            silence_end_s=_float(env, "CAPTIONS_SILENCE_END_S", 0.6),
-            max_utterance_s=_float(env, "CAPTIONS_MAX_UTTERANCE_S", 6.0),
+            silence_end_s=_float(env, "CAPTIONS_SILENCE_END_S", 0.45),
+            max_utterance_s=_float(env, "CAPTIONS_MAX_UTTERANCE_S", 5.0),
+            soft_utterance_s=_float(env, "CAPTIONS_SOFT_UTTERANCE_S", 3.0),
+            soft_silence_s=_float(env, "CAPTIONS_SOFT_SILENCE_S", 0.25),
+            partials=_bool(env.get("CAPTIONS_PARTIALS"), True),
+            partial_interval_s=_float(env, "CAPTIONS_PARTIAL_INTERVAL_S", 1.0),
+            partial_model=env.get("CAPTIONS_PARTIAL_MODEL", "").strip(),
+            detect_model=env.get("CAPTIONS_DETECT_MODEL", "").strip(),
+            direct_publish=_bool(env.get("CAPTIONS_DIRECT_PUBLISH"), True),
             cpu_high=_float(env, "CAPTIONS_CPU_HIGH", 85.0),
             cpu_critical=_float(env, "CAPTIONS_CPU_CRITICAL", 95.0),
             cpu_low=_float(env, "CAPTIONS_CPU_LOW", 70.0),
@@ -145,6 +181,8 @@ class Config:
         )
         if cfg.max_speakers < 1:
             raise ConfigError("CAPTIONS_MAX_SPEAKERS must be >= 1")
+        if cfg.partial_interval_s < 0.3:
+            raise ConfigError("CAPTIONS_PARTIAL_INTERVAL_S must be >= 0.3")
         if not (cfg.cpu_low < cfg.cpu_high <= cfg.cpu_critical):
             raise ConfigError("need CAPTIONS_CPU_LOW < CAPTIONS_CPU_HIGH <= CAPTIONS_CPU_CRITICAL")
         return cfg

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -281,6 +282,79 @@ func TestInternalCaptionStoresAndFansOutLikeABrowserCaption(t *testing.T) {
 		"room": room, "identity": speaker, "text": "late line",
 	}); res.StatusCode != http.StatusConflict {
 		t.Fatalf("caption after off: %d %s, want 409", res.StatusCode, raw)
+	}
+}
+
+/* A current agent publishes each line to the room itself (published) and sends interim text
+ * (partial) for an edge room: the API must then store the final but not send it to the SFU a
+ * second time, copy both to the edge audience with the timing they sync on, and never store a
+ * partial. */
+func TestInternalCaptionPublishedAndPartialGoOnlyToTheEdge(t *testing.T) {
+	h := newHarness(t, captionsConfig, edgeConfig)
+	host := edgeHost(t, h, "srvcap-direct@test.dev")
+	wb := edgeWebinar(h, "Caption direct")
+	room := "webinar_" + wb.ID
+	speaker := "user_" + host.ID
+
+	viewer := h.registerAsGuest(wb.ID, "srvcap-direct-viewer@test.dev")
+	_, vj, _ := h.joinAsGuestKey(wb.ID, viewer.JoinKey)
+	events, res, cancel := h.openEvents(wb.ID, vj.EventsToken)
+	defer cancel()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("events: %d", res.StatusCode)
+	}
+	waitFor(t, events, 3*time.Second, func(e sseEvent) bool { return e.kind == "meta" })
+	syncStream(t, h, wb.ID, events)
+
+	if res, _, raw := h.setServerCaptions(wb.ID, true); res.StatusCode != http.StatusOK {
+		t.Fatalf("on: %d %s", res.StatusCode, raw)
+	}
+	// The status answer tells the agent the room is edge, before its first line.
+	if res, raw := h.agentPost("/api/internal/captions/status", testCaptionsSecret, map[string]any{
+		"room": room, "state": "live",
+	}); res.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"edge":true`) {
+		t.Fatalf("status: %d %s, want edge true", res.StatusCode, raw)
+	}
+	h.rooms.mu.Lock()
+	h.rooms.sent = nil
+	h.rooms.mu.Unlock()
+
+	started := time.Now().Add(-2 * time.Second).UnixMilli()
+	ended := time.Now().Add(-500 * time.Millisecond).UnixMilli()
+	res, raw := h.agentPost("/api/internal/captions", testCaptionsSecret, map[string]any{
+		"room": room, "identity": speaker, "text": "interim words so far", "startedAt": started, "endedAt": ended,
+		"partial": true, "published": true,
+	})
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"edge":true`) {
+		t.Fatalf("partial: %d %s", res.StatusCode, raw)
+	}
+	waitFor(t, events, 3*time.Second, func(e sseEvent) bool {
+		return e.kind == "packet" && strings.Contains(e.data, "interim words so far") &&
+			strings.Contains(e.data, `"partial":true`) && strings.Contains(e.data, `"lagMs":`)
+	})
+	if text, _ := h.store.CaptionTranscript(context.Background(), wb.ID); strings.Contains(text, "interim") {
+		t.Fatalf("a partial was stored: %q", text)
+	}
+
+	final := "the final line, as the agent published it"
+	if res, raw := h.agentPost("/api/internal/captions", testCaptionsSecret, map[string]any{
+		"room": room, "identity": speaker, "text": final, "startedAt": started, "endedAt": ended, "published": true,
+	}); res.StatusCode != http.StatusOK {
+		t.Fatalf("final: %d %s", res.StatusCode, raw)
+	}
+	if text, _ := h.store.CaptionTranscript(context.Background(), wb.ID); !strings.Contains(text, final) {
+		t.Fatalf("transcript = %q, want the final", text)
+	}
+	id := speaker + ":" + strconv.FormatInt(started, 10)
+	waitFor(t, events, 3*time.Second, func(e sseEvent) bool {
+		return e.kind == "packet" && strings.Contains(e.data, final) && strings.Contains(e.data, `"id":"`+id+`"`) &&
+			!strings.Contains(e.data, `"partial"`)
+	})
+	h.rooms.mu.Lock()
+	sent := len(h.rooms.sent)
+	h.rooms.mu.Unlock()
+	if sent != 0 {
+		t.Fatalf("%d packets sent to the SFU, want none: the agent published them", sent)
 	}
 }
 

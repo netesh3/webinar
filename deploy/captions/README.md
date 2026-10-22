@@ -10,8 +10,10 @@ container, never inside the API. Hindi and Hinglish are shown in **Roman script*
 host turns captions on ─▶ API ── agent dispatch ──▶ LiveKit ──▶ caption agent (this)
                                                                    │ subscribes to ≤ N active mics
                                                                    │ energy gate → faster-whisper
-          browsers ◀─ room packet "caption" ◀─ API ◀─ POST /api/internal/captions
-          edge (LL-HLS) viewers ◀─ SSE ◀──────┘        (+ /captions/status, /transcripts)
+          browsers ◀─ room packet "caption" (published by the agent, beside the SFU)
+                    ◀─ API relay, only when the agent could not publish
+          edge (LL-HLS) viewers ◀─ SSE ◀─ API ◀─ POST /api/internal/captions (async)
+                                                 (+ /captions/status, /transcripts)
 ```
 
 ## How it starts and stops
@@ -22,15 +24,27 @@ host turns captions on ─▶ API ── agent dispatch ──▶ LiveKit ──
    `CAPTIONS_AGENT_NAME`, default `webinar-captions`) for the room. Where the API has no
    `CAPTIONS_SECRET` it answers 503 and the browser turns on ordinary on-device captions
    (Whisper tiny.en in each speaker's tab) instead.
-2. LiveKit hands the job to a registered caption worker. The agent joins **hidden**, without
-   publish rights, as `CAP_<room>` (filtered from every roster), and posts
+2. LiveKit hands the job to a registered caption worker. The agent joins **hidden**, with no
+   media publish rights (data packets only), as `CAP_<room>` (filtered from every roster), and posts
    `/api/internal/captions/status {state: "live"}`. Only then does the API set
    `controls.serverCaptions = true` in the room metadata, and the browsers stop their own
    recognition. A dispatch no worker picks up therefore leaves the room on browser captions.
-3. Each finished line goes to `POST /api/internal/captions {room, identity, text, startedAt}`.
-   The API stores it like a browser caption (`session_captions`, the transcript download)
-   and sends the same `{kind: "caption", from: <speaker's Sender>, text}` room packet, which
-   also reaches edge viewers over SSE. The overlay renders it unchanged.
+3. Each finished line is **published to the room by the agent itself** as the
+   `{kind: "caption", from, text, id, startedAt, endedAt, lagMs}` packet (topic `webcast`)
+   while the room metadata says captions are shown, then posted (on a background thread,
+   kept-alive connection) to `POST /api/internal/captions {room, identity, text, startedAt,
+   endedAt, published: true}`. The API stores it like a browser caption (`session_captions`,
+   the transcript download) and copies it to edge viewers over SSE; without `published` (the
+   switch is unknown, or the publish failed) it relays to the room as well, as before. With
+   captions hidden (AI transcript only) nothing is published; the line is still stored.
+   **Interim captions:** while the main source (share audio, else the loudest active speaker)
+   is mid-line, the line so far is decoded every `CAPTIONS_PARTIAL_INTERVAL_S` with
+   `CAPTIONS_PARTIAL_MODEL` (the fallback model by default) and published with
+   `partial: true`; the overlay shows it lighter and replaces it with the final (same `id`).
+   NORMAL guard level only, captions shown only, finals always decoded first, never stored
+   or spooled. For an edge room (the API says so in its answers) partials are also posted
+   with `partial: true` and go only to the edge audience. Edge viewers hold each line by
+   their player's delay behind live minus `lagMs`, so it lands with the video.
 4. **Off:** the host presses Captions again (`PATCH /controls {captionsEnabled: false}`), or
    `POST …/captions/server {on: false}` (back to browser captions), or the session ends. The
    API deletes the dispatch, LiveKit ends the job, the agent posts `stopped` and leaves.
@@ -84,7 +98,13 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_MEMORY` | `4g` | docker `mem_limit` (SFU box) |
 | `CAPTIONS_IMAGE` | – | pull this image instead of building `./captions` on the box |
 | `CAPTIONS_ENERGY_GATE` | `0.012` | RMS below which a frame is silence |
-| `CAPTIONS_SILENCE_END_S` / `CAPTIONS_MAX_UTTERANCE_S` | `0.6` / `6` | when a line is cut |
+| `CAPTIONS_SILENCE_END_S` / `CAPTIONS_MAX_UTTERANCE_S` | `0.45` / `5` | when a line is cut (quiet that ends it / hard cap) |
+| `CAPTIONS_SOFT_UTTERANCE_S` / `CAPTIONS_SOFT_SILENCE_S` | `3` / `0.25` | past 3 s a 0.25 s breath ends the line, so a monologue is cut between phrases |
+| `CAPTIONS_PARTIALS` | `true` | interim captions for the main speaker (NORMAL only) |
+| `CAPTIONS_PARTIAL_INTERVAL_S` | `1` | how often the line so far is decoded (min 0.3) |
+| `CAPTIONS_PARTIAL_MODEL` | fallback model | model for interim captions |
+| `CAPTIONS_DETECT_MODEL` | fallback model | picks English/Hindi in auto mode (set to the live model for the old behaviour) |
+| `CAPTIONS_DIRECT_PUBLISH` | `true` | publish lines to the room directly; `false`: the API relays every line (the old path) |
 | `CAPTIONS_CPU_HIGH` / `_CRITICAL` / `_LOW` | `85` / `95` / `70` | guard thresholds, % of host |
 | `CAPTIONS_CPU_HIGH_FOR_S` / `_LOW_FOR_S` / `_SAMPLE_S` | `10` / `20` / `2` | guard timing |
 | `CAPTIONS_SPOOL_DIR` / `CAPTIONS_SPOOL_MAX_MB` | `/var/lib/captions/spool` / `4096` | audio kept for the final pass |
@@ -107,6 +127,7 @@ caption worker unless the box itself has `CAPTIONS_ENABLED=true`.
 |---|---|---|
 | live `small`, 1–2 active speakers | ≈ 1.5–2 cores while people talk, ~0 in silence | ~0.6 GB per room process (+1 idle prewarmed) |
 | live `base` (degraded / 2-vCPU workers) | ≈ 0.5–0.8 cores | ~0.3 GB |
+| interim captions (`base` once a second, main speaker, NORMAL only) | ≈ +0.3–0.6 cores while they talk (inside the same docker cap) | none extra (shares the fallback model) |
 | final `large-v3-turbo` | slower than real time at 2 cores (≈ 1–2× the session length) | ~1.7 GB while running, freed after |
 | disk | 32 KB/s per speaker while they talk (~115 MB/speaking-hour) | deleted after the final pass |
 
@@ -116,6 +137,27 @@ the guard thresholds forced low (`CAPTIONS_CPU_HIGH=20`) to see degrade/pause/re
 
 First start downloads small (~480 MB), base (~150 MB) and large-v3-turbo (~1.6 GB) into the
 `captions_models` volume; later starts are instant.
+
+## Latency
+
+Each room logs once a minute (`captions.latency`):
+`caption latency webinar_x: finals 12, partials 30 | e2e p50 … | queue … | decode … | partial … | post … | api_lag … (ms)`.
+e2e is end of speech → packet on the SFU; api_lag is end of speech → API answered (the
+edge path). The API logs `internal caption: relayed` per line with `age_ms`, `end_age_ms`
+and `handler_ms` (Cloud Run logs).
+
+End of a sentence → on screen in the LiveKit room. Decode times measured on an M-series
+laptop, int8, 2 threads, TTS English/Hindi clips (re-measure on the box from the log line);
+the API handler from Cloud Run request logs; the rest estimated:
+
+| stage | before | after |
+|---|---|---|
+| quiet that ends the line | 600 ms | 450 ms (250 ms once a line is 3 s long) |
+| first word of a monologue | up to 6 s + decode | partial after ~1 s + ~0.5 s (`base`); line cut at a breath ~3–4 s, hard cap 5 s |
+| decode, `small` (the encoder always runs on 30 s of padded audio, so 1 s costs ~ 6 s) | ~1.9–2.5 s | same |
+| language re-detect (1 line in 4, auto) | +1.7 s (a `small` encoder pass) | +0.45 s (`base`; agreed with `small` on all 6 test clips) |
+| POST (new TLS per line) + API handler (p50 32 ms, p90 55 ms) + SFU send | ~150–300 ms | off the display path (async, kept alive) |
+| SFU → browser | ~50 ms | ~50 ms |
 
 ## Tests
 
