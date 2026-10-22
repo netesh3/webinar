@@ -47,8 +47,8 @@ console.log("meetingTools");
   eq(meetingTools(all, false), all, "a webinar keeps every tool, in order");
   eq(
     meetingTools(all, true),
-    ["chat", "qa", "polls", "participants", "host", "whiteboard"],
-    "a meeting drops raise hand and the stream destinations, nothing else",
+    ["chat", "qa", "polls", "participants", "hand", "host", "whiteboard"],
+    "a meeting keeps raise hand and drops only the stream destinations",
   );
   ok(meetingTools(all, false) !== all, "a copy, so a caller sorting it cannot reorder the input");
 }

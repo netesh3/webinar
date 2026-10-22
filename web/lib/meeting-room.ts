@@ -25,14 +25,14 @@ import type { ToolId } from "./tools.ts";
 
 /* The tools a meeting never offers.
  *
- * "hand": a raised hand asks the host to bring you on the stage, and everyone in a meeting
- * is already on it — the server answers every stage action for a meeting with 422
- * not_in_meeting, so a hand would be a request nobody can grant.
+ * Raise hand stays. In a webinar it asks to be brought on the stage; in a meeting, where
+ * everyone already is, it means what it means in Zoom — "I'd like to speak" — and the host
+ * answers by calling on them and lowering it. The toasts and the roster already offer only
+ * Lower hand for someone on the stage (handActions), so no stage action is ever offered.
  *
  * The four stream destinations: a meeting has no audience to send anywhere, and the server
  * refuses stream destinations for one outright. */
 export const MEETING_HIDDEN_TOOLS: readonly ToolId[] = [
-  "hand",
   "youtube",
   "linkedin",
   "instagram",

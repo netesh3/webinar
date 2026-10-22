@@ -320,7 +320,7 @@ function HostRoster() {
       participant={p}
       isMe={p.identity === join.identity}
       meeting={meeting}
-      handRaised={!meeting && handIdentities.has(p.identity)}
+      handRaised={handIdentities.has(p.identity)}
       handRaisedAt={handIdentities.get(p.identity)}
       now={now}
       busy={busy === p.identity}
@@ -463,7 +463,7 @@ function HostRoster() {
             Shown here rather than only per-row because a host who has finished taking
             questions wants to move on, not to dismiss eleven people one at a time.
             Each row still has its own "Lower Hand" for passing over one person. */}
-        {!meeting && realtime.hands.length > 0 && (
+        {realtime.hands.length > 0 && (
           <div className="flex items-center gap-2 rounded-lg bg-warn-soft px-2.5 py-1.5">
             <HandIcon className="size-3.5 shrink-0 text-warn" />
             <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-warn">
