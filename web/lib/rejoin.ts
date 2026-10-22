@@ -27,6 +27,22 @@ export const PRESENCE_HEARTBEAT_MS = 30_000;
 
 export type RejoinRole = "attendee" | "stage";
 
+/* Which door a room was opened through decides what a stage role means.
+ *
+ * The stage door (/host/<slug>/room) is a scheduled host or panelist: they stay on WebRTC for
+ * the whole session. The attendee door with a stage role is somebody the host promoted who
+ * came back while on the stage — a reload, or Leave then Join — and a demotion must send them
+ * to the audience view again, as for a promotion made in the same page. Read off the role
+ * alone, the second looked like the first (instant-webinar-7494, 2026-10-22). */
+export function isScheduledPresenter(door: RejoinRole, role: string): boolean {
+  return door === "stage" && (role === "host" || role === "panelist");
+}
+
+/** True for an attendee who opens the room already on the stage. */
+export function opensPromoted(door: RejoinRole, role: string): boolean {
+  return door === "attendee" && role === "panelist";
+}
+
 export type Presence = {
   slug: string;
   /** Milliseconds since the epoch, the last time the room was seen open. */

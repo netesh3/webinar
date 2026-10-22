@@ -174,3 +174,21 @@ const MIN = 60_000;
 }
 
 console.log("rejoin: ok");
+
+/* The door decides what a stage role means (instant-webinar-7494): a promoted attendee who
+ * came back on the stage is not a scheduled presenter, and opens promoted. */
+{
+  const { isScheduledPresenter, opensPromoted } = await import("./rejoin.ts");
+  const cases: [Parameters<typeof isScheduledPresenter>[0], string, boolean, boolean][] = [
+    ["stage", "host", true, false],
+    ["stage", "panelist", true, false],
+    ["attendee", "panelist", false, true],
+    ["attendee", "attendee", false, false],
+    ["stage", "attendee", false, false],
+  ];
+  for (const [door, role, scheduled, promoted] of cases) {
+    assert.equal(isScheduledPresenter(door, role), scheduled, `isScheduledPresenter(${door}, ${role})`);
+    assert.equal(opensPromoted(door, role), promoted, `opensPromoted(${door}, ${role})`);
+  }
+  console.log("rejoin door: ok");
+}
