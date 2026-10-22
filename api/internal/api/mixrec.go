@@ -95,7 +95,7 @@ func (s *Server) callMixRecorder(ctx context.Context, base, op string, job mixRe
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/"+op, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/"+op, bytes.NewReader(body)) // #nosec G704 -- base is the operator's recorder URL from config, op a constant
 	if err != nil {
 		return err
 	}
