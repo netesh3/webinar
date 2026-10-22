@@ -55,7 +55,8 @@ import { useRaisedHandsPanel } from "./raised-hands-panel";
 const MAX_CHARS = 2000;
 
 export function ChatPanel() {
-  const { slug, joinKey, realtime, controls, permissions, isHost, me } = useRoomUI();
+  const { slug, joinKey, realtime, controls, permissions, isHost, me, join } = useRoomUI();
+  const noun = join.meeting ? "meeting" : "webinar";
   const [draft, setDraft] = useState<Draft>({ text: "", mentions: [] });
   const chatMention = useRaisedHandsPanel().chatMention;
   // "Message" on a raised hand. There is no direct-message thread, so the room
@@ -403,7 +404,9 @@ export function ChatPanel() {
                 <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
                   {stageTo === "panelists"
                     ? "Only the host and panelists will see this. Attendees will not."
-                    : "Everyone in the webinar, attendees included, will see this."}
+                    : join.meeting
+                      ? "Everyone in the meeting will see this."
+                      : "Everyone in the webinar, attendees included, will see this."}
                 </p>
               </div>
             ) : (
@@ -490,7 +493,7 @@ export function ChatPanel() {
         title="Delete this message?"
         body={
           deleteTarget
-            ? `This removes ${deleteTarget.from.name}'s message for everyone in the webinar, including anyone who joins later. This can't be undone.`
+            ? `This removes ${deleteTarget.from.name}'s message for everyone in the ${noun}, including anyone who joins later. This can't be undone.`
             : ""
         }
         confirmLabel="Delete message"

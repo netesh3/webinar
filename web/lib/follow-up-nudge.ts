@@ -17,9 +17,10 @@ export const FOLLOW_UP_FETCH_LIMIT = FOLLOW_UP_LIMIT;
 /** Cache key for that one read. The prefetch and the column share it, so the
  *  cards are already in memory when the column mounts. `prefix` is
  *  HOST_LIST_PREFIX. The rest matches hostWebinarsKey for
- *  `{ tab: "past", limit: FOLLOW_UP_FETCH_LIMIT }`. */
+ *  `{ tab: "past", kind: "webinar", limit: FOLLOW_UP_FETCH_LIMIT }`: the column is
+ *  "Recent webinars", and a meeting has no registrants to follow up. */
 export function followUpListCacheKey(prefix: string): string {
-  return `${prefix}tab=past&limit=${FOLLOW_UP_FETCH_LIMIT}`;
+  return `${prefix}tab=past&kind=webinar&limit=${FOLLOW_UP_FETCH_LIMIT}`;
 }
 
 /** True when this end time is still inside the follow-up week.

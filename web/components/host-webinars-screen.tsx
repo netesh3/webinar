@@ -7,7 +7,7 @@ import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
 import { dismissWelcome, useHostWelcome } from "./host-welcome";
-import { CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, PlayIcon, UsersIcon } from "./icons";
+import { CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, PlayIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT, SCHEDULE_LEAD_ERROR } from "./schedule/form-state";
 import {
   useAppConfig,
@@ -38,7 +38,6 @@ import {
 } from "@/lib/host-home-actions";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
-import { instantMeetingInput } from "@/lib/meeting-create";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 
 /* An instant webinar is the same request a normal Create submits, just with
@@ -110,7 +109,7 @@ function instantWebinarInput(
 
 /* The hour-ahead sentence is a schedule-form field error. This button has no
  * time to change, so that text is never what a failed instant start says. */
-function instantStartError(err: unknown): string {
+export function instantStartError(err: unknown): string {
   if (!(err instanceof ApiError)) {
     return err instanceof Error && err.message
       ? err.message
@@ -122,14 +121,14 @@ function instantStartError(err: unknown): string {
   return fieldMsg || err.message || "Could not start the webinar.";
 }
 
-const actionCardClass =
+export const actionCardClass =
   "group flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 text-left " +
   "shadow-[0_1px_2px_rgba(19,22,25,0.04)] transition-[border-color,box-shadow] " +
   "hover:border-line-2 hover:shadow-[0_2px_8px_rgba(19,22,25,0.08)] " +
   "outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-1 " +
   "disabled:cursor-progress disabled:opacity-70";
 
-function ActionCardBody({
+export function ActionCardBody({
   icon,
   title,
   subtitle,
@@ -178,7 +177,6 @@ export function HostWebinarsScreen() {
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [stageKnown, setStageKnown] = useState(bypass);
   const [startingInstant, setStartingInstant] = useState(false);
-  const [startingMeeting, setStartingMeeting] = useState(false);
   /* The host's last pick, from this browser. Safe to read on the first render: the
    * choice only shows once the session has loaded the account's features, which the
    * server render never has. */
@@ -210,9 +208,9 @@ export function HostWebinarsScreen() {
   useEffect(() => {
     if (bypass) return;
     let live = true;
-    const key = hostListPageKey(hostListFilterKey(listTab, "", "", ""), 0);
+    const key = hostListPageKey(hostListFilterKey(listTab, "", "", "", "webinar"), 0);
     api
-      .hostWebinars({ tab: listTab, limit: HOST_WEBINAR_PAGE_SIZE })
+      .hostWebinars({ tab: listTab, kind: "webinar", limit: HOST_WEBINAR_PAGE_SIZE })
       .then(() => {
         if (statusRef.current === "anonymous") dropCache(key);
       })
@@ -240,7 +238,7 @@ export function HostWebinarsScreen() {
      * cards wait again. */
     const pastKey = followUpListCacheKey(HOST_LIST_PREFIX);
     api
-      .hostWebinars({ tab: "past", limit: FOLLOW_UP_FETCH_LIMIT })
+      .hostWebinars({ tab: "past", kind: "webinar", limit: FOLLOW_UP_FETCH_LIMIT })
       .then(() => {
         if (statusRef.current === "anonymous") dropCache(pastKey);
       })
@@ -254,7 +252,7 @@ export function HostWebinarsScreen() {
 
   useEffect(() => {
     if (status !== "anonymous") return;
-    dropCache(hostListPageKey(hostListFilterKey(listTab, "", "", ""), 0));
+    dropCache(hostListPageKey(hostListFilterKey(listTab, "", "", "", "webinar"), 0));
     dropCache(followUpListCacheKey(HOST_LIST_PREFIX));
     dropCache("/api/me/registrations");
     /* After the effect, so this is not a setState in the effect body. The
@@ -305,43 +303,6 @@ export function HostWebinarsScreen() {
       notify(instantStartError(err), "error");
     } finally {
       setStartingInstant(false);
-    }
-  }
-
-  /* "Start a meeting": the instant webinar's flow with a meeting's request. Not behind the
-   * instant-webinar switch — the server does not gate an instant meeting either, because
-   * "meet now" is the ordinary way a meeting begins. The invite link goes to the clipboard
-   * for the same reason as an instant webinar's: the people to invite are elsewhere, and the
-   * host should not have to go looking for Share in a room that is already open. */
-  async function startMeeting() {
-    if (bypass) {
-      openRoomTab("/preview/room");
-      return;
-    }
-    const pendingTab = openPendingRoomTab();
-    setStartingMeeting(true);
-    try {
-      const created = await api.createWebinar(instantMeetingInput(localTimeZone()));
-      await api.startWebinar(created.id);
-      pendingTab.open(`/host/${created.id}/room`);
-      try {
-        await navigator.clipboard.writeText(`${origin}/webinars/${created.id}`);
-        notify("Meeting started — invite link copied.", "ok");
-      } catch {
-        notify(
-          "Meeting started. Open Share from the room to copy the invite link.",
-          "info",
-        );
-      }
-      refresh();
-    } catch (err) {
-      pendingTab.cancel();
-      notify(
-        instantStartError(err).replace("Could not start the webinar.", "Could not start the meeting."),
-        "error",
-      );
-    } finally {
-      setStartingMeeting(false);
     }
   }
 
@@ -493,39 +454,7 @@ export function HostWebinarsScreen() {
         )}
       </div>
 
-      {/* Meetings, under the webinar cards: a separate kind of session (everyone on camera,
-          let in from a lobby), so its own pair of cards rather than a toggle on the ones
-          above. Every host has them. */}
-      <div className="-mt-3 mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={startMeeting}
-          disabled={startingMeeting}
-          aria-busy={startingMeeting}
-          className={actionCardClass}
-        >
-          <ActionCardBody
-            icon={
-              startingMeeting ? (
-                <Spinner className="size-4" />
-              ) : (
-                <UsersIcon className="size-4" />
-              )
-            }
-            title={startingMeeting ? "Starting…" : "Start a meeting"}
-            subtitle="Everyone on camera; you let people in"
-          />
-        </button>
-        <Link href="/host/new/meeting" className={actionCardClass}>
-          <ActionCardBody
-            icon={<CalendarIcon className="size-4" />}
-            title="Schedule a meeting"
-            subtitle="Pick a time and share the link"
-          />
-        </Link>
-      </div>
-
-      <HostWebinarBrowser reloadToken={reloadToken} attendingHint={welcome} />
+      <HostWebinarBrowser kind="webinar" reloadToken={reloadToken} attendingHint={welcome} />
 
       {onStage.length > 0 && (
         <section className="mt-10">

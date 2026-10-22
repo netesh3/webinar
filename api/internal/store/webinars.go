@@ -331,7 +331,20 @@ type HostWebinarFilter struct {
 	// Cursor resumes after a previous page's last row. Opaque — produced by
 	// ByHostPage, never built by a caller.
 	Cursor string
+	// Kind splits the portal's two lists: HostKindMeeting is meetings only,
+	// HostKindWebinar everything that is not a meeting, empty both. Applied to
+	// the counts as well as the rows, so the Webinars tab badges never count a
+	// meeting and the Meetings page pages through meetings alone.
+	Kind HostWebinarKind
 }
+
+// HostWebinarKind is which of the portal's lists a host page is for.
+type HostWebinarKind string
+
+const (
+	HostKindWebinar HostWebinarKind = "webinar"
+	HostKindMeeting HostWebinarKind = "meeting"
+)
 
 /* ByHostPage returns one page of the webinars owned by a host, with the tab
  * counts alongside.
@@ -381,6 +394,12 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 	}
 	if q := strings.TrimSpace(f.Search); q != "" {
 		narrow += " AND w.topic ILIKE " + arg("%"+likeLiteral(q)+"%") + ` ESCAPE '\'`
+	}
+	switch f.Kind {
+	case HostKindMeeting:
+		narrow += " AND w.kind = 'meeting'"
+	case HostKindWebinar:
+		narrow += " AND w.kind <> 'meeting'"
 	}
 	countArgs := slices.Clone(args)
 

@@ -198,6 +198,7 @@ export function ControlBar() {
     prefs,
     updatePrefs,
     shareAgain,
+    join,
   } = useRoomUI();
   const raisedHands = useRaisedHandsPanel();
 
@@ -1546,7 +1547,11 @@ export function ControlBar() {
               else setLeaveConfirmOpen((v) => !v);
             }}
             disabled={connecting}
-            aria-label={isHost ? "Leave or end the webinar" : "Leave the webinar"}
+            aria-label={
+              isHost
+                ? `Leave or end the ${join.meeting ? "meeting" : "webinar"}`
+                : `Leave the ${join.meeting ? "meeting" : "webinar"}`
+            }
             aria-haspopup={isHost ? "menu" : "dialog"}
             aria-expanded={isHost ? leaveMenuOpen : leaveConfirmOpen}
             title={connecting ? "Connecting…" : undefined}
@@ -1573,6 +1578,7 @@ export function ControlBar() {
                  different from what an attendee does — so the copy is too. isAttendee is
                  already the app's own test for the difference. */
               role={isAttendee ? "attendee" : "panelist"}
+              meeting={join.meeting === true}
               onClose={() => setLeaveConfirmOpen(false)}
               onLeave={leave}
             />

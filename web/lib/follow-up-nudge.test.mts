@@ -20,7 +20,7 @@ const NOW = Date.parse("2026-10-01T12:00:00.000Z");
 assert.equal(FOLLOW_UP_WINDOW_MS, WEEK);
 assert.equal(FOLLOW_UP_LIMIT, 3);
 assert.equal(FOLLOW_UP_FETCH_LIMIT, 3);
-assert.equal(followUpListCacheKey("host-webinars:"), "host-webinars:tab=past&limit=3");
+assert.equal(followUpListCacheKey("host-webinars:"), "host-webinars:tab=past&kind=webinar&limit=3");
 
 function at(msFromNow: number): string {
   return new Date(NOW + msFromNow).toISOString();

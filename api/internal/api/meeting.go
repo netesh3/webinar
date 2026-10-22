@@ -197,6 +197,20 @@ func (s *Server) handleMeetingKnock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := strings.Join(strings.Fields(req.Name), " ")
+	/* A signed-in visitor is not asked who they are: the door knocks with an empty name and
+	 * the account's name stands in (or one made from the email, for an account without a
+	 * name). Still a knock: the host admits them like anyone else. */
+	if name == "" {
+		if user, signedIn := s.optionalUser(r); signedIn {
+			name = strings.Join(strings.Fields(user.Name), " ")
+			if name == "" {
+				name = store.NameFromEmail(user.Email)
+			}
+			if utf8.RuneCountInString(name) > guestNameMax {
+				name = string([]rune(name)[:guestNameMax])
+			}
+		}
+	}
 	switch {
 	case name == "":
 		httpx.Fields(w, map[string]string{"name": "Required."})

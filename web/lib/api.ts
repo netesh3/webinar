@@ -123,6 +123,7 @@ import {
   HOST_WEBINAR_PAGE_SIZE,
   hostListFilterKey,
   hostListPageKey,
+  type HostListKind,
 } from "./host-list-cache";
 import {
   API_BASE,
@@ -162,6 +163,8 @@ export type HostWebinarTab = "upcoming" | "past" | "drafts";
 
 type HostWebinarQuery = {
   tab?: HostWebinarTab;
+  /** Webinars only (no meetings) or meetings only; absent is both. */
+  kind?: HostListKind;
   q?: string;
   from?: string;
   to?: string;
@@ -177,13 +180,20 @@ type HostWebinarQuery = {
  *  key under the same prefix, which is what a create or delete drops. */
 function hostWebinarsKey(params: HostWebinarQuery): string {
   const tab = params.tab ?? "upcoming";
-  const filter = hostListFilterKey(tab, params.q ?? "", params.from ?? "", params.to ?? "");
+  const filter = hostListFilterKey(
+    tab,
+    params.q ?? "",
+    params.from ?? "",
+    params.to ?? "",
+    params.kind ?? "",
+  );
   const limit = params.limit ?? HOST_WEBINAR_PAGE_SIZE;
   if (!params.cursor && limit === HOST_WEBINAR_PAGE_SIZE) {
     return hostListPageKey(filter, 0);
   }
   const qs = new URLSearchParams();
   qs.set("tab", tab);
+  if (params.kind) qs.set("kind", params.kind);
   if (params.q) qs.set("q", params.q);
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);
@@ -195,6 +205,7 @@ function hostWebinarsKey(params: HostWebinarQuery): string {
 function hostWebinarsPath(params: HostWebinarQuery): string {
   const qs = new URLSearchParams();
   if (params.tab) qs.set("tab", params.tab);
+  if (params.kind) qs.set("kind", params.kind);
   if (params.q) qs.set("q", params.q);
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);

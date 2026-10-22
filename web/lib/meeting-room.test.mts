@@ -15,8 +15,10 @@ import {
   lobbyLabel,
   lobbyToastText,
   lobbyWaitingFrom,
+  meetingDoorFor,
   meetingFullMessage,
   meetingRejoinEntry,
+  roomExitCopy,
   meetingTools,
   prejoinMedia,
   sortLobby,
@@ -116,6 +118,27 @@ console.log("\nmessages");
   );
   eq(admitAllMessage({ admitted: 0, left: 2 }), "Meeting is full. Ask an admin to raise it.", "nobody fit");
   eq(admitAllMessage({ admitted: 0, left: 0 }), "Nobody is waiting.", "nobody there");
+}
+
+// The closing screen says "meeting" in a meeting, and a webinar's words are unchanged.
+{
+  eq(roomExitCopy("ended", true).title, "The meeting has ended", "meeting ended");
+  eq(roomExitCopy("ended", false).title, "The webinar has ended", "webinar ended");
+  eq(roomExitCopy("removed", true).title, "You were removed from the meeting", "meeting removal");
+  for (const reason of ["ended", "removed", "duplicate", "lost"] as const) {
+    const c = roomExitCopy(reason, true);
+    ok(!/webinar/i.test(c.title + c.body), `meeting ${reason} copy never says webinar`, JSON.stringify(c));
+  }
+}
+
+// Who is asked their name at a meeting's link.
+{
+  eq(meetingDoorFor({ status: "anonymous" }, "u1"), "form", "signed out: the name form");
+  eq(meetingDoorFor({ status: "loading" }, "u1"), "wait", "session loading: no form flash");
+  eq(meetingDoorFor({ status: "signed-in", accountId: "u2" }, "u1"), "auto", "signed in: knock with the account");
+  eq(meetingDoorFor({ status: "signed-in", accountId: "u1" }, "u1"), "host", "the host: their own room");
+  eq(meetingDoorFor({ status: "signed-in", accountId: "u1" }, ""), "auto", "host unknown: still a knock");
+  eq(meetingDoorFor({ status: "signed-in" }, "u1"), "form", "signed in without an account: the form");
 }
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);

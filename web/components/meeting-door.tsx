@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useJoinKeyFor, useJoinKeys } from "./registrations";
 import { Spinner } from "./controls";
+import { useSession } from "./providers";
 import { Button } from "./ui";
 import { ApiError, api } from "@/lib/api";
 import type { MeetingKnockResponse } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { knockGoesIn, lobbyScreen, type LobbyScreen } from "@/lib/meeting-lobby";
+import { meetingDoorFor } from "@/lib/meeting-room";
 
 /* A meeting's front door, as the guest sees it: a name, then a wait.
  *
@@ -27,6 +29,10 @@ import { knockGoesIn, lobbyScreen, type LobbyScreen } from "@/lib/meeting-lobby"
  * A reload keeps their place. A browser holding a key knocks with it first, and the server
  * answers where it stands (waiting, admitted, denied) instead of queueing the same person
  * twice.
+ *
+ * Somebody signed in is not asked their name: the form knocks by itself with an empty name and
+ * the server uses the account's (handleMeetingKnock). They still wait for the host. The host
+ * who owns the meeting is sent to their own room instead (MeetingDoor).
  */
 
 /** The name field and "Ask to join". Stores the key before calling onKnocked, so whatever
@@ -47,9 +53,49 @@ export function MeetingKnockForm({
   heading?: string;
 }) {
   const { add } = useJoinKeys();
+  const { account, status } = useSession();
+  const door = meetingDoorFor({ status, accountId: account?.id }, "");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /* The signed-in knock, once. It falls back to the form when it fails: the person can then
+   * see why, and type a name if the account somehow has none. */
+  const autoTried = useRef(false);
+  const [autoFailed, setAutoFailed] = useState(false);
+
+  function knock(asName: string): Promise<void> {
+    return api
+      .meetingKnock(slug, { name: asName, ...(joinKey ? { joinKey } : {}) })
+      .then((res) => {
+        if (res.joinKey) add(res.joinKey, slug);
+        onKnocked(res);
+      });
+  }
+
+  function failed(err: unknown) {
+    if (err instanceof ApiError) {
+      if (err.fields?.name) {
+        setError(err.fields.name);
+      } else {
+        const s = lobbyScreen(err.code, err.message);
+        if (s.phase === "knock" || s.phase === "error") setError(err.message || s.body);
+        else onRefused(s);
+      }
+    } else {
+      setError("Could not reach the server. Check your connection and try again.");
+    }
+  }
+
+  useEffect(() => {
+    if (door !== "auto" || autoTried.current) return;
+    autoTried.current = true;
+    knock("").catch((err: unknown) => {
+      setAutoFailed(true);
+      failed(err);
+    });
+    // Once, when the session says who this is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [door]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,24 +106,23 @@ export function MeetingKnockForm({
     setBusy(true);
     setError(null);
     try {
-      const res = await api.meetingKnock(slug, { name, ...(joinKey ? { joinKey } : {}) });
-      if (res.joinKey) add(res.joinKey, slug);
-      onKnocked(res);
+      await knock(name);
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.fields?.name) {
-          setError(err.fields.name);
-        } else {
-          const s = lobbyScreen(err.code, err.message);
-          if (s.phase === "knock" || s.phase === "error") setError(err.message || s.body);
-          else onRefused(s);
-        }
-      } else {
-        setError("Could not reach the server. Check your connection and try again.");
-      }
+      failed(err);
     } finally {
       setBusy(false);
     }
+  }
+
+  if (door === "wait" || (door === "auto" && !autoFailed)) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6" role="status">
+        <Spinner className="size-5 text-ink-3" />
+        <p className="text-[13.5px] text-ink-2">
+          {door === "wait" ? "One moment…" : "Asking the host to let you in…"}
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -158,9 +203,15 @@ export function LobbyStatus({
 }
 
 /** The landing page's door for a meeting. */
-export function MeetingDoor({ slug }: { slug: string }) {
+export function MeetingDoor({ slug, hostId }: { slug: string; hostId: string }) {
   const router = useRouter();
   const hydrated = useHydrated();
+  const { account, status } = useSession();
+  // The host's own meeting: they run it from the host room, not from the lobby.
+  const ownMeeting = meetingDoorFor({ status, accountId: account?.id }, hostId) === "host";
+  useEffect(() => {
+    if (ownMeeting) router.replace(`/host/${slug}/room`);
+  }, [ownMeeting, router, slug]);
   const storedKey = useJoinKeyFor(slug);
   // "checking" until a held key has been asked about; then the form, a refusal, or "going".
   const [view, setView] = useState<
@@ -201,12 +252,16 @@ export function MeetingDoor({ slug }: { slug: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  if (view.kind === "checking" || view.kind === "going") {
+  if (ownMeeting || view.kind === "checking" || view.kind === "going") {
     return (
       <div className="flex flex-col items-center gap-3 py-6" role="status">
         <Spinner className="size-5 text-ink-3" />
         <p className="text-[13.5px] text-ink-2">
-          {view.kind === "going" ? "Taking you to the meeting…" : "One moment…"}
+          {ownMeeting
+            ? "Opening your meeting…"
+            : view.kind === "going"
+              ? "Taking you to the meeting…"
+              : "One moment…"}
         </p>
       </div>
     );

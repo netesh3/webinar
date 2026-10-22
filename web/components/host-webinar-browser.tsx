@@ -28,6 +28,7 @@ import {
   rememberPage,
   rememberedCursors,
   rememberedPage,
+  type HostListKind,
 } from "@/lib/host-list-cache";
 import { readCache, TTL_LIST, writeCache } from "@/lib/http";
 import {
@@ -124,6 +125,7 @@ type Filters = {
  *  untouched filter contributes no query parameter at all. */
 type PageQuery = {
   tab: HostWebinarTab;
+  kind: HostListKind;
   limit: number;
   cursor?: string;
   q?: string;
@@ -135,10 +137,11 @@ type PageQuery = {
  * A host who sets the later date first has expressed a range, not made a
  * mistake — native date inputs are happy to be filled in either order — and
  * returning nothing would be the widget arguing with them. */
-function pageQuery(f: Filters, cursor?: string): PageQuery {
+function pageQuery(f: Filters, kind: HostListKind, cursor?: string): PageQuery {
   const swap = f.from !== "" && f.to !== "" && f.from > f.to;
   return {
     tab: f.tab,
+    kind,
     limit: PAGE_SIZE,
     cursor,
     q: f.q.trim() || undefined,
@@ -154,11 +157,19 @@ export function HostWebinarBrowser({
   /** The one-time "hosting is on" note is up, so Attending is worth a mark
    *  until they dismiss it. The tab itself only exists once there is a row. */
   attendingHint = false,
+  /** Which list: the Webinars page (everything but meetings, with Attending) or the
+   *  Meetings page (meetings only). The server filters, so the counts and paging are
+   *  the list's own. */
+  kind = "webinar",
 }: {
   reloadToken?: number;
   attendingHint?: boolean;
+  kind?: HostListKind;
 }) {
   const bypass = isDevAuthBypassActive();
+  const meetings = kind === "meeting";
+  const basePath = meetings ? "/host/meetings" : "/host";
+  const noun = meetings ? "meetings" : "webinars";
 
   /* Only for the tab's badge. The list itself calls this too, and the hook holds
    * its state per caller, so the count is here rather than lifted: reading it
@@ -176,8 +187,6 @@ export function HostWebinarBrowser({
       const w = webinarFor(r.webinarId);
       return w !== undefined && w.host.id !== account?.id;
     }).length ?? 0;
-  const viewTabs: readonly ViewTab[] =
-    attendingCount > 0 ? [...BASE_TABS, ATTENDING] : BASE_TABS;
 
   /* ?tab= picks the tab, and is followed, not just read once, because those links
    * are usually clicked while the host is already on this page. Messages used to
@@ -193,8 +202,8 @@ export function HostWebinarBrowser({
   const linkedContact = search.get("contact") ?? "";
   const linkedWebinar = search.get("webinar") ?? "";
   const linkedFilter = search.get("filter") ?? "";
-  const reachable = (t: ViewTab) =>
-    viewTabs.includes(t) || t === ATTENDING || LINKABLE.includes(t);
+  // Attending is the Webinars page's: it lists other people's webinars this account joined.
+  const reachable = (t: ViewTab) => LINKABLE.includes(t) && !(meetings && t === ATTENDING);
   const [tab, setTabState] = useState<ViewTab>(() =>
     messagesLink || peopleLink || !reachable(askedTab) ? "upcoming" : askedTab,
   );
@@ -225,9 +234,9 @@ export function HostWebinarBrowser({
   const setTab = useCallback(
     (next: ViewTab) => {
       setTabState(next);
-      if (search.toString() !== "") router.replace("/host");
+      if (search.toString() !== "") router.replace(basePath);
     },
-    [router, search],
+    [router, search, basePath],
   );
   // Two search values: what is in the box, and what has been asked for. The
   // gap between them is the debounce.
@@ -251,7 +260,7 @@ export function HostWebinarBrowser({
   const seq = useRef(0);
 
   const listing = !ownList(tab);
-  const listKey = listing ? hostListFilterKey(tab, q, from, to) : "";
+  const listKey = listing ? hostListFilterKey(tab, q, from, to, kind) : "";
   const [seenList, setSeenList] = useState(listKey);
   const pageNow = listKey !== "" && listKey !== seenList ? rememberedPage(listKey) : page;
   if (listKey !== seenList) {
@@ -278,6 +287,14 @@ export function HostWebinarBrowser({
     }
   }
 
+  /* A meeting is started or scheduled, never saved as a draft, so Drafts is only on the
+   * Meetings page when one somehow exists. */
+  const listTabs: readonly ViewTab[] = meetings
+    ? BASE_TABS.filter((t) => t !== "drafts" || counts.drafts > 0)
+    : BASE_TABS;
+  const viewTabs: readonly ViewTab[] =
+    !meetings && attendingCount > 0 ? [...listTabs, ATTENDING] : listTabs;
+
   const filtersActive = q !== "" || from !== "" || to !== "";
   const nothingAtAll =
     !filtersActive &&
@@ -295,12 +312,12 @@ export function HostWebinarBrowser({
 
   const fetchPage = useCallback(
     (f: Filters, next?: string): Promise<HostWebinarPage> => {
-      const query = pageQuery(f, next);
+      const query = pageQuery(f, kind, next);
       return bypass
         ? Promise.resolve(bypassPage(query))
         : api.hostWebinars(query);
     },
-    [bypass],
+    [bypass, kind],
   );
 
   /* Not async, and the state writes are inside .then() —
@@ -338,13 +355,13 @@ export function HostWebinarBrowser({
         // that explains that, so there is nothing useful to say twice here.
         if (e instanceof ApiError && e.code === "not_a_host") return;
         setError(
-          e instanceof Error ? e.message : "Could not load your webinars.",
+          e instanceof Error ? e.message : `Could not load your ${noun}.`,
         );
       })
       .finally(() => {
         if (seq.current === mine) setPending(false);
       });
-  }, [fetchPage, tab, q, from, to, listKey, cacheKey, pageNow]);
+  }, [fetchPage, tab, q, from, to, listKey, cacheKey, pageNow, noun]);
 
   const [listGen, setListGen] = useState(0);
   useEffect(load, [load, reloadToken, listGen]);
@@ -422,7 +439,7 @@ export function HostWebinarBrowser({
           {!ownList(tab) && (
             <div className="flex min-w-0 items-center gap-2 pb-2.5 sm:max-w-[min(28rem,62%)] sm:shrink sm:pb-2">
               <label className="relative min-w-0 grow shrink sm:max-w-56 sm:grow-0 sm:basis-56">
-                <span className="sr-only">Search webinars by name</span>
+                <span className="sr-only">Search {noun} by name</span>
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
                 <input
                   type="search"
@@ -442,7 +459,7 @@ export function HostWebinarBrowser({
                 size="sm"
                 emptyLabel="Filter"
                 className="shrink-0 [&_button]:max-w-44"
-                ariaLabel="Filter webinars by date"
+                ariaLabel={`Filter ${noun} by date`}
                 onChange={(nextFrom, nextTo) =>
                   refilter(() => {
                     setFrom(nextFrom);
@@ -496,6 +513,7 @@ export function HostWebinarBrowser({
           {items.length === 0 && pageNow === 0 ? (
             <EmptyList
               tab={tab}
+              kind={kind}
               filtersActive={filtersActive}
               nothingAtAll={nothingAtAll}
               onClear={clearFilters}
@@ -506,7 +524,7 @@ export function HostWebinarBrowser({
               hint={
                 tab === "drafts"
                   ? "The last draft was published while this page was open. Page 1 still has the rest."
-                  : "The last webinars on this page were removed, or the page is past the end of the list."
+                  : `The last ${noun} on this page were removed, or the page is past the end of the list.`
               }
               action={
                 <Button variant="secondary" onClick={() => goTo(0)}>
@@ -542,7 +560,7 @@ export function HostWebinarBrowser({
         </>
       )}
       </div>
-      {tab === "upcoming" && (
+      {tab === "upcoming" && !meetings && (
         <EndedNudge className="min-[900px]:col-start-2 min-[900px]:row-start-2 min-[900px]:ml-4" />
       )}
       </div>
@@ -552,16 +570,57 @@ export function HostWebinarBrowser({
 
 function EmptyList({
   tab,
+  kind,
   filtersActive,
   nothingAtAll,
   onClear,
 }: {
   tab: HostWebinarTab;
+  kind: HostListKind;
   filtersActive: boolean;
   nothingAtAll: boolean;
   onClear: () => void;
 }) {
   const { account } = useSession();
+  if (kind === "meeting") {
+    if (filtersActive) {
+      return (
+        <Empty
+          title="No meetings match"
+          hint="Try a different name, a wider date range, or another tab — the counts above show where your matches are."
+          action={
+            <Button variant="secondary" onClick={onClear}>
+              Clear filters
+            </Button>
+          }
+        />
+      );
+    }
+    if (nothingAtAll) {
+      return (
+        <Empty
+          title="No meetings yet"
+          hint="Start one now or schedule one above, then share the link."
+        />
+      );
+    }
+    if (tab === "past") {
+      return (
+        <Empty
+          title="No past meetings yet"
+          hint="Once a meeting ends, it moves here."
+        />
+      );
+    }
+    if (tab === "drafts") return <Empty title="No drafts" />;
+    return (
+      <Empty
+        title="Nothing upcoming"
+        hint="Start a meeting now, or schedule one for later."
+        action={<ButtonLink href="/host/new/meeting">Schedule a meeting</ButtonLink>}
+      />
+    );
+  }
   const instantAllowed = (account?.features ?? []).includes(
     FeatureInstantWebinar,
   );
@@ -624,6 +683,7 @@ function bypassPage(p: PageQuery): HostWebinarPage {
   const q = p.q?.toLowerCase() ?? "";
   const now = Date.now();
   const narrowed = DEV_BYPASS_WEBINARS.filter((w) => {
+    if ((w.kind === "meeting") !== (p.kind === "meeting")) return false;
     if (q && !w.topic.toLowerCase().includes(q)) return false;
     const day = w.startsAt.slice(0, 10);
     if (p.from && day < p.from) return false;

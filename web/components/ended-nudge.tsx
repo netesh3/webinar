@@ -20,7 +20,7 @@ export function EndedNudge({ className = "" }: { className?: string }) {
     if (isDevAuthBypassActive()) return;
     let cancelled = false;
     api
-      .hostWebinars({ tab: "past", limit: FOLLOW_UP_FETCH_LIMIT })
+      .hostWebinars({ tab: "past", kind: "webinar", limit: FOLLOW_UP_FETCH_LIMIT })
       .then((page) => {
         if (!cancelled) setRows(recentFollowUps(page.items, Date.now()));
       })

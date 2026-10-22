@@ -263,7 +263,7 @@ function MeetingLanding({ webinar: w, ended }: { webinar: Webinar; ended: boolea
                 </p>
               </div>
             ) : (
-              <MeetingDoor slug={w.id} />
+              <MeetingDoor slug={w.id} hostId={w.host.id} />
             )}
           </div>
         </Panel>

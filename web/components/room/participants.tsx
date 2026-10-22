@@ -393,8 +393,10 @@ function HostRoster() {
         act(
           p.identity,
           coHost
-            ? `${p.name} can now control the webinar like you can.`
-            : `${p.name} is back to an ordinary panelist.`,
+            ? `${p.name} can now control the ${meeting ? "meeting" : "webinar"} like you can.`
+            : meeting
+              ? `${p.name} is no longer a co-host.`
+              : `${p.name} is back to an ordinary panelist.`,
           async () => {
             // A panelist's identity is "user_<id>" — see hostIdentity on
             // the API side — so this is the one place the id has to be

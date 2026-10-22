@@ -31,6 +31,7 @@ export function HostLeaveMenu({
   onEnd: () => void;
 }) {
   const { join, roster } = useRoomUI();
+  const meeting = !!join.meeting;
   const remotes = useRemoteParticipants();
   const panel = useRef<HTMLDivElement | null>(null);
   const reloadRoster = roster.reload;
@@ -96,8 +97,12 @@ export function HostLeaveMenu({
         <span className="text-[13px] font-medium text-ink">Assign host & leave</span>
         <span className="text-[12px] leading-relaxed text-ink-2">
           {candidates.length === 0
-            ? "No eligible panelist is in the room right now."
-            : "Hand the session to another panelist, then exit."}
+            ? meeting
+              ? "No one else who can host is in the meeting right now."
+              : "No eligible panelist is in the room right now."
+            : meeting
+              ? "Hand the meeting to someone else who can host, then exit."
+              : "Hand the session to another panelist, then exit."}
         </span>
       </button>
       <button
@@ -109,9 +114,13 @@ export function HostLeaveMenu({
         }}
         className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-live/10 outline-none focus-visible:bg-live/10"
       >
-        <span className="text-[13px] font-medium text-live">End webinar for everyone</span>
+        <span className="text-[13px] font-medium text-live">
+          {meeting ? "End meeting for everyone" : "End webinar for everyone"}
+        </span>
         <span className="text-[12px] leading-relaxed text-ink-2">
-          Disconnect everyone and mark the webinar as ended.
+          {meeting
+            ? "Disconnect everyone and mark the meeting as ended."
+            : "Disconnect everyone and mark the webinar as ended."}
         </span>
       </button>
       <div className="my-1 h-px bg-line" role="separator" />
@@ -140,6 +149,7 @@ export function HostAssignDialog({
   onLeave: () => void;
 }) {
   const { slug, join, roster } = useRoomUI();
+  const meeting = !!join.meeting;
   const remotes = useRemoteParticipants();
   const { notify } = useToast();
   const [selected, setSelected] = useState<string | null>(null);
@@ -214,7 +224,11 @@ export function HostAssignDialog({
       size="sm"
       onClose={resetAndClose}
       title="Assign host & leave"
-      description="Choose a panelist to run the rest of the session. You will leave after they become host."
+      description={
+        meeting
+          ? "Choose who runs the rest of the meeting. You will leave after they become host."
+          : "Choose a panelist to run the rest of the session. You will leave after they become host."
+      }
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button
@@ -244,8 +258,9 @@ export function HostAssignDialog({
       )}
       {candidates.length === 0 ? (
         <p className="text-[13px] leading-relaxed text-ink-2">
-          No panelists are in the room who can take over. Invite a panelist onto
-          the stage first, or end the webinar for everyone instead.
+          {meeting
+            ? "No one in the meeting can take over as host. End the meeting for everyone instead."
+            : "No panelists are in the room who can take over. Invite a panelist onto the stage first, or end the webinar for everyone instead."}
         </p>
       ) : (
         <ul className="space-y-1.5">
@@ -265,7 +280,7 @@ export function HostAssignDialog({
                   }`}
                 >
                   <span className="min-w-0 flex-1 truncate font-medium">
-                    {p.name || "Panelist"}
+                    {p.name || (meeting ? "Participant" : "Panelist")}
                   </span>
                 </button>
               </li>

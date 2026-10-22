@@ -185,7 +185,9 @@ export function SendSurveyButton({ disabled }: { disabled?: boolean }) {
  *   on screen      say how many have answered; the rest can finish on the ended screen.
  *   none / closed  the plain confirmation. */
 export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { slug, markEnding } = useRoomUI();
+  const { slug, markEnding, join } = useRoomUI();
+  const meeting = join.meeting === true;
+  const noun = meeting ? "meeting" : "webinar";
   const router = useRouter();
   const { notify } = useToast();
   const s = useHostSurvey();
@@ -216,7 +218,7 @@ export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: ()
       onClose();
     } catch (err) {
       markEnding(false);
-      notify(err instanceof Error ? err.message : "Could not end the webinar.", "error");
+      notify(err instanceof Error ? err.message : `Could not end the ${noun}.`, "error");
       setEnding(false);
     }
   }
@@ -271,7 +273,7 @@ export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: ()
             </p>
             {goesOutOnEnd && (
               <p className="mt-2 text-ink-3">
-                If you end now it still pops up as the webinar closes, but some people will already have left.
+                If you end now it still pops up as the {noun} closes, but some people will already have left.
               </p>
             )}
           </div>
@@ -287,7 +289,7 @@ export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: ()
       open={open}
       size="sm"
       onClose={close}
-      title="End this webinar for everyone?"
+      title={`End this ${noun} for everyone?`}
       footer={
         <>
           <button
@@ -318,7 +320,9 @@ export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: ()
       <p className="text-[13.5px] leading-relaxed text-ink-2">
         {state === "live"
           ? "Anyone still answering can finish on the ended screen. Everyone is disconnected and nobody can rejoin."
-          : "Everyone is disconnected and the webinar is marked as ended. Registrations and the attendance record are kept, but nobody can rejoin."}
+          : meeting
+            ? "Everyone is disconnected and the meeting is marked as ended. Nobody can rejoin."
+            : "Everyone is disconnected and the webinar is marked as ended. Registrations and the attendance record are kept, but nobody can rejoin."}
       </p>
     </Modal>
   );
