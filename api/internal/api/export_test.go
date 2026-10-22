@@ -86,3 +86,11 @@ func SetQAAuto(delay time.Duration, sessionCap int) func() {
 	qaAutoDelay, qaAutoSessionCap = delay, sessionCap
 	return func() { qaAutoDelay, qaAutoSessionCap = oldDelay, oldCap }
 }
+
+// SetBroadcastRestartDelay shortens the wait before a mix is put back after a recording that
+// carried it stops; the returned func restores it.
+func SetBroadcastRestartDelay(d time.Duration) func() {
+	old := broadcastRestartDelay
+	broadcastRestartDelay = d
+	return func() { broadcastRestartDelay = old }
+}

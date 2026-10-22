@@ -32,6 +32,7 @@ import {
   recordAvailability,
   recordingDetail,
   recordingTag,
+  showsRecordingState,
   type CloudSetting,
   type RecordTarget,
   type TargetAvailability,
@@ -46,9 +47,10 @@ import { useRoomUI } from "./context";
  *
  * Two separate things on purpose. The control belongs to whoever may record — the
  * host and the panelists, which is what their publish permission already means.
- * The indicator belongs to the room: it is driven by the server's room metadata,
- * so an attendee is told they are being recorded even though nothing in their
- * browser is doing the recording.
+ * The indicator belongs to the stage: it is driven by the server's room metadata,
+ * so a panelist is told they are being recorded even though nothing in their
+ * browser is doing the recording. Not the audience — a viewer is not in the file,
+ * and the bar over their picture was only noise (showsRecordingState).
  *
  * Two DESTINATIONS. Cloud uploads the composited webinar (SessionRecorder,
  * lib/recorder.ts), or asks the server to record when this instance uses
@@ -837,12 +839,15 @@ function RecordingPill({
 
 /** Top recording banner displayed prominently when recording is active. */
 export function RecordingBanner() {
-  const { recording: serverRecording } = useRoomUI();
-  const { state } = useRoomRecorder();
+  const { recording: serverRecording, isHost, join, permissions } = useRoomUI();
+  const { state, mine } = useRoomRecorder();
   const isRecordingActive =
     serverRecording || state === "recording" || state === "starting" || state === "stopping";
 
   if (!isRecordingActive) return null;
+  if (!showsRecordingState({ isHost, canRecord: join.canRecord, canPublish: permissions.canPublish, mine })) {
+    return null;
+  }
   return <ActiveRecordingBanner />;
 }
 
@@ -953,15 +958,20 @@ function Elapsed({ since }: { since?: number | null }) {
 }
 
 /**
- * The room-wide indicator, for everybody including the audience.
+ * The room-wide indicator, for everybody on the stage.
  *
- * Driven by room metadata rather than by local state, so it is on for an attendee
- * whose browser is doing nothing. Consent is the point: people are entitled to
- * know, and to know from the moment it starts.
+ * Driven by room metadata rather than by local state, so it is on for a panelist
+ * whose browser is doing nothing. Consent is the point: the people in the file are
+ * entitled to know, and to know from the moment it starts. The audience is not in
+ * the file and is not shown it (showsRecordingState); an attendee brought on stage
+ * can publish, and from then on is.
  */
 export function RecordingIndicator() {
-  const { recording } = useRoomUI();
+  const { recording: serverRecording, isHost, join, permissions } = useRoomUI();
   const { notify } = useToast();
+  const recording =
+    serverRecording &&
+    showsRecordingState({ isHost, canRecord: join.canRecord, canPublish: permissions.canPublish });
 
   // Announced once per transition, not on every render.
   const announced = useRef(recording);

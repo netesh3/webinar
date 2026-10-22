@@ -163,9 +163,16 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 			AccessKey: s.cfg.RecordingsS3AccessKey,
 			SecretKey: s.cfg.RecordingsS3SecretKey,
 		}
-		// Folds into the attendee mix if this room already has one — the box has
-		// room for one compositor, not two. See startEgressRecording.
+		// Never at the audience's expense: a running mix is left alone. See
+		// startEgressRecording.
 		info, _, err := s.startEgressRecording(r.Context(), wb, sfu, key, s3Opts)
+		if errors.Is(err, errRecordingNoRoom) {
+			_, _ = s.store.FinishRecording(r.Context(), id, 0)
+			httpx.Error(w, http.StatusServiceUnavailable, "recording_no_capacity",
+				"Cloud recording couldn't start: the video server is busy streaming to your audience. "+
+					"Your audience isn't affected. Record on this computer instead, or try again later.")
+			return
+		}
 		if err != nil {
 			_, _ = s.store.FinishRecording(r.Context(), id, 0)
 			s.fail(w, r, "start egress", err)

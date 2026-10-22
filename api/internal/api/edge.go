@@ -539,12 +539,24 @@ func (s *Server) removeEdgeViewer(ctx context.Context, sfu RoomManager, slug, id
  * 720p). Recordings and the CDN broadcast keep the template as it is. /clock adds the
  * latency clock (EDGE_DEBUG_CLOCK). Path segments, because LiveKit appends its own query. */
 func (s *Server) mixTemplateURL(wb types.Webinar) string {
+	return s.compositeTemplateURL(wb, s.cfg.EdgeDebugClock)
+}
+
+/* recordingTemplateURL is the page a recording egress renders: the mix's own page (so an edge
+ * webinar's recording is laid out as its audience sees it, never the other way round), minus
+ * the latency clock, which is a debugging aid and has no place in a file. The host's layout
+ * (controls.audienceLayout) reaches both through room metadata, not the URL. */
+func (s *Server) recordingTemplateURL(wb types.Webinar) string {
+	return s.compositeTemplateURL(wb, false)
+}
+
+func (s *Server) compositeTemplateURL(wb types.Webinar, clock bool) string {
 	base := s.cfg.RecordingsEgressTemplateURL
 	if base == "" || wb.Delivery != types.DeliveryEdge {
 		return base
 	}
 	u := strings.TrimRight(base, "/") + "/edge"
-	if s.cfg.EdgeDebugClock {
+	if clock {
 		u += "/clock"
 	}
 	return u

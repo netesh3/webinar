@@ -174,3 +174,20 @@ export function moveMenuIndex(
   const step = key === "ArrowDown" ? 1 : -1;
   return (current + step + count) % count;
 }
+
+/* Whether this person is shown that the session is being recorded (the REC banner, the
+ * header pill and the "being recorded" toast).
+ *
+ * The stage only: the host and co-hosts, anyone the server lets record, and anyone who can
+ * publish (panelists, and an attendee brought on stage) — the people the recording captures.
+ * A viewer in the audience is not in the file, and a red "Recording to Cloud" bar over the
+ * picture they came to watch is only noise; registration says so up front when the webinar
+ * is set to record (register-form.tsx). */
+export function showsRecordingState(who: {
+  isHost: boolean;
+  canRecord: boolean;
+  canPublish: boolean;
+  mine?: boolean;
+}): boolean {
+  return who.isHost || who.canRecord || who.canPublish || Boolean(who.mine);
+}

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -192,18 +194,30 @@ func (s *Server) mixEgressIDs(ctx context.Context, slug string, sfu RoomManager)
 	return ids
 }
 
-/* startEgressRecording begins a server-side recording, folding it into the
- * attendee mix when there is one.
+/* errRecordingNoRoom is a recording LiveKit would not start beside the attendee mix: the
+ * video server has no room for a second compositor. The mix is left exactly as it was. */
+var errRecordingNoRoom = errors.New("no room for a recording beside the attendee mix")
+
+/* startEgressRecording begins a server-side recording. It never touches a running mix.
  *
- * The box cannot run two room composites — see StartCombinedEgress for the
- * measurements — so when a broadcast is already encoding this room, the
- * recording replaces it with one egress carrying both outputs rather than
- * asking LiveKit for a second compositor it will refuse.
+ * It used to: with a mix running, the recording stopped it and started one egress carrying
+ * both outputs (one compositor fits on the box, not two — see StartCombinedEgress), then put
+ * the stream-only one back when recording stopped. Production, 2026-10-22
+ * (instant-webinar-0375, DigitalOcean BLR): the edge mix ended the moment Record was pressed,
+ * every edge viewer's LL-HLS went to "reconnecting" until the replacement's Chrome was up, and
+ * the replacement loaded the plain template rather than <template>/edge, so the audience's
+ * picture changed layout too. Stopping did it all again. LiveKit cannot add a file output to a
+ * running egress (UpdateStream takes RTMP URLs only), so a recording cannot be folded into a
+ * mix without restarting it.
  *
- * Reports whether the returned egress is also carrying the mix, because that is
- * what stopping it later has to know: an egress that was only ever a recording
- * is finished when it stops, and one that took the broadcast's place leaves the
- * room without a mix until it is put back. */
+ * So with a mix running (or starting) the recording is its own compositor, on the same
+ * template path and room metadata (audienceLayout) as the mix, so it records what the
+ * audience sees. If LiveKit will not admit it — a box with one compositor's worth of CPU will
+ * not — the host is told and the audience keeps watching: errRecordingNoRoom.
+ *
+ * Reports whether the returned egress also carries the mix: only when there was no mix to
+ * protect and the room has somewhere to push (an edge origin, a saved platform), where one
+ * compositor for both is what keeps the mix from being refused later. */
 func (s *Server) startEgressRecording(
 	ctx context.Context,
 	wb types.Webinar,
@@ -211,73 +225,57 @@ func (s *Server) startEgressRecording(
 	storageKey string,
 	s3Opts lk.EgressS3Options,
 ) (info *livekit.EgressInfo, carriesMix bool, err error) {
+	running, listErr := s.broadcastEgressIDs(ctx, wb.ID, sfu)
+	broadcastMu.Lock()
+	starting := activeBroadcasts[wb.ID] == "starting"
+	broadcastMu.Unlock()
+
+	/* A mix is (or may be) feeding the audience. Not knowing — the egress list failed — counts
+	 * as one: a recording that cannot start is a message to the host, an audience cut off is
+	 * a room full of people on a spinner. */
+	if listErr != nil || len(running) > 0 || starting {
+		// 720p, as the file was while folded into the mix: the lighter second compositor is
+		// the one more likely to fit beside the first.
+		info, err = sfu.StartRoomCompositeEgress(ctx, lk.RoomName(wb.ID), storageKey, s3Opts,
+			s.recordingTemplateURL(wb), livekit.EncodingOptionsPreset_H264_720P_30)
+		if err != nil {
+			s.log.Warn("recording: refused beside the attendee mix; the mix is untouched",
+				"slug", wb.ID, "mix", running, "error", err)
+			return nil, false, fmt.Errorf("%w: %w", errRecordingNoRoom, err)
+		}
+		s.log.Info("recording started beside the attendee mix", "slug", wb.ID,
+			"egress", info.GetEgressId(), "mix", running)
+		return info, false, nil
+	}
+
 	origin, dests := s.mixPlan(ctx, wb)
 	startURL, startDest, rest := firstOutput(origin, dests)
-
-	running, listErr := s.broadcastEgressIDs(ctx, wb.ID, sfu)
-	if listErr != nil || len(running) == 0 {
-		/* No mix to fold into, but a destination is already on file — the host
-		 * set up YouTube before pressing Record. Carry it from the start rather
-		 * than leaving it for a second compositor that will be refused. */
-		if startURL != "" {
-			info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
-				livekit.EncodingOptionsPreset_H264_720P_30, startURL, storageKey, s3Opts, nil)
-			if err != nil {
-				return nil, false, err
-			}
-			broadcastMu.Lock()
-			activeBroadcasts[wb.ID] = info.EgressId
-			broadcastMu.Unlock()
-			noteEgressStartDest(info.EgressId, startDest)
-			s.attachDestinations(ctx, wb.ID, sfu, info.EgressId, rest)
-			return info, true, nil
+	if startURL != "" {
+		/* No mix yet, but the room has somewhere to push — the host set up YouTube before
+		 * pressing Record, or an edge mix that has not come up. One compositor for both, on
+		 * the mix's own template, so the picture is the one the audience would get anyway. */
+		info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb),
+			livekit.EncodingOptionsPreset_H264_720P_30, startURL, storageKey, s3Opts, nil)
+		if err != nil {
+			return nil, false, err
 		}
-
-		// Nothing to fold into, so the recording gets the whole box and the
-		// quality that goes with it.
-		preset := livekit.EncodingOptionsPreset_H264_1080P_30
-		if s.cfg.RecordingsEgressPreset == "720p" {
-			preset = livekit.EncodingOptionsPreset_H264_720P_30
-		}
-		info, err = sfu.StartRoomCompositeEgress(ctx, lk.RoomName(wb.ID), storageKey, s3Opts,
-			s.cfg.RecordingsEgressTemplateURL, preset)
-		return info, false, err
-	}
-
-	/* Claim the slot before stopping anything. The sweeper restarts a mix it
-	 * finds missing, and between the stop below and the start after it there is
-	 * a window where that is exactly what this room looks like. */
-	broadcastMu.Lock()
-	activeBroadcasts[wb.ID] = "starting"
-	broadcastMu.Unlock()
-
-	for _, id := range running {
-		if _, stopErr := sfu.StopEgress(ctx, id); stopErr != nil {
-			s.log.Warn("recording: could not stop the mix it is taking over",
-				"slug", wb.ID, "egress", id, "error", stopErr)
-		}
-	}
-
-	info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.cfg.RecordingsEgressTemplateURL,
-		livekit.EncodingOptionsPreset_H264_720P_30, startURL, storageKey, s3Opts, nil)
-	if err != nil {
-		// The room now has no mix and no recording. Releasing the slot is what
-		// lets the sweeper notice and put the mix back.
 		broadcastMu.Lock()
-		delete(activeBroadcasts, wb.ID)
+		activeBroadcasts[wb.ID] = info.EgressId
 		broadcastMu.Unlock()
-		return nil, false, err
+		noteEgressStartDest(info.EgressId, startDest)
+		s.attachDestinations(ctx, wb.ID, sfu, info.EgressId, rest)
+		return info, true, nil
 	}
 
-	broadcastMu.Lock()
-	activeBroadcasts[wb.ID] = info.EgressId
-	broadcastMu.Unlock()
-	noteEgressStartDest(info.EgressId, startDest)
-	s.attachDestinations(ctx, wb.ID, sfu, info.EgressId, rest)
-
-	s.log.Info("recording folded into the attendee mix",
-		"slug", wb.ID, "egress", info.EgressId, "replaced", running)
-	return info, true, nil
+	// Nothing to protect and nowhere to push: the recording gets the whole box and the
+	// quality that goes with it.
+	preset := livekit.EncodingOptionsPreset_H264_1080P_30
+	if s.cfg.RecordingsEgressPreset == "720p" {
+		preset = livekit.EncodingOptionsPreset_H264_720P_30
+	}
+	info, err = sfu.StartRoomCompositeEgress(ctx, lk.RoomName(wb.ID), storageKey, s3Opts,
+		s.recordingTemplateURL(wb), preset)
+	return info, false, err
 }
 
 /* restoreBroadcastAfterRecording puts the attendee mix back once a combined
@@ -432,7 +430,12 @@ func (s *Server) syncStreamDest(ctx context.Context, wb types.Webinar, sfu RoomM
 	 * the host pressed Record first, the only one running is the recording, and
 	 * that is the one that has to carry YouTube too. Starting a second is what
 	 * LiveKit refuses. */
-	ids := s.mixEgressIDs(ctx, wb.ID, sfu)
+	/* The broadcast when there is one: a recording running beside it has an empty RTMP
+	 * output too, and attaching the destination there as well would push it twice. */
+	ids, err := s.broadcastEgressIDs(ctx, wb.ID, sfu)
+	if err != nil || len(ids) == 0 {
+		ids = s.mixEgressIDs(ctx, wb.ID, sfu)
+	}
 	if len(ids) == 0 {
 		if newURL != "" {
 			s.startBroadcastIfEnabled(ctx, wb, sfu)
