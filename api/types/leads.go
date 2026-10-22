@@ -5,7 +5,8 @@ package types
  * The ranking is counted (internal/leads), never written by a model; the AI adds a one-line
  * reason to the top leads, and drafts a follow-up email and WhatsApp message per group.
  * Both are written once per session end and cached: there is no regenerate. The host may
- * edit the drafts, and the edits are kept. Nothing is ever sent from here. */
+ * edit the drafts, and the edits are kept. Nothing is sent from here: sending is the host's
+ * own press, after a review screen (followup_send.go). */
 
 // AI feature names for these two, as recorded in ai_usage.
 const (

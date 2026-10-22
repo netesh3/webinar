@@ -29,9 +29,8 @@ import (
  * detected from what was said, and the host may pick the other one, which is written once
  * too. No regenerate. The host's edits are saved beside what the model wrote (PUT).
  *
- * A hand-off, never a send: the web copies, exports the group, and opens the CRM's own
- * composer (template wording for WhatsApp, since a business-initiated message outside the
- * 24-hour window must be an approved template).
+ * Nothing here sends: the web copies, exports the group, opens the CRM's own composer, or
+ * opens the review screen whose Send is followup_send.go.
  */
 
 // Bounds on a host's edit.

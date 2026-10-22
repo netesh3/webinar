@@ -1668,6 +1668,248 @@ export interface EngagementAttendeeDetail {
 }
 
 //////////
+// source: followup_send.go
+
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupChannelEmail = "email";
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupChannelWhatsApp = "whatsapp";
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupModeEmail = "email";
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupModeFreeform = "freeform";
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupModeTemplate = "template";
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupStatusSent = "sent";
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupStatusFailed = "failed";
+/**
+ * Channels, modes and per-recipient outcomes.
+ */
+export const FollowupStatusSkipped = "skipped";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonAlreadySent = "already_sent";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonInProgress = "in_progress";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonUnsubscribed = "unsubscribed";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonNoEmail = "no_email";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonMailOff = "mail_unconfigured";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonNotConnected = "whatsapp_not_connected";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonNoContact = "no_contact";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonNoNumber = "no_number";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonOptedOut = "opted_out";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonNoOptIn = "no_opt_in";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonTemplate = "template_not_approved";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonNotInSession = "not_in_session";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonEmpty = "empty";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonTooLong = "too_long";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonBadChannel = "bad_channel";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonSendFailed = "send_failed";
+/**
+ * Why a channel cannot be used for somebody, or why a send was skipped or failed.
+ */
+export const FollowupReasonRateLimited = "rate_limited";
+/**
+ * FollowupTemplateName is our standard WhatsApp follow-up template, submitted per WABA.
+ */
+export const FollowupTemplateName = "wl_session_followup";
+/**
+ *  FollowupPlanRequest is POST /api/host/webinars/{slug}/followups/plan: the people to
+ *  * review (types.Lead.Key), and the drafts' language as on GET …/followups.
+ */
+export interface FollowupPlanRequest {
+  keys: string[];
+  language?: string;
+}
+/**
+ *  FollowupChannelPlan is whether one channel can reach one person now. Mode is how a
+ *  * WhatsApp would go (freeform or template). Sent is true when this follow-up already went
+ *  * on this channel (SentAt): sending again needs "send again".
+ */
+export interface FollowupChannelPlan {
+  available: boolean;
+  reason?: string;
+  mode?: string;
+  sent?: boolean;
+  sentAt?: string;
+}
+/**
+ *  FollowupRecipient is one row of the review screen: the person, what each channel can do,
+ *  * and their group's drafts with {{first_name}} and {{replay_link}} filled in for them.
+ */
+export interface FollowupRecipient {
+  key: string;
+  name: string;
+  group: string;
+  tag: string;
+  email?: string;
+  phone?: string;
+  contactId?: string;
+  emailPlan: FollowupChannelPlan;
+  whatsappPlan: FollowupChannelPlan;
+  subject: string;
+  body: string;
+  whatsappText: string;
+}
+/**
+ *  FollowupPlanResponse is the review screen. TemplateStatus is Meta's status of
+ *  * wl_session_followup on the host's WABA (empty: not submitted). MaxPerRequest is how many
+ *  * items one POST …/followups/send takes; the web sends a longer list in chunks.
+ */
+export interface FollowupPlanResponse {
+  recipients: FollowupRecipient[];
+  emailEnabled: boolean;
+  whatsappConnected: boolean;
+  templateStatus?: string;
+  maxPerRequest: number /* int */;
+}
+/**
+ *  FollowupSendItem is one message the host reviewed: who, which channel, and the text as
+ *  * they left it (Subject only for email; Body is the email body or the WhatsApp text).
+ */
+export interface FollowupSendItem {
+  key: string;
+  channel: string;
+  subject?: string;
+  body: string;
+}
+/**
+ *  FollowupSendRequest is POST /api/host/webinars/{slug}/followups/send. Again sends to
+ *  * people who already had this follow-up on that channel; without it they are skipped.
+ */
+export interface FollowupSendRequest {
+  items: FollowupSendItem[];
+  again?: boolean;
+}
+/**
+ * FollowupSendResult is one item's outcome: sent, failed or skipped, and why.
+ */
+export interface FollowupSendResult {
+  key: string;
+  channel: string;
+  status: string;
+  mode?: string;
+  reason?: string;
+  error?: string;
+  contactId?: string;
+}
+export interface FollowupSendResponse {
+  results: FollowupSendResult[];
+}
+/**
+ *  FollowupTemplateResponse is GET/POST /api/host/crm/followup-template: our follow-up
+ *  * template's wording and its status on the host's WABA (empty: not submitted yet).
+ */
+export interface FollowupTemplateResponse {
+  connected: boolean;
+  name: string;
+  language: string;
+  category: string;
+  body: string;
+  footer: string;
+  examples: string[];
+  status?: string;
+}
+/**
+ *  FollowupWAState is the CRM's answer about reaching a session's people on WhatsApp (the
+ *  * api.Engage boundary, not the wire): by registration id.
+ */
+export interface FollowupWAState {
+  connected: boolean;
+  templateStatus?: string;
+  contacts: { [key: string]: FollowupWAContact};
+}
+/**
+ * FollowupWAContact is one person: their contact, and how a WhatsApp would go (or why not).
+ */
+export interface FollowupWAContact {
+  contactId?: string;
+  mode?: string;
+  reason?: string;
+}
+/**
+ * FollowupWASend is one WhatsApp follow-up for the CRM to send (the api.Engage boundary).
+ */
+export interface FollowupWASend {
+  registrationId: string;
+  firstName: string;
+  topic: string;
+  text: string;
+}
+/**
+ * FollowupWAResult is how the CRM's send went, and the number it went to.
+ */
+export interface FollowupWAResult {
+  status: string;
+  mode?: string;
+  reason?: string;
+  error?: string;
+  contactId?: string;
+  phone?: string;
+}
+
+//////////
 // source: leads.go
 
 /**

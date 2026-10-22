@@ -8,6 +8,7 @@ import { CheckIcon } from "@/components/icons";
 import { useSession } from "@/components/providers";
 import { Badge, Card } from "@/components/ui";
 import { WhatsAppCard } from "./whatsapp-card";
+import { FollowupTemplateCard } from "./followup-template-card";
 import { api } from "@/lib/api";
 import { ChannelWhatsApp } from "@/lib/api-types";
 import type { CRMSetup, CRMTemplate, Webinar } from "@/lib/api-types";
@@ -286,6 +287,13 @@ export function SetupChecklist({
           <WebinarSwitches setup={setup} />
         </Step>
       </Card>
+
+      {/* Optional, and not a step: what Results' AI follow-ups use outside the window. */}
+      {setup?.connected && (
+        <Card>
+          <FollowupTemplateCard />
+        </Card>
+      )}
     </div>
   );
 }

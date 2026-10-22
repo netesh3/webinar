@@ -1,4 +1,9 @@
 import type {
+  FollowupPlanRequest,
+  FollowupPlanResponse,
+  FollowupSendItem,
+  FollowupSendRequest,
+  FollowupSendResponse,
   LobbyAdmitAllResponse,
   LobbyEntry,
   MeetingKnockRequest,
@@ -1187,6 +1192,21 @@ export const api = {
     request<FollowupsResponse>(
       `/api/host/webinars/${seg(slug)}/followups${lang ? `?lang=${encodeURIComponent(lang)}` : ""}`,
       { ...fresh, signal },
+    ),
+
+  /** The follow-ups' review screen: each person's drafts filled in, and what email and
+   *  WhatsApp can do for them now. Host only. 409 not_ended / no_drafts, 403 feature_off. */
+  followupPlan: (slug: string, keys: string[], group: string, lang: string) =>
+    post<FollowupPlanResponse>(
+      `/api/host/webinars/${seg(slug)}/followups/plan?group=${encodeURIComponent(group)}`,
+      { keys, language: lang } satisfies FollowupPlanRequest,
+    ),
+
+  /** Sends what the host reviewed: at most maxPerRequest items per call. 429 rate_limited. */
+  followupSend: (slug: string, items: FollowupSendItem[], again: boolean, lang: string) =>
+    post<FollowupSendResponse>(
+      `/api/host/webinars/${seg(slug)}/followups/send?lang=${encodeURIComponent(lang)}`,
+      { items, again } satisfies FollowupSendRequest,
     ),
 
   /** Save the host's edit of one group's drafts. 409 no_drafts, 422 too_long. */

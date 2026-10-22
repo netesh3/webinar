@@ -394,6 +394,9 @@ func (s *Server) Routes() http.Handler {
 		 * the internet works. What it is not is enumerable, which the list was.
 		 */
 		r.Get("/webinars/{slug}", s.handleGetWebinar)
+		// A follow-up email's unsubscribe link (followup_send.go): the page, and the press.
+		r.Get("/email/unsubscribe/{token}", s.handleUnsubscribe)
+		r.Post("/email/unsubscribe/{token}", s.handleUnsubscribe)
 		// The cover image, same reasoning as the slug lookup above: a registration or
 		// browse page has to render it for a caller with no session. Unlike chat media
 		// there is no credential to resolve — a cover image is public the moment the
@@ -754,6 +757,13 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/leads", s.handleGetLeads)
 					r.Get("/followups", s.handleGetFollowups)
 					r.Put("/followups/{group}", s.handlePutFollowup)
+					// Sending them: the review screen, then the host's Send. Host only:
+					// it goes from the host's own number and in their name. See followup_send.go.
+					r.Group(func(r chi.Router) {
+						r.Use(s.requireTrueOwner)
+						r.Post("/followups/plan", s.handleFollowupPlan)
+						r.Post("/followups/send", s.handleFollowupSend)
+					})
 					r.Patch("/questions/{id}", s.handlePatchQuestion)
 					// The live Q&A assistant: duplicate questions grouped, a Top
 					// questions strip, and a private draft answer. See qa_assist.go.
