@@ -55,3 +55,31 @@ type AIMonthUsage struct {
 	HostMonthlyCapUSD float64          `json:"hostMonthlyCapUsd"`
 	Features          []AIFeatureUsage `json:"features"`
 }
+
+/* AIWebinarSetupRequest is POST /api/host/ai/webinar-setup: "Write with AI" on the
+ * schedule form. Idea is the host's one line (required, at most 300 characters);
+ * Language is "en" (the default), "hinglish" or "hi-roman" — both Hindi forms in
+ * Roman script. */
+type AIWebinarSetupRequest struct {
+	Idea     string `json:"idea"`
+	Language string `json:"language,omitempty"`
+}
+
+// AISocialPosts is a ready-to-paste post per channel.
+type AISocialPosts struct {
+	LinkedIn  string `json:"linkedin"`
+	Instagram string `json:"instagram"`
+	WhatsApp  string `json:"whatsapp"`
+}
+
+/* AIWebinarSetup is the draft: nothing is saved. Description is 2–4 paragraphs
+ * separated by a blank line; RegistrationBullets is 3–5 points. Errors: 403
+ * feature_off (AI writing is off for the account), 422 invalid_idea, 429 ai_limit
+ * (a monthly AI cap), 503 ai_unavailable (no provider configured or answering). */
+type AIWebinarSetup struct {
+	Title                string        `json:"title"`
+	Description          string        `json:"description"`
+	RegistrationHeadline string        `json:"registrationHeadline"`
+	RegistrationBullets  []string      `json:"registrationBullets"`
+	SocialPosts          AISocialPosts `json:"socialPosts"`
+}

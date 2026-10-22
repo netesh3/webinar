@@ -5,6 +5,7 @@ import { WebinarImagePicker } from "../webinar-image-picker";
 import { api } from "@/lib/api";
 import type { CRMMediaFile } from "@/lib/api-types";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
+import { WriteWithAI } from "./ai-setup";
 import { FormSection, Text } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
 
@@ -61,7 +62,8 @@ export function BasicsSection({
             type decides one-off or series. */}
         <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-x-5">
           <div className="contents lg:flex lg:flex-col lg:gap-3.5">
-            <div className="order-1 lg:order-none">
+            <div className="order-1 grid gap-2 lg:order-none">
+              <WriteWithAI form={form} set={set} />
               <Text
                 id="topic"
                 label="Topic"

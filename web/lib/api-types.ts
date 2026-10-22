@@ -76,6 +76,37 @@ export interface AIMonthUsage {
   hostMonthlyCapUsd: number /* float64 */;
   features: AIFeatureUsage[];
 }
+/**
+ *  AIWebinarSetupRequest is POST /api/host/ai/webinar-setup: "Write with AI" on the
+ *  * schedule form. Idea is the host's one line (required, at most 300 characters);
+ *  * Language is "en" (the default), "hinglish" or "hi-roman" — both Hindi forms in
+ *  * Roman script.
+ */
+export interface AIWebinarSetupRequest {
+  idea: string;
+  language?: string;
+}
+/**
+ * AISocialPosts is a ready-to-paste post per channel.
+ */
+export interface AISocialPosts {
+  linkedin: string;
+  instagram: string;
+  whatsapp: string;
+}
+/**
+ *  AIWebinarSetup is the draft: nothing is saved. Description is 2–4 paragraphs
+ *  * separated by a blank line; RegistrationBullets is 3–5 points. Errors: 403
+ *  * feature_off (AI writing is off for the account), 422 invalid_idea, 429 ai_limit
+ *  * (a monthly AI cap), 503 ai_unavailable (no provider configured or answering).
+ */
+export interface AIWebinarSetup {
+  title: string;
+  description: string;
+  registrationHeadline: string;
+  registrationBullets: string[];
+  socialPosts: AISocialPosts;
+}
 
 //////////
 // source: billing.go

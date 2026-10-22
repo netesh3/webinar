@@ -7,6 +7,8 @@ import type {
   SetWebinarStreamPausedRequest,
   WebinarStreamDestination,
   AIStatus,
+  AIWebinarSetup,
+  AIWebinarSetupRequest,
   SalesChat,
   SalesConversationDetail,
   SalesInbox,
@@ -598,6 +600,12 @@ export const api = {
    *  separate "create" step: saving the webinar with it is enough for it to
    *  come back as a suggestion next time. */
   hostTracks: () => cachedGet<string[]>(TRACKS_KEY, { ttl: TTL_LIST }),
+
+  /** "Write with AI": a draft title, description, registration copy and social
+   *  posts from one line. Saves nothing. Refusals: 403 feature_off, 422,
+   *  429 ai_limit / rate_limited, 503 ai_unavailable. */
+  aiWebinarSetup: (body: AIWebinarSetupRequest) =>
+    post<AIWebinarSetup>("/api/host/ai/webinar-setup", body),
 
   /** Sessions this account is a panelist on but does not own. */
   stageWebinars: () => request<Webinar[]>("/api/host/stage", fresh),

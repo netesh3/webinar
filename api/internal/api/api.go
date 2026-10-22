@@ -175,6 +175,8 @@ type Server struct {
 	// conversation and per IP. Both protect the free AI allowances as much as the server.
 	salesStartLimit *httpx.RateLimiter
 	salesMsgLimit   *httpx.RateLimiter
+	// aiWriteLimit caps a host's AI drafts a minute ("Write with AI" and the like).
+	aiWriteLimit *httpx.RateLimiter
 
 	// rt carries session events to edge-delivery viewers (edge.go). Never nil.
 	rt *realtime.Bus
@@ -259,6 +261,8 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		// messages a minute per conversation is faster than anyone types.
 		salesStartLimit: httpx.NewRateLimiter(10, time.Minute),
 		salesMsgLimit:   httpx.NewRateLimiter(12, time.Minute),
+		// Six drafts a minute is a host trying wordings; more is a button stuck down.
+		aiWriteLimit: httpx.NewRateLimiter(6, time.Minute),
 	}
 	srv.initEngagement()
 
@@ -618,6 +622,10 @@ func (s *Server) Routes() http.Handler {
 				// The schedule form's topic-tag suggestions: this host's own tags,
 				// never another host's — see handleHostTracks.
 				r.Get("/tracks", s.handleHostTracks)
+
+				// "Write with AI": a draft title, description and promotion copy from
+				// one line. Saves nothing. See ai_webinar_setup.go.
+				r.Post("/ai/webinar-setup", s.handleAIWebinarSetup)
 
 				r.Get("/youtube/connect", s.handleYouTubeConnect)
 				r.Delete("/youtube", s.handleYouTubeDisconnect)
