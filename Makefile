@@ -337,6 +337,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The composite's layouts (what edge viewers and recordings see): every box inside the
 	# frame, nothing overlapping but a PiP, one page of grid, and each layout's fallback.
 	cd web && node --experimental-strip-types --no-warnings lib/composite-layouts.test.mts
+	# Speaker view (Zoom style) for edge viewers: the fixed mix geometry and its beacon, the
+	# sticky active speaker, the phone split's crop maths and the floating PiP's corners.
+	cd web && node --experimental-strip-types --no-warnings lib/speaker-view.test.mts
 	# A streaming viewer's room: no Participants, Invite or Settings, and no meeting-info card.
 	cd web && node --experimental-strip-types --no-warnings lib/audience-tools.test.mts
 	# Simulive engagement replay: visible items at a playback position, late-join catch-up.

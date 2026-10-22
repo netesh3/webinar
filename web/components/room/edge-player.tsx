@@ -43,6 +43,7 @@ import { trackEvent } from "@/lib/telemetry";
 import { useAppConfig } from "../providers";
 import { StagePlayerChrome } from "./cdn-attendee-room";
 import { EdgeClock } from "./edge-clock";
+import { EdgeSpeakerSplit } from "./edge-speaker-split";
 
 const TELEMETRY_EVERY_MS = 30_000;
 // A wait shorter than this is a hiccup, not worth a badge.
@@ -56,6 +57,7 @@ export function EdgePlayer({
   debugClock,
   clockOffsetMs,
   lowLatency = false,
+  speakerView = false,
 }: {
   playbackUrl: string;
   coverUrl?: string;
@@ -65,6 +67,8 @@ export function EdgePlayer({
   clockOffsetMs: number;
   /** The playback URL is a CDN close to viewers: start in LL-HLS (JoinResponse.lowLatency). */
   lowLatency?: boolean;
+  /** The host's layout may put the mix in speaker view: phones split it (EdgeSpeakerSplit). */
+  speakerView?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -487,6 +491,9 @@ export function EdgePlayer({
           if (!v.muted) void v.play();
         }}
       />
+      {/* Speaker view on a phone: the share full width, the speaker floating over it, both
+          from this one <video>. */}
+      <EdgeSpeakerSplit videoRef={videoRef} enabled={speakerView && !loading && !error} />
       {/* The last good frame, held while the stream reconnects, so a gap is a still picture
           and not a black screen. */}
       <canvas

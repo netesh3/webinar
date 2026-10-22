@@ -16,6 +16,8 @@
  *
  * Pure so node can test it — see composite-layouts.test.mts, run by `make test-web`. */
 
+import { beaconCells, SV_SHARE, SV_SPEAKER, toPixels } from "./speaker-view.ts";
+
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Frame = { w: number; h: number };
 
@@ -42,12 +44,18 @@ export type Placement = {
   role: Role;
   /** Stacking: 0 for the base layer, 1 for anything drawn over it (a PiP bubble). */
   z: 0 | 1;
+  /** Drawn edge to edge: no border, ring or rounding, the camera covering the box. Speaker
+   *  view's tile, which a phone crops out of the mix exactly at this rect. */
+  bare?: true;
 };
 
 export type LayoutResult = {
   placements: Placement[];
   /** Where to say "No camera published": auto's empty share strip, as it always did. */
   note?: Rect;
+  /** Cells to paint BEACON_COLOR (lib/speaker-view.ts): this frame is speaker view's fixed
+   *  geometry, which a phone splits into the share and a floating speaker. */
+  beacon?: Rect[];
 };
 
 export type AudienceLayoutId =
@@ -57,7 +65,8 @@ export type AudienceLayoutId =
   | "share_only"
   | "share_speaker"
   | "side_by_side"
-  | "video_only";
+  | "video_only"
+  | "speaker_view";
 
 export type CompositeLayoutDef = {
   id: AudienceLayoutId;
@@ -70,8 +79,6 @@ export type CompositeLayoutDef = {
 
 // ------------------------------------------------------------------ limits
 
-/** At most this many camera tiles over an edge share; more would cover the slides. */
-export const EDGE_PIP_TILES = 3;
 /** One page of grid tiles. The egress decodes every tile it draws, on a box with no CPU to
  *  spare, so the grid never pages: it shows the first page and stops. */
 export const GRID_MAX = 16;
@@ -168,23 +175,10 @@ function autoNoShare(input: LayoutInput): LayoutResult {
 function placeAuto(input: LayoutInput): LayoutResult {
   const { frame, cameras, share, edge } = input;
   if (!share) return autoNoShare(input);
-  if (edge) {
-    // The share fills the frame; a few small corner tiles, for cameras that are on only.
-    const on = cameras.filter((c) => c.cameraOn).slice(0, EDGE_PIP_TILES);
-    const w = Math.round(frame.w * 0.14);
-    const h = w / ASPECT;
-    const placements: Placement[] = [{ id: SHARE_ID, rect: full(frame), role: "main", z: 0 }];
-    on.forEach((c, i) => {
-      const fromRight = on.length - 1 - i;
-      placements.push({
-        id: c.id,
-        rect: { x: frame.w - PAD - w - fromRight * (w + GAP), y: frame.h - PAD - h, w, h },
-        role: "pip",
-        z: 1,
-      });
-    });
-    return { placements };
-  }
+  /* The edge mix, when the host has not chosen a layout: speaker view (Zoom style), so phones
+   * get the share full width with the speaker floating over it. It used to be the share over
+   * the whole frame with up to three corner tiles, which a phone could not take apart. */
+  if (edge) return placeSpeakerView(input);
   // Recordings and the CDN broadcast: the share next to a camera strip down the right.
   const stripW = Math.min(340, Math.max(240, Math.round(frame.w * 0.22)));
   const shareBox = inset({ x: 0, y: 0, w: frame.w - stripW, h: frame.h }, 4);
@@ -267,6 +261,33 @@ function placeSideBySide(input: LayoutInput): LayoutResult {
   };
 }
 
+/** Speaker view (Zoom style): the share in a fixed 16:9 region on the left, the active speaker
+ *  in a fixed tile top right, and the beacon in the corner. The geometry is constant
+ *  (lib/speaker-view.ts) because the edge player cuts phones' picture along it. The page puts
+ *  the sticky active speaker first (pickSpeaker), so cameras[0] is the one to show. */
+function placeSpeakerView(input: LayoutInput): LayoutResult {
+  const { frame, share, cameras } = input;
+  if (!share) return placeSpeaker(input);
+  const lead = cameras[0];
+  // Nobody to show beside it: the share alone, and no beacon (there is nothing to split).
+  if (!lead) return { placements: [{ id: SHARE_ID, rect: full(frame), role: "main", z: 0 }] };
+  return {
+    placements: [
+      { id: SHARE_ID, rect: toPixels(SV_SHARE, frame), role: "main", z: 0 },
+      { id: lead.id, rect: toPixels(SV_SPEAKER, frame), role: "main", z: 0, bare: true },
+    ],
+    beacon: beaconCells().map((c) => toPixels(c, frame)),
+  };
+}
+
+/** Whether the page should draw speaker view for this layout and stage, so it puts the sticky
+ *  speaker first: speaker_view itself, or auto on the edge mix, while somebody shares. */
+export function usesSpeakerView(id: string | null | undefined, share: boolean, edge: boolean): boolean {
+  if (!share) return false;
+  const def = layoutById(id).id;
+  return def === "speaker_view" || (def === "auto" && edge);
+}
+
 /** Video only: cameras, never the share. One person is speaker view; more is a grid, and past
  *  one page of grid it is speaker view with a filmstrip. */
 function placeVideoOnly(input: LayoutInput): LayoutResult {
@@ -279,7 +300,8 @@ export const LAYOUTS: readonly CompositeLayoutDef[] = [
   {
     id: "auto",
     label: "Automatic",
-    description: "The share with the cameras beside it, or the speaker when nobody shares.",
+    description:
+      "Speaker view for live viewers while someone shares (the share beside the cameras in other recordings); the speaker when nobody shares.",
     sample: { share: true, cameras: 3 },
     place: placeAuto,
   },
@@ -303,6 +325,14 @@ export const LAYOUTS: readonly CompositeLayoutDef[] = [
     description: "Just the screen share. The speaker when nobody is sharing.",
     sample: { share: true, cameras: 2 },
     place: placeShareOnly,
+  },
+  {
+    id: "speaker_view",
+    label: "Speaker view (Zoom style)",
+    description:
+      "The screen share with the active speaker beside it; on phones the speaker floats over the share. Live viewers get it while someone shares unless you pick another layout.",
+    sample: { share: true, cameras: 2 },
+    place: placeSpeakerView,
   },
   {
     id: "share_speaker",
