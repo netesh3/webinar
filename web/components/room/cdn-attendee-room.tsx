@@ -13,6 +13,7 @@ import Hls from "hls.js";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -48,6 +49,8 @@ import { stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { canElementFullscreen, useFullscreen } from "@/lib/fullscreen";
 import { playerControls, simuliveCorrection, SIMULIVE_BLOCKED_KEYS } from "@/lib/simulive-clock";
+import { isAutoplayRefusal, tryWithSound } from "@/lib/autoplay-sound";
+import { takePrimedVideo } from "@/lib/media-unlock";
 import { useStageLayout } from "@/lib/layout";
 import { useMentionBadge } from "@/lib/use-mentions";
 import { useToast } from "../providers";
@@ -642,10 +645,11 @@ function HlsPlayer({
   }, [sharedStartMs]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // A plain file is muted before it plays (see the effect below); starting in
-  // that state is what the effect used to set on mount. Later URL changes are
-  // covered by the element's volumechange event, wired to onMutedChange.
-  const [isMuted, setIsMuted] = useState(() => !isPlaylistUrl(streamUrl));
+  // The element starts muted; tryPlay (below) takes the sound when the browser allows it,
+  // and the element's volumechange event keeps this in step (onMutedChange).
+  const [isMuted, setIsMuted] = useState(true);
+  // The viewer muted it themselves: never unmute behind their back.
+  const userMuted = useRef(false);
   const activeUrl = streamUrl;
   const ll = Boolean(lowLatency);
   // A simulive: the recording on one shared clock, played like a live broadcast.
@@ -752,13 +756,48 @@ function HlsPlayer({
     let hls: Hls | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
+    /* Sound if the browser allows it (lib/autoplay-sound.ts): the Join click, kept by a
+     * same-tab navigation, allows it in Chrome, Edge and Firefox, and an element unlocked in
+     * that tap (lib/media-unlock.ts) in Safari. Refused (NotAllowedError), it plays muted and
+     * the first tap or key anywhere turns the sound on (StagePlayerChrome). */
+    let soundAllowed: boolean | null = null;
+    const playMuted = () => {
+      video.muted = true;
+      setIsMuted(true);
+      video.play().catch(() => {});
+    };
     const tryPlay = () => {
       video.playsInline = true;
       video.setAttribute("playsinline", "");
       video.setAttribute("webkit-playsinline", "true");
-      video.muted = true;
-      setIsMuted(true);
-      video.play().catch(() => {});
+      if (userMuted.current || soundAllowed === true) {
+        video.play().catch(() => {});
+        return;
+      }
+      if (soundAllowed === false) return playMuted();
+      const withSound = tryWithSound({
+        activated: navigator.userActivation?.hasBeenActive,
+        primed: video.dataset.primed === "1",
+      });
+      if (!withSound) {
+        soundAllowed = false;
+        return playMuted();
+      }
+      soundAllowed = true;
+      video.muted = false;
+      video
+        .play()
+        .then(() => setIsMuted(false))
+        .catch((err: unknown) => {
+          // Only NotAllowedError is the autoplay policy; anything else says nothing about
+          // sound, so ask again on the next try.
+          if (!isAutoplayRefusal(err)) {
+            soundAllowed = null;
+            return;
+          }
+          soundAllowed = false;
+          playMuted();
+        });
     };
 
     // A simulive's late joiner starts at the shared position (lib/simulive-replay.ts).
@@ -771,7 +810,6 @@ function HlsPlayer({
     if (!isPlaylist) {
       video.playsInline = true;
       video.setAttribute("playsinline", "");
-      video.muted = true;
       video.src = activeUrl;
       const onLoaded = () => {
         setLoading(false);
@@ -943,6 +981,7 @@ function HlsPlayer({
 
   const unmute = () => {
     if (videoRef.current) {
+      userMuted.current = false;
       videoRef.current.muted = false;
       setIsMuted(false);
       // A simulive's tap to join starts where everybody is, however long the tap took.
@@ -958,6 +997,7 @@ function HlsPlayer({
     const video = videoRef.current;
     if (!video) return;
     video.muted = !video.muted;
+    userMuted.current = video.muted;
     setIsMuted(video.muted);
     if (!video.muted) void video.play();
   };
@@ -1031,9 +1071,119 @@ export function StagePlayerChrome({
   // Captions as a native track: they follow the playback position, seeks included.
   const captionTrack = useCaptionTrack(captionsUrl);
   const [ccOn, setCcOn] = useState(true);
+
+  /* The <video>, made here rather than rendered: on Safari the player has to be the element
+   * the Join tap unlocked (lib/media-unlock.ts), which React did not create. Laid out before
+   * the players' own effects run, so videoRef is set when they read it.
+   *
+   * No `controls`. This is a live stage, not a file: a scrubber invites seeking on a stream
+   * that has nowhere to seek to, and the native menu offers playback speed, download and
+   * PiP, none of which mean anything for a broadcast. The attributes are belt-and-braces for
+   * the places a browser shows its own UI anyway. Volume and fullscreen live in the overlay
+   * instead. PiP stays off: the shared clock would snap its scrubber back, but a window with
+   * a play button that does nothing is worse than no window. */
+  const slotRef = useRef<HTMLDivElement>(null);
+  const handlers = useRef({ onReady, onMutedChange });
+  useEffect(() => {
+    handlers.current = { onReady, onMutedChange };
+  });
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    if (!slot) return;
+    const adopted = takePrimedVideo();
+    const video = adopted ?? document.createElement("video");
+    if (adopted) video.dataset.primed = "1";
+    video.playsInline = true;
+    video.setAttribute("playsinline", "");
+    video.muted = true;
+    video.autoplay = true;
+    video.preload = "auto";
+    video.controls = false;
+    video.disablePictureInPicture = true;
+    video.setAttribute("controlsList", "nodownload noplaybackrate noremoteplayback");
+    video.className = "h-full w-full object-contain";
+    slot.appendChild(video);
+    videoRef.current = video;
+
+    const ready = () => handlers.current.onReady?.();
+    const onTime = () => {
+      if (video.currentTime > 0) ready();
+    };
+    const onVolume = () => handlers.current.onMutedChange(video.muted);
+    const readyEvents = ["play", "playing", "canplay", "canplaythrough", "loadeddata"];
+    for (const e of readyEvents) video.addEventListener(e, ready);
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("volumechange", onVolume);
+    return () => {
+      for (const e of readyEvents) video.removeEventListener(e, ready);
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("volumechange", onVolume);
+      video.remove();
+    };
+  }, [videoRef]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (coverUrl) video.poster = coverUrl;
+    else video.removeAttribute("poster");
+  }, [coverUrl, videoRef]);
+
+  useEffect(() => {
+    // A cast session is a player of its own, off the shared clock; a live stage keeps it.
+    if (videoRef.current) videoRef.current.disableRemotePlayback = simulive;
+  }, [simulive, videoRef]);
+
+  // Captions as a native track: they follow the playback position, seeks included.
+  const ccOnRef = useRef(ccOn);
+  useEffect(() => {
+    ccOnRef.current = ccOn;
+  });
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !captionTrack) return;
+    const track = document.createElement("track");
+    track.kind = "captions";
+    track.label = CAPTIONS_LABEL;
+    track.srclang = "und";
+    track.src = captionTrack;
+    track.default = ccOnRef.current;
+    const onLoad = () => showCaptions(video, ccOnRef.current);
+    track.addEventListener("load", onLoad);
+    video.appendChild(track);
+    return () => {
+      track.removeEventListener("load", onLoad);
+      track.remove();
+    };
+  }, [captionTrack, videoRef]);
   useEffect(() => {
     showCaptions(videoRef.current, ccOn);
   }, [ccOn, captionTrack, videoRef]);
+
+  /* Muted because the browser said so (a cold room link, a refresh, a new tab), not by the
+   * viewer: their next tap, click or key anywhere on the page is the permission the browser
+   * wanted, so it turns the sound on. Inside the event, so it counts as the gesture. */
+  const userMuted = useRef(false);
+  const unmuteRef = useRef(unmute);
+  useEffect(() => {
+    unmuteRef.current = unmute;
+  });
+  const askingForSound = isMuted && !loading;
+  useEffect(() => {
+    if (!askingForSound) return;
+    const onGesture = (e: Event) => {
+      if (userMuted.current) return;
+      // Our own mute button does its own thing.
+      if (e.target instanceof Element && e.target.closest("[data-mute-toggle]")) return;
+      unmuteRef.current();
+    };
+    // pointerup and touchend, not pointerdown: a touch's pointerdown is not an activation.
+    const events = ["pointerup", "touchend", "keydown"] as const;
+    for (const ev of events) document.addEventListener(ev, onGesture, true);
+    return () => {
+      for (const ev of events) document.removeEventListener(ev, onGesture, true);
+    };
+  }, [askingForSound]);
 
   return (
     <div
@@ -1050,50 +1200,9 @@ export function StagePlayerChrome({
           : undefined
       }
     >
-      {/* No `controls`. This is a live stage, not a file: a scrubber invites
-        * seeking on a stream that has nowhere to seek to, and the native menu
-        * offers playback speed, download and PiP, none of which mean anything
-        * for a broadcast. The attributes below are belt-and-braces for the
-        * places a browser shows its own UI anyway, notably iOS fullscreen.
-        * Volume and fullscreen live in the overlay instead. */}
-      <video
-        ref={videoRef}
-        playsInline
-        muted
-        autoPlay
-        disablePictureInPicture
-        // A cast session is a player of its own, off the shared clock; a live stage keeps it.
-        disableRemotePlayback={simulive}
-        controlsList="nodownload noplaybackrate noremoteplayback"
-        preload="auto"
-        onPlay={() => onReady?.()}
-        onPlaying={() => onReady?.()}
-        onTimeUpdate={() => {
-          if (videoRef.current && videoRef.current.currentTime > 0) {
-            onReady?.();
-          }
-        }}
-        onCanPlay={() => onReady?.()}
-        onCanPlayThrough={() => onReady?.()}
-        onLoadedData={() => onReady?.()}
-        poster={coverUrl}
-        className="h-full w-full object-contain"
-        onVolumeChange={(e) => {
-          onMutedChange((e.target as HTMLVideoElement).muted);
-        }}
-      >
-        {captionTrack && (
-          <track
-            key={captionTrack}
-            kind="captions"
-            label={CAPTIONS_LABEL}
-            srcLang="und"
-            src={captionTrack}
-            default={ccOn}
-            onLoad={() => showCaptions(videoRef.current, ccOn)}
-          />
-        )}
-      </video>
+      {/* The <video> goes in here (the effect above): the element unlocked in the Join
+        * tap when there is one, a new one otherwise. */}
+      <div ref={slotRef} className="contents" />
 
       {loading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white gap-3 pointer-events-none z-10">
@@ -1111,30 +1220,17 @@ export function StagePlayerChrome({
         </div>
       )}
 
-      {isMuted && !loading && (
-        <>
-          {/* Autoplay has to start muted, and on a phone the pill alone was easy to
-            * miss: people watched in silence and assumed the host's mic was broken.
-            * So while muted, a tap ANYWHERE on the picture turns sound on (this
-            * layer sits under the controls, z-20, which stay clickable), and the
-            * pill is a full-width bar on small screens. */}
-          <button
-            type="button"
-            onClick={unmute}
-            aria-label="Turn on sound"
-            tabIndex={-1}
-            className="absolute inset-0 z-[15] cursor-pointer bg-transparent"
-          />
-          <button
-            type="button"
-            onClick={unmute}
-            className="absolute inset-x-4 bottom-16 z-20 flex items-center justify-center gap-2 rounded-full bg-brand px-4 py-2.5 text-[14px] font-semibold text-white shadow-lg transition hover:bg-brand-hover sm:inset-x-auto sm:left-6 sm:py-2 sm:text-[13px]"
-          >
-            <span className="inline-block size-2 rounded-full bg-white animate-pulse" />
-            <span className="sm:hidden">Tap anywhere for sound</span>
-            <span className="hidden sm:inline">Click to Unmute Broadcast</span>
-          </button>
-        </>
+      {askingForSound && (
+        /* One small pill, not an overlay: the picture, captions and chat all stay usable, and
+         * any tap or key anywhere turns the sound on (the effect above), this pill included. */
+        <button
+          type="button"
+          onClick={unmute}
+          className="absolute bottom-4 left-4 z-20 flex items-center gap-1.5 rounded-full bg-black/65 px-3 py-1.5 text-[12.5px] font-semibold text-white shadow-lg backdrop-blur transition hover:bg-black/80"
+        >
+          <VolumeIcon className="size-3.5" />
+          Tap to turn on sound
+        </button>
       )}
 
       {!loading && (
@@ -1144,7 +1240,11 @@ export function StagePlayerChrome({
           )}
           <button
             type="button"
-            onClick={toggleMute}
+            data-mute-toggle
+            onClick={() => {
+              userMuted.current = !isMuted;
+              toggleMute();
+            }}
             aria-label={isMuted ? "Unmute broadcast" : "Mute broadcast"}
             title={isMuted ? "Unmute" : "Mute"}
             className="grid size-8 place-items-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useJoinKeys, useRegistrations } from "./registrations";
 import { Alert, CopyField, Modal, Spinner } from "./controls";
@@ -21,7 +22,7 @@ import {
   savePendingWebinarRegister,
   webinarSignInHref,
 } from "@/lib/webinar-register";
-import { openRoomTab } from "@/lib/open-room";
+import { usePrimeMediaOnGesture } from "@/lib/media-unlock";
 import { androidChromeIntent, currentInAppBrowser, currentIsAndroid } from "@/lib/device";
 import { CHECKBOX_YES } from "@/lib/registration-questions";
 import { WhatsAppOptInCheckbox } from "@/engage";
@@ -207,6 +208,8 @@ export function RegisterForm({ webinar: w }: { webinar: Webinar }) {
     useRegistrations();
   const { account, status } = useSession();
   const existing = registrationFor(w.id);
+  // The Join tap also unlocks a <video> for Safari's sake (lib/media-unlock.ts).
+  usePrimeMediaOnGesture();
 
   useEffect(() => {
     if (existing) clearPendingWebinarRegister(w.id);
@@ -523,6 +526,7 @@ function GuestJoinFields({
   onRegister: () => void;
 }) {
   const { add } = useJoinKeys();
+  const router = useRouter();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -539,7 +543,9 @@ function GuestJoinFields({
       // Stored before opening the room, so a reload finds the key rather than a
       // stranger with no way in.
       if (join.joinKey) add(join.joinKey, w.id);
-      openRoomTab(`/webinars/${w.id}/room`);
+      /* Same tab, client-side, like "Join now" (JoinGate): a new tab starts with no user
+       * activation, so its room could not play sound without asking for a tap first. */
+      router.push(`/webinars/${w.id}/room`);
     } catch (err) {
       if (err instanceof ApiError && err.code === "registration_required") {
         onRegister();

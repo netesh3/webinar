@@ -339,6 +339,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-discover.test.mts
 	# A simulive's shared clock: snap-back on drift, resume on pause, and no seek controls.
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-clock.test.mts
+	# The broadcast player's sound: tried first after a Join tap, muted only when refused.
+	cd web && node --experimental-strip-types --no-warnings lib/autoplay-sound.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

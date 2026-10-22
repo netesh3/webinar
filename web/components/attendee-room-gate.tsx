@@ -14,6 +14,7 @@ import type { JoinResponse } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { detectArrival, hasRejoinIntent, type Arrival } from "@/lib/rejoin";
 import { trackEvent } from "@/lib/telemetry";
+import { usePrimeMediaOnGesture } from "@/lib/media-unlock";
 import { isAwaitingEmail, joinProvesKey } from "@/lib/guest-registration";
 import { attendeeJoinRefusal } from "@/lib/join-refusal";
 import { MEETING_POLL_MS, lobbyScreen, type LobbyScreen } from "@/lib/meeting-lobby";
@@ -45,6 +46,8 @@ export function AttendeeRoomGate({
   meeting?: boolean;
 }) {
   const router = useRouter();
+  // Any tap on the way in ("Join again", "Try again") unlocks a <video> for Safari's sake.
+  usePrimeMediaOnGesture();
   const {
     registrations,
     registrationFor,
