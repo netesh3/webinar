@@ -3,6 +3,7 @@
 import { createContext, useContext } from "react";
 import type { JoinResponse, LiveRoom, Poll, SessionControls } from "@/lib/api-types";
 import type { MediaPreferences } from "@/lib/media";
+import type { CameraStart } from "@/lib/entry-publish";
 import type { LocalVideoTrack } from "livekit-client";
 import type { NetworkHealth } from "@/lib/network";
 import type { MediaPermissions } from "@/lib/permissions";
@@ -78,8 +79,14 @@ export type RoomUI = {
    * on a black stage until the connection completed and the track published — so the one
    * question they had, "is my camera working", went unanswered exactly when they were
    * checking. The published track takes over the moment it arrives; this is only for the
-   * gap before it. Null for the audience, who capture nothing. */
+   * gap before it. Null for the audience, who capture nothing — and null once that camera has
+   * failed to publish, so a camera nobody can see is never shown as if it were joining
+   * (lib/entry-publish.ts showEntryPreview). */
   entryVideo: LocalVideoTrack | null;
+
+  /** Where the pre-join camera has got to, with a retry for when it failed to publish.
+   *  Absent outside the publishing room (previews, the audience rooms). */
+  cameraStart?: CameraStart & { retry: () => void };
 
   /** Which recovery attempt is in flight, or null when the connection is not being
    *  retried. The banner reads this so a retry says "Reconnecting" rather than the

@@ -71,8 +71,17 @@ import { ParticipantTile, type Tile, type TileSource } from "./tile";
 export type ViewMode = LayoutMode;
 
 export function Stage() {
-  const { topic, controls, permissions, join, stage, entryVideo, coverImageUrl, isHost } =
-    useRoomUI();
+  const {
+    topic,
+    controls,
+    permissions,
+    join,
+    stage,
+    entryVideo,
+    cameraStart,
+    coverImageUrl,
+    isHost,
+  } = useRoomUI();
 
   // onlySubscribed: a track we have not subscribed to has no stream to render,
   // and with adaptiveStream the subscription follows what is actually on screen.
@@ -304,6 +313,9 @@ export function Stage() {
         imageUrl={coverImageUrl}
         // The pre-join camera, for the gap before the published track arrives.
         preview={entryVideo}
+        // The pre-join camera did not make it onto the stage: say so, with a retry, rather than
+        // leaving an empty stage that looks like it is still joining.
+        cameraFailure={cameraStart?.phase === "failed" ? cameraStart : null}
         // A presenter is not waiting for anyone — they are the one everybody else is
         // waiting for. join.canPublish comes first, and that ordering is the fix for
         // a real slip: the live permissions are the SFU's answer and are unknown
@@ -1467,6 +1479,7 @@ function WaitingForStage({
   imageUrl,
   canPresent,
   preview,
+  cameraFailure,
 }: {
   locked: boolean;
   meeting: boolean;
@@ -1477,6 +1490,8 @@ function WaitingForStage({
   imageUrl: string | null;
   canPresent: boolean;
   preview: LocalVideoTrack | null;
+  /** The presenter's camera failed to publish: why, and a way to try again. */
+  cameraFailure: { error: string | null; retry: () => void } | null;
 }) {
   const { enabled: tuneEnabled, setEnabled: setTuneEnabled } = useWaitingTune();
 
@@ -1504,7 +1519,23 @@ function WaitingForStage({
      * screen has nothing to preview, and a spinner would suggest something is stuck. */
     return (
       <div className="relative size-full min-h-0 min-w-0">
-        {preview ? (
+        {cameraFailure ? (
+          <div className="absolute inset-0 grid place-items-center p-6 text-center">
+            <div role="alert" className="flex max-w-sm flex-col items-center gap-3">
+              <p className="text-[14px] font-medium text-white">Your camera isn&apos;t on</p>
+              {cameraFailure.error && (
+                <p className="text-[13px] text-white/70">{cameraFailure.error}</p>
+              )}
+              <button
+                type="button"
+                onClick={cameraFailure.retry}
+                className="rounded-full bg-white/15 px-4 py-1.5 text-[13px] font-medium text-white hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        ) : preview ? (
           <PreviewTile track={preview} />
         ) : (
           <span

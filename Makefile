@@ -107,6 +107,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And whether an empty stage means the host hasn't started. It doesn't, once
 	# a host or panelist is in the room — camera off and mic muted still count.
 	cd web && node --experimental-strip-types --no-warnings lib/stage-presence.test.mts
+	# And whether the pre-join camera reaches the stage: republished after a dropped
+	# connection, never shown as "joining" once it has failed, and the button's state.
+	cd web && node --experimental-strip-types --no-warnings lib/entry-publish.test.mts
 	# And the playout-delay readout, which reports a number to somebody who is
 	# troubleshooting — where a plausible wrong number is worse than none.
 	cd web && node --experimental-strip-types --no-warnings lib/network.test.mts
