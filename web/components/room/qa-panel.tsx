@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
+import { aiLockedOff } from "@/lib/ai-session";
 import { clusterIdFor, draftFor, groupOpenQuestions, qaAssistOn, topQuestions } from "@/lib/qa-clusters";
 import { answerKind, questionAuthor } from "@/lib/qa-view";
 import { assistantSignature } from "@/lib/qa-auto";
@@ -17,7 +18,7 @@ import type { Question } from "@/lib/realtime";
 const MAX_CHARS = 600;
 
 export function QAPanel() {
-  const { slug, realtime, controls, isHost, permissions, me } = useRoomUI();
+  const { slug, realtime, controls, isHost, permissions, me, status } = useRoomUI();
   const { notify } = useToast();
   const [draft, setDraft] = useState("");
   const [anonymous, setAnonymous] = useState(false);
@@ -100,6 +101,13 @@ export function QAPanel() {
               The host has turned Q&amp;A off. Existing questions stay visible.
             </Alert>
           </div>
+        )}
+        {isHost && aiLockedOff(controls, status) && (
+          // Said, so the assistant does not just vanish: see AIToggle.
+          <p className="mb-3 inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 text-[10.5px] leading-5 text-ink-3">
+            <SparklesIcon className="size-3" />
+            Q&amp;A assistant off: AI was switched off during this session.
+          </p>
         )}
 
         {visible.length === 0 ? (
