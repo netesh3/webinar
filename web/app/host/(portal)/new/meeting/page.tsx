@@ -9,10 +9,10 @@ export default function ScheduleMeetingPage() {
   return (
     <>
       <Link
-        href="/host"
+        href="/host/meetings"
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
       >
-        ← Your webinars
+        ← Your meetings
       </Link>
       <h1 className="mb-1 text-[24px] font-semibold tracking-[-0.02em]">
         Schedule a meeting

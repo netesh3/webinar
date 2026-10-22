@@ -60,7 +60,8 @@ const hostStartLead = 15 * time.Minute
  * dates (2006-01-02) rather than timestamps, because a date picker is what the
  * host filtering "sessions in March" actually has — and to is read as the end
  * of that day, so the day the host asked for is included. cursor is opaque and
- * comes from a previous page's nextCursor.
+ * comes from a previous page's nextCursor. kind is webinar | meeting and splits
+ * the portal's Webinars and Meetings lists; absent means both.
  */
 func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
@@ -74,6 +75,15 @@ func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpx.Error(w, http.StatusUnprocessableEntity, "bad_tab",
 			"tab must be upcoming, past, or drafts.")
+		return
+	}
+
+	switch kind := store.HostWebinarKind(q.Get("kind")); kind {
+	case "", store.HostKindWebinar, store.HostKindMeeting:
+		filter.Kind = kind
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_kind",
+			"kind must be webinar or meeting.")
 		return
 	}
 

@@ -131,7 +131,8 @@ export function RecorderProvider({ children }: { children: React.ReactNode }) {
  *  AudioContext and an upload queue, none of which should be recreated by a
  *  re-render. React state carries only what the UI draws. */
 function useRecorder(): RecorderContextValue {
-  const { slug, topic } = useRoomUI();
+  const { slug, topic, join } = useRoomUI();
+  const meeting = join.meeting === true;
   const room = useRoomContext();
   const { notify } = useToast();
   const { recordingMode } = useAppConfig();
@@ -226,7 +227,7 @@ function useRecorder(): RecorderContextValue {
           setBytes(0);
           notifyRef.current(
             local
-              ? "Recording started — saving the webinar to the file you chose. Keep this tab open."
+              ? `Recording started — saving the ${meeting ? "meeting" : "webinar"} to the file you chose. Keep this tab open.`
               : "Recording started. Everyone can see it — keep this tab open.",
             "ok",
           );
@@ -283,7 +284,7 @@ function useRecorder(): RecorderContextValue {
         setDestination(null);
       }
     },
-    [isEgress, room, slug, topic],
+    [isEgress, room, slug, topic, meeting],
   );
 
   const stop = useCallback(async () => {

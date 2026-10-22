@@ -38,7 +38,13 @@ import {
   saveMedia,
   type RejoinRole,
 } from "@/lib/rejoin";
-import { meetingRejoinEntry, prejoinMedia, usesMeetingEntry } from "@/lib/meeting-room";
+import {
+  meetingRejoinEntry,
+  prejoinMedia,
+  roomExitCopy,
+  usesMeetingEntry,
+  type RoomExitReason,
+} from "@/lib/meeting-room";
 import {
   useMediaPermissions,
   useLiveRole,
@@ -1543,7 +1549,15 @@ function ConnectedRoom({
     return <HostResultsRedirect href={endView.href} />;
   }
   if (shownExit && !endingHere) {
-    return <SessionOver reason={shownExit} onLeave={onLeave} slug={slug} joinKey={joinKey} />;
+    return (
+      <SessionOver
+        reason={shownExit}
+        meeting={meeting}
+        onLeave={onLeave}
+        slug={slug}
+        joinKey={joinKey}
+      />
+    );
   }
 
   if (failure) {
@@ -1939,7 +1953,7 @@ function ConnectionBanner() {
 
 /** Why this participant is no longer in the room. Only for things that happened
  *  TO them — leaving on their own is not an exit state, it is navigation. */
-type ExitReason = "ended" | "removed" | "duplicate" | "lost";
+type ExitReason = RoomExitReason;
 
 /** Asks the API for a credential to reconnect with, or null if it cannot be reached.
  *  Implemented in WebinarRoom, which is the component that knows which gate minted the
@@ -2041,25 +2055,6 @@ function classifyDisconnect(reason?: DisconnectReason): ExitReason | null {
   }
 }
 
-const EXIT_COPY: Record<ExitReason, { title: string; body: string }> = {
-  ended: {
-    title: "The webinar has ended",
-    body: "Thanks for coming — the host closed the session for everyone.",
-  },
-  removed: {
-    title: "You were removed from the webinar",
-    body: "The host removed you from this session. Contact them if you think that was a mistake.",
-  },
-  duplicate: {
-    title: "You joined from somewhere else",
-    body: "This webinar was opened in another tab or on another device with the same link, so this session was closed.",
-  },
-  lost: {
-    title: "You were disconnected",
-    body: "The connection to the media server dropped and could not be recovered. Rejoining usually fixes it.",
-  },
-};
-
 /** The host's way out of a session that ended without them pressing End here. */
 function HostResultsRedirect({ href }: { href: string }) {
   const router = useRouter();
@@ -2075,16 +2070,18 @@ function HostResultsRedirect({ href }: { href: string }) {
 
 function SessionOver({
   reason,
+  meeting,
   onLeave,
   slug,
   joinKey,
 }: {
   reason: ExitReason;
+  meeting: boolean;
   onLeave: () => void;
   slug: string;
   joinKey?: string;
 }) {
-  const copy = EXIT_COPY[reason];
+  const copy = roomExitCopy(reason, meeting);
   return (
     <main className="grid min-h-dvh place-items-center bg-stage p-4 text-center sm:p-6">
       <div className="flex w-full max-w-[460px] flex-col items-center">
@@ -2103,7 +2100,7 @@ function SessionOver({
             onClick={onLeave}
             className="rounded-lg bg-white/15 px-4 py-2 text-[13px] font-medium text-white hover:bg-white/25"
           >
-            Back to webinars
+            {meeting ? "Done" : "Back to webinars"}
           </button>
         </div>
         {/* Ended for everyone is when the host's "send at the end" survey goes out, and

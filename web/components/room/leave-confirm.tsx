@@ -39,11 +39,14 @@ export type LeaveRole = "attendee" | "panelist";
 export function LeaveConfirm({
   open,
   role,
+  meeting = false,
   onClose,
   onLeave,
 }: {
   open: boolean;
   role: LeaveRole;
+  /** A meeting's room: the noun is "meeting", and everyone in it is on camera. */
+  meeting?: boolean;
   onClose: () => void;
   onLeave: () => void;
 }) {
@@ -91,16 +94,20 @@ export function LeaveConfirm({
     <div
       ref={panel}
       role="dialog"
-      aria-label="Leave the webinar"
+      aria-label={meeting ? "Leave the meeting" : "Leave the webinar"}
       className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
     >
       <div className="px-3.5 pt-3 pb-2.5">
-        <p className="text-[13.5px] font-semibold text-ink">Leave the webinar?</p>
+        <p className="text-[13.5px] font-semibold text-ink">
+          {meeting ? "Leave the meeting?" : "Leave the webinar?"}
+        </p>
         <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
           {/* A panelist's leave is the bigger one, and saying so is the point of splitting
               the copy: their camera and microphone are part of what the audience is
               watching, so it stops rather than a viewer count going down by one. */}
-          {role === "panelist"
+          {meeting
+            ? "Your camera and microphone go with you. You can come back with the same link while the meeting is on; the host may need to let you in again."
+            : role === "panelist"
             ? "You're on the stage, so your camera and microphone go with you. You can come back with the same link while the session is live."
             : "You can rejoin with the same link while the session is still live."}
         </p>

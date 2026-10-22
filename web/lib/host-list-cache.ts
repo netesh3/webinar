@@ -14,8 +14,18 @@ const cursors = new Map<string, (string | undefined)[]>();
 const pages = new Map<string, number>();
 const resets = new Set<() => void>();
 
-export function hostListFilterKey(tab: string, q: string, from: string, to: string): string {
-  return `${tab}\0${q}\0${from}\0${to}`;
+/** Which of the portal's lists a page belongs to: Webinars (everything but meetings) or
+ *  Meetings. The API's `kind` parameter, spelled the same. */
+export type HostListKind = "webinar" | "meeting";
+
+export function hostListFilterKey(
+  tab: string,
+  q: string,
+  from: string,
+  to: string,
+  kind: HostListKind | "" = "",
+): string {
+  return `${kind}\0${tab}\0${q}\0${from}\0${to}`;
 }
 
 export function hostListPageKey(filter: string, page: number): string {

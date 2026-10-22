@@ -299,6 +299,7 @@ export function Stage() {
     return (
       <WaitingForStage
         locked={controls.locked}
+        meeting={join.meeting === true}
         topic={topic}
         imageUrl={coverImageUrl}
         // The pre-join camera, for the gap before the published track arrives.
@@ -1461,12 +1462,14 @@ function PreviewTile({ track }: { track: LocalVideoTrack }) {
 
 function WaitingForStage({
   locked,
+  meeting,
   topic,
   imageUrl,
   canPresent,
   preview,
 }: {
   locked: boolean;
+  meeting: boolean;
   topic: string;
   /** The webinar's own cover image, or null when the host never set one.
    *  Only ever shown on the attendee side of this screen — a presenter sees
@@ -1573,7 +1576,9 @@ function WaitingForStage({
         <p className="text-[15px] font-medium text-white/90">{WAITING_FOR_HOST_LABEL}</p>
         <p className="mt-1.5 text-[13px] leading-relaxed text-white/55">
           {locked
-            ? "This webinar is locked to new attendees."
+            ? meeting
+              ? "This meeting is locked to new people."
+              : "This webinar is locked to new attendees."
             : `You're in the room for “${topic}”. The stage appears as soon as someone starts their camera or shares a screen.`}
         </p>
       </div>

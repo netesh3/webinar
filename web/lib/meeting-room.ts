@@ -147,3 +147,52 @@ export function admitAllMessage(res: LobbyAdmitAllResponse): string {
   if (res.left === 0) return `Let in ${who(res.admitted)}.`;
   return `Let in ${who(res.admitted)}. The meeting is full, so ${who(res.left)} ${res.left === 1 ? "is" : "are"} still waiting.`;
 }
+
+/** Why somebody is looking at the room's closing screen instead of the room. */
+export type RoomExitReason = "ended" | "removed" | "duplicate" | "lost";
+
+/** The closing screen's words, in the room's own noun: a meeting is never "the webinar". */
+export function roomExitCopy(
+  reason: RoomExitReason,
+  meeting: boolean,
+): { title: string; body: string } {
+  const noun = meeting ? "meeting" : "webinar";
+  switch (reason) {
+    case "ended":
+      return {
+        title: `The ${noun} has ended`,
+        body: meeting
+          ? "The host ended the meeting for everyone."
+          : "Thanks for coming — the host closed the session for everyone.",
+      };
+    case "removed":
+      return {
+        title: `You were removed from the ${noun}`,
+        body: `The host removed you from this ${meeting ? "meeting" : "session"}. Contact them if you think that was a mistake.`,
+      };
+    case "duplicate":
+      return {
+        title: "You joined from somewhere else",
+        body: `This ${noun} was opened in another tab or on another device with the same link, so this session was closed.`,
+      };
+    case "lost":
+      return {
+        title: "You were disconnected",
+        body: "The connection to the media server dropped and could not be recovered. Rejoining usually fixes it.",
+      };
+  }
+}
+
+/** Visitors that the meeting link should not ask for a name.
+ *
+ *  The host who owns the meeting goes to their own room; anyone else signed in knocks with
+ *  their account name (the server fills it in when the knock's name is empty). Signed-out
+ *  visitors, and a session still loading, get the name form. */
+export function meetingDoorFor(
+  session: { status: "loading" | "signed-in" | "anonymous"; accountId?: string },
+  hostId: string,
+): "form" | "host" | "auto" | "wait" {
+  if (session.status === "loading") return "wait";
+  if (session.status !== "signed-in" || !session.accountId) return "form";
+  return session.accountId === hostId ? "host" : "auto";
+}

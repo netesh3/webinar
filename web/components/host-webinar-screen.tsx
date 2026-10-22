@@ -183,7 +183,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
     setBusy(true);
     try {
       await api.endWebinar(slug);
-      notify("Webinar ended.", "ok");
+      notify(webinar && isMeetingKind(webinar) ? "Meeting ended." : "Webinar ended.", "ok");
       setConfirmEnd(false);
       // Already on this webinar's page. Replace so the Results tab is selected
       // and Back does not return to the live view of a session that just ended.
@@ -209,11 +209,14 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
     setBusy(true);
     try {
       await api.deleteWebinar(slug);
+      const wasMeeting = webinar ? isMeetingKind(webinar) : false;
       notify(
-        "Webinar deleted, along with its registrations, chat and recordings.",
+        wasMeeting
+          ? "Meeting deleted, along with its chat and recordings."
+          : "Webinar deleted, along with its registrations, chat and recordings.",
         "ok",
       );
-      router.push("/host");
+      router.push(wasMeeting ? "/host/meetings" : "/host");
     } catch (e) {
       notify(
         e instanceof Error ? e.message : "Could not delete the webinar.",
@@ -276,11 +279,11 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   return (
     <>
       <Link
-        href="/host"
+        href={meeting ? "/host/meetings" : "/host"}
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-brand"
       >
         <ArrowLeftIcon className="size-3.5" />
-        Your webinars
+        {meeting ? "Your meetings" : "Your webinars"}
       </Link>
 
       {/* Back on stage after closing the room tab by accident. Offered, not forced. */}

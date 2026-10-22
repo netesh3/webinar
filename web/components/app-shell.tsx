@@ -22,7 +22,7 @@ import { noteAttendeeVisit } from "@/lib/host-welcome";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
-import { BookmarkIcon, CalendarIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon, WhatsAppIcon } from "./icons";
+import { BookmarkIcon, CalendarIcon, CameraIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon, WhatsAppIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { useTheme } from "./theme";
@@ -329,7 +329,15 @@ function HostPrimaryNav() {
     const path = row.href.split("?")[0] ?? row.href;
     return pathname === path || pathname.startsWith(`${path}/`);
   });
+  /* Meetings has its own list and its own schedule form. A meeting's own page is
+   * /host/<slug> like a webinar's, which the address alone cannot tell apart, so that page
+   * still lights Webinars; its back link goes to Meetings. */
+  const onMeetings =
+    pathname === "/host/meetings" ||
+    pathname.startsWith("/host/meetings/") ||
+    pathname === "/host/new/meeting";
   const onWebinars =
+    !onMeetings &&
     !onPeople &&
     !onWhatsApp &&
     !onEmail &&
@@ -353,6 +361,12 @@ function HostPrimaryNav() {
         label="Webinars"
         active={onWebinars}
         icon={<CalendarIcon />}
+      />
+      <Item
+        href="/host/meetings"
+        label="Meetings"
+        active={onMeetings}
+        icon={<CameraIcon />}
       />
       <Item
         href={PEOPLE_HREF}

@@ -134,7 +134,7 @@ export function MeetingInfo() {
                 </button>
               </span>
             </InfoRow>
-            <InfoRow label="Webinar ID">
+            <InfoRow label={join.meeting ? "Meeting ID" : "Webinar ID"}>
               <span className="tabular-nums">{webinarId}</span>
             </InfoRow>
             {hostName && (
