@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -419,6 +420,15 @@ type Config struct {
 	/* AIProviders is the model chain for the AI features, in the order tried. Empty means
 	 * the AI features are off. See ai.go in this package for the two ways to set it. */
 	AIProviders []AIProvider
+
+	/* AIMonthlyUSD and AIHostMonthlyUSD cap what the AI features may spend in a calendar
+	 * month (UTC), estimated from token counts (internal/ai/price.go): AIMonthlyUSD for the
+	 * whole instance (AI_MONTHLY_USD, default 20), AIHostMonthlyUSD for one host
+	 * (AI_HOST_MONTHLY_USD, default 2). Past either, an AI feature answers "AI limit
+	 * reached for this month" instead of calling a model. Free providers cost $0, so a
+	 * chain with no paid provider never reaches them. 0 means no AI spend at all. */
+	AIMonthlyUSD     float64
+	AIHostMonthlyUSD float64
 }
 
 // httpFromWS converts the browser-facing ws(s) URL into the http(s) form the
@@ -567,6 +577,8 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	c.AIProviders = aiProviders
+	c.AIMonthlyUSD = envFloatStrict("AI_MONTHLY_USD", 20)
+	c.AIHostMonthlyUSD = envFloatStrict("AI_HOST_MONTHLY_USD", 2)
 
 	// Default the public URL to the first allowed origin. That is already the
 	// frontend's address in every correct deployment, so share links are right
@@ -810,6 +822,12 @@ func (c Config) validate() error {
 	// an empty secret or a duplicate id is not a production-only mistake.
 	errs = append(errs, validateLiveKitProjects(c.LiveKitProjects, c.IsDev()))
 	errs = append(errs, validateAIProviders(c.AIProviders, c.IsDev()))
+	if c.AIMonthlyUSD < 0 {
+		errs = append(errs, errors.New("AI_MONTHLY_USD must be a number of US dollars, >= 0"))
+	}
+	if c.AIHostMonthlyUSD < 0 {
+		errs = append(errs, errors.New("AI_HOST_MONTHLY_USD must be a number of US dollars, >= 0"))
+	}
 
 	return errors.Join(errs...)
 }
@@ -842,6 +860,20 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+/* envFloatStrict is envIntStrict for a decimal: anything set but not a finite number
+ * reads as -1, which the validation rejects with the variable's name. */
+func envFloatStrict(key string, def float64) float64 {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		return -1
+	}
+	return f
 }
 
 /* envIntStrict is envInt for a value that must not fall back silently: anything set but not a

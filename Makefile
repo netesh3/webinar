@@ -276,6 +276,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# server slot, then CDN broadcast — which is not a feature key and stays
 	# available when the account cannot host.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-account-features.test.mts
+	# "Write with AI": a draft fills the topic and description only, keeps the host's
+	# words where it has none, and each API refusal reads as a sentence.
+	cd web && node --experimental-strip-types --no-warnings lib/ai-setup.test.mts
 	# The Accounts tab's Hosts / Attendees chips: search and chip combine, and the
 	# chip counts follow the search text.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-accounts-filter.test.mts

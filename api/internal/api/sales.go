@@ -229,7 +229,11 @@ func (s *Server) salesAssistantTurn(ctx context.Context, conv store.SalesConvers
 	}
 	aiCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	reply, err := s.ai.Complete(aiCtx, ai.Request{Messages: sales.Messages(s.cfg.BillingGSTPercent, history), MaxTokens: 350})
+	reply, err := s.aiComplete(aiCtx, types.AIFeatureSalesChat, "",
+		ai.Request{Messages: sales.Messages(s.cfg.BillingGSTPercent, history), MaxTokens: 350})
+	if errors.Is(err, errAILimit) {
+		return s.salesHandoff(ctx, conv, "AI monthly limit reached", sales.UnavailableReply, latest)
+	}
 	if errors.Is(err, ai.ErrUnavailable) || (err != nil && ctx.Err() == nil) {
 		return s.salesHandoff(ctx, conv, "AI unavailable", sales.UnavailableReply, latest)
 	}

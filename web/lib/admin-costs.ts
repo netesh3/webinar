@@ -7,6 +7,7 @@
  * traffic. Update the numbers here when a price changes — nothing else repeats them. */
 
 import {
+  FeatureAI,
   FeatureCloudRecording,
   FeatureEdgeDelivery,
   FeatureInstantWebinar,
@@ -74,4 +75,7 @@ export const FEATURE_COSTS: Record<string, string> = {
   [FeatureJoinWithoutRegistration]: "No direct cost; can bring more attendees into each live hour.",
   [FeatureInstantWebinar]: "No direct cost beyond the live hours it starts.",
   [FeatureWhiteboard]: "Negligible: it travels on the existing data channel.",
+  [FeatureAI]:
+    "OpenAI gpt-5-nano ≈ $0.05 in / $0.40 out per million tokens: a fraction of a cent per " +
+    "draft. Capped per host (AI_HOST_MONTHLY_USD, default $2) and in all (AI_MONTHLY_USD, $20).",
 };

@@ -63,15 +63,45 @@ type Request struct {
 	// enough for a chat answer, and a bound on what one reply can cost.
 	MaxTokens int
 	// Temperature zero means 0.3: a sales answer should be the same answer twice.
+	// Not sent to a reasoning model, which refuses anything but its default.
 	Temperature float64
+	// ReasoningEffort is for reasoning-style providers only. Empty means "minimal":
+	// these features write copy, they do not solve puzzles, and every reasoning token
+	// is billed as output.
+	ReasoningEffort string
+	// Schema, when set, asks for one JSON object matching it. Complete then returns
+	// only a reply that parses and validates (see structured.go), trying the next
+	// provider when one does not.
+	Schema *Schema
+	// AttemptTimeout overrides how long one provider gets. Zero means the chain's
+	// default (12s), which suits a chat turn; a long structured answer needs more.
+	AttemptTimeout time.Duration
 }
 
 // Reply is the answer and who gave it.
 type Reply struct {
+	// Text is the answer; with Request.Schema, compact JSON that validated.
 	Text     string
 	Provider string
 	Model    string
+	// PromptTokens and CompletionTokens are the provider's own count (usage), zero
+	// when it sent none. The cost estimate is made from them.
+	PromptTokens     int
+	CompletionTokens int
 }
+
+/* Request styles. The chat-completions body is not quite one dialect.
+ *
+ * Every provider here accepts max_tokens and temperature, except OpenAI's reasoning
+ * models (gpt-5*, o-series): they refuse max_tokens in favour of
+ * max_completion_tokens, refuse any temperature but the default, and take a
+ * reasoning_effort. A provider's Style says which body it gets; the chat style is
+ * the original body, byte for byte.
+ */
+const (
+	StyleChat            = "chat"
+	StyleOpenAIReasoning = "openai-reasoning"
+)
 
 // Provider is one OpenAI-compatible chat endpoint.
 type Provider struct {
@@ -81,7 +111,14 @@ type Provider struct {
 	BaseURL string
 	APIKey  string
 	Model   string
+	// Style is StyleChat (or empty) or StyleOpenAIReasoning. See the constants.
+	Style string
+	// StructuredOutput means the provider honours response_format json_schema. One
+	// without it is asked in words, and its reply is parsed tolerantly.
+	StructuredOutput bool
 }
+
+func (p Provider) reasoning() bool { return p.Style == StyleOpenAIReasoning }
 
 // ProviderStatus is one provider as an operator sees it. Never carries the key.
 type ProviderStatus struct {
@@ -151,9 +188,16 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
 			tried = append(tried, p.ID+": benched ("+b.reason+")")
 			continue
 		}
-		text, f := c.attempt(ctx, p, req)
+		reply, f := c.attempt(ctx, p, req)
+		if f == nil && req.Schema != nil {
+			var err error
+			if reply.Text, err = req.Schema.Extract(reply.Text); err != nil {
+				f = &failure{invalid: err}
+			}
+		}
 		if f == nil {
-			return Reply{Text: text, Provider: p.ID, Model: p.Model}, nil
+			reply.Provider, reply.Model = p.ID, p.Model
+			return reply, nil
 		}
 		tried = append(tried, p.ID+": "+f.String())
 		if d, reason := c.benchFor(f); d > 0 {
@@ -209,13 +253,16 @@ type failure struct {
 	retryAfter time.Duration
 	body       string
 	err        error
-	empty      bool // 200 with nothing in it
+	empty      bool  // 200 with nothing in it
+	invalid    error // 200, but not JSON matching the requested schema
 }
 
 func (f *failure) String() string {
 	switch {
 	case f.empty:
 		return "empty reply"
+	case f.invalid != nil:
+		return "reply did not match the schema: " + f.invalid.Error()
 	case f.status == 0:
 		return "unreachable: " + f.err.Error()
 	default:
@@ -240,7 +287,7 @@ var quotaWords = regexp.MustCompile(`(?i)\b4006\b|daily|per day|\(TPD\)|\(RPD\)|
 
 func (c *Chain) benchFor(f *failure) (time.Duration, string) {
 	switch {
-	case f.empty:
+	case f.empty, f.invalid != nil:
 		return 0, ""
 	case f.status == 0:
 		return 30 * time.Second, "unreachable"
@@ -275,12 +322,54 @@ func (c *Chain) untilDailyReset(retryAfter time.Duration) time.Duration {
 	return midnight.Sub(now)
 }
 
+/* chatRequest is the wire body. Field order and the always-present fields are the
+ * original chat style exactly (a test pins the bytes); everything a reasoning model or
+ * a schema adds is omitempty, so a chat-style provider never sees it. */
 type chatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	MaxTokens   int       `json:"max_tokens"`
-	Temperature float64   `json:"temperature"`
-	Stream      bool      `json:"stream"`
+	Model               string          `json:"model"`
+	Messages            []Message       `json:"messages"`
+	MaxTokens           int             `json:"max_tokens,omitempty"`
+	Temperature         *float64        `json:"temperature,omitempty"`
+	Stream              bool            `json:"stream"`
+	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
+	ResponseFormat      *responseFormat `json:"response_format,omitempty"`
+}
+
+type responseFormat struct {
+	Type       string          `json:"type"`
+	JSONSchema *jsonSchemaSpec `json:"json_schema,omitempty"`
+}
+
+type jsonSchemaSpec struct {
+	Name   string          `json:"name"`
+	Schema json.RawMessage `json:"schema"`
+	Strict bool            `json:"strict"`
+}
+
+// buildRequest is the body provider p gets for req, which has its defaults applied.
+func buildRequest(p Provider, req Request) chatRequest {
+	out := chatRequest{Model: p.Model, Messages: req.Messages}
+	if p.reasoning() {
+		out.MaxCompletionTokens = req.MaxTokens
+		out.ReasoningEffort = req.ReasoningEffort
+		if out.ReasoningEffort == "" {
+			out.ReasoningEffort = "minimal"
+		}
+	} else {
+		t := req.Temperature
+		out.MaxTokens, out.Temperature = req.MaxTokens, &t
+	}
+	if req.Schema != nil {
+		if p.StructuredOutput {
+			out.ResponseFormat = &responseFormat{Type: "json_schema", JSONSchema: &jsonSchemaSpec{
+				Name: req.Schema.Name, Schema: req.Schema.JSON, Strict: true,
+			}}
+		} else {
+			out.Messages = req.Schema.instruct(req.Messages)
+		}
+	}
+	return out
 }
 
 type chatResponse struct {
@@ -289,26 +378,31 @@ type chatResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 // maxResponseBytes bounds what one provider can make this process read.
 const maxResponseBytes = 1 << 20
 
-func (c *Chain) attempt(ctx context.Context, p Provider, req Request) (string, *failure) {
-	ctx, cancel := context.WithTimeout(ctx, c.attemptTimeout)
+func (c *Chain) attempt(ctx context.Context, p Provider, req Request) (Reply, *failure) {
+	timeout := c.attemptTimeout
+	if req.AttemptTimeout > 0 {
+		timeout = req.AttemptTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	body, err := json.Marshal(chatRequest{
-		Model: p.Model, Messages: req.Messages,
-		MaxTokens: req.MaxTokens, Temperature: req.Temperature,
-	})
+	body, err := json.Marshal(buildRequest(p, req))
 	if err != nil {
-		return "", &failure{err: err}
+		return Reply{}, &failure{err: err}
 	}
 	url := strings.TrimRight(p.BaseURL, "/") + "/chat/completions"
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return "", &failure{err: err}
+		return Reply{}, &failure{err: err}
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	if p.APIKey != "" {
@@ -317,15 +411,15 @@ func (c *Chain) attempt(ctx context.Context, p Provider, req Request) (string, *
 
 	resp, err := c.client.Do(hreq)
 	if err != nil {
-		return "", &failure{err: err}
+		return Reply{}, &failure{err: err}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return "", &failure{err: fmt.Errorf("read: %w", err)}
+		return Reply{}, &failure{err: fmt.Errorf("read: %w", err)}
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", &failure{
+		return Reply{}, &failure{
 			status:     resp.StatusCode,
 			retryAfter: parseRetryAfter(resp.Header.Get("Retry-After")),
 			body:       string(raw),
@@ -335,16 +429,20 @@ func (c *Chain) attempt(ctx context.Context, p Provider, req Request) (string, *
 	var parsed chatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		// A 200 that is not the shape we asked for is the provider's fault.
-		return "", &failure{status: http.StatusBadGateway, body: "unparseable reply"}
+		return Reply{}, &failure{status: http.StatusBadGateway, body: "unparseable reply"}
 	}
 	if len(parsed.Choices) == 0 {
-		return "", &failure{empty: true}
+		return Reply{}, &failure{empty: true}
 	}
 	text := cleanReply(parsed.Choices[0].Message.Content)
 	if text == "" {
-		return "", &failure{empty: true}
+		return Reply{}, &failure{empty: true}
 	}
-	return text, nil
+	return Reply{
+		Text:             text,
+		PromptTokens:     parsed.Usage.PromptTokens,
+		CompletionTokens: parsed.Usage.CompletionTokens,
+	}, nil
 }
 
 // thinkBlock is the reasoning some open models (Qwen3, DeepSeek-R1) emit before the

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -8,6 +10,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/ai"
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/httpx"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -16,7 +19,10 @@ func newAIChain(cfg config.Config, log *slog.Logger) *ai.Chain {
 	enabled := cfg.EnabledAIProviders()
 	providers := make([]ai.Provider, 0, len(enabled))
 	for _, p := range enabled {
-		providers = append(providers, ai.Provider{ID: p.ID, BaseURL: p.BaseURL, APIKey: p.APIKey, Model: p.Model})
+		providers = append(providers, ai.Provider{
+			ID: p.ID, BaseURL: p.BaseURL, APIKey: p.APIKey, Model: p.Model,
+			Style: p.Style, StructuredOutput: p.StructuredOutput,
+		})
 	}
 	chain := ai.New(providers, log)
 	if chain.Enabled() {
@@ -24,14 +30,68 @@ func newAIChain(cfg config.Config, log *slog.Logger) *ai.Chain {
 		for _, p := range providers {
 			ids = append(ids, p.ID+":"+p.Model)
 		}
-		log.Info("ai enabled", "providers_in_order", ids)
+		log.Info("ai enabled", "providers_in_order", ids,
+			"monthly_cap_usd", cfg.AIMonthlyUSD, "host_monthly_cap_usd", cfg.AIHostMonthlyUSD)
 	} else {
-		log.Info("ai disabled: set CLOUDFLARE_AI_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (and optionally GROQ_API_KEY) to turn it on")
+		log.Info("ai disabled: set OPENAI_API_KEY (or CLOUDFLARE_AI_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN, GROQ_API_KEY …) to turn it on")
 	}
 	return chain
 }
 
-// handleAdminAIStatus is GET /api/admin/ai: which provider is answering, and which are benched.
+/* Every AI call goes through aiComplete: the monthly caps are checked before it, and
+ * what it cost is recorded after it.
+ *
+ * The caps are checked against what has already been spent, so the call that crosses
+ * one is allowed and the next is refused; with a fraction of a cent per call that
+ * overshoot is not worth a reservation scheme. Two calls racing past the line at once
+ * overshoot by two calls, for the same reason.
+ *
+ * A recording failure is logged, not returned: the host already has their answer, and
+ * failing it because a usage row did not write would charge them for nothing.
+ */
+
+// errAILimit is a cap reached. The handler's sentence is aiLimitMessage.
+var errAILimit = errors.New("ai: monthly limit reached")
+
+const aiLimitMessage = "AI limit reached for this month."
+
+// aiMonthStart is the first instant of the current calendar month, UTC.
+func aiMonthStart(now time.Time) time.Time {
+	now = now.UTC()
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+// aiComplete is s.ai.Complete for one feature, on behalf of hostID ("" for none).
+func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.Request) (ai.Reply, error) {
+	if !s.ai.Enabled() {
+		return ai.Reply{}, ai.ErrUnavailable
+	}
+	total, host, err := s.store.AISpendSince(ctx, aiMonthStart(time.Now()), hostID)
+	if err != nil {
+		return ai.Reply{}, err
+	}
+	if total >= s.cfg.AIMonthlyUSD || (hostID != "" && host >= s.cfg.AIHostMonthlyUSD) {
+		s.log.Warn("ai: monthly limit reached", "feature", feature, "host", hostID,
+			"spent_usd", total, "host_spent_usd", host)
+		return ai.Reply{}, errAILimit
+	}
+
+	reply, callErr := s.ai.Complete(ctx, req)
+	usage := store.AIUsage{Feature: feature, HostID: hostID, OK: callErr == nil}
+	if callErr == nil {
+		usage.Provider, usage.Model = reply.Provider, reply.Model
+		usage.PromptTokens, usage.CompletionTokens = reply.PromptTokens, reply.CompletionTokens
+		usage.CostUSD = ai.EstimateCostUSD(reply.Provider, reply.Model, reply.PromptTokens, reply.CompletionTokens)
+	}
+	// Recorded even when the request is gone: the provider has already been paid.
+	if err := s.store.RecordAIUsage(context.WithoutCancel(ctx), usage); err != nil {
+		s.log.Warn("ai: record usage", "feature", feature, "error", err)
+	}
+	return reply, callErr
+}
+
+// handleAdminAIStatus is GET /api/admin/ai: which provider is answering, which are
+// benched, and what this month has cost.
 func (s *Server) handleAdminAIStatus(w http.ResponseWriter, r *http.Request) {
 	out := types.AIStatus{Enabled: s.ai.Enabled(), Providers: []types.AIProviderStatus{}}
 	for _, p := range s.ai.Status() {
@@ -40,6 +100,22 @@ func (s *Server) handleAdminAIStatus(w http.ResponseWriter, r *http.Request) {
 			st.BenchedUntil = p.BenchedTill.UTC().Format(time.RFC3339)
 		}
 		out.Providers = append(out.Providers, st)
+	}
+	since := aiMonthStart(time.Now())
+	total, _, err := s.store.AISpendSince(r.Context(), since, "")
+	if err != nil {
+		s.fail(w, r, "admin ai: spend", err)
+		return
+	}
+	features, err := s.store.AIUsageByFeature(r.Context(), since)
+	if err != nil {
+		s.fail(w, r, "admin ai: usage", err)
+		return
+	}
+	out.Month = types.AIMonthUsage{
+		Since: since.Format(time.RFC3339), SpendUSD: total,
+		MonthlyCapUSD: s.cfg.AIMonthlyUSD, HostMonthlyCapUSD: s.cfg.AIHostMonthlyUSD,
+		Features: features,
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }

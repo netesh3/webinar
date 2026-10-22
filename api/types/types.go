@@ -1086,7 +1086,9 @@ type Account struct {
  * Zoom because connecting a host's Zoom account and creating meetings there
  * is a decision per customer. The exception is the whiteboard, which starts on
  * for every account (migrations/0099) because it spends nothing and writes
- * nowhere outside the session; its switch exists to turn it off.
+ * nowhere outside the session; its switch exists to turn it off. AI writing is
+ * the second exception (migrations/0126): on in every tier, its spend bounded by the
+ * monthly AI caps rather than by the switch.
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1142,6 +1144,14 @@ const (
 	 * choice is not offered and a save asking for it is refused. Beta. See
 	 * docs/edge-delivery.md. */
 	FeatureEdgeDelivery = "edge_delivery"
+	/* FeatureAI is the AI writing help: "Write with AI" when scheduling, and the AI
+	 * features after it. Each call counts against the monthly AI caps
+	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
+	 *
+	 * ON by default, in every tier (migrations/0126), like the whiteboard: the caps bound
+	 * what it can spend. Off for an account means no AI buttons, and the AI routes
+	 * answer 403 feature_off. */
+	FeatureAI = "ai"
 )
 
 // Delivery modes (Webinar.Delivery).
@@ -1201,6 +1211,11 @@ var Features = []Feature{
 		Key:         FeatureEdgeDelivery,
 		Label:       "Edge delivery (beta)",
 		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery.",
+	},
+	{
+		Key:         FeatureAI,
+		Label:       "AI writing",
+		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI. Counts against the monthly AI limit. Off means no AI buttons.",
 	},
 }
 
