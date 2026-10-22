@@ -31,6 +31,7 @@ import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
 import { planRecurrence } from "@/lib/recurrence";
 import { isMeetingKind, meetingInputBase } from "@/lib/meeting-create";
+import { simulivePrefill } from "@/lib/simulive-create";
 import {
   issuesFor,
   legacyAnchor,
@@ -92,6 +93,7 @@ function targetForFields(fields: Record<string, string>): string | null {
     return "date";
   }
   if (keys.includes("recurrence")) return "recurrence";
+  if (keys.includes("simuliveRecordingId")) return "simulive-recording";
   if (
     keys.some((k) =>
       ["passcode", "approval", "customQuestions", "attendeeLimit"].includes(k),
@@ -203,13 +205,28 @@ function ScheduleFormGate({
 type Restored = { savedAt: number; messages: MessageSlot[] };
 
 /* A new meeting's blank form: a webinar's, with the kind and the switches a meeting has no
- * choice about already set, so the draft this browser keeps and the request it sends agree. */
+ * choice about already set, so the draft this browser keeps and the request it sends agree.
+ *
+ * And a new simulive's ("Replay as Simulive", /host/new?simulive=<recording>): the kind and
+ * the recording from the first render, so the type, venue and room options a simulive cannot
+ * have never show; the title, description and length follow once the recording is read. */
 function blankForm(
   webinar: Webinar | null,
   maxAttendees: number,
   meeting: boolean,
+  simuliveRecordingId: string | null = null,
 ): FormState {
   const blank = initialState(webinar, maxAttendees);
+  if (!webinar && !meeting && simuliveRecordingId) {
+    return {
+      ...blank,
+      kind: "simulive",
+      simuliveRecordingId,
+      venue: "app",
+      delivery: "standard",
+      options: { ...blank.options, autoRecord: false, multistream: false },
+    };
+  }
   if (webinar || !meeting) return blank;
   const base = meetingInputBase();
   return {
@@ -243,6 +260,11 @@ function ScheduleFormBody({
   );
   const editing = webinar !== null;
   const meeting = editing ? isMeetingKind(webinar) : newMeeting;
+  /* "Replay as Simulive" on a recording: a new simulive of that recording. Read once — the
+   * form keeps the recording in its own state from here, and "Change recording" edits that. */
+  const [simuliveFrom] = useState<string | null>(() =>
+    editing || meeting ? null : search.get("simulive")?.trim() || null,
+  );
 
   /* The step, mirrored into ?step= so a reload or a shared link opens the
    * same one. Written with history.replaceState, NOT router.replace: a router
@@ -306,12 +328,15 @@ function ScheduleFormBody({
   /* The form's own draft. See draft-store.ts. */
   /* A new meeting keeps its own draft: one key with a new webinar's would open a half-written
    * webinar on the meeting page, and the other way round. */
+  /* A new simulive keeps its own draft per recording, for the same reason: a half-written
+   * live webinar must not open as one, nor one simulive's draft on another recording. */
   const storageKey = draftKey(
     accountId,
-    webinar?.id ?? (meeting ? "new-meeting" : undefined),
+    webinar?.id ??
+      (meeting ? "new-meeting" : simuliveFrom ? `new-simulive-${simuliveFrom}` : undefined),
   );
   const [serverForm] = useState<FormState>(() =>
-    blankForm(webinar, config.maxAttendees, meeting),
+    blankForm(webinar, config.maxAttendees, meeting, simuliveFrom),
   );
   const serverPrint = useMemo(() => fingerprint(serverForm), [serverForm]);
   const base = editing ? serverPrint : null;
@@ -337,6 +362,41 @@ function ScheduleFormBody({
   );
   const [form, setForm] = useState<FormState>(boot.form);
   const [restored, setRestored] = useState<Restored | null>(boot.restored);
+
+  /* The new simulive's prefill: the recording's length, and the original webinar's title,
+   * summary, description and tag (the recording's topic when the webinar can't be read).
+   * Not over a kept draft, which already holds what the host changed. Only fields the host
+   * has not touched yet are filled, so typing while this loads is never overwritten. */
+  useEffect(() => {
+    if (!simuliveFrom || boot.restored) return;
+    let active = true;
+    async function load() {
+      let list: Awaited<ReturnType<typeof api.hostRecordingLibrary>>;
+      try {
+        list = await api.hostRecordingLibrary();
+      } catch {
+        return; // The recording section says it couldn't load; the host can retry.
+      }
+      const rec = (list ?? []).find((r) => r.id === simuliveFrom);
+      if (!rec || !active) return;
+      const source = await api.hostWebinar(rec.webinar).catch(() => null);
+      if (!active) return;
+      const fill = simulivePrefill(rec, source);
+      setForm((f) => ({
+        ...f,
+        ...fill,
+        topic: f.topic || fill.topic,
+        summary: f.summary || fill.summary,
+        description: f.description || fill.description,
+        track: f.track || fill.track,
+        options: { ...f.options, autoRecord: false, multistream: false },
+      }));
+    }
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [simuliveFrom, boot.restored]);
   const [restoreGen, setRestoreGen] = useState(0);
   const pendingMessages = useRef<MessageSlot[]>(restored?.messages ?? []);
   const [messagesPrint, setMessagesPrint] = useState(() =>
@@ -453,7 +513,7 @@ function ScheduleFormBody({
     clearDraft(storageKey);
     pendingMessages.current = [];
     setMessagesPrint("[]");
-    setForm(blankForm(webinar, config.maxAttendees, meeting));
+    setForm(blankForm(webinar, config.maxAttendees, meeting, simuliveFrom));
     setWritten(null);
     setRestored(null);
     setFields({});
@@ -578,10 +638,12 @@ function ScheduleFormBody({
         ...((account?.features ?? []).includes(FeatureCloudRecording) && form.kind !== "simulive"
           ? {}
           : { autoRecord: false }),
+        // Nor streamed out: a simulive has no mix of the room to send.
+        ...(form.kind === "simulive" ? { multistream: false } : {}),
       },
       controls: form.controls,
       venue:
-        asSeries
+        asSeries || form.kind === "simulive"
           ? "app"
           : (account?.features ?? []).includes(FeatureZoom)
             ? form.venue
@@ -738,12 +800,20 @@ function ScheduleFormBody({
             ? "Saved as a draft."
             : meeting
               ? "Meeting scheduled."
+              : saved.kind === "simulive"
+              ? "Simulive scheduled."
               : sessions && sessions > 1
               ? `Scheduled ${sessions} sessions.`
               : "Webinar scheduled.",
         "ok",
       );
-      router.push(`/host/${saved.id}`);
+      /* A new simulive lands on Setup, where its engagement replay card is: what the
+       * original session's chat, Q&A and polls will replay, and where to curate it. */
+      router.push(
+        !editing && saved.kind === "simulive"
+          ? `/host/${saved.id}?tab=setup`
+          : `/host/${saved.id}`,
+      );
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.fields) {

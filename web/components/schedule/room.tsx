@@ -30,7 +30,10 @@ export function RoomSection({
         ? ([["autoRecord", "Record automatically"]] as const)
         : []),
       ["captions", "Live captions"],
-      ["multistream", "Stream to YouTube"],
+      // Nor streamed out: a simulive has no mix of the room to send (mix_destinations.go).
+      ...(form.kind !== "simulive"
+        ? ([["multistream", "Stream to YouTube"]] as const)
+        : []),
     ] as const
   );
   return (

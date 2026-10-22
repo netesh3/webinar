@@ -67,8 +67,11 @@ export function WhereSection({
   }, [zoomAllowed]);
 
   const series = form.kind === "recurring" || form.seriesId !== "";
+  // A simulive stays in this app too: the server refuses it a Zoom venue.
+  const simulive = form.kind === "simulive";
+  const appOnly = series || simulive;
   const choices =
-    zoomAllowed && !series ? CHOICES : CHOICES.filter((c) => c.id === "app");
+    zoomAllowed && !appOnly ? CHOICES : CHOICES.filter((c) => c.id === "app");
   const zoomOff = zoomAllowed && zoomConnected !== true;
 
   return (
@@ -78,7 +81,9 @@ export function WhereSection({
         description={
           series
             ? "A recurring series runs in this app. WhatsApp and email still go out."
-            : "WhatsApp and email still go out either way."
+            : simulive
+              ? "A simulive plays in this app. WhatsApp and email still go out."
+              : "WhatsApp and email still go out either way."
         }
         first
       >
@@ -87,7 +92,7 @@ export function WhereSection({
           className={`grid gap-2 ${choices.length > 1 ? "sm:grid-cols-3" : ""}`}
         >
           {choices.map((choice) => {
-            const selected = series ? choice.id === "app" : form.venue === choice.id;
+            const selected = appOnly ? choice.id === "app" : form.venue === choice.id;
             const disabled = choice.id !== "app" && zoomOff;
             return (
               <button
@@ -112,13 +117,13 @@ export function WhereSection({
             );
           })}
         </div>
-        {zoomAllowed && !series && form.venue !== "app" && (
+        {zoomAllowed && !appOnly && form.venue !== "app" && (
           <p className="mt-3 text-[12.5px] leading-relaxed text-ink-2">
             People still get your WhatsApp and email. The join link is a
             personal Zoom link. Meetings need a paid Zoom license.
           </p>
         )}
-        {zoomOff && (
+        {zoomOff && !appOnly && (
           <p className="mt-3 text-[12.5px] leading-relaxed text-ink-2">
             <Link href="/settings#integrations" className="font-medium text-brand hover:underline">
               Connect Zoom in Settings

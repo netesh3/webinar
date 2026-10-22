@@ -125,7 +125,9 @@ export function BasicsSection({
               </div>
               <KindControl
                 value={form.seriesId ? "recurring" : form.kind}
-                locked={Boolean(form.seriesId)}
+                // A simulive stays one: it is made from a recording ("Replay as Simulive"),
+                // and turning it into a live webinar is a new webinar, not an edit.
+                locked={Boolean(form.seriesId) || form.kind === "simulive"}
                 onChange={(v) => {
                   set("kind", v);
                   if (v === "recurring" && form.venue !== "app") set("venue", "app");
@@ -160,13 +162,15 @@ function KindControl({
 }) {
   const name = useId();
   const labelId = useId();
-  const options = [
-    ["live", "Live webinar"],
-    ["recurring", "Recurring series"],
-    // Only offered to a webinar that already is one: simulive is set up from
-    // a recording elsewhere, and this form cannot pick that recording.
-    ...(value === "simulive" ? ([["simulive", "Simulive"]] as const) : []),
-  ] as const;
+  // A simulive is set up from a recording ("Replay as Simulive" on a recording card), and
+  // is then the only type shown: locked, since the recording is what makes it one.
+  const options =
+    value === "simulive"
+      ? ([["simulive", "Simulive"]] as const)
+      : ([
+          ["live", "Live webinar"],
+          ["recurring", "Recurring series"],
+        ] as const);
   return (
     <div>
       <span className="label" id={labelId}>
