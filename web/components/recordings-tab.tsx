@@ -30,6 +30,9 @@ import { playableRecordingParts, recordingSources } from "@/lib/recording-parts"
 import { chapterSeekTimes } from "@/lib/recap";
 import { simuliveEligible, simuliveScheduleHref } from "@/lib/simulive-create";
 
+/** How often a recap still being written is looked at again, for its chapters. */
+const RECAP_POLL_MS = 30_000;
+
 /* Recordings of one webinar.
  *
  * The player is a plain <video> pointed at the download endpoint, which serves
@@ -66,23 +69,36 @@ export function RecordingsTab({
   const player = useRef<VideoPlayerHandle>(null);
 
   /* The AI recap's chapters, for the player. Read once the session has ended (that is when
-   * a recap exists); a session without one simply has no chapters. */
+   * a recap exists); a session without one simply has no chapters. The recap waits for the
+   * after-session transcript, ten to twenty minutes after the end, which is exactly when a
+   * host first plays the recording back: while it is still being written this looks again,
+   * so the chapters arrive in a player that is already open rather than after a reload. */
   const [recapChapters, setRecapChapters] = useState<RecapChapter[]>([]);
+  const [recapPending, setRecapPending] = useState(false);
+  const [recapPoll, setRecapPoll] = useState(0);
   const ended = w.status === "ended";
   useEffect(() => {
     if (!ended) return;
     const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     async function load() {
       try {
         const res = await api.sessionRecap(w.id, ctl.signal);
-        if (!ctl.signal.aborted) setRecapChapters(res.recap?.chapters ?? []);
+        if (ctl.signal.aborted) return;
+        setRecapChapters(res.recap?.chapters ?? []);
+        const pending = res.status === "pending";
+        setRecapPending(pending);
+        if (pending) timer = setTimeout(() => setRecapPoll((n) => n + 1), RECAP_POLL_MS);
       } catch {
         // No recap is no chapters.
       }
     }
     void load();
-    return () => ctl.abort();
-  }, [ended, w.id]);
+    return () => {
+      ctl.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [ended, w.id, recapPoll]);
   const chapters = playing
     ? chapterSeekTimes(recapChapters, w.startedAt, playableRecordingParts(playing))
     : [];
@@ -164,7 +180,11 @@ export function RecordingsTab({
             durationMs={playing.durationMs}
             chapters={chapters}
           />
-          <RecordingChapters chapters={chapters} onSeek={(sec) => player.current?.seek(sec)} />
+          <RecordingChapters
+            chapters={chapters}
+            pending={recapPending}
+            onSeek={(sec) => player.current?.seek(sec)}
+          />
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3">
             <p className="text-[12.5px] text-ink-2">
               Recorded by {playing.startedBy || "a presenter"}

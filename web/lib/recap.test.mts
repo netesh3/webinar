@@ -71,6 +71,32 @@ assert.deepEqual(
   [["A", 0], ["B", 250], ["In the gap", 300], ["C", 500]],
 );
 
+// Recording started 90s before go-live: the session's 0:00 is 90s into it.
+assert.deepEqual(
+  chapterSeekTimes(chapters, start, [{ createdAt: "2026-10-22T09:58:30Z", durationMs: 3_600_000 }]).map((c) => [
+    c.title,
+    c.startSec,
+  ]),
+  [["Welcome", 90], ["Budgets", 210], ["Q&A", 690]],
+);
+
+// A real one (instant-webinar-0375): live 12:13:25, Record pressed 12:18:17 for 319.6s, ended
+// 12:24:03. The chapters before the take collapse onto 0:00; the ones inside it keep their place.
+assert.deepEqual(
+  chapterSeekTimes(
+    [
+      { startSec: 0, title: "Welcome" },
+      { startSec: 150, title: "Setup" },
+      { startSec: 330, title: "Demo" },
+      { startSec: 520, title: "Questions" },
+      { startSec: 630, title: "After the take" },
+    ],
+    "2026-10-22T12:13:25Z",
+    [{ createdAt: "2026-10-22T12:18:17Z", durationMs: 319_641 }],
+  ).map((c) => [c.title, c.startSec]),
+  [["Setup", 0], ["Demo", 38], ["Questions", 228]],
+);
+
 // No session start or no take times: the recording is taken to start with the session.
 assert.deepEqual(
   chapterSeekTimes(chapters, undefined, [{ createdAt: "", durationMs: 200_000 }]).map((c) => c.startSec),
