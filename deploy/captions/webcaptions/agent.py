@@ -28,7 +28,7 @@ from .finalizer import Finalizer
 from .live import LiveCaptioner
 from .poster import ApiClient
 from .segmenter import Segmenter, pcm16_to_float
-from .selection import SpeakerSelector
+from .selection import SHARE_SUFFIX, SpeakerSelector, pipeline_key, wants_audio
 from .spool import RoomSpool, close_orphans, live_rooms
 from .transcriber import WhisperTranscriber
 
@@ -62,6 +62,13 @@ async def on_request(req: JobRequest) -> None:
     # One stable identity per room: a second dispatch (or a restart) replaces the first
     # agent instead of putting two caption agents in the room.
     await req.accept(identity=IDENTITY_PREFIX + req.room.name, name="Captions")
+
+
+_AUDIO_SOURCES = (rtc.TrackSource.SOURCE_MICROPHONE, rtc.TrackSource.SOURCE_SCREENSHARE_AUDIO)
+
+
+def _is_share(pub: rtc.TrackPublication) -> bool:
+    return pub.source == rtc.TrackSource.SOURCE_SCREENSHARE_AUDIO
 
 
 def _is_person(p: rtc.RemoteParticipant) -> bool:
@@ -104,14 +111,16 @@ async def entrypoint(ctx: JobContext) -> None:
             if not _is_person(p):
                 continue
             for pub in p.track_publications.values():
-                if pub.kind != rtc.TrackKind.KIND_AUDIO or pub.source != rtc.TrackSource.SOURCE_MICROPHONE:
+                if pub.kind != rtc.TrackKind.KIND_AUDIO or pub.source not in _AUDIO_SOURCES:
                     continue
-                want = p.identity in chosen
+                want = wants_audio(p.identity, _is_share(pub), chosen)
                 if pub.subscribed != want:
                     pub.set_subscribed(want)
-        for identity in list(pipelines):
-            if identity not in chosen:
-                pipelines.pop(identity).cancel()
+        # Microphones that dropped out of the selection stop; share audio stops only when
+        # its track goes away (track_unsubscribed).
+        for key in list(pipelines):
+            if not key.endswith(SHARE_SUFFIX) and key not in chosen:
+                pipelines.pop(key).cancel()
 
     def level_changed(old: Level, new: Level) -> None:
         log.warning("cpu guard %s -> %s (host %.0f%%)", old.name, new.name, monitor.last_usage or -1)
@@ -164,23 +173,26 @@ async def entrypoint(ctx: JobContext) -> None:
         apply_selection()
 
     @room.on("track_subscribed")
-    def _on_subscribed(track: rtc.Track, _pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant) -> None:
+    def _on_subscribed(track: rtc.Track, pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant) -> None:
         if track.kind != rtc.TrackKind.KIND_AUDIO:
             return
-        if old := pipelines.pop(p.identity, None):
+        key = pipeline_key(p.identity, _is_share(pub))
+        if old := pipelines.pop(key, None):
             old.cancel()
-        pipelines[p.identity] = asyncio.ensure_future(pipeline(p.identity, p.name or p.identity, track))
+        # Captioned under the sharer: the line is theirs on screen, as a mic line is.
+        pipelines[key] = asyncio.ensure_future(pipeline(p.identity, p.name or p.identity, track))
 
     @room.on("track_unsubscribed")
-    def _on_unsubscribed(track: rtc.Track, _pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant) -> None:
-        if track.kind == rtc.TrackKind.KIND_AUDIO and (t := pipelines.pop(p.identity, None)):
+    def _on_unsubscribed(track: rtc.Track, pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant) -> None:
+        if track.kind == rtc.TrackKind.KIND_AUDIO and (t := pipelines.pop(pipeline_key(p.identity, _is_share(pub)), None)):
             t.cancel()
 
     @room.on("participant_disconnected")
     def _on_left(p: rtc.RemoteParticipant) -> None:
         selector.remove(p.identity)
-        if t := pipelines.pop(p.identity, None):
-            t.cancel()
+        for key in (p.identity, pipeline_key(p.identity, True)):
+            if t := pipelines.pop(key, None):
+                t.cancel()
 
     async def on_shutdown(reason: str) -> None:
         log.info("captions leaving %s: %s (posted %d, skipped %d)", room_name, reason, captioner.posted, captioner.skipped)

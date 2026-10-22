@@ -104,3 +104,19 @@ class SpeakerSelector:
             reverse=True,
         )
         self._selected = dict(ranked[: self._max])
+
+
+# Screen-share audio (a video or a clip played into a share) is transcribed whenever it is
+# published: it is content everyone is listening to, there is rarely more than one, and the
+# silence gate and the CPU guard bound it like a microphone. Microphones follow the
+# active-speaker selection above. Each source gets its own pipeline, keyed apart, so a
+# presenter's mic and their share's audio are never one stream.
+SHARE_SUFFIX = "#share"
+
+
+def pipeline_key(identity: str, is_share: bool) -> str:
+    return identity + SHARE_SUFFIX if is_share else identity
+
+
+def wants_audio(identity: str, is_share: bool, chosen) -> bool:
+    return True if is_share else identity in chosen
