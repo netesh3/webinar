@@ -1,4 +1,4 @@
-import type { LiveParticipant } from "./api-types";
+import type { LiveParticipant, LiveRoom } from "./api-types";
 import type { RaisedHand } from "./realtime";
 
 /* How the host's roster is cut into sections, and when the search box appears.
@@ -138,6 +138,46 @@ export function rosterBadge(
   // An attendee the host allowed to speak: on the stage in LiveKit's terms, but
   // only with a microphone — the row used to say "Allowed to speak" here.
   return p.audioOnly ? { label: "Speaker", tone: "neutral" } : { label: "Panelist", tone: "neutral" };
+}
+
+/** What the row says about somebody the video server does not list (LiveParticipant.via):
+ *  how they are connected, in the host's words rather than the plumbing's. Null for
+ *  everyone on the video server. */
+export function rosterConnectionLabel(p: Pick<LiveParticipant, "via">): string | null {
+  if (p.via === "stream") return "Watching via stream";
+  if (p.via === "limited") return "Limited connection";
+  return null;
+}
+
+/** Folds a new roster read into the last one.
+ *
+ *  A full read replaces the last one. A partial one (`partial`: the video server could not
+ *  be read this time, so only the people reached another way are in it) keeps the previous
+ *  read's video-server rows, so a slow video server does not empty the stage for a poll.
+ *  Either way every identity appears once, and when rows had to be merged or dropped the
+ *  counts are recomputed from them, so the header and the list cannot disagree. */
+export function mergeRosterSnapshot(prev: LiveRoom | null, next: LiveRoom): LiveRoom {
+  const incoming = next.participants ?? [];
+  const seen = new Set<string>();
+  const rows: LiveParticipant[] = [];
+  const keep = (p: LiveParticipant) => {
+    if (seen.has(p.identity)) return;
+    seen.add(p.identity);
+    rows.push(p);
+  };
+  if (next.partial && prev) {
+    // The video server's rows first: they win over a viewer row for the same person.
+    for (const p of prev.participants ?? []) if (!p.via) keep(p);
+  }
+  for (const p of incoming) keep(p);
+  if (!next.partial && rows.length === incoming.length) return next;
+  const counted = rows.filter((p) => !isBotOrEgress(p.identity));
+  return {
+    ...next,
+    participants: rows,
+    attendees: counted.filter((p) => p.role === "attendee").length,
+    onStage: counted.filter((p) => p.role !== "attendee").length,
+  };
 }
 
 /** How long a hand has been up, as the queue shows it: "just now" under a

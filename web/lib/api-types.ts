@@ -7736,6 +7736,15 @@ export interface LiveParticipant {
    * not just a stage seat. See lk.Spec.CoHost.
    */
   coHost: boolean;
+  /**
+   *  Via is set for somebody the host can reach although the video server does not list
+   * 	 * them, and says how they are connected without exposing the plumbing:
+   * 	 *   "stream"  an edge viewer, watching the feed (their event stream and beats);
+   * 	 *   "limited" an attendee whose video connection is down but whose browser is still
+   * 	 *             talking to us (the presence poll), so chat and hands still work.
+   * 	 * Empty for everyone the video server lists. Either kind can be invited to the stage.
+   */
+  via?: string;
 }
 /**
  * LiveScreenShare is what the one-share-at-a-time rule needs to know about a share.
@@ -7758,6 +7767,32 @@ export interface LiveRoom {
   participants: LiveParticipant[];
   attendees: number /* int */;
   onStage: number /* int */;
+  /**
+   *  Partial is true when the video server could not be read this time and Participants
+   * 	 * holds only the people reached another way (Via set). The panel keeps its previous
+   * 	 * video-server rows rather than showing an empty stage.
+   */
+  partial?: boolean;
+}
+/**
+ * PresenceRequest is an attendee's browser saying it is still here while its video
+ * connection is down (POST /api/webinars/{slug}/presence).
+ */
+export interface PresenceRequest {
+  joinKey?: string;
+}
+/**
+ *  PresenceResponse is what that attendee would otherwise have heard over the data channel: an
+ *  * open stage invite (the offer the stage-invite packet carries), and whether the host has
+ *  * already put them on the stage, in which case joining again returns a stage token.
+ */
+export interface PresenceResponse {
+  invite?: PresenceInvite;
+  onStage: boolean;
+}
+export interface PresenceInvite {
+  audioOnly: boolean;
+  recording: boolean;
 }
 export interface MutePatch {
   muted: boolean;

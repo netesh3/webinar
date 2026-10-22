@@ -473,6 +473,9 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/webinars/{slug}/survey/responses", s.handleSubmitSurvey)
 		r.Post("/webinars/{slug}/survey/click", s.handleSurveyClick)
 		r.Post("/webinars/{slug}/stage-invite", s.handleStageInviteRespond)
+		// An attendee whose LiveKit connection is down saying it is still here, and reading
+		// the stage invite the data channel could not bring it (presence.go). Same credential.
+		r.Post("/webinars/{slug}/presence", s.handlePresence)
 		// Edge delivery's event stream: chat, polls, controls and stage invites for a
 		// viewer who is watching LL-HLS and is not connected to LiveKit (edge.go). The
 		// credential is the events token from join, as ?t= because EventSource cannot set

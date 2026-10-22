@@ -4269,6 +4269,13 @@ type LiveParticipant struct {
 	// Server-side only (the one-share-at-a-time rule in api/internal/api/share_lock.go);
 	// never sent to a browser, so the host's roster is unchanged.
 	ScreenShare *LiveScreenShare `json:"-"`
+	/* Via is set for somebody the host can reach although the video server does not list
+	 * them, and says how they are connected without exposing the plumbing:
+	 *   "stream"  an edge viewer, watching the feed (their event stream and beats);
+	 *   "limited" an attendee whose video connection is down but whose browser is still
+	 *             talking to us (the presence poll), so chat and hands still work.
+	 * Empty for everyone the video server lists. Either kind can be invited to the stage. */
+	Via string `json:"via,omitempty"`
 }
 
 // LiveScreenShare is what the one-share-at-a-time rule needs to know about a share.
@@ -4287,6 +4294,29 @@ type LiveRoom struct {
 	Participants []LiveParticipant `json:"participants"`
 	Attendees    int               `json:"attendees"`
 	OnStage      int               `json:"onStage"`
+	/* Partial is true when the video server could not be read this time and Participants
+	 * holds only the people reached another way (Via set). The panel keeps its previous
+	 * video-server rows rather than showing an empty stage. */
+	Partial bool `json:"partial,omitempty"`
+}
+
+// PresenceRequest is an attendee's browser saying it is still here while its video
+// connection is down (POST /api/webinars/{slug}/presence).
+type PresenceRequest struct {
+	JoinKey string `json:"joinKey,omitempty"`
+}
+
+/* PresenceResponse is what that attendee would otherwise have heard over the data channel: an
+ * open stage invite (the offer the stage-invite packet carries), and whether the host has
+ * already put them on the stage, in which case joining again returns a stage token. */
+type PresenceResponse struct {
+	Invite  *PresenceInvite `json:"invite,omitempty"`
+	OnStage bool            `json:"onStage"`
+}
+
+type PresenceInvite struct {
+	AudioOnly bool `json:"audioOnly"`
+	Recording bool `json:"recording"`
 }
 
 type MutePatch struct {
