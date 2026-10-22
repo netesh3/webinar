@@ -4,6 +4,7 @@ import { DEFAULT_REMINDERS, ReminderTimes, describeReminders } from "./reminder-
 import { useEffect, useLayoutEffect, useState } from "react";
 import { CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
+import { AIRecapCard } from "./ai-recap-card";
 import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
@@ -226,6 +227,11 @@ export function HostWebinarTabs({
           recordings={recordings}
           onChanged={onChanged}
         />
+      )}
+      {tab === "Results" && ended && (
+        <div className="mb-4">
+          <AIRecapCard slug={w.id} />
+        </div>
       )}
       {tab === "Results" && (
         <EngagementTab

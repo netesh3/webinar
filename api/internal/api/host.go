@@ -1313,6 +1313,9 @@ func (s *Server) handleTransferHost(w http.ResponseWriter, r *http.Request) {
 // endWebinarSession tears down an active webinar room, stops recordings, clears stage grants,
 // closes polls, and marks the session ended. Shared between host-initiated end and the meeting limit sweeper.
 func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webinar, error) {
+	// Read before the end clears it: whether the after-session transcript is coming, which
+	// the AI recap waits for (recap.go).
+	serverCaptions, _ := s.store.ServerCaptionsRequested(ctx, slug)
 	wb, err := s.store.SetStatus(ctx, slug, types.StatusEnded)
 	if err != nil {
 		return types.Webinar{}, err
@@ -1438,6 +1441,9 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 			"senders", stats.Senders, "media_bytes", stats.MediaBytes,
 			"to_panelists", stats.ToPanelists)
 	}
+
+	// The AI recap for the host, written by the recap lane once the session has settled.
+	s.scheduleRecap(ctx, slug, serverCaptions)
 
 	s.log.Info("webinar ended", "slug", slug)
 	return wb, nil

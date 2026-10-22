@@ -279,6 +279,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# "Write with AI": a draft fills the topic and description only, keeps the host's
 	# words where it has none, and each API refusal reads as a sentence.
 	cd web && node --experimental-strip-types --no-warnings lib/ai-setup.test.mts
+	# The AI recap: chapter times, chapters mapped onto a recording's takes, and what
+	# the recap card says when there is no recap yet.
+	cd web && node --experimental-strip-types --no-warnings lib/recap.test.mts
 	# The Accounts tab's Hosts / Attendees chips: search and chip combine, and the
 	# chip counts follow the search text.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-accounts-filter.test.mts

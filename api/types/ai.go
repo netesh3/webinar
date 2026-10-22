@@ -31,6 +31,7 @@ type AIStatus struct {
 const (
 	AIFeatureSalesChat    = "sales_chat"
 	AIFeatureWebinarSetup = "webinar_setup"
+	AIFeatureRecap        = "recap"
 )
 
 // AIFeatureUsage is one AI feature's calls this month.

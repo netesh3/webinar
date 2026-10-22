@@ -151,6 +151,12 @@ const (
 	NotifyPanelistInvited     NotificationKind = "panelist_invited"
 	NotifyPanelistRescheduled NotificationKind = "panelist_rescheduled"
 	NotifyPanelistCancelled   NotificationKind = "panelist_cancelled"
+
+	/* NotifySessionRecap is the host's "Your AI recap" email after a session ends, and the
+	 * matching in-app alert. To the host only — attendees never get one. Like the replay,
+	 * it is ABOUT the session being over, so the outbox sends it for an ended webinar. One
+	 * per session: session_recaps.emailed_at (migration 0128). */
+	NotifySessionRecap NotificationKind = "session_recap"
 )
 
 /* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they
@@ -3809,6 +3815,11 @@ type PublicRecording struct {
 	RetentionDays    int             `json:"retentionDays"`
 	ExpiresAt        string          `json:"expiresAt,omitempty"`
 	Parts            []RecordingPart `json:"parts,omitempty"`
+	/* Chapters are the AI recap's, once it has some and the recording is unlocked:
+	 * seconds from SessionStartedAt (when the session went live), which the player maps
+	 * onto the recording's parts by their createdAt. */
+	Chapters         []RecapChapter `json:"chapters,omitempty"`
+	SessionStartedAt string         `json:"sessionStartedAt,omitempty"`
 }
 
 // ------------------------------------------------------------ host: in-session

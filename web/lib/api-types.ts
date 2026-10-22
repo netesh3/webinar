@@ -48,6 +48,10 @@ export const AIFeatureSalesChat = "sales_chat";
  */
 export const AIFeatureWebinarSetup = "webinar_setup";
 /**
+ * AI feature names, as recorded in ai_usage and reported per feature.
+ */
+export const AIFeatureRecap = "recap";
+/**
  * AIFeatureUsage is one AI feature's calls this month.
  */
 export interface AIFeatureUsage {
@@ -1352,6 +1356,164 @@ export interface CRMMetricsByKind {
 }
 
 //////////
+// source: recap.go
+
+/**
+ * Where a recap was written from (session_recaps.source).
+ */
+export const RecapSourceServerTranscript = "server_transcript";
+/**
+ * Where a recap was written from (session_recaps.source).
+ */
+export const RecapSourceCaptions = "captions";
+/**
+ * Where a recap was written from (session_recaps.source).
+ */
+export const RecapSourceEngagementOnly = "engagement_only";
+/**
+ * Recap states (session_recaps.status), plus RecapNone for a session without a row.
+ */
+export const RecapNone = "none";
+/**
+ * Recap states (session_recaps.status), plus RecapNone for a session without a row.
+ */
+export const RecapPending = "pending";
+/**
+ * Recap states (session_recaps.status), plus RecapNone for a session without a row.
+ */
+export const RecapReady = "ready";
+/**
+ * Recap states (session_recaps.status), plus RecapNone for a session without a row.
+ */
+export const RecapSkipped = "skipped";
+/**
+ * Recap states (session_recaps.status), plus RecapNone for a session without a row.
+ */
+export const RecapFailed = "failed";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonWaitingTranscript = "waiting_transcript";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonProcessing = "processing";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonAIOff = "ai_off";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonAILimit = "ai_limit";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonAIUnavailable = "ai_unavailable";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonEmpty = "empty";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonFailed = "failed";
+/**
+ *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
+ *  * processing go with pending; the others with skipped, failed or none.
+ */
+export const RecapReasonNotEnded = "not_ended";
+/**
+ * Who an action item is for.
+ */
+export const RecapOwnerHost = "host";
+/**
+ * Who an action item is for.
+ */
+export const RecapOwnerAttendee = "attendee";
+/**
+ * Who an action item is for.
+ */
+export const RecapOwnerUnassigned = "unassigned";
+/**
+ * RecapActionItem is a follow-up from the session. Owner is host, attendee or unassigned.
+ */
+export interface RecapActionItem {
+  text: string;
+  owner: string;
+}
+/**
+ * RecapChapter is a moment in the session, in seconds from when it went live.
+ */
+export interface RecapChapter {
+  startSec: number /* int */;
+  title: string;
+}
+/**
+ * RecapQuestion is one of the audience's questions, similar ones merged.
+ */
+export interface RecapQuestion {
+  question: string;
+  answered: boolean;
+  upvotes: number /* int */;
+}
+/**
+ * RecapQuote is something said worth keeping, in the words it was said in.
+ */
+export interface RecapQuote {
+  text: string;
+  speaker: string;
+}
+/**
+ * RecapAttendance is counted from the session, never written by the model.
+ */
+export interface RecapAttendance {
+  registered: number /* int */;
+  attended: number /* int */;
+  peak: number /* int */;
+  avgWatchMin: number /* int */;
+  questions: number /* int */;
+  pollVoters: number /* int */;
+  chatMessages: number /* int */;
+}
+/**
+ *  SessionRecap is the recap itself. Chapters is empty when nothing said had a time
+ *  * (engagement_only). Notice is a line for the host, such as turning captions on.
+ */
+export interface SessionRecap {
+  summary: string;
+  keyPoints: string[];
+  actionItems: RecapActionItem[];
+  chapters: RecapChapter[];
+  topQuestions: RecapQuestion[];
+  notableQuotes: RecapQuote[];
+  attendance: RecapAttendance;
+  notice?: string;
+}
+/**
+ *  SessionRecapResponse is GET /api/host/webinars/{slug}/recap, and what POST …/recap
+ *  * (Regenerate) returns. Status is none, pending, ready, skipped or failed; Reason says
+ *  * why it is not ready. Regenerate errors: 403 feature_off, 409 not_ended, 429 ai_limit
+ *  * or rate_limited, 503 ai_unavailable.
+ */
+export interface SessionRecapResponse {
+  status: string;
+  reason?: string;
+  source?: string;
+  model?: string;
+  generatedAt?: string;
+  emailedAt?: string;
+  recap?: SessionRecap;
+}
+
+//////////
 // source: sales.go
 
 /**
@@ -2029,6 +2191,13 @@ export const NotifyHostRequest: NotificationKind = "host_request";
 export const NotifyPanelistInvited: NotificationKind = "panelist_invited";
 export const NotifyPanelistRescheduled: NotificationKind = "panelist_rescheduled";
 export const NotifyPanelistCancelled: NotificationKind = "panelist_cancelled";
+/**
+ *  NotifySessionRecap is the host's "Your AI recap" email after a session ends, and the
+ * 	 * matching in-app alert. To the host only — attendees never get one. Like the replay,
+ * 	 * it is ABOUT the session being over, so the outbox sends it for an ended webinar. One
+ * 	 * per session: session_recaps.emailed_at (migration 0128).
+ */
+export const NotifySessionRecap: NotificationKind = "session_recap";
 export const MaxReminders = 3;
 export const MinReminderOffset = 1;
 export const MaxReminderOffset = 30 * 24 * 60;
@@ -3091,9 +3260,10 @@ export const FeatureEdgeDelivery = "edge_delivery";
  * 	 * features after it. Each call counts against the monthly AI caps
  * 	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
  * 	 *
- * 	 * ON by default, in every tier (migrations/0126), like the whiteboard: the caps bound
- * 	 * what it can spend. Off for an account means no AI buttons, and the AI routes
- * 	 * answer 403 feature_off.
+ * 	 * Opt-in: off for every account until an admin turns it on for that host (Admin ->
+ * 	 * Accounts, or in a plan tier's defaults). 0126 had it on in every tier; 0127 took
+ * 	 * that back (2026-10-22). Off means no AI buttons, the AI routes answer 403
+ * 	 * feature_off, and no recap is made.
  */
 export const FeatureAI = "ai";
 /**
@@ -6366,6 +6536,13 @@ export interface PublicRecording {
   retentionDays: number /* int */;
   expiresAt?: string;
   parts?: RecordingPart[];
+  /**
+   *  Chapters are the AI recap's, once it has some and the recording is unlocked:
+   * 	 * seconds from SessionStartedAt (when the session went live), which the player maps
+   * 	 * onto the recording's parts by their createdAt.
+   */
+  chapters?: RecapChapter[];
+  sessionStartedAt?: string;
 }
 /**
  * LiveParticipant is one row of the host's participant panel.
