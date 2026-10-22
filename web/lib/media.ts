@@ -33,6 +33,7 @@ import {
   SHARE_LAYERS,
   SHARE_TOP,
   cameraCapturePreset,
+  shareCodecOfTrack,
   shareLayers,
   shareTop,
 } from "./network";
@@ -172,10 +173,11 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
  * measurements): rid simulcast, L1T1 on each encoding, H264 as the backup. Chrome on macOS
  * was measured sending the VP9 it was asked for, not H264.
  *
- * Encodings: the mode's layers and top preset (shareLayers / shareTop in network.ts — the
- * same functions the share ladder reads, so the two cannot drift): the 720p floor and the
- * capture itself, 1080p at most. Priority over the camera is set on the live senders by
- * prioritiseShare (network.ts), since there is no reliable publish option for it.
+ * Encodings: the mode's and codec's layers and top preset (shareLayers / shareTop in
+ * network.ts — the same functions the share ladder reads, so the two cannot drift): the 720p
+ * floor and the capture itself, 1080p at most; VP9 at 0.7 / 2.5 Mbps, H264 at 1.5 / 4 Mbps.
+ * Priority over the camera is set on the live senders by prioritiseShare (network.ts), since
+ * there is no reliable publish option for it.
  *
  * Degradation: "sharp" is maintain-resolution — slides and terminals must not blur to hold a
  * frame rate, and contentHint "detail" asks the same of the encoder. "video" is
@@ -194,8 +196,10 @@ export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
         { videoCodec: "vp9", scalabilityMode: "L1T1", simulcast: true, backupCodec: { codec: "h264" } }
       : { videoCodec: "h264", backupCodec: { codec: "vp8" } }),
     degradationPreference: shareDegradation(mode),
-    screenShareEncoding: shareTop(mode).encoding,
-    screenShareSimulcastLayers: shareLayers(mode),
+    // The codec's own bitrates (SHARE_BITRATES): VP9 needs far less than H264 for sharp text,
+    // and H264's numbers kept a VP9 share's 1080p layer switched off on ordinary uplinks.
+    screenShareEncoding: shareTop(mode, codec).encoding,
+    screenShareSimulcastLayers: shareLayers(mode, codec),
   };
 }
 
@@ -214,8 +218,9 @@ export async function applyShareMode(track: LocalVideoTrack, mode: ShareMode): P
   if (!sender) return;
   try {
     const params = sender.getParameters();
-    const layers = shareLayers(mode);
-    const top = shareTop(mode);
+    const codec = shareCodecOfTrack(track.codec);
+    const layers = shareLayers(mode, codec);
+    const top = shareTop(mode, codec);
     params.encodings?.forEach((encoding, i) => {
       if (encoding.active === false) return;
       encoding.maxFramerate = (i < layers.length ? layers[i] : top).encoding.maxFramerate;

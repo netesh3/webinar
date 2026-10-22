@@ -38,14 +38,22 @@ audio — DTX means only the speaker sends  ≈ 100 kbps
 It was pinned to 720p for a while to bound egress. That worked and was the wrong trade: it
 made every share worse for everybody, including the presenters on a good uplink, who are
 most of them. `SHARE_LADDER` in `lib/network.ts` now moves the top layer on the same signals
-that already drive the camera — but with a higher bar (`judgeShare`) and Zoom-like content
-bitrates (1080p ~5 Mbps, 720p floor ~3 Mbps):
+that already drive the camera — but with a higher bar (`judgeShare`) and per-codec content
+bitrates (`SHARE_BITRATES`): H264 at 1080p 4 Mbps over a 720p 1.5 Mbps floor; a sharp VP9
+share (desktop Chromium) at 2.5 Mbps over 700 kbps:
 
-| tier | share top layer | what a subscriber sees |
+| tier | share top layer (H264 / VP9 sharp) | what a subscriber sees |
 |---|---|---|
-| `full` | 5 000 kbps | 1080p at 15fps |
-| `reduced` | off (720p @ 3 Mbps) | 720p at 15fps |
-| `minimal` | off (720p @ 3 Mbps, 8fps) | 720p, frames cut first |
+| `full` | 4 000 / 2 500 kbps | 1080p at 15fps |
+| `reduced` | off (720p @ 1.5 Mbps / 700 kbps) | 720p at 15fps |
+| `minimal` | off (720p, 8fps) | 720p, frames cut first |
+
+VP9 spends less because the browser, not just the ladder, decides whether the top layer is
+sent: libwebrtc only switches the 1080p layer on once the uplink estimate covers the 720p
+layer's target plus the 1080p layer's minimum (x1.35 for screen content). At a 1.5 Mbps
+floor that is ~2.6 Mbps; below it the presenter reports `qualityLimitationReason:
+bandwidth` and every viewer gets 720p at once, the "blurs in between" of 2026-10-22. At
+700 kbps it is ~1.8 Mbps, and VP9 still measured 48.6 dB on a 1080p slide at 1.5 Mbps.
 
 **The resolution never drops below the 720p desktop floor; only the framerate does on
 `minimal`.** That inversion is deliberate and it is specific to a screen share:
@@ -170,7 +178,7 @@ needed:
 | | where | why |
 |---|---|---|
 | Explicit 3-rung simulcast ladder | `lib/media.ts` | the ladder *is* the ABR strategy; leaving it to library defaults left it undocumented and free to change |
-| Screen share is 1080p and **adaptive** | `lib/media.ts`, `lib/network.ts` | Pinning it to 720p bounded egress by making every share worse for everybody. `SHARE_LADDER` holds 1080p@~5 Mbps / 720p@~3 Mbps floor and cuts fps before resolution — which is what contentHint "text" is for. Single EU SFU vs Zoom PoPs remains a path limit |
+| Screen share is 1080p and **adaptive** | `lib/media.ts`, `lib/network.ts` | Pinning it to 720p bounded egress by making every share worse for everybody. `shareLadder` holds 1080p over a 720p floor (H264 4 / 1.5 Mbps, sharp VP9 2.5 / 0.7 Mbps) and cuts fps before resolution — which is what contentHint "detail" is for. Single EU SFU vs Zoom PoPs remains a path limit |
 | Camera 720p@~2.4 Mbps + grid HIGH≤4 | `lib/network.ts`, `lib/layout.ts` | Stock 1.7 Mbps and MEDIUM-at-3-tiles made featured faces look soft vs Zoom |
 | `needKbps(tier, sharing)` counts the share | `lib/network.ts` | Without it a 1080p share on a 3 Mbps link was judged against the camera's need alone, so the ladder saw headroom on a saturated uplink and never stepped down |
 | `degradationPreference: maintain-framerate` | `lib/media.ts` | the browser default splits the difference and gets neither; a face at lower resolution still reads as a person talking |

@@ -64,7 +64,9 @@ export function shareDegradation(
  * encoding with contentHint forced to "motion" — the opposite of sharp. Firefox was not
  * measured. Phones encode VP9 in software and rarely share. Those keep H264, unchanged.
  * A subscriber that cannot decode VP9 gets the H264 backup publication. */
-export function shareCodec(ua: string): "vp9" | "h264" {
+export type ShareCodec = "vp9" | "h264";
+
+export function shareCodec(ua: string): ShareCodec {
   const chromium = /\b(Chrome|Chromium)\/\d+/.test(ua);
   const mobile = /android|iphone|ipad|ipod|mobile|crios|edgios/i.test(ua);
   return chromium && !mobile ? "vp9" : "h264";

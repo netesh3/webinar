@@ -97,6 +97,7 @@ function RecorderTemplateInner() {
       serverUrl={url}
       token={token}
       connect={true}
+      options={RECORDER_ROOM_OPTIONS}
       onConnected={() => {
         console.log("START_RECORDING");
       }}
@@ -117,6 +118,15 @@ function RecorderTemplateInner() {
     </LiveKitRoom>
   );
 }
+
+/* The recorder subscribes like a fixed-size screen, not like a browser tab.
+ *
+ * No adaptiveStream: it sizes subscriptions from the <video> elements, which here are the
+ * layout's boxes inside a headless window, and it pauses tracks it thinks are hidden. The
+ * layers are chosen explicitly instead (SpeakerTile, ShareVideo). Spelled out rather than left
+ * to livekit-client's defaults, so a changed default cannot quietly put the mix on a lower
+ * layer. */
+const RECORDER_ROOM_OPTIONS = { adaptiveStream: false, dynacast: false } as const;
 
 class StageBoundary extends Component<
   { children: React.ReactNode },
@@ -289,7 +299,7 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
         if (p.id === SHARE_ID) {
           return screenShareRef ? (
             <div key={p.id} className="absolute flex items-center justify-center bg-black" style={style}>
-              <VideoTrack trackRef={screenShareRef} className="size-full object-contain" />
+              <ShareVideo trackRef={screenShareRef} />
             </div>
           ) : null;
         }
@@ -392,6 +402,25 @@ function useStickySpeaker(
     };
   }, [room, enabled, key]);
   return enabled ? current : null;
+}
+
+/* The share, always at its top layer.
+ *
+ * This page is the mix every edge viewer watches and every recording keeps, so the share it
+ * draws must be the sharpest the presenter sends, whatever box the layout gives it: speaker
+ * view's 960x540 region is still drawn best from the 1080p layer, scaled once here, rather
+ * than from the 720p one. HIGH is what livekit-client asks for when nothing is said (this room
+ * has no adaptiveStream, see RECORDER_ROOM_OPTIONS); saying it keeps it that way if either
+ * changes, and, with dynacast on the publisher, keeps the 1080p layer encoded for as long as
+ * the mix is watching even when no host or panelist is. */
+function ShareVideo({ trackRef }: { trackRef: TrackReference }) {
+  const { publication } = trackRef;
+  useEffect(() => {
+    if (publication && "setVideoQuality" in publication && typeof publication.setVideoQuality === "function") {
+      publication.setVideoQuality(VideoQuality.HIGH);
+    }
+  }, [publication]);
+  return <VideoTrack trackRef={trackRef} className="size-full object-contain" />;
 }
 
 /** Below this height a tile asks for the low simulcast layer (about 180p): the egress decodes

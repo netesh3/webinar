@@ -26,6 +26,7 @@ import {
 } from "./audio-watch";
 import { isAndroid, lockScreenState, type LockScreenState } from "./lock-screen-audio";
 import { deviceSummary } from "./device";
+import { summariseOutbound } from "./network";
 
 /* A temporary telemetry path for one performance-test window — see
  * api/internal/api/telemetry.go for the backend half and why it logs the
@@ -146,6 +147,8 @@ function num(v: unknown): number | undefined {
 async function sampleLocalTrack(track: LocalTrack): Promise<void> {
   const stats = await readStats(track.sender);
   if (stats.size === 0) return;
+  // Every encoding's outbound-rtp, not the last one: see summariseOutbound.
+  const outbound = await readAll(track.sender, "outbound-rtp");
 
   const out = stats.get("outbound-rtp");
   const remoteIn = stats.get("remote-inbound-rtp");
@@ -167,7 +170,29 @@ async function sampleLocalTrack(track: LocalTrack): Promise<void> {
     payload.framesPerSecond = num(out.framesPerSecond);
     payload.qualityLimitationReason = out.qualityLimitationReason ?? "none";
   }
+  if (track.kind === Track.Kind.Video && outbound.length > 0) {
+    // The top layer actually sent, and all of them: frameWidth/Height above then mean "what the
+    // best-served viewer can get", and `layers` shows a 1080p layer switched off.
+    Object.assign(payload, summariseOutbound(outbound));
+  }
   push("quality_sample", payload);
+}
+
+async function readAll(
+  target: RTCRtpSender | undefined,
+  type: string,
+): Promise<Record<string, unknown>[]> {
+  if (!target) return [];
+  try {
+    const report = await target.getStats();
+    const out: Record<string, unknown>[] = [];
+    report.forEach((r) => {
+      if (r.type === type) out.push(r as Record<string, unknown>);
+    });
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 /** One remote (subscribed) track's inbound view: what we are actually

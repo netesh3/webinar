@@ -116,6 +116,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the playout-delay readout, which reports a number to somebody who is
 	# troubleshooting — where a plausible wrong number is worse than none.
 	cd web && node --experimental-strip-types --no-warnings lib/network.test.mts
+	# Screen-share encoding: mode, codec, per-codec layer bitrates and the share ladder.
+	cd web && node --experimental-strip-types --no-warnings lib/share-mode.test.mts
 	# And the reconnection ladder, which cannot be tested in a browser at all: a real
 	# media-path failure is not injectable, so this is the only check it gets.
 	cd web && node --experimental-strip-types --no-warnings lib/recovery.test.mts
