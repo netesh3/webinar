@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { RegisterForm } from "@/components/register-form";
 import { AutoRejoin } from "@/components/rejoin";
+import { MeetingDoor } from "@/components/meeting-door";
 import { ParticipantHeader } from "@/components/participant-header";
 import {
   Avatar,
@@ -44,8 +45,9 @@ export default async function WebinarDetailPage({
     }
   }
 
-  const kind = kindLabel(w);
   const ended = w.status === "ended";
+  if (w.kind === "meeting") return <MeetingLanding webinar={w} ended={ended} />;
+  const kind = kindLabel(w);
 
   /* The participant landing page: registration form, confirmation, and the way into the
    * room. No TopNav and no "All webinars" link — this is reached from a registration link
@@ -209,6 +211,62 @@ export default async function WebinarDetailPage({
             </Panel>
           </div>
         </div>
+      </main>
+    </div>
+  );
+}
+
+/* A meeting's link opens a door, not a registration page.
+ *
+ * Nothing on the webinar page above applies: there is no registration form, no seat count,
+ * no takeaways or agenda to sell it, no "presenters" — everyone admitted is on the stage. What
+ * the person needs is what it is, who is holding it, and a way to ask in. One card, centred,
+ * the same width as the room gate's, so going from here to the waiting screen does not jump.
+ * MeetingDoor is the knock and the reload; see components/meeting-door.tsx. */
+function MeetingLanding({ webinar: w, ended }: { webinar: Webinar; ended: boolean }) {
+  const live = w.status === "live";
+  return (
+    <div className="flex min-h-full flex-1 flex-col bg-page [--color-brand:#2563EB] [--color-brand-hover:#1D4ED8] dark:[--color-brand:#93C5FD] dark:[--color-brand-hover:#BFDBFE]">
+      <ParticipantHeader wide signIn />
+      {ended ? null : <AutoRejoin slug={w.id} />}
+      <main className="grid w-full flex-1 place-items-center px-4 py-8 sm:px-6">
+        <Panel className="w-full max-w-md p-6">
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <Badge tone={live ? "live" : "brand"} dot={live}>
+              {live ? "Meeting · live now" : ended ? "Meeting · ended" : "Meeting"}
+            </Badge>
+          </div>
+          <h1 className="text-[22px] leading-snug font-semibold tracking-[-0.02em]">
+            {w.topic}
+          </h1>
+          <div className="mt-3 flex items-center gap-2.5">
+            <Avatar person={w.host} size={28} />
+            <p className="text-[13px] text-ink-2">
+              Hosted by <span className="font-medium text-ink">{w.host.name}</span>
+            </p>
+          </div>
+          {/* A meeting started with "Meet now" is already running, and the time it was
+              created is not news to anybody holding the link. A scheduled one says when. */}
+          {!live && !ended ? (
+            <p className="mt-2 text-[13px] text-ink-2">
+              {formatDay(w.startsAt, w.timeZone)} ·{" "}
+              {formatTimeRange(w.startsAt, w.durationMin, w.timeZone)}{" "}
+              {tzLabel(w.startsAt, w.timeZone)}
+            </p>
+          ) : null}
+          <div className="mt-5 border-t border-line pt-5">
+            {ended ? (
+              <div className="text-center">
+                <h2 className="text-[17px] font-semibold">This meeting has ended</h2>
+                <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
+                  The host has ended this meeting.
+                </p>
+              </div>
+            ) : (
+              <MeetingDoor slug={w.id} />
+            )}
+          </div>
+        </Panel>
       </main>
     </div>
   );

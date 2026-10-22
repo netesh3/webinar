@@ -10,6 +10,7 @@ import type { FileShareApi } from "@/lib/file-share";
 import type { StageLayoutApi } from "@/lib/layout";
 import type { Realtime, Sender } from "@/lib/realtime";
 import type { ToolApi, ToolId } from "@/lib/tools";
+import type { MeetingLobbyApi } from "./meeting-lobby";
 
 /* Shared state for the room UI.
  *
@@ -93,6 +94,12 @@ export type RoomUI = {
   markEnding: (on: boolean) => void;
 
   realtime: Realtime;
+
+  /* A meeting's lobby (meeting-lobby.tsx): who is waiting at the door, and admitting them.
+   * Only for the host and co-hosts of a meeting — null for everyone else, and for every
+   * webinar, which has no lobby. Optional so a room shell that is never a meeting (the
+   * preview, the CDN audience) need not set it. */
+  lobby?: MeetingLobbyApi | null;
 
   /* The room as the SERVER sees it, polled for the host only.
    *

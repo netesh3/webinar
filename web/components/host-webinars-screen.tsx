@@ -7,7 +7,7 @@ import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
 import { dismissWelcome, useHostWelcome } from "./host-welcome";
-import { CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, PlayIcon } from "./icons";
+import { CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, PlayIcon, UsersIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT, SCHEDULE_LEAD_ERROR } from "./schedule/form-state";
 import {
   useAppConfig,
@@ -38,6 +38,7 @@ import {
 } from "@/lib/host-home-actions";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
+import { instantMeetingInput } from "@/lib/meeting-create";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 
 /* An instant webinar is the same request a normal Create submits, just with
@@ -177,6 +178,7 @@ export function HostWebinarsScreen() {
   const [onStage, setOnStage] = useState<Webinar[]>([]);
   const [stageKnown, setStageKnown] = useState(bypass);
   const [startingInstant, setStartingInstant] = useState(false);
+  const [startingMeeting, setStartingMeeting] = useState(false);
   /* The host's last pick, from this browser. Safe to read on the first render: the
    * choice only shows once the session has loaded the account's features, which the
    * server render never has. */
@@ -303,6 +305,43 @@ export function HostWebinarsScreen() {
       notify(instantStartError(err), "error");
     } finally {
       setStartingInstant(false);
+    }
+  }
+
+  /* "Start a meeting": the instant webinar's flow with a meeting's request. Not behind the
+   * instant-webinar switch — the server does not gate an instant meeting either, because
+   * "meet now" is the ordinary way a meeting begins. The invite link goes to the clipboard
+   * for the same reason as an instant webinar's: the people to invite are elsewhere, and the
+   * host should not have to go looking for Share in a room that is already open. */
+  async function startMeeting() {
+    if (bypass) {
+      openRoomTab("/preview/room");
+      return;
+    }
+    const pendingTab = openPendingRoomTab();
+    setStartingMeeting(true);
+    try {
+      const created = await api.createWebinar(instantMeetingInput(localTimeZone()));
+      await api.startWebinar(created.id);
+      pendingTab.open(`/host/${created.id}/room`);
+      try {
+        await navigator.clipboard.writeText(`${origin}/webinars/${created.id}`);
+        notify("Meeting started — invite link copied.", "ok");
+      } catch {
+        notify(
+          "Meeting started. Open Share from the room to copy the invite link.",
+          "info",
+        );
+      }
+      refresh();
+    } catch (err) {
+      pendingTab.cancel();
+      notify(
+        instantStartError(err).replace("Could not start the webinar.", "Could not start the meeting."),
+        "error",
+      );
+    } finally {
+      setStartingMeeting(false);
     }
   }
 
@@ -452,6 +491,38 @@ export function HostWebinarsScreen() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Meetings, under the webinar cards: a separate kind of session (everyone on camera,
+          let in from a lobby), so its own pair of cards rather than a toggle on the ones
+          above. Every host has them. */}
+      <div className="-mt-3 mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={startMeeting}
+          disabled={startingMeeting}
+          aria-busy={startingMeeting}
+          className={actionCardClass}
+        >
+          <ActionCardBody
+            icon={
+              startingMeeting ? (
+                <Spinner className="size-4" />
+              ) : (
+                <UsersIcon className="size-4" />
+              )
+            }
+            title={startingMeeting ? "Starting…" : "Start a meeting"}
+            subtitle="Everyone on camera; you let people in"
+          />
+        </button>
+        <Link href="/host/new/meeting" className={actionCardClass}>
+          <ActionCardBody
+            icon={<CalendarIcon className="size-4" />}
+            title="Schedule a meeting"
+            subtitle="Pick a time and share the link"
+          />
+        </Link>
       </div>
 
       <HostWebinarBrowser reloadToken={reloadToken} attendingHint={welcome} />

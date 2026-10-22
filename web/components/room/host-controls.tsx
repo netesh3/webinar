@@ -26,7 +26,13 @@ import { EndWebinarDialog } from "./host-survey";
  */
 
 export function HostControls() {
-  const { slug, controls } = useRoomUI();
+  const { slug, controls, join } = useRoomUI();
+  /* A meeting keeps mute, lock, end and the participation switches, and loses everything
+   * that moves people between an audience and a stage — there is no audience (see
+   * lib/meeting-room.ts). The server refuses those for a meeting anyway (422 not_in_meeting);
+   * not offering them is what keeps a host from finding that out by clicking. */
+  const meeting = join.meeting === true;
+  const noun = meeting ? "meeting" : "webinar";
   const chatTo = chatDestination(controls.chatDestination);
   const { notify } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -194,20 +200,25 @@ export function HostControls() {
                   void set(
                     "locked",
                     v,
-                    v ? "The webinar is locked." : "The webinar is open again.",
+                    v ? `The ${noun} is locked.` : `The ${noun} is open again.`,
                   )
                 }
                 label={
                   <span className="flex items-center gap-1.5">
                     <LockIcon className="size-3.5 text-ink-3" />
-                    Lock the webinar
+                    Lock the {noun}
                   </span>
                 }
-                description="Nobody new can join. People already here stay."
+                description={
+                  meeting
+                    ? "Nobody new can ask to join. People already here stay."
+                    : "Nobody new can join. People already here stay."
+                }
               />
             </div>
           </section>
 
+          {!meeting && (
           <section className="space-y-1">
             <button
               type="button"
@@ -271,6 +282,7 @@ export function HostControls() {
               </span>
             </button>
           </section>
+          )}
 
           <section>
             <button
@@ -300,10 +312,16 @@ export function HostControls() {
                       void set(
                         "muteOnEntry",
                         v,
-                        v ? "New panelists will join muted." : "New panelists can join live.",
+                        meeting
+                          ? v
+                            ? "New people will join muted."
+                            : "New people can join with their mic on."
+                          : v
+                            ? "New panelists will join muted."
+                            : "New panelists can join live.",
                       )
                     }
-                    label="Mute panelists on entry"
+                    label={meeting ? "Mute people on entry" : "Mute panelists on entry"}
                     description="They can still unmute if you allow it below."
                   />
                   <Toggle
@@ -313,13 +331,20 @@ export function HostControls() {
                       void set(
                         "allowUnmute",
                         v,
-                        v ? "Panelists can unmute themselves." : "Only you can unmute panelists now.",
+                        meeting
+                          ? v
+                            ? "Everyone can unmute themselves."
+                            : "Only you can unmute people now."
+                          : v
+                            ? "Panelists can unmute themselves."
+                            : "Only you can unmute panelists now.",
                       )
                     }
-                    label="Let panelists unmute themselves"
+                    label={meeting ? "Let people unmute themselves" : "Let panelists unmute themselves"}
                   />
                 </div>
 
+                {!meeting && (
                 <div>
                   <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
                     Privacy
@@ -347,10 +372,11 @@ export function HostControls() {
                     />
                   </div>
                 </div>
+                )}
 
                 <div>
                   <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
-                    What attendees can do
+                    {meeting ? "What everyone can do" : "What attendees can do"}
                   </h3>
                   <Toggle
                     checked={controls.chatEnabled}
@@ -360,7 +386,8 @@ export function HostControls() {
                     }
                     label="Chat"
                   />
-                  {controls.chatEnabled && (
+                  {/* Everyone in a meeting is on the stage, so "panelists only" is everyone. */}
+                  {controls.chatEnabled && !meeting && (
                     <div className="mt-1 mb-1 rounded-lg border border-line-2 px-3 py-2.5">
                       <p className="text-[13px] font-medium text-ink">Attendees can chat with</p>
                       <div className="mt-2 flex items-center gap-1.5">
@@ -392,6 +419,7 @@ export function HostControls() {
                     onChange={(v) => void set("qaEnabled", v, v ? "Q&A is on." : "Q&A is closed.")}
                     label="Q&A"
                   />
+                  {!meeting && (
                   <Toggle
                     checked={controls.raiseHandEnabled}
                     disabled={busy !== null}
@@ -404,6 +432,7 @@ export function HostControls() {
                     }
                     label="Raise hand"
                   />
+                  )}
                   <Toggle
                     checked={controls.reactionsEnabled}
                     disabled={busy !== null}
@@ -439,7 +468,7 @@ export function HostControls() {
               onClick={() => setConfirmEnd(true)}
               className="w-full rounded-lg bg-live px-3.5 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-live/40"
             >
-              End webinar for everyone
+              End {noun} for everyone
             </button>
             <p className="mt-1.5 text-center text-[11.5px] text-ink-3">
               Leave also offers ending or assigning another host.

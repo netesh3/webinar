@@ -37,6 +37,7 @@ import { SenderAvatar } from "../sender-avatar";
 import { Pill, RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
 import { ShareLinkFooter } from "./invite-panel";
+import { LobbySection } from "./meeting-lobby";
 
 /* The participants panel.
  *
@@ -222,7 +223,11 @@ export async function setStageSettlingHand(
 // ---------------------------------------------------------------- host view
 
 function HostRoster() {
-  const { slug, join, realtime, roster } = useRoomUI();
+  const { slug, join, realtime, roster, lobby } = useRoomUI();
+  /* A meeting has no audience and no stage to bring anybody onto (lib/meeting-room.ts): one
+   * list of who is in, the lobby above it, and no hands — the raise-hand tool is not offered,
+   * and a stage action would only be refused (422 not_in_meeting). */
+  const meeting = join.meeting === true;
   const { localParticipant } = useLocalParticipant();
   const { notify } = useToast();
   // From the context rather than a poll of its own: the control bar needs the same
@@ -314,6 +319,7 @@ function HostRoster() {
       key={p.identity}
       participant={p}
       isMe={p.identity === join.identity}
+      meeting={meeting}
       handRaised={handIdentities.has(p.identity)}
       handRaisedAt={handIdentities.get(p.identity)}
       now={now}
@@ -408,7 +414,11 @@ function HostRoster() {
             The "Hidden" chip that used to sit here was only an indicator of the
             hide-attendees privacy setting, which is toggled in Host controls. */}
         <div className="@container flex items-center gap-2">
-          <RosterStats onStage={live?.onStage ?? 0} attending={live?.attendees ?? 0} faces={stageFaces} />
+          {meeting ? (
+            <MeetingStats present={(live?.onStage ?? 0) + (live?.attendees ?? 0)} faces={stageFaces} />
+          ) : (
+            <RosterStats onStage={live?.onStage ?? 0} attending={live?.attendees ?? 0} faces={stageFaces} />
+          )}
           <button
             type="button"
             onClick={() => {
@@ -493,6 +503,8 @@ function HostRoster() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Who is at the door comes first: they are the people waiting on the host. */}
+        {lobby && <LobbySection lobby={lobby} />}
         {loading ? (
           <div className="grid place-items-center py-10">
             <Spinner className="size-5 text-ink-3" />
@@ -517,6 +529,10 @@ function HostRoster() {
               <p>Nobody has joined yet.</p>
             )}
           </div>
+        ) : meeting ? (
+          <Group title="In the meeting" count={sections.panelists.length + sections.attendees.length}>
+            {[...sections.panelists, ...sections.attendees].map(row)}
+          </Group>
         ) : (
           <>
             {sections.raised.length > 0 && (
@@ -570,6 +586,7 @@ function HostRoster() {
 function HostRosterRow({
   participant: p,
   isMe,
+  meeting = false,
   handRaised,
   handRaisedAt,
   now,
@@ -583,6 +600,9 @@ function HostRosterRow({
 }: {
   participant: LiveParticipant;
   isMe: boolean;
+  /** In a meeting nobody moves between a stage and an audience, so none of the stage
+   *  actions are offered; mute, co-host and remove are. */
+  meeting?: boolean;
   handRaised: boolean;
   /** When the hand went up, for the queue's "waiting 3 min". */
   handRaisedAt?: number;
@@ -607,15 +627,18 @@ function HostRosterRow({
   // The scope of the grant, as the host set it — not guessed from what they are
   // publishing, which would call a panelist with their camera off "audio only".
   const speakingOnly = p.role === "panelist" && !isHost && p.audioOnly;
-  const onStageNow = p.role === "panelist" && !isHost;
+  // Never "on stage" in a meeting: there is nowhere else to be, so nothing to take back.
+  const onStageNow = p.role === "panelist" && !isHost && !meeting;
   // Co-host needs an account behind the identity (see handleSetCoHost on the
   // API side) — a panelist invited from the panelist list has one ("user_"
   // identity); an attendee the host brought up on stage does not ("att_"
   // identity), no matter that both show up as "Panelist" in this same list.
   // Gating the menu item on the prefix means the rare mis-click never reaches
   // the server at all, instead of surfacing as a confusing error toast.
-  const canBeCoHost = onStageNow && p.identity.startsWith("user_");
-  const badge = rosterBadge(p);
+  const canBeCoHost =
+    p.role === "panelist" && !isHost && p.identity.startsWith("user_");
+  // A meeting guest is not a "Panelist" to anyone; the host and co-hosts keep theirs.
+  const badge = meeting && !isHost && !p.coHost ? null : rosterBadge(p);
 
   return (
     <li
@@ -738,7 +761,7 @@ function HostRosterRow({
               </span>
             }
             items={[
-              ...(p.role === "attendee"
+              ...(p.role === "attendee" && !meeting
                 ? [
                     // Suppressed when handRaised: the row already has this as a
                     // prominent button above, and offering the same action twice
@@ -847,7 +870,7 @@ function HostRosterRow({
                     { kind: "separator" as const },
                     {
                       kind: "action" as const,
-                      label: "Remove from webinar",
+                      label: meeting ? "Remove from meeting" : "Remove from webinar",
                       icon: <TrashIcon className="size-4" />,
                       danger: true,
                       onSelect: onRemove,
@@ -928,7 +951,7 @@ function AudienceRoster() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-      <Group title="Panelists" count={stage.length}>
+      <Group title={join.meeting ? "In the meeting" : "Panelists"} count={stage.length}>
         {stage.map((p) => (
           <AudienceRow
             key={p.identity}
@@ -952,7 +975,8 @@ function AudienceRoster() {
           are for whoever is running or presenting the session; an ordinary
           attendee clicking Participants is checking who is on stage, not
           sizing up the room. Panelists keep exactly what they had. */}
-      {join.role !== "attendee" &&
+      {/* A meeting has no audience to list: everyone admitted is in the group above. */}
+      {join.role !== "attendee" && !join.meeting &&
         (controls.hideAttendees ? (
           <div className="border-t border-line px-3 py-4">
             <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
@@ -988,6 +1012,38 @@ function AudienceRoster() {
       </div>
       <ShareLinkFooter />
     </div>
+  );
+}
+
+/** A meeting's headcount: one number, because there is one room. From the server's roster,
+ *  like RosterStats, so it counts people the host's own connection has not seen yet. */
+function MeetingStats({
+  present,
+  faces,
+}: {
+  present: number;
+  faces: { name: string; identity: string }[];
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+      {faces.length > 0 && (
+        <span className="hidden shrink-0 -space-x-1.5 @[22rem]:flex">
+          {faces.map((f) => (
+            <SenderAvatar
+              key={f.identity}
+              name={f.name}
+              identity={f.identity}
+              size="xs"
+              className="ring-2 ring-surface"
+            />
+          ))}
+        </span>
+      )}
+      <UsersIcon className="size-3.5 shrink-0 text-ink-3" />
+      <span className="truncate text-[12px] text-ink-3">
+        <span className="font-semibold text-ink tabular-nums">{present}</span> in the meeting
+      </span>
+    </span>
   );
 }
 

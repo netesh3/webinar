@@ -1,4 +1,8 @@
 import type {
+  LobbyAdmitAllResponse,
+  LobbyEntry,
+  MeetingKnockRequest,
+  MeetingKnockResponse,
   SaveStreamKeyRequest,
   SetWebinarStreamPausedRequest,
   WebinarStreamDestination,
@@ -270,6 +274,14 @@ export const api = {
    *  back in after a reload. */
   guestJoin: (slug: string, name: string) =>
     post<JoinResponse>(`/api/webinars/${seg(slug)}/guest-join`, { name }),
+
+  /** A meeting's front door: a name, and a place in the lobby. A browser that knocked
+   *  already sends its key back and is told where it stands (waiting or admitted) instead
+   *  of queueing twice. 403 `lobby_denied` when the host turned this key away; 409
+   *  `meeting_ended`, `locked` or `lobby_full`. The waiting page then polls `join` with
+   *  the key — lib/meeting-lobby.ts is what each answer means on screen. */
+  meetingKnock: (slug: string, body: MeetingKnockRequest) =>
+    post<MeetingKnockResponse>(`/api/webinars/${seg(slug)}/meeting/knock`, body),
 
   /** Exchanges a join key — or the session cookie — for a LiveKit token. The
    *  server decides the role; a client cannot ask for one. */
@@ -990,6 +1002,24 @@ export const api = {
 
   recomputeEngagement: (slug: string) =>
     post<EngagementSummary>(`/api/host/webinars/${seg(slug)}/engagement/recompute`),
+
+  /** Who is waiting at a meeting's door, longest-waiting first. Hosts and co-hosts only;
+   *  422 `not_a_meeting` for a webinar. Polled by the room's lobby panel, beside the
+   *  {kind:"lobby"} packet that says the count changed. */
+  meetingLobby: (slug: string) =>
+    request<LobbyEntry[]>(`/api/host/webinars/${seg(slug)}/lobby`, fresh),
+
+  /** Let one waiting guest in. 409 `meeting_full` when the room is at its cap. */
+  admitLobby: (slug: string, id: string) =>
+    post<StatusResponse>(`/api/host/webinars/${seg(slug)}/lobby/${seg(id)}/admit`),
+
+  /** Turn one waiting guest away; their next poll answers `lobby_denied`. */
+  denyLobby: (slug: string, id: string) =>
+    post<StatusResponse>(`/api/host/webinars/${seg(slug)}/lobby/${seg(id)}/deny`),
+
+  /** Let in as many as fit, oldest first; `left` is how many are still waiting. */
+  admitAllLobby: (slug: string) =>
+    post<LobbyAdmitAllResponse>(`/api/host/webinars/${seg(slug)}/lobby/admit-all`),
 
   approveAll: (slug: string) =>
     post<MuteAllResponse>(

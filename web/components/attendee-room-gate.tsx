@@ -16,6 +16,8 @@ import { detectArrival, hasRejoinIntent, type Arrival } from "@/lib/rejoin";
 import { trackEvent } from "@/lib/telemetry";
 import { isAwaitingEmail, joinProvesKey } from "@/lib/guest-registration";
 import { attendeeJoinRefusal } from "@/lib/join-refusal";
+import { MEETING_POLL_MS, lobbyScreen, type LobbyScreen } from "@/lib/meeting-lobby";
+import { LobbyStatus, MeetingKnockForm } from "./meeting-door";
 
 /** Exchanges the caller's credential for a LiveKit token, then hands off to the
  *  room.
@@ -27,6 +29,7 @@ export function AttendeeRoomGate({
   slug,
   topic,
   imageUrl,
+  meeting = false,
 }: {
   slug: string;
   topic: string;
@@ -34,6 +37,12 @@ export function AttendeeRoomGate({
    *  screen in place of the generic placeholder — see stage.tsx's
    *  WaitingForStage. Undefined when the host never uploaded one. */
   imageUrl?: string;
+  /** A meeting (Webinar.kind "meeting"): this gate is also its lobby. POST /join answers
+   *  409 waiting_for_host until the host admits the key, so that answer is polled here
+   *  on MEETING_POLL_MS rather than shown as a refusal, and a browser with no key is given
+   *  the name field to knock with instead of "you're not registered". See
+   *  components/meeting-door.tsx and lib/meeting-lobby.ts. */
+  meeting?: boolean;
 }) {
   const router = useRouter();
   const {
@@ -49,7 +58,8 @@ export function AttendeeRoomGate({
   const [attempt, setAttempt] = useState(0);
   /* The webinar's video server was paused while nothing ran on it and is booting (about a
    * minute): ask again every few seconds instead of waiting for a "Try again" click. */
-  const serverStarting = error?.code === "sfu_starting";
+  // A meeting polls its own way (below), sfu_starting included.
+  const serverStarting = !meeting && error?.code === "sfu_starting";
   useEffect(() => {
     if (!serverStarting) return;
     const t = setTimeout(() => {
@@ -58,6 +68,25 @@ export function AttendeeRoomGate({
     }, 5000);
     return () => clearTimeout(t);
   }, [serverStarting]);
+
+  /* The meeting lobby: what the last answer means, and whether to ask again by itself.
+   *
+   * The error is NOT cleared before the next poll, unlike the retry above. Clearing it
+   * would flash "Connecting…" between every two "Waiting for the host" screens; leaving it
+   * means the waiting screen stays put until an answer that is different arrives — a token
+   * (the room), or a refusal that replaces it. Each answer is a new object, so this effect
+   * schedules the next poll from the one before. */
+  const lobby = meeting && error ? lobbyScreen(error.code, error.message) : null;
+  // The guest asked for a fresh knock (after a removal), so the held key is not sent.
+  const [knockFresh, setKnockFresh] = useState(false);
+  // A knock from the name field that was refused outright (denied, locked, ended).
+  const [knockRefusal, setKnockRefusal] = useState<LobbyScreen | null>(null);
+  const lobbyPolls = lobby?.poll ?? false;
+  useEffect(() => {
+    if (!lobbyPolls) return;
+    const t = setTimeout(() => setAttempt((n) => n + 1), MEETING_POLL_MS);
+    return () => clearTimeout(t);
+  }, [lobbyPolls, error]);
   // Pressing Leave (or "Back to webinars") lands on the way-out screen, which offers the
   // post-event survey when there is one to answer and otherwise goes straight on.
   const [left, setLeft] = useState(false);
@@ -214,7 +243,9 @@ export function AttendeeRoomGate({
     return (
       <main className="grid min-h-dvh place-items-center p-6">
         <Card className="w-full max-w-md p-6 text-center">
-          <h1 className="text-[17px] font-semibold">You left this webinar</h1>
+          <h1 className="text-[17px] font-semibold">
+            You left this {meeting ? "meeting" : "webinar"}
+          </h1>
           <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
             It&apos;s still running. Join again whenever you&apos;re ready.
           </p>
@@ -224,9 +255,62 @@ export function AttendeeRoomGate({
               href={`/webinars/${slug}`}
               className="text-[12.5px] text-brand hover:underline"
             >
-              Back to the webinar
+              Back to the {meeting ? "meeting" : "webinar"}
             </Link>
           </div>
+        </Card>
+      </main>
+    );
+  }
+
+  /* A meeting's door, in place of everything below: no registration lookup to wait for or
+   * report on (a meeting's key is always in this browser's slug index once it has knocked),
+   * and no "register" anywhere. The order is the lobby's: no key yet → the name field; an
+   * answer from /join → its screen; otherwise the request is out. */
+  if (meeting) {
+    const signedIn = status === "signed-in" && account !== null;
+    const needsKnock =
+      knockFresh ||
+      lobby?.phase === "knock" ||
+      (hydrated && status !== "loading" && directKey === null && !signedIn);
+    const afterKnock = () => {
+      setKnockFresh(false);
+      setKnockRefusal(null);
+      setError(null);
+      setAttempt((n) => n + 1);
+    };
+    return (
+      <main className="grid min-h-dvh place-items-center p-6">
+        <Card className="w-full max-w-md p-6 text-center">
+          {knockRefusal ? (
+            <LobbyStatus
+              screen={knockRefusal}
+              onRetry={() => setKnockRefusal(null)}
+              backHref={`/webinars/${slug}`}
+            />
+          ) : needsKnock ? (
+            <MeetingKnockForm
+              slug={slug}
+              heading={topic ? `Ask to join “${topic}”` : "Ask to join"}
+              onKnocked={afterKnock}
+              onRefused={setKnockRefusal}
+            />
+          ) : lobby ? (
+            <LobbyStatus
+              screen={lobby}
+              onRetry={() => {
+                setError(null);
+                setAttempt((n) => n + 1);
+              }}
+              onKnockAgain={() => setKnockFresh(true)}
+              backHref={lobby.poll ? undefined : `/webinars/${slug}`}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-3">
+              <Spinner className="size-5 text-ink-3" />
+              <p className="text-[13.5px] text-ink-2">Connecting to the meeting…</p>
+            </div>
+          )}
         </Card>
       </main>
     );
