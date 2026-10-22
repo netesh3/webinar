@@ -197,6 +197,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/media-hotkeys.test.mts
 	# And which tools sit in Zoom's standing centre cluster vs More on a phone.
 	cd web && node --experimental-strip-types --no-warnings lib/tools-bar.test.mts
+	# And the stage frame: the CDN/edge player box stays inside the stage (min-h-0),
+	# so the picture and its captions never run under the control bar.
+	cd web && node --experimental-strip-types --no-warnings lib/stage-frame.test.mts
 	# And customising it: adding from More never pins a tool out of sight on a full
 	# bar, a recently used slot can be moved back, and undo puts exactly it back.
 	cd web && node --experimental-strip-types --no-warnings lib/tools-edit.test.mts

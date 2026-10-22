@@ -29,7 +29,7 @@ import { useHostRoster } from "./participants";
 import { useNetworkHealth } from "@/lib/network";
 import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
-import { stageFrame, useCompact } from "@/lib/compact";
+import { STAGE_PLAYER_FRAME, stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { useStageLayout } from "@/lib/layout";
 import { useMentionBadge } from "@/lib/use-mentions";
@@ -328,7 +328,7 @@ export function EdgeAudienceRoom({
                       className="absolute inset-x-0 top-12 flex flex-col"
                       style={stageFrame(compact, panelOpen)}
                     >
-                      <div className="relative flex flex-1 items-center justify-center bg-black">
+                      <div className={STAGE_PLAYER_FRAME}>
                         <EdgePlayer
                           playbackUrl={join.playbackUrl ?? ""}
                           coverUrl={initialImageUrl}
@@ -352,6 +352,10 @@ export function EdgeAudienceRoom({
                       />
                       <RecordingBanner />
                       <ChatNotifications chatVisible={chatVisible} />
+                      {/* Inside the stage, not the room column: anchored to the stage's own bottom
+                          edge, so a caption stays on the picture (and off the docked panel, which
+                          on a phone sits right under a short stage strip) — never under the control bar. */}
+                      <CaptionOverlay />
                     </div>
                     <PollPopup />
                     <SurveyPopup
@@ -362,7 +366,6 @@ export function EdgeAudienceRoom({
                       enabled
                     />
                     <CtaPopup />
-                    <CaptionOverlay />
                     <RoomHeader />
                     <SidePanel />
                   </div>

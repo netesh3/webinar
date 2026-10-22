@@ -62,6 +62,16 @@ export function stageFrame(compact: boolean, panelOpen: boolean): CSSProperties 
     : { bottom: 0, right: DOCKED_PANEL_WIDTH };
 }
 
+/** The box a stage <video> player (CDN broadcast, edge) fills inside the
+ *  data-stage column. min-h-0 is the load-bearing part: a flex-1 item's
+ *  min-height defaults to its content, and a <video> at the stage's width
+ *  is width / aspect tall (933px for 16:9 at 1660px), so without it the
+ *  player grew past the stage, under the control bar — the bottom of the
+ *  picture, and the native caption track drawn there, out of sight. With it
+ *  the box is exactly the stage and object-contain fits the picture inside. */
+export const STAGE_PLAYER_FRAME =
+  "relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-black";
+
 export function useCompact(): boolean {
   const [compact, setCompact] = useState(false);
   useEffect(() => {
