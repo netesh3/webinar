@@ -24,6 +24,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { enableCamera } from "@/lib/backgrounds";
+import { cameraButton } from "@/lib/entry-publish";
 import type { Reaction } from "@/lib/realtime";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import {
@@ -199,6 +200,7 @@ export function ControlBar() {
     updatePrefs,
     shareAgain,
     join,
+    cameraStart,
   } = useRoomUI();
   const raisedHands = useRaisedHandsPanel();
 
@@ -206,6 +208,9 @@ export function ControlBar() {
 
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant();
+  // The publication decides on/off; busy while the pre-join camera is still on its way up, so a
+  // press then does not open a second camera beside it (lib/entry-publish.ts).
+  const cameraState = cameraButton({ published: isCameraEnabled, phase: cameraStart?.phase });
   const connecting = useConnectionState() === ConnectionState.Connecting;
   // Everyone this browser has been told about, plus yourself. Correct for the host's
   // own connection too, but incomplete: the SFU deliberately withholds hidden
@@ -578,6 +583,7 @@ export function ControlBar() {
 
   // On with the background already applied, so the audience's first frame is not the room.
   const onCameraClick = useCallback(() => {
+    if (cameraState.busy) return;
     void toggle("camera", "Camera", () =>
       isCameraEnabled
         ? localParticipant.setCameraEnabled(false)
@@ -589,6 +595,7 @@ export function ControlBar() {
           ),
     );
   }, [
+    cameraState.busy,
     toggle,
     localParticipant,
     isCameraEnabled,
@@ -1094,7 +1101,7 @@ export function ControlBar() {
               shortcut="V"
               active={isCameraEnabled}
               danger={!isCameraEnabled}
-              busy={pending === "camera"}
+              busy={pending === "camera" || cameraState.busy}
               onClick={onCameraClick}
               deviceKind="videoinput"
               currentDeviceId={prefs.videoInput}

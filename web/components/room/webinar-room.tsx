@@ -28,6 +28,15 @@ import { roomOptions, sharePublishOptions, useMediaPreferences } from "@/lib/med
 import { shareModeOfHint } from "@/lib/share-mode";
 import { publishLedger } from "@/lib/republish";
 import {
+  afterFailure,
+  entryPlan,
+  initialCameraStart,
+  publishFailureMessage,
+  showEntryPreview,
+  type CameraStart,
+} from "@/lib/entry-publish";
+import { describeMediaError } from "@/lib/media-errors";
+import {
   PRESENCE_HEARTBEAT_MS,
   isScheduledPresenter as scheduledPresenter,
   loadMedia,
@@ -636,10 +645,14 @@ function ConnectedRoom({
 
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<ExitReason | null>(null);
-  /* Whether room.connect() has resolved. Separate from `ready`, which is about the person:
-   * the connection comes up on its own while they are still choosing a camera, and publishing
-   * needs both. */
-  const [connected, setConnected] = useState(false);
+  /* How many times room.connect() has resolved — 0 until the first. A count rather than a
+   * boolean because publishing has to run again on EVERY new session: the recovery ladder's
+   * reconnect is a fresh LiveKit session that carries nothing over, and a pre-join camera whose
+   * publish was lost to the drop is not in the ledger restorePublications reads. With a boolean
+   * that stayed true across the rebuild, nothing ever published it — the host sat behind their
+   * own "joining" preview with the camera button reading off. See lib/entry-publish.ts. */
+  const [connectedEpoch, setConnectedEpoch] = useState(0);
+  const epochRef = useRef(0);
   /* `attempt` is a dependency of the connect effect, so bumping it tears the connection
    * down and builds it again — the retry reuses the whole existing connect path rather than
    * duplicating it. `recovering` is what the banner reads. */
@@ -1089,7 +1102,8 @@ function ConnectedRoom({
           attempts.current = 0;
         }, STABLE_MS);
 
-        setConnected(true);
+        epochRef.current += 1;
+        setConnectedEpoch(epochRef.current);
       } catch (err) {
         if (cancelled) return;
         /* A connect that never landed is the same fault as one that dropped, and used to be
@@ -1138,48 +1152,155 @@ function ConnectedRoom({
    *
    * Split out of the connect effect because the two no longer happen together: the connection
    * is made as soon as the room page loads, and this waits for a click that may be seconds
-   * later. Guarded by a ref rather than by state so a re-render cannot publish twice — a
-   * second publishTrack for the same track throws, and the toast for it would be the first
-   * thing a presenter saw.
+   * later.
+   *
+   * It used to run once, behind a "published" latch, and swallow any failure. That was the
+   * "Your camera — joining the webinar" preview that never went away: on a connection that
+   * dropped and recovered while the pre-join camera was being published (seen in production —
+   * three connection attempts and a resume in the first minute), the one publish was lost, the
+   * latch never let it run again, and nothing said so. The stage stood the preview in for a
+   * camera that was not there; the camera button, reading the publication, said off.
+   *
+   * Now it runs on every new connection for whatever the pre-join screen asked for that is
+   * still not published (`entryWanted`, cleared by the publication itself), decides a failure
+   * by whether the connection was to blame (lib/entry-publish.ts afterFailure), and a real
+   * failure releases the device, clears the preview and says so — on the stage, with a retry,
+   * and in a toast for when someone else's video is filling the stage.
+   *
+   * `publishingEntry` keeps a re-render from publishing twice — a second publishTrack for the
+   * same track throws. A connection that comes up while a run is in flight is not skipped: the
+   * run looks again when it finishes.
    */
-  const published = useRef(false);
+  const entryWanted = useRef({ mic: startMic, camera: startCamera });
+  const [cameraStart, setCameraStart] = useState<CameraStart>(() =>
+    initialCameraStart(startCamera),
+  );
+  const [publishNonce, setPublishNonce] = useState(0);
+  const publishingEntry = useRef(false);
+
+  /* A publication from anywhere — this effect, restorePublications, the control bar — ends the
+   * pre-join track's story for that source: it is on the stage, and nothing here may publish it
+   * again or open a second device for it. */
   useEffect(() => {
-    if (!connected || !join.canPublish || published.current) return;
-    published.current = true;
+    const onPublished = (pub: LocalTrackPublication) => {
+      if (pub.source === Track.Source.Microphone) entryWanted.current.mic = false;
+      if (pub.source !== Track.Source.Camera) return;
+      entryWanted.current.camera = false;
+      setCameraStart({ phase: "published", error: null });
+    };
+    /* LiveKit's own resume keeps the session, so connectedEpoch does not move — but a publish
+     * that failed because of the drop was left wanted for exactly this moment. */
+    const onReconnected = () => setPublishNonce((n) => n + 1);
+    room.on(RoomEvent.LocalTrackPublished, onPublished);
+    room.on(RoomEvent.Reconnected, onReconnected);
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, onPublished);
+      room.off(RoomEvent.Reconnected, onReconnected);
+    };
+  }, [room]);
+
+  const retryCamera = useCallback(() => {
+    entryWanted.current.camera = true;
+    setPublishNonce((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (connectedEpoch === 0 || !join.canPublish || publishingEntry.current) return;
+    const lp = room.localParticipant;
+    const { audio, video } = entryTracks.current;
+    const micPlan = entryPlan({
+      wanted: entryWanted.current.mic,
+      published: Boolean(lp.getTrackPublication(Track.Source.Microphone)),
+      entryLive: Boolean(audio && isCapturing(audio)),
+    });
+    const cameraPlan = entryPlan({
+      wanted: entryWanted.current.camera,
+      published: Boolean(lp.getTrackPublication(Track.Source.Camera)),
+      entryLive: Boolean(video && isCapturing(video)),
+    });
+    if (micPlan === "skip" && cameraPlan === "skip") return;
+    publishingEntry.current = true;
+    const epoch = epochRef.current;
 
     void (async () => {
+      if (cameraPlan !== "skip") setCameraStart({ phase: "publishing", error: null });
+      const failures: { mic?: string; camera?: string } = {};
+      const detail = (err: unknown) => (err instanceof Error ? err.message : String(err ?? ""));
+
       // Publish what the pre-join screen already opened. These devices are running:
       // publishing is a track added to an existing peer connection, not a device
       // negotiation, so the first frame reaches the audience a camera-open sooner.
       //
       // Parallel is safe precisely because these are existing tracks — the reason the old
       // code was sequential was two concurrent getUserMedia calls prompting twice, and
-      // there is no getUserMedia left on this path.
-      const publishing: Promise<unknown>[] = [];
-      const { audio, video } = entryTracks.current;
-      if (startMic && audio) publishing.push(room.localParticipant.publishTrack(audio));
-      if (startCamera && video) publishing.push(room.localParticipant.publishTrack(video));
-      try {
-        if (publishing.length) await Promise.all(publishing);
-
-        // An attendee promoted mid-session, or anyone whose pre-join handed over nothing,
-        // still needs the devices opened the ordinary way. Sequential, for the
-        // permission-prompt reason above. The camera with its background already on, so
-        // the audience's first frame of it is not the room; see openCamera.
-        if (startMic && !audio) await room.localParticipant.setMicrophoneEnabled(true);
-        if (startCamera && !video) {
-          const { background, lowLight, backgroundEngine } = look.current;
-          await enableCamera(room.localParticipant, background, lowLight, backgroundEngine);
-        }
-      } catch {
-        /* A publish that fails is not a connection that failed, and must not be reported as
-         * one: the room still works, chat still works, and the honest recovery is the
-         * presenter pressing the camera button. Allowed to be retried, unlike the guard
-         * above, because there is nothing published to collide with. */
-        published.current = false;
+      // there is no getUserMedia left on this path. Settled rather than all-or-nothing: a
+      // microphone that will not go up must not take the camera with it.
+      const [micResult, cameraResult] = await Promise.allSettled([
+        micPlan === "publish-entry" && audio ? lp.publishTrack(audio) : null,
+        cameraPlan === "publish-entry" && video ? lp.publishTrack(video) : null,
+      ]);
+      if (micResult.status === "rejected") {
+        failures.mic = publishFailureMessage("microphone", detail(micResult.reason));
       }
+      if (cameraResult.status === "rejected") {
+        failures.camera = publishFailureMessage("camera", detail(cameraResult.reason));
+      }
+
+      // An attendee promoted mid-session, anyone whose pre-join handed over nothing, or a
+      // retry after the capture was released, still needs the devices opened the ordinary
+      // way. Sequential, for the permission-prompt reason above. The camera with its
+      // background already on, so the audience's first frame of it is not the room.
+      if (micPlan === "open-device") {
+        try {
+          await lp.setMicrophoneEnabled(true);
+        } catch (err) {
+          failures.mic = describeMediaError(err, "microphone");
+        }
+      }
+      if (cameraPlan === "open-device") {
+        try {
+          const { background, lowLight, backgroundEngine } = look.current;
+          await enableCamera(lp, background, lowLight, backgroundEngine);
+        } catch (err) {
+          failures.camera = describeMediaError(err, "camera");
+        }
+      }
+      publishingEntry.current = false;
+
+      const verdict = afterFailure({
+        connected: room.state === ConnectionState.Connected,
+        connectionChanged: epochRef.current !== epoch,
+      });
+      if (failures.mic && verdict === "give-up") {
+        // A microphone capturing with nothing published is a live mic indicator for nothing.
+        entryWanted.current.mic = false;
+        if (audio && !lp.getTrackPublication(Track.Source.Microphone)) audio.stop();
+        notify(`${failures.mic} Use the microphone button to try again.`, "error");
+      }
+      if (failures.camera) {
+        if (verdict === "give-up") {
+          // Released, so the camera light, the preview and the button all say the same thing.
+          entryWanted.current.camera = false;
+          if (video && !lp.getTrackPublication(Track.Source.Camera)) video.stop();
+          setCameraStart({ phase: "failed", error: failures.camera });
+          notify(failures.camera, "error");
+        } else {
+          setCameraStart({ phase: "connecting", error: null });
+        }
+      }
+      // A connection that came up while this was in flight returned early above; look again.
+      if (epochRef.current !== epoch) setPublishNonce((n) => n + 1);
     })();
-  }, [connected, join.canPublish, room, startMic, startCamera]);
+  }, [connectedEpoch, publishNonce, join.canPublish, room, notify]);
+
+  const entryLive = Boolean(entryVideo && isCapturing(entryVideo));
+  const stagePreview = showEntryPreview({ phase: cameraStart.phase, entryLive })
+    ? entryVideo
+    : null;
+  const cameraStartView = useMemo(
+    () => ({ ...cameraStart, retry: retryCamera }),
+    [cameraStart, retryCamera],
+  );
 
   // A handle on the live Room, in development only.
   //
@@ -1468,8 +1589,10 @@ function ConnectedRoom({
        * The prop, not entryTracks.current. The ref exists to keep these out of the connect
        * effect's dependencies — a new identity there would tear down a live connection —
        * and reading it here would be a ref read during render. The prop is set once by the
-       * parent before this component mounts, so it is stable anyway. */
-      entryVideo,
+       * parent before this component mounts, so it is stable anyway. Only while it is really
+       * on its way to the stage (showEntryPreview): never for a camera that failed. */
+      entryVideo: stagePreview,
+      cameraStart: cameraStartView,
       recovering,
       over,
       markEnding,
@@ -1492,7 +1615,8 @@ function ConnectedRoom({
     [
       shareAgain,
       dismissShareAgain,
-      entryVideo,
+      stagePreview,
+      cameraStartView,
       recovering,
       over,
       markEnding,
@@ -1621,7 +1745,7 @@ function ConnectedRoom({
                       audience receives is captured from a hidden element elsewhere, so
                       none of this can reach a subscriber. */}
                   <FileShareBar />
-                  {!connected && <ConnectionBanner />}
+                  {connectedEpoch === 0 && <ConnectionBanner />}
                   <MeetingLimitBanner
                     startedAt={startedAt}
                     maxDurationMin={maxDurationMin}
