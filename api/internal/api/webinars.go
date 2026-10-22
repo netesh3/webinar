@@ -83,7 +83,7 @@ func publicWebinar(wb types.Webinar) types.Webinar {
 }
 
 func (s *Server) handleGetWebinar(w http.ResponseWriter, r *http.Request) {
-	wb, err := s.store.WebinarBySlug(r.Context(), chi.URLParam(r, "slug"))
+	wb, err := s.loadSynced(r.Context(), chi.URLParam(r, "slug"))
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return

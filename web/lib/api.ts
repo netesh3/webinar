@@ -121,6 +121,9 @@ import type {
   SimuliveAutoAnswerRequest,
   QAAutoRequest,
   QAAutoResponse,
+  ReplayHideResponse,
+  ReplayPage,
+  SimuliveStartRequest,
   ReplayTimeline,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
@@ -453,12 +456,28 @@ export const api = {
     ),
 
   /** The host's preview of the replay: every item with its key and whether it is hidden. */
-  hostReplayPreview: (slug: string) =>
-    request<ReplayTimeline>(`/api/host/webinars/${seg(slug)}/replay`, fresh),
+  hostReplayPreview: (
+    slug: string,
+    q: { filter?: string; q?: string; at?: number; cursor?: string; limit?: number } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (q.filter && q.filter !== "all") params.set("filter", q.filter);
+    if (q.q?.trim()) params.set("q", q.q.trim());
+    if (q.at != null && q.at >= 0) params.set("at", String(Math.round(q.at)));
+    if (q.cursor) params.set("cursor", q.cursor);
+    if (q.limit) params.set("limit", String(q.limit));
+    const qs = params.toString();
+    return request<ReplayPage>(`/api/host/webinars/${seg(slug)}/replay${qs ? `?${qs}` : ""}`, fresh);
+  },
 
-  /** Hides one item of the replay from the audience, or shows it again. */
-  setReplayHidden: (slug: string, key: string, hidden: boolean) =>
-    put<ReplayTimeline>(`/api/host/webinars/${seg(slug)}/replay/hidden`, { key, hidden } satisfies ReplayHideRequest),
+  /** Hides items of the replay from the audience, or shows them again: one key, a page of
+   *  keys, or (all) everything in a filter and search. */
+  setReplayHidden: (slug: string, req: ReplayHideRequest) =>
+    put<ReplayHideResponse>(`/api/host/webinars/${seg(slug)}/replay/hidden`, req),
+
+  /** How a scheduled simulive starts: by itself or by the host, and when its doors open. */
+  setSimuliveStart: (slug: string, req: SimuliveStartRequest) =>
+    put<Webinar>(`/api/host/webinars/${seg(slug)}/simulive-start`, req),
 
   /** A simulive's Auto mode: the assistant answering new questions from the knowledge. */
   simuliveAuto: (slug: string) =>

@@ -61,14 +61,14 @@ func TestBuildOrdersAndLinks(t *testing.T) {
 				Answered: true, Answer: "after the end", AnsweredAt: ptr(at(500))},
 		},
 		Polls: []Poll{{ID: "p1", Question: "Useful?", Quiz: true, Options: []string{"No", "Yes"}, Correct: &correct,
-			ShareResults: true, Counts: []int{1, 3}, OpenedAt: at(60), ClosedAt: &closed}},
+			ShareResults: true, OpenedAt: at(60), ClosedAt: &closed}},
 	}
 	items := Build(src, nil, false)
 	var got []string
 	for _, it := range items {
 		got = append(got, it.Kind+"@"+itoa(it.AtMs/1000))
 	}
-	want := []string{"chat@5", "chat@30", "question@30", "question@40", "answer@40", "answer@50", "poll@60", "poll_results@70", "question@90", "answer@100"}
+	want := []string{"chat@5", "chat@30", "question@30", "question@40", "answer@40", "answer@50", "poll@60", "poll_close@70", "question@90", "answer@100"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("order\n got %v\nwant %v", got, want)
 	}
@@ -91,15 +91,25 @@ func TestBuildOrdersAndLinks(t *testing.T) {
 			if byID[it.Ref].Kind != KindQuestion {
 				t.Errorf("answer %s refs %q", it.ID, it.Ref)
 			}
-		case KindPollResults:
-			if byID[it.Ref].Kind != KindPoll || it.Poll.Total != 4 || it.Poll.Correct == nil || *it.Poll.Correct != 1 {
-				t.Errorf("results %+v %+v", it, it.Poll)
+		case KindPollClose:
+			if byID[it.Ref].Kind != KindPoll || it.Poll.Correct != nil {
+				t.Errorf("close %+v %+v", it, it.Poll)
 			}
 		case KindPoll:
-			if it.Poll.Correct != nil || it.Poll.Counts != nil {
-				t.Error("a launched quiz must not carry its answer or tallies")
+			if it.Poll.Correct != nil {
+				t.Error("a launched quiz must not carry its answer")
 			}
 		}
+	}
+	// The host's preview may see the quiz's answer; never a tally (there is none to carry).
+	for _, it := range Build(src, nil, true) {
+		if it.Kind == KindPoll && (it.Poll.Correct == nil || *it.Poll.Correct != 1) {
+			t.Errorf("preview quiz answer: %+v", it.Poll)
+		}
+	}
+	raw, _ := json.Marshal(items)
+	if strings.Contains(string(raw), "count") || strings.Contains(string(raw), "total") {
+		t.Errorf("timeline carries tallies: %s", raw)
 	}
 	if items[0].Name != "Coach Asha" || items[0].Role != types.RoleHost {
 		t.Errorf("host line = %+v", items[0])

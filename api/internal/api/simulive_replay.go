@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -65,11 +66,12 @@ func (s *Server) handleReplayTimeline(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.resolveSender(w, r, slug, r.URL.Query().Get("joinKey")); !ok {
 		return
 	}
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	wb, err := s.loadSynced(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "replay: load webinar", err)
 		return
 	}
+	s.syncReplayPolls(r.Context(), wb)
 	// The same for everyone in the session and only changed by the host's curation, so a
 	// browser may keep it a minute. Private: it is behind the session's credential.
 	w.Header().Set("Cache-Control", "private, max-age=60")
@@ -106,23 +108,45 @@ func (s *Server) replayHostWebinar(w http.ResponseWriter, r *http.Request) (type
 	return wb, true
 }
 
-// handleHostReplayPreview is GET /api/host/webinars/{slug}/replay: every item, with its key
-// and whether it is hidden, so the host can curate before (or during) the session.
+/* handleHostReplayPreview is GET /api/host/webinars/{slug}/replay: one page of every item,
+ * with its key and whether it is hidden, so the host can curate before (or during) the
+ * session. ?filter=all|chat|qa|polls|reactions, ?q= (search), ?at= (jump to an offset, ms),
+ * ?cursor= and ?limit= — see types.ReplayPage. */
 func (s *Server) handleHostReplayPreview(w http.ResponseWriter, r *http.Request) {
 	wb, ok := s.replayHostWebinar(w, r)
 	if !ok {
 		return
 	}
+	q := r.URL.Query()
+	filter := q.Get("filter")
+	if !replay.ValidFilter(filter) {
+		httpx.Error(w, http.StatusBadRequest, "bad_filter", "That isn't a filter of this replay.")
+		return
+	}
+	at := int64(-1)
+	if v := q.Get("at"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			httpx.Error(w, http.StatusBadRequest, "bad_at", "Jump to a time into the video, in milliseconds.")
+			return
+		}
+		at = n
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
 	tl, err := s.replayTimeline(r.Context(), wb, true)
 	if err != nil {
 		s.fail(w, r, "replay preview", err)
 		return
 	}
+	page := replay.Page(tl.Items, filter, q.Get("q"), at, q.Get("cursor"), limit)
+	page.Enabled, page.DurationMs = true, tl.DurationMs
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, http.StatusOK, tl)
+	httpx.JSON(w, http.StatusOK, page)
 }
 
-// handleSetReplayHidden is PUT /api/host/webinars/{slug}/replay/hidden.
+/* handleSetReplayHidden is PUT /api/host/webinars/{slug}/replay/hidden: one item (Key), a
+ * page of them (Keys), or every item in a filter and search (All). A key that names nothing
+ * in this replay is refused rather than stored. */
 func (s *Server) handleSetReplayHidden(w http.ResponseWriter, r *http.Request) {
 	wb, ok := s.replayHostWebinar(w, r)
 	if !ok {
@@ -133,21 +157,50 @@ func (s *Server) handleSetReplayHidden(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	body.Key = strings.TrimSpace(body.Key)
-	if !replay.ValidKey(body.Key) {
-		httpx.Error(w, http.StatusUnprocessableEntity, "bad_key", "That isn't an item of this replay.")
+	if !replay.ValidFilter(body.Filter) {
+		httpx.Error(w, http.StatusBadRequest, "bad_filter", "That isn't a filter of this replay.")
 		return
 	}
-	if err := s.store.SetReplayHidden(r.Context(), wb.ID, body.Key, body.Hidden); err != nil {
+	var keys []string
+	if body.All {
+		tl, err := s.replayTimeline(r.Context(), wb, true)
+		if err != nil {
+			s.fail(w, r, "replay: timeline", err)
+			return
+		}
+		keys = replay.KeysMatching(tl.Items, body.Filter, body.Q)
+	} else {
+		seen := map[string]bool{}
+		for _, k := range append([]string{body.Key}, body.Keys...) {
+			k = strings.TrimSpace(k)
+			if k == "" || seen[k] {
+				continue
+			}
+			if !replay.ValidKey(k) {
+				httpx.Error(w, http.StatusUnprocessableEntity, "bad_key", "That isn't an item of this replay.")
+				return
+			}
+			seen[k] = true
+			keys = append(keys, k)
+		}
+		if len(keys) == 0 || len(keys) > 2*replay.MaxPageSize {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_key", "That isn't an item of this replay.")
+			return
+		}
+	}
+	changed, err := s.store.SetReplayHiddenMany(r.Context(), wb.ID, keys, body.Hidden)
+	if err != nil {
 		s.fail(w, r, "replay: set hidden", err)
 		return
 	}
+	// A poll the host just hid must not open (or must close) on this instance's next read.
+	replayPollCache.Delete(wb.ID)
 	tl, err := s.replayTimeline(r.Context(), wb, true)
 	if err != nil {
 		s.fail(w, r, "replay preview", err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, tl)
+	httpx.JSON(w, http.StatusOK, types.ReplayHideResponse{Changed: changed, Counts: replay.CountItems(tl.Items)})
 }
 
 /* refuseSimuliveRecording is the no-re-recording rule: a simulive plays a recording, and is

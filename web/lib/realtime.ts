@@ -786,6 +786,9 @@ export type Realtime = {
    *  "everything after". Zero before anything has arrived. */
   chatCursor: number;
   react: (emoji: Reaction) => Promise<void>;
+  /** Floats an emoji on this screen only, sending nothing: a simulive replaying the original
+   *  audience's reactions (lib/use-simulive-replay.ts). */
+  showReaction?: (emoji: string) => void;
   /** Asks one participant to unmute themselves. Addressed to them alone. */
   askToUnmute: (identity: string) => Promise<void>;
 };
@@ -1484,6 +1487,7 @@ export function useRealtime(
     mergeQuestions,
     chatCursor,
     react,
+    showReaction: pushReaction,
     askToUnmute,
   };
 }

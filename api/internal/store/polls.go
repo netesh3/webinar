@@ -287,7 +287,7 @@ func (s *Store) OpenPollID(ctx context.Context, slug string) (string, error) {
  */
 const pollSelect = `
 	SELECT p.id::text, p.question, p.kind, p.options, p.correct_option, p.state,
-	       p.created_at, p.closed_at,
+	       p.created_at, p.closed_at, p.share_results, p.replay_key IS NOT NULL,
 	       (SELECT coalesce(jsonb_object_agg(t.choice, t.n), '{}'::jsonb)
 	          FROM (SELECT v.choice, count(*) AS n FROM poll_votes v
 	                 WHERE v.poll_id = p.id GROUP BY v.choice) t) AS tally,
@@ -305,10 +305,11 @@ func scanPoll(row scanner, full bool) (types.Poll, error) {
 		createdAt time.Time
 		closedAt  *time.Time
 		myChoice  *int
+		share     bool
 	)
 	if err := row.Scan(
 		&p.ID, &p.Question, &p.Kind, &options, &correct, &p.State,
-		&createdAt, &closedAt,
+		&createdAt, &closedAt, &share, &p.Replayed,
 		&tally, &p.TotalVotes, &myChoice,
 	); err != nil {
 		return types.Poll{}, err
@@ -346,7 +347,12 @@ func scanPoll(row scanner, full bool) (types.Poll, error) {
 	//
 	// Zeroed here rather than filtered in the UI, so there is nothing to hide on the
 	// client and nothing in the response to go looking for.
-	if full {
+	//
+	// The one exception is a simulive's replayed poll once it has closed, when the
+	// original shared its results: the replay shares them at the original's moment, and
+	// they are this audience's votes — the original's are never read (store.ReplaySource).
+	// Closed, so there is no vote left for them to sway.
+	if full || (p.Replayed && share && p.State == types.PollClosed) {
 		p.Votes = denseTally(tally, len(p.Options))
 	} else {
 		p.Votes = []int{}

@@ -288,7 +288,32 @@ type WebinarOptions struct {
 	 * the host. Off by default; only acts with the account features ai AND replay_engage,
 	 * and only for a simulive (cleared on anything else). See api/internal/api/qa_auto.go. */
 	SimuliveAutoAnswer bool `json:"simuliveAutoAnswer,omitempty"`
+	/* SimuliveStart is how a simulive starts: "auto" (or empty, the default) at starts_at by
+	 * itself, or "manual" when the host or a co-host presses Start Simulive. A manual one
+	 * never starts on its own; one nobody starts lapses at its scheduled end like any
+	 * webinar that did not go live. */
+	SimuliveStart string `json:"simuliveStart,omitempty"`
+	/* SimuliveDoorsOpenMin is how many minutes before the start a simulive's audience may
+	 * come in, to wait (no video until it starts) and chat. Nil is DefaultSimuliveDoorsOpenMin;
+	 * 0 to MaxSimuliveDoorsOpenMin. */
+	SimuliveDoorsOpenMin *int `json:"simuliveDoorsOpenMin,omitempty"`
 }
+
+// SimuliveStartRequest is PUT /api/host/webinars/{slug}/simulive-start: how a scheduled
+// simulive starts, changed from its Setup tab. DoorsOpenMin nil keeps the default.
+type SimuliveStartRequest struct {
+	SimuliveStart string `json:"simuliveStart"`
+	DoorsOpenMin  *int   `json:"doorsOpenMin,omitempty"`
+}
+
+// How a simulive starts (WebinarOptions.SimuliveStart).
+const (
+	SimuliveStartAuto   = "auto"
+	SimuliveStartManual = "manual"
+
+	DefaultSimuliveDoorsOpenMin = 10
+	MaxSimuliveDoorsOpenMin     = 60
+)
 
 // SessionControls are the things a host flips *during* the session.
 //
@@ -540,6 +565,11 @@ type Poll struct {
 	// is keyed on the participant identity we minted rather than on anything the
 	// browser is holding.
 	MyChoice int `json:"myChoice"`
+
+	// Replayed is a simulive's copy of a poll from the recording's original session, opened
+	// and closed by the engagement replay at the original's moments (polls.replay_key). Once
+	// one closes, the audience sees its tally — this audience's votes, never the original's.
+	Replayed bool `json:"replayed,omitempty"`
 }
 
 // PollInput creates a poll.
@@ -3638,6 +3668,12 @@ type JoinResponse struct {
 	/* SimuliveCaptions says the simulive's recording has captions from its original session
 	 * (GET /api/webinars/{slug}/captions.vtt), so the player offers CC. */
 	SimuliveCaptions bool `json:"simuliveCaptions,omitempty"`
+	/* The scheduled start (RFC3339) — a simulive.s waiting screen counts down to it — and whether
+	 * it waits for the host's Start Simulive (Options.SimuliveStart manual). Nothing plays
+	 * before StartedAt is set: the room waits, and starts everybody at the shared position
+	 * once the server says it is live. */
+	StartsAt       string `json:"startsAt,omitempty"`
+	SimuliveManual bool   `json:"simuliveManual,omitempty"`
 }
 
 // ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -4309,37 +4345,49 @@ type IntegrationsResponse struct {
 	Integrations []IntegrationCard `json:"integrations"`
 }
 
-/* ReplayPoll is a poll as a simulive replay shows it: launched, and then (if the original
- * shared them) its results. Counts and Total only on results; Correct only on a quiz's. */
+/* ReplayPoll is a poll or quiz on a simulive's replay timeline: the question and options
+ * only. It is not what the audience votes in — at its moment the server opens a real poll in
+ * the simulive (polls.replay_key), which the room reads through its Polls panel like any
+ * other — so the timeline never carries a tally, the original's or anyone's. Correct is the
+ * host preview's only. */
 type ReplayPoll struct {
 	Question string   `json:"question"`
 	Options  []string `json:"options"`
 	Quiz     bool     `json:"quiz,omitempty"`
-	Counts   []int    `json:"counts,omitempty"`
-	Total    int      `json:"total,omitempty"`
 	Correct  *int     `json:"correct,omitempty"`
+}
+
+// ReplayReaction is one emoji of a replayed reaction burst and how many were sent.
+type ReplayReaction struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
 }
 
 /* ReplayItem is one moment of a simulive's engagement replay.
  *
  * ID is this item's position in this timeline ("r1", "r2", …) — never a source id. Ref, on an
- * answer or a poll's results, is the ID of the question or poll it belongs to. Name is already
+ * answer or a poll's close, is the ID of the question or poll it belongs to. Name is already
  * privacy-shortened ("Priya S."); there is no identity, email or join key anywhere in it.
+ *
+ * Kinds: chat, question, answer; poll (the original opened it here — the room re-reads its
+ * polls) and poll_close (it closed here; a quiz's answer is revealed); reaction (a burst of
+ * the original audience's emoji, counts per emoji, nobody's name).
  *
  * Key and Hidden are the host preview's only (GET /api/host/webinars/{slug}/replay): the
  * source row an item came from, for PUT .../replay/hidden, and whether the host hid it. */
 type ReplayItem struct {
-	ID        string      `json:"id"`
-	Kind      string      `json:"kind"` // chat | question | answer | poll | poll_results
-	AtMs      int64       `json:"atMs"`
-	Name      string      `json:"name,omitempty"`
-	Role      Role        `json:"role,omitempty"`
-	Text      string      `json:"text,omitempty"`
-	Anonymous bool        `json:"anonymous,omitempty"`
-	Ref       string      `json:"ref,omitempty"`
-	Poll      *ReplayPoll `json:"poll,omitempty"`
-	Key       string      `json:"key,omitempty"`
-	Hidden    bool        `json:"hidden,omitempty"`
+	ID        string           `json:"id"`
+	Kind      string           `json:"kind"` // chat | question | answer | poll | poll_close | reaction
+	AtMs      int64            `json:"atMs"`
+	Name      string           `json:"name,omitempty"`
+	Role      Role             `json:"role,omitempty"`
+	Text      string           `json:"text,omitempty"`
+	Anonymous bool             `json:"anonymous,omitempty"`
+	Ref       string           `json:"ref,omitempty"`
+	Poll      *ReplayPoll      `json:"poll,omitempty"`
+	Reactions []ReplayReaction `json:"reactions,omitempty"`
+	Key       string           `json:"key,omitempty"`
+	Hidden    bool             `json:"hidden,omitempty"`
 }
 
 /* ReplayTimeline is the whole replay, sorted by AtMs. The client schedules it against the
@@ -4353,8 +4401,54 @@ type ReplayTimeline struct {
 	Items      []ReplayItem `json:"items"`
 }
 
-// ReplayHideRequest hides one item of a simulive's replay, or shows it again.
+// Replay filters (GET /api/host/webinars/{slug}/replay?filter=).
+const (
+	ReplayFilterAll       = "all"
+	ReplayFilterChat      = "chat"
+	ReplayFilterQA        = "qa"
+	ReplayFilterPolls     = "polls"
+	ReplayFilterReactions = "reactions"
+)
+
+// ReplayCounts is how many items each filter holds, and how many of all are hidden.
+type ReplayCounts struct {
+	All       int `json:"all"`
+	Chat      int `json:"chat"`
+	QA        int `json:"qa"`
+	Polls     int `json:"polls"`
+	Reactions int `json:"reactions"`
+	Hidden    int `json:"hidden"`
+}
+
+/* ReplayPage is one page of the host's preview: GET /api/host/webinars/{slug}/replay with
+ * filter (all | chat | qa | polls | reactions), q (search), at (jump: the page starting at
+ * the first item at or after this offset, ms), cursor and limit (default 50, at most 200).
+ * Total is the number of items matching the filter and search; Offset is where Items start
+ * among them. NextCursor / PrevCursor are empty at either end. */
+type ReplayPage struct {
+	Enabled    bool         `json:"enabled"`
+	DurationMs int64        `json:"durationMs"`
+	Items      []ReplayItem `json:"items"`
+	Total      int          `json:"total"`
+	Offset     int          `json:"offset"`
+	NextCursor string       `json:"nextCursor,omitempty"`
+	PrevCursor string       `json:"prevCursor,omitempty"`
+	Counts     ReplayCounts `json:"counts"`
+}
+
+/* ReplayHideRequest hides items of a simulive's replay, or shows them again: one Key, a
+ * list of Keys (a page), or — with All — every item matching Filter and Q. */
 type ReplayHideRequest struct {
-	Key    string `json:"key"`
-	Hidden bool   `json:"hidden"`
+	Key    string   `json:"key,omitempty"`
+	Keys   []string `json:"keys,omitempty"`
+	All    bool     `json:"all,omitempty"`
+	Filter string   `json:"filter,omitempty"`
+	Q      string   `json:"q,omitempty"`
+	Hidden bool     `json:"hidden"`
+}
+
+// ReplayHideResponse is what a hide or show changed, and the counts after it.
+type ReplayHideResponse struct {
+	Changed int          `json:"changed"`
+	Counts  ReplayCounts `json:"counts"`
 }

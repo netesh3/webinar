@@ -360,7 +360,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                 aria-describedby={showWait ? waitReasonId : undefined}
               >
                 {busy && <Spinner className="size-4" />}
-                {meeting ? "▶ Start meeting" : "▶ Go live"}
+                {meeting ? "▶ Start meeting" : webinar.kind === "simulive" ? "▶ Start Simulive" : "▶ Go live"}
               </Button>
             )}
             <Menu

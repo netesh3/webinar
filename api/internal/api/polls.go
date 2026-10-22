@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -41,6 +42,10 @@ import (
 // handleListPolls is the host's view: drafts, tallies and answers.
 func (s *Server) handleListPolls(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
+	// A simulive's replayed polls open and close on its clock (simulive_live.go).
+	if wb, err := s.loadSynced(r.Context(), slug); err == nil {
+		s.syncReplayPolls(r.Context(), wb)
+	}
 	polls, err := s.store.Polls(r.Context(), slug, "", true)
 	if err != nil {
 		s.fail(w, r, "list polls", err)
@@ -150,7 +155,7 @@ func (s *Server) handleAudiencePolls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	wb, err := s.loadSynced(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
@@ -159,6 +164,7 @@ func (s *Server) handleAudiencePolls(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "audience polls: load webinar", err)
 		return
 	}
+	s.syncReplayPolls(r.Context(), wb)
 
 	onStage := from.Role == types.RoleHost || from.Role == types.RolePanelist
 	// The control governs the audience. The stage can always see the questions —
@@ -210,7 +216,7 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	wb, err := s.loadSynced(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
@@ -219,6 +225,8 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "vote: load webinar", err)
 		return
 	}
+	// A replayed poll whose moment has passed closes before this vote can land in it.
+	s.syncReplayPolls(r.Context(), wb)
 	onStage := from.Role == types.RoleHost || from.Role == types.RolePanelist
 	if !wb.Controls.PollsEnabled && !onStage {
 		httpx.Error(w, http.StatusForbidden, "closed", "The host has turned off polls.")
@@ -270,20 +278,26 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request) {
 // Best-effort: the database is the source of truth, and a client that misses the
 // nudge picks the change up on its next read.
 func (s *Server) announcePolls(r *http.Request, slug string) {
+	s.announcePollsCtx(r.Context(), slug)
+}
+
+// announcePollsCtx is announcePolls for a caller with no request of its own: the replay's
+// polls opening and closing on the shared clock (simulive_live.go).
+func (s *Server) announcePollsCtx(ctx context.Context, slug string) {
 	body, err := json.Marshal(wirePacket{Kind: pollsChangedKind})
 	if err != nil {
 		s.log.Warn("announce polls: marshal", "slug", slug, "error", err)
 		return
 	}
-	// Resolves the project itself rather than taking one, because all three callers are host
-	// clicks that have no other reason to hold a client, and a poll nudge is best-effort: a
-	// client that misses it re-reads on its next poll.
-	sfu, err := s.sfuForSlug(r.Context(), slug)
+	// Resolves the project itself rather than taking one, because the callers are host
+	// clicks and the replay's clock, which have no other reason to hold a client, and a poll
+	// nudge is best-effort: a client that misses it re-reads on its next poll.
+	sfu, err := s.sfuForSlug(ctx, slug)
 	if err != nil {
 		s.log.Warn("announce polls: resolve project", "slug", slug, "error", err)
 		return
 	}
-	if err := sfu.SendData(r.Context(), lk.RoomName(slug), dataTopic, body, nil); err != nil {
+	if err := sfu.SendData(ctx, lk.RoomName(slug), dataTopic, body, nil); err != nil {
 		s.log.Warn("announce polls: send", "slug", slug, "error", err)
 	}
 }

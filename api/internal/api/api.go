@@ -737,6 +737,8 @@ func (s *Server) Routes() http.Handler {
 					// Its Auto mode: the assistant answering new questions. See qa_auto.go.
 					r.Get("/replay/auto", s.handleGetSimuliveAuto)
 					r.Put("/replay/auto", s.handlePutSimuliveAuto)
+					// How a simulive starts: by itself, or by the host (simulive_live.go).
+					r.Put("/simulive-start", s.handleSetSimuliveStart)
 
 					r.Get("/polls", s.handleListPolls)
 					r.Post("/polls", s.handleCreatePoll)

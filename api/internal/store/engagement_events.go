@@ -50,6 +50,12 @@ func (s *Store) InsertEngagementEvents(ctx context.Context, batch []capture.Even
 	}
 
 	rows := make([][]any, 0, len(batch))
+	type bucketKey struct {
+		wid   pgtype.UUID
+		at    time.Time
+		emoji string
+	}
+	buckets := map[bucketKey]int{}
 	for _, e := range batch {
 		wid, ok := ids[e.Slug]
 		if !ok {
@@ -62,12 +68,43 @@ func (s *Store) InsertEngagementEvents(ctx context.Context, batch []capture.Even
 			}
 		}
 		rows = append(rows, []any{wid, e.Identity, string(e.Kind), payload, e.At})
+		if e.Kind == capture.Reaction && e.Emoji != "" && len(e.Emoji) <= 16 {
+			buckets[bucketKey{wid, e.At.UTC().Truncate(time.Second), e.Emoji}]++
+		}
 	}
 	if len(rows) == 0 {
 		return nil
 	}
-	_, err = s.pool.CopyFrom(ctx, pgx.Identifier{"engagement_events"}, eventColumns, pgx.CopyFromRows(rows))
-	return err
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.CopyFrom(ctx, pgx.Identifier{"engagement_events"}, eventColumns, pgx.CopyFromRows(rows)); err != nil {
+		return err
+	}
+	/* The reactions again, as counts per emoji per second with no identity
+	 * (reaction_buckets, migration 0138): what a simulive replays, kept after the raw
+	 * events above are pruned. Same transaction, so the two never disagree. */
+	if len(buckets) > 0 {
+		var (
+			wids   []pgtype.UUID
+			ats    []time.Time
+			emojis []string
+			ns     []int32
+		)
+		for k, n := range buckets {
+			wids, ats, emojis, ns = append(wids, k.wid), append(ats, k.at), append(emojis, k.emoji), append(ns, int32(n)) // #nosec G115 -- one batch's count
+		}
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO reaction_buckets (webinar_id, at, emoji, n)
+			SELECT * FROM unnest($1::uuid[], $2::timestamptz[], $3::text[], $4::int[])
+			ON CONFLICT (webinar_id, at, emoji) DO UPDATE SET n = reaction_buckets.n + EXCLUDED.n`,
+			wids, ats, emojis, ns); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 var _ capture.Sink = (*Store)(nil)

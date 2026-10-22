@@ -27,6 +27,8 @@ import { WhereSection } from "./where";
 import { RoomSection } from "./room";
 import { RecurrenceFields } from "./recurrence-fields";
 import { SimuliveSourceSection } from "./simulive-source";
+import { SimuliveStartSection } from "./simulive-start";
+import { scheduleLeadMs } from "@/lib/simulive-create";
 import { SurveySection } from "./survey-section";
 import { formatDuration } from "./summary";
 
@@ -137,6 +139,7 @@ export function WebinarTab({
             slug={webinar?.id}
           />
         )}
+        {form.kind === "simulive" && <SimuliveStartSection form={form} set={set} editing={editing} />}
         <WhenSection
           form={form}
           set={set}
@@ -193,7 +196,7 @@ function WhenSection({
       ? instantToZoned(new Date(now).toISOString(), form.timeZone).date
       : undefined;
   const notBeforeMs =
-    !editing && now != null ? now + MIN_SCHEDULE_LEAD_MS : undefined;
+    !editing && now != null ? now + scheduleLeadMs(form.kind, MIN_SCHEDULE_LEAD_MS) : undefined;
 
   return (
     <FormSection
@@ -203,7 +206,9 @@ function WhenSection({
           ? "The meeting has to start at least 15 minutes from now. To meet now, use Start a meeting."
           : form.kind === "recurring" || form.seriesId
             ? "The first session uses this start time. It has to be at least 15 minutes from now."
-            : "The webinar has to start at least 15 minutes from now."
+            : form.kind === "simulive"
+              ? "The recording plays to everyone from this time. It can be as soon as a minute from now."
+              : "The webinar has to start at least 15 minutes from now."
       }
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">

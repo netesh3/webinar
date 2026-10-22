@@ -39,6 +39,17 @@ const minScheduleLead = 15 * time.Minute
 
 const scheduleLeadError = "Schedule it at least 15 minutes from now."
 
+// minSimuliveLead is minScheduleLead for a simulive, which needs nobody to be ready.
+const minSimuliveLead = time.Minute
+
+// leadError is the refusal for a start too soon (see minScheduleLead, minSimuliveLead).
+func leadError(kind types.WebinarKind) string {
+	if kind == types.KindSimulive {
+		return "Pick a start at least a minute from now."
+	}
+	return scheduleLeadError
+}
+
 /* hostStartLead is how early Go live may open a scheduled webinar.
  *
  * Fifteen minutes, and only for a start the host picked. An instant webinar is
@@ -162,7 +173,7 @@ func (s *Server) handleHostTracks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHostWebinar(w http.ResponseWriter, r *http.Request) {
-	wb, err := s.store.WebinarBySlug(r.Context(), slugFromContext(r.Context()))
+	wb, err := s.loadSynced(r.Context(), slugFromContext(r.Context()))
 	if err != nil {
 		s.fail(w, r, "host webinar", err)
 		return
@@ -965,6 +976,18 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	if in.Kind == types.KindSimulive && in.Options.AutoRecord {
 		fields["options.autoRecord"] = "A simulive session plays a recording, so it can't be recorded again."
 	}
+	// How a simulive starts (simulive_live.go). Meaningless on anything else, so dropped.
+	if in.Kind != types.KindSimulive {
+		in.Options.SimuliveStart, in.Options.SimuliveDoorsOpenMin = "", nil
+	}
+	switch in.Options.SimuliveStart {
+	case "", types.SimuliveStartAuto, types.SimuliveStartManual:
+	default:
+		fields["options.simuliveStart"] = "Start it automatically, or start it yourself."
+	}
+	if d := in.Options.SimuliveDoorsOpenMin; d != nil && (*d < 0 || *d > types.MaxSimuliveDoorsOpenMin) {
+		fields["options.simuliveDoorsOpenMin"] = fmt.Sprintf("Doors can open up to %d minutes before the start.", types.MaxSimuliveDoorsOpenMin)
+	}
 
 	switch in.Status {
 	case types.StatusScheduled, types.StatusDraft:
@@ -1002,12 +1025,19 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 			EndCount: in.Recurrence.EndCount,
 		})
 	}
-	if fields["startsAt"] == "" && !in.Instant && leadAt.Before(time.Now().Add(minScheduleLead)) {
+	/* A simulive may be set to start in a few minutes ("Start in 5 minutes" on the form):
+	 * nobody has to be ready to present, the recording is. A minute's lead still refuses a
+	 * start in the past. */
+	lead := minScheduleLead
+	if in.Kind == types.KindSimulive {
+		lead = minSimuliveLead
+	}
+	if fields["startsAt"] == "" && !in.Instant && leadAt.Before(time.Now().Add(lead)) {
 		switch {
 		case isCreate && in.Status == types.StatusScheduled:
-			fields["startsAt"] = scheduleLeadError
+			fields["startsAt"] = leadError(in.Kind)
 		case !isCreate && startChanged(prevStartsAt, startsAt):
-			fields["startsAt"] = scheduleLeadError
+			fields["startsAt"] = leadError(in.Kind)
 		}
 	}
 
@@ -1371,6 +1401,14 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	if err != nil {
 		return types.Webinar{}, err
 	}
+	return s.afterSessionEnded(ctx, slug, wb, serverCaptions), nil
+}
+
+/* afterSessionEnded is everything ending a session does once its row says ended: the room,
+ * recordings, polls, mail, follow-ups, the report and the recap. Shared by every way a
+ * session ends — the host's End, the sweepers, and a simulive ending itself
+ * (simulive_live.go), which claims the transition with a guarded update of its own. */
+func (s *Server) afterSessionEnded(ctx context.Context, slug string, wb types.Webinar, serverCaptions bool) types.Webinar {
 
 	/* Tell every browser in the room that the session is over before anything below takes
 	 * the room away. Without it the first sign an attendee (or the host) has of the end is
@@ -1499,7 +1537,7 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 	s.harvestOnEnd(ctx, wb)
 
 	s.log.Info("webinar ended", "slug", slug)
-	return wb, nil
+	return wb
 }
 
 // handleEndWebinar ends the session for everyone.

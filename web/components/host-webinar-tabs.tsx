@@ -11,6 +11,7 @@ import { RecordingsTab } from "./recordings-tab";
 import { SimuliveReplayCard } from "./simulive-replay-card";
 import { SimuliveAutoCard } from "./simulive-auto-card";
 import { SimuliveAutopilotCard } from "./simulive-discover";
+import { SimuliveStartCard } from "./schedule/simulive-start";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
@@ -204,6 +205,7 @@ export function HostWebinarTabs({
       )}
       {tab === "Setup" && !meeting && (
         <div className="grid gap-4">
+          {w.kind === "simulive" && <SimuliveStartCard webinar={w} onChanged={() => void onChanged()} />}
           {w.kind === "simulive" && <SimuliveReplayCard webinar={w} />}
           {w.kind === "simulive" && <SimuliveAutoCard webinar={w} />}
           <Card className="p-5">

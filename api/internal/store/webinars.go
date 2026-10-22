@@ -2006,52 +2006,6 @@ func (s *Store) LiveWebinarsPastStart(ctx context.Context) ([]string, error) {
 	return slugs, rows.Err()
 }
 
-func (s *Store) DueSimuliveSlugs(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT slug FROM webinars
-		 WHERE kind = 'simulive' AND status = 'scheduled'
-		   AND starts_at <= now()
-		   AND starts_at + make_interval(mins => duration_min) > now()
-		   AND simulive_recording_id IS NOT NULL`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var slugs []string
-	for rows.Next() {
-		var slug string
-		if err := rows.Scan(&slug); err != nil {
-			return nil, err
-		}
-		slugs = append(slugs, slug)
-	}
-	return slugs, rows.Err()
-}
-
-func (s *Store) ExpiredSimuliveSlugs(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT w.slug
-		  FROM webinars w
-		  JOIN recordings r ON r.id = w.simulive_recording_id
-		 WHERE w.kind = 'simulive' AND w.status = 'live'
-		   AND COALESCE(w.started_at, w.starts_at)
-		       + make_interval(secs => GREATEST(w.duration_min * 60, (r.duration_ms / 1000)::int))
-		       <= now()`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var slugs []string
-	for rows.Next() {
-		var slug string
-		if err := rows.Scan(&slug); err != nil {
-			return nil, err
-		}
-		slugs = append(slugs, slug)
-	}
-	return slugs, rows.Err()
-}
-
 // MarkWebinarEmptiness records what the SFU just reported and returns how long
 // the room has been empty. An occupied room clears the clock and reports zero,
 // so a brief gap between two participants does not accumulate towards a close.
