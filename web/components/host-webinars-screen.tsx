@@ -40,6 +40,7 @@ import {
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
+import { parseListUrl } from "@/lib/host-list-url";
 
 /* An instant webinar is the same request a normal Create submits, just with
  * the form skipped: a topic that says what it is, starting now, and every
@@ -175,7 +176,13 @@ export function HostWebinarsScreen() {
   const origin = useShareOrigin();
   const router = useRouter();
   const search = useSearchParams();
-  const listTab = listTabFromQuery(search.get("tab") ?? "");
+  /* Read once, like the filters below: a tab click writes ?tab= now, and is the
+   * list's own request rather than a reason to prefetch everything again. */
+  const [listTab] = useState(() => listTabFromQuery(search.get("tab") ?? ""));
+  /* The list's search and dates live in the URL too, so the prefetch asks for the
+   * page the list will paint on arrival. Read once: a search typed afterwards is
+   * the list's own request, not a reason to prefetch everything again. */
+  const [arrival] = useState(() => parseListUrl(search));
   const welcome = useHostWelcome();
   const bypass = isDevAuthBypassActive();
   const [onStage, setOnStage] = useState<Webinar[]>([]);
@@ -215,9 +222,16 @@ export function HostWebinarsScreen() {
   useEffect(() => {
     if (bypass) return;
     let live = true;
-    const key = hostListPageKey(hostListFilterKey(listTab, "", "", "", "webinar"), 0);
+    const key = hostListPageKey(hostListFilterKey(listTab, arrival.q, arrival.from, arrival.to, "webinar"), 0);
     api
-      .hostWebinars({ tab: listTab, kind: "webinar", limit: HOST_WEBINAR_PAGE_SIZE })
+      .hostWebinars({
+        tab: listTab,
+        kind: "webinar",
+        limit: HOST_WEBINAR_PAGE_SIZE,
+        q: arrival.q || undefined,
+        from: arrival.from || undefined,
+        to: arrival.to || undefined,
+      })
       .then(() => {
         if (statusRef.current === "anonymous") dropCache(key);
       })
@@ -255,18 +269,18 @@ export function HostWebinarsScreen() {
     return () => {
       live = false;
     };
-  }, [bypass, listTab]);
+  }, [bypass, listTab, arrival]);
 
   useEffect(() => {
     if (status !== "anonymous") return;
-    dropCache(hostListPageKey(hostListFilterKey(listTab, "", "", "", "webinar"), 0));
+    dropCache(hostListPageKey(hostListFilterKey(listTab, arrival.q, arrival.from, arrival.to, "webinar"), 0));
     dropCache(followUpListCacheKey(HOST_LIST_PREFIX));
     dropCache("/api/me/registrations");
     /* After the effect, so this is not a setState in the effect body. The
      * signed-out screen does not render these rows either way. */
     const clear = () => setOnStage([]);
     queueMicrotask(clear);
-  }, [status, listTab]);
+  }, [status, listTab, arrival]);
 
   /* An account that cannot host, and is not on anyone's stage, has nothing
    * on this page. WatchList is their home. A panelist stays: the stage list

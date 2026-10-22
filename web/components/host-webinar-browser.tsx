@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { EndedNudge } from "./ended-nudge";
 import { useSession } from "./providers";
 import { HostWebinarRows } from "./host-webinar-list";
-import { MyWebinarsList } from "./my-webinars-list";
+import { AttendingList } from "./attending-list";
 import { useRegistrations } from "./registrations";
 import { Alert, Spinner, Tabs } from "./controls";
 import { DateRangeField } from "./date-picker";
@@ -39,6 +39,13 @@ import {
 } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
 import { presentForHostList } from "@/lib/webinar-status";
+import {
+  filtersActive as hasFilters,
+  listUrl,
+  orderedRange,
+  parseListUrl,
+  type ListUrlState,
+} from "@/lib/host-list-url";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 
 /* The host's own list: Upcoming / Completed / Drafts, searchable, date-filtered, and
@@ -57,13 +64,15 @@ import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
  * entry in the account menu. Hosting and attending are two things one person
  * does, not two places they go — so it lives here, where every other list of this
  * person's sessions already is, and only shows up once there is something in it.
+ * It has its own paged endpoint (GET /api/me/attending, AttendingList) under the
+ * same search and dates; tab, search and dates are all in the URL.
  */
 
 const TABS: readonly HostWebinarTab[] = ["upcoming", "past", "drafts"];
 
 /* Not a HostWebinarTab, and named apart from them so it cannot be passed to the
- * paged endpoint by accident: MyWebinarsList resolves join keys and
- * /api/me/registrations itself. Everything that fetches below narrows this out
+ * paged endpoint by accident: AttendingList reads
+ * /api/me/attending itself. Everything that fetches below narrows this out
  * first. */
 const ATTENDING = "attending";
 /** The tab's old ?tab= name, from when the account menu linked to it. Still read, so a
@@ -81,7 +90,7 @@ type ViewTab = HostWebinarTab | typeof ATTENDING;
 const BASE_TABS: readonly ViewTab[] = [...TABS];
 const LINKABLE: readonly ViewTab[] = [...TABS, ATTENDING];
 
-/** The tabs that do not read the paged webinar endpoint, and so hide its filters. */
+/** The tabs that do not read the paged host webinar endpoint. */
 function ownList(t: ViewTab): t is typeof ATTENDING {
   return t === ATTENDING;
 }
@@ -138,15 +147,15 @@ type PageQuery = {
  * mistake — native date inputs are happy to be filled in either order — and
  * returning nothing would be the widget arguing with them. */
 function pageQuery(f: Filters, kind: HostListKind, cursor?: string): PageQuery {
-  const swap = f.from !== "" && f.to !== "" && f.from > f.to;
+  const range = orderedRange(f.from, f.to);
   return {
     tab: f.tab,
     kind,
     limit: PAGE_SIZE,
     cursor,
     q: f.q.trim() || undefined,
-    from: (swap ? f.to : f.from) || undefined,
-    to: (swap ? f.from : f.to) || undefined,
+    from: range.from || undefined,
+    to: range.to || undefined,
   };
 }
 
@@ -210,10 +219,42 @@ export function HostWebinarBrowser({
   // Adjusted while rendering rather than in an effect: a new link is a new tab now.
   const linkKey = search.toString();
   const [seenLink, setSeenLink] = useState(linkKey);
+  /* The search and dates are in the address too (see lib/host-list-url.ts), so a
+   * refresh or the back button from a webinar opens the list narrowed the same way. */
+  const linked = parseListUrl(search);
+  // Two search values: what is in the box, and what has been asked for. The
+  // gap between them is the debounce.
+  const [typed, setTyped] = useState(linked.q);
+  const [q, setQ] = useState(linked.q);
+  const [from, setFrom] = useState(linked.from);
+  const [to, setTo] = useState(linked.to);
   if (linkKey !== seenLink) {
     setSeenLink(linkKey);
     if (!messagesLink && !peopleLink && reachable(askedTab)) setTabState(askedTab);
+    /* Our own replaceState lands here too, carrying exactly what is already in
+     * state, so this only changes anything for a link or a history step. The box
+     * is only overwritten when the committed search moved: text still inside the
+     * debounce is the host mid-word, not a stale value. */
+    if (linked.q.trim() !== q.trim()) {
+      setQ(linked.q);
+      setTyped(linked.q);
+    }
+    if (linked.from !== from) setFrom(linked.from);
+    if (linked.to !== to) setTo(linked.to);
   }
+
+  /* Mirrored with history.replaceState, not router.replace: a router navigation
+   * is a server round trip per keystroke, and Next syncs replaceState into
+   * useSearchParams without one (schedule-form.tsx's ?step= does the same).
+   * Replace rather than push, so Back leaves the page instead of undoing a filter. */
+  const writeUrl = useCallback(
+    (next: ListUrlState) => {
+      const href = listUrl(basePath, next);
+      if (`${window.location.pathname}${window.location.search}` === href) return;
+      window.history.replaceState(window.history.state, "", href);
+    },
+    [basePath],
+  );
   useEffect(() => {
     if (!messagesLink) return;
     const params = new URLSearchParams();
@@ -230,20 +271,15 @@ export function HostWebinarBrowser({
     const q = params.toString();
     router.replace(q ? `/host/audience?${q}` : "/host/audience");
   }, [peopleLink, linkedWebinar, linkedFilter, router]);
-  /* Switching tabs by hand drops whatever a link had narrowed to. */
+  /* Switching tabs by hand keeps the search and dates — they narrow every tab —
+   * and drops anything else an old link carried (?contact=, ?webinar=). */
   const setTab = useCallback(
     (next: ViewTab) => {
       setTabState(next);
-      if (search.toString() !== "") router.replace(basePath);
+      writeUrl({ tab: next, q, from, to });
     },
-    [router, search, basePath],
+    [writeUrl, q, from, to],
   );
-  // Two search values: what is in the box, and what has been asked for. The
-  // gap between them is the debounce.
-  const [typed, setTyped] = useState("");
-  const [q, setQ] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
 
   const [items, setItems] = useState<Webinar[] | null>(null);
   const [counts, setCounts] = useState<HostWebinarCounts>(NO_COUNTS);
@@ -295,7 +331,7 @@ export function HostWebinarBrowser({
   const viewTabs: readonly ViewTab[] =
     !meetings && attendingCount > 0 ? [...listTabs, ATTENDING] : listTabs;
 
-  const filtersActive = q !== "" || from !== "" || to !== "";
+  const filtersActive = hasFilters({ q, from, to });
   const nothingAtAll =
     !filtersActive &&
     counts.upcoming === 0 &&
@@ -306,9 +342,12 @@ export function HostWebinarBrowser({
   // final, so those go straight through.
   useEffect(() => {
     if (typed === q) return;
-    const t = setTimeout(() => setQ(typed), SEARCH_DEBOUNCE_MS);
+    const t = setTimeout(() => {
+      setQ(typed);
+      writeUrl({ tab, q: typed, from, to });
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [typed, q]);
+  }, [typed, q, tab, from, to, writeUrl]);
 
   const fetchPage = useCallback(
     (f: Filters, next?: string): Promise<HostWebinarPage> => {
@@ -387,7 +426,9 @@ export function HostWebinarBrowser({
   /** A search or a date starts again at page 1. A tab click restores that tab's page. */
   function refilter(apply: () => void) {
     apply();
-    setPending(true);
+    /* Attending reads its own endpoint and dims its own rows. Raising this flag
+     * there would wait on a request this component never makes. */
+    if (!ownList(tab)) setPending(true);
   }
 
   function clearFilters() {
@@ -397,7 +438,27 @@ export function HostWebinarBrowser({
       setFrom("");
       setTo("");
     });
+    writeUrl({ tab, q: "", from: "", to: "" });
   }
+
+  function setRange(nextFrom: string, nextTo: string) {
+    refilter(() => {
+      setFrom(nextFrom);
+      setTo(nextTo);
+    });
+    writeUrl({ tab, q, from: nextFrom, to: nextTo });
+  }
+
+  /* The Attending tab's own total under the current filters, once it has read
+   * one, so its badge narrows with the search like the host tabs' do. */
+  const [attendingSeen, setAttendingSeen] = useState<{ key: string; total: number } | null>(null);
+  const attendingKey = `${q.trim()}\0${orderedRange(from, to).from}\0${orderedRange(from, to).to}`;
+  const attendingBadge =
+    attendingSeen && attendingSeen.key === attendingKey ? attendingSeen.total : attendingCount;
+  const onAttendingTotal = useCallback(
+    (key: string, total: number) => setAttendingSeen({ key, total }),
+    [],
+  );
 
   return (
     <>
@@ -417,69 +478,63 @@ export function HostWebinarBrowser({
               bare
               tabs={viewTabs.includes(tab) ? viewTabs : [...viewTabs, tab]}
               value={tab}
-              /* Attending has nothing to re-filter and fetches itself, so it
-                 skips refilter: that would raise the pending flag for a request
-                 this tab never makes, and leave the rows behind it dimmed. */
-              onChange={(next) =>
-                ownList(next) ? setTab(next) : refilter(() => setTab(next))
-              }
+              /* Attending fetches itself, so it skips refilter: that would raise
+                 the pending flag for a request this tab never makes. */
+              onChange={(next) => {
+                setTab(next);
+                if (!ownList(next)) setPending(true);
+              }}
               labels={TAB_LABELS}
               icons={TAB_ICONS}
               marks={attendingHint ? { [ATTENDING]: true } : undefined}
               counts={{
                 ...counts,
-                [ATTENDING]: attendingCount,
+                [ATTENDING]: attendingBadge,
               }}
             />
           </div>
 
-          {/* Hidden on Attending rather than disabled. Both controls are
-              arguments to the host's paged endpoint; leaving them up over a list
-              they cannot narrow is a control that lies about what it does. */}
-          {!ownList(tab) && (
-            <div className="flex min-w-0 items-center gap-2 pb-2.5 sm:max-w-[min(28rem,62%)] sm:shrink sm:pb-2">
-              <label className="relative min-w-0 grow shrink sm:max-w-56 sm:grow-0 sm:basis-56">
-                <span className="sr-only">Search {noun} by name</span>
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-                <input
-                  type="search"
-                  className="field h-9 w-full min-w-0 pl-8 text-[13px]"
-                  placeholder="Search by name…"
-                  value={typed}
-                  onChange={(e) => refilter(() => setTyped(e.target.value))}
-                />
-                {pending && typed !== "" && (
-                  <Spinner className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
-                )}
-              </label>
-
-              <DateRangeField
-                from={from}
-                to={to}
-                size="sm"
-                emptyLabel="Filter"
-                className="shrink-0 [&_button]:max-w-44"
-                ariaLabel={`Filter ${noun} by date`}
-                onChange={(nextFrom, nextTo) =>
-                  refilter(() => {
-                    setFrom(nextFrom);
-                    setTo(nextTo);
-                  })
-                }
+          {/* One toolbar for every tab: the same search and dates narrow the
+              host's own lists and Attending alike, each on its own endpoint. */}
+          <div className="flex min-w-0 items-center gap-2 pb-2.5 sm:max-w-[min(28rem,62%)] sm:shrink sm:pb-2">
+            <label className="relative min-w-0 grow shrink sm:max-w-56 sm:grow-0 sm:basis-56">
+              <span className="sr-only">
+                {ownList(tab) ? "Search by title or host" : `Search ${noun} by name`}
+              </span>
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
+              <input
+                type="search"
+                className="field h-9 w-full min-w-0 pl-8 text-[13px]"
+                placeholder={ownList(tab) ? "Search title or host…" : "Search by name…"}
+                value={typed}
+                onChange={(e) => refilter(() => setTyped(e.target.value))}
               />
-
-              {filtersActive && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
-                >
-                  <CloseIcon className="size-3.5" />
-                  Clear
-                </button>
+              {pending && !ownList(tab) && typed !== "" && (
+                <Spinner className="absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-ink-3" />
               )}
-            </div>
-          )}
+            </label>
+
+            <DateRangeField
+              from={from}
+              to={to}
+              size="sm"
+              emptyLabel="Filter"
+              className="shrink-0 [&_button]:max-w-44"
+              ariaLabel={`Filter ${noun} by date`}
+              onChange={setRange}
+            />
+
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-[12.5px] text-ink-2 hover:bg-surface-2 hover:text-ink"
+              >
+                <CloseIcon className="size-3.5" />
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -495,10 +550,16 @@ export function HostWebinarBrowser({
           <Spinner />
         </div>
       ) : tab === ATTENDING ? (
-        /* Its own loading, empty and error states, unchanged from the page this
-           used to be: the rows carry a join key and a calendar link, which is
-           what an attendee came for and is nothing like a host row. */
-        <MyWebinarsList othersOnly />
+        /* Its own loading, empty, error and paging: the rows carry a join key
+           and a calendar link, which is what an attendee came for and is
+           nothing like a host row. */
+        <AttendingList
+          q={q}
+          from={from}
+          to={to}
+          onClear={clearFilters}
+          onTotal={onAttendingTotal}
+        />
       ) : items === null ? (
         <div className="grid gap-3">
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />

@@ -324,6 +324,22 @@ func (t HostWebinarTab) statusWhere() string {
 	}
 }
 
+/* order is the column and direction one tab sorts on. Upcoming runs ascending
+ * by start — the next thing to happen is at the top. Completed runs descending
+ * by start: the session that just ended, not the first one ever run. Drafts run
+ * by last edit, newest first: the draft a host was just working on is the one
+ * they came back for, and a draft's start date is often a placeholder. */
+func (t HostWebinarTab) order() (col, dir string) {
+	switch t {
+	case HostTabPast:
+		return "starts_at", "DESC"
+	case HostTabDrafts:
+		return "updated_at", "DESC"
+	default:
+		return "starts_at", "ASC"
+	}
+}
+
 // Page size for a host's own list: enough to fill a screen, few enough that a
 // host with hundreds of sessions is not made to download all of them to read
 // the next one up. Max exists so a caller cannot ask for the whole table back
@@ -380,10 +396,9 @@ const (
  * stored microsecond value and hand back the anchor row a second time; and a
  * client that cannot see the ordering key cannot come to depend on it.
  *
- * Ordering flips per tab. Upcoming and Drafts run ascending — the next thing to
- * happen belongs at the top. Past runs descending, because a host reviewing
- * what happened means the session that just ended, not the first one they ever
- * ran, the same reasoning AdminWebinars sorts on.
+ * Ordering is per tab; see HostWebinarTab.order. Drafts key on updated_at
+ * rather than starts_at, and the cursor resolves that column from the anchor
+ * row the same way.
  */
 func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilter) (types.HostWebinarPage, error) {
 	limit := f.Limit
@@ -426,6 +441,7 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 	where := " WHERE w.host_id = $1" + narrow +
 		" AND " + f.Tab.statusWhere()
 
+	col, dir := f.Tab.order()
 	if f.Cursor != "" {
 		slug, err := decodeHostCursor(f.Cursor)
 		if err != nil {
@@ -436,22 +452,18 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 		// pointed at a row the caller is not allowed to read.
 		p := arg(slug)
 		cmp := ">"
-		if f.Tab == HostTabPast {
+		if dir == "DESC" {
 			cmp = "<"
 		}
-		where += " AND (w.starts_at, w.slug) " + cmp +
-			" ((SELECT starts_at FROM webinars WHERE slug = " + p +
+		where += " AND (w." + col + ", w.slug) " + cmp +
+			" ((SELECT " + col + " FROM webinars WHERE slug = " + p +
 			" AND host_id = $1), " + p + "::text)"
 	}
 
-	dir := "ASC"
-	if f.Tab == HostTabPast {
-		dir = "DESC"
-	}
 	// One row more than asked for: whether a next page exists is a fact about
 	// the data, and reading it off an extra row costs nothing next to a second
 	// COUNT query per page.
-	where += " ORDER BY w.starts_at " + dir + ", w.slug " + dir +
+	where += " ORDER BY w." + col + " " + dir + ", w.slug " + dir +
 		" LIMIT " + arg(limit+1)
 
 	/* The page and the tab counts do not depend on each other. Panelists, custom

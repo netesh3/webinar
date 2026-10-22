@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
@@ -98,31 +99,9 @@ func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if v := q.Get("from"); v != "" {
-		t, err := time.Parse("2006-01-02", v)
-		if err != nil {
-			httpx.Error(w, http.StatusUnprocessableEntity, "bad_from", "from must be YYYY-MM-DD.")
-			return
-		}
-		filter.From = t
-	}
-	if v := q.Get("to"); v != "" {
-		t, err := time.Parse("2006-01-02", v)
-		if err != nil {
-			httpx.Error(w, http.StatusUnprocessableEntity, "bad_to", "to must be YYYY-MM-DD.")
-			return
-		}
-		// End of that day, inclusive — a bare date otherwise means midnight,
-		// which would exclude every session on the day the host picked.
-		filter.To = t.Add(24*time.Hour - time.Nanosecond)
-	}
-	if v := q.Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 {
-			httpx.Error(w, http.StatusUnprocessableEntity, "bad_limit", "limit must be a positive whole number.")
-			return
-		}
-		filter.Limit = n
+	var ok bool
+	if filter.From, filter.To, filter.Limit, ok = listRangeParams(w, q); !ok {
+		return
 	}
 
 	page, err := s.store.ByHostPage(r.Context(), user.ID, filter)
@@ -137,6 +116,69 @@ func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, r, "host webinars", err)
 		return
+	}
+	httpx.JSON(w, http.StatusOK, page)
+}
+
+/* listRangeParams reads from, to and limit, shared by the host list and the
+ * Attending list. from/to are plain dates (2006-01-02); to is read as the end of
+ * that day, so the day picked is included. On a bad value it writes the 422 and
+ * returns ok=false. */
+func listRangeParams(w http.ResponseWriter, q url.Values) (from, to time.Time, limit int, ok bool) {
+	if v := q.Get("from"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_from", "from must be YYYY-MM-DD.")
+			return
+		}
+		from = t
+	}
+	if v := q.Get("to"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_to", "to must be YYYY-MM-DD.")
+			return
+		}
+		// End of that day, inclusive — a bare date otherwise means midnight,
+		// which would exclude every session on the day picked.
+		to = t.Add(24*time.Hour - time.Nanosecond)
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			httpx.Error(w, http.StatusUnprocessableEntity, "bad_limit", "limit must be a positive whole number.")
+			return
+		}
+		limit = n
+	}
+	return from, to, limit, true
+}
+
+/* handleAttending is GET /api/me/attending — one page of the sessions other
+ * people host that this account registered for: the host portal's Attending
+ * tab. q matches the topic or the host's name; from/to/limit/cursor as on
+ * /api/host/webinars. Live first, then newest start first. */
+func (s *Server) handleAttending(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	q := r.URL.Query()
+	filter := store.AttendingFilter{Search: q.Get("q"), Cursor: q.Get("cursor")}
+	var ok bool
+	if filter.From, filter.To, filter.Limit, ok = listRangeParams(w, q); !ok {
+		return
+	}
+	page, err := s.store.AttendingPage(r.Context(), user.ID, filter)
+	if errors.Is(err, store.ErrInvalid) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_cursor",
+			"That page marker is no longer valid — reload the list.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "attending", err)
+		return
+	}
+	// An attendee's view of somebody else's session: redacted like the public reads.
+	for i := range page.Items {
+		page.Items[i].Webinar = publicWebinar(page.Items[i].Webinar)
 	}
 	httpx.JSON(w, http.StatusOK, page)
 }
