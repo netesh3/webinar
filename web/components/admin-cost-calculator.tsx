@@ -34,7 +34,8 @@ const STORAGE_KEY = "admin-cost-calculator-v2";
 const GROUP_ORDER: CostGroup[] = ["delivery", "meetings", "recording", "ai", "messaging", "fixed", "info"];
 const PROVIDER_NAMES: Record<Provider, string> = { gcp: "GCP", hetzner: "Hetzner", do: "DigitalOcean" };
 
-function loadInputs(): CostInputs {
+// Also read by the Cost by host tab (admin-host-costs.tsx), which prices usage at these rates.
+export function loadInputs(): CostInputs {
   if (typeof window === "undefined") return DEFAULT_INPUTS;
   try {
     return withDefaults(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"));

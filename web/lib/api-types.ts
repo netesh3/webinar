@@ -690,6 +690,211 @@ export interface VerifyBillingPaymentResponse {
 }
 
 //////////
+// source: costs.go
+
+/**
+ * Cost providers: where a session's video server ran. "none" is a session with no video
+ * server of ours (a simulive plays the recording; a Zoom venue runs on Zoom).
+ */
+export const CostProviderGCP = "gcp";
+/**
+ * Cost providers: where a session's video server ran. "none" is a session with no video
+ * server of ours (a simulive plays the recording; a Zoom venue runs on Zoom).
+ */
+export const CostProviderHetzner = "hetzner";
+/**
+ * Cost providers: where a session's video server ran. "none" is a session with no video
+ * server of ours (a simulive plays the recording; a Zoom venue runs on Zoom).
+ */
+export const CostProviderDO = "do";
+/**
+ * Cost providers: where a session's video server ran. "none" is a session with no video
+ * server of ours (a simulive plays the recording; a Zoom venue runs on Zoom).
+ */
+export const CostProviderNone = "none";
+/**
+ * AdminCostUsage is one session's, one host's or one provider's measured usage.
+ */
+export interface AdminCostUsage {
+  sessions: number /* int */;
+  webinars: number /* int */;
+  meetings: number /* int */;
+  simulives: number /* int */;
+  /**
+   * Attendees is distinct audience identities per session, summed over sessions.
+   */
+  attendees: number /* int */;
+  /**
+   * SessionHours is every session's wall time (started to ended), on a video server or not:
+   * what the platform share is split by.
+   */
+  sessionHours: number /* float64 */;
+  /**
+   * LiveHours is the wall time of sessions on our video server (webinars and meetings).
+   */
+  liveHours: number /* float64 */;
+  /**
+   *  BoxShareHours is LiveHours split by concurrency on the same video server: an hour two
+   * 	 * sessions share counts half an hour to each. Summed over a server, it is the hours the
+   * 	 * server was busy.
+   */
+  boxShareHours: number /* float64 */;
+  /**
+   * EdgeLiveHours is the wall time of Edge-delivery webinars (each needs a mix rendered).
+   */
+  edgeLiveHours: number /* float64 */;
+  /**
+   *  EdgeExtraHours is the render time beyond the first Edge webinar live at once on the same
+   * 	 * server, shared among the Edge webinars live then: where the box renders one mix itself
+   * 	 * and every concurrent one needs a worker.
+   */
+  edgeExtraHours: number /* float64 */;
+  /**
+   * StagePairHours is wall hours × n(n-1) for n distinct people on the stage: stage
+   * traffic grows with the pairs (lib/admin-costs.ts stageMbps).
+   */
+  stagePairHours: number /* float64 */;
+  /**
+   * Viewer time, from attendance visits.
+   */
+  edgeViewerHours: number /* float64 */;
+  webrtcViewerHours: number /* float64 */;
+  meetingParticipantHours: number /* float64 */;
+  simuliveViewerHours: number /* float64 */;
+  /**
+   * ZoomAttendeeHours is attendance on a Zoom venue: Zoom's bill, not ours.
+   */
+  zoomAttendeeHours: number /* float64 */;
+  /**
+   * Recordings of these sessions: compositor time (a LiveKit egress), recording the Edge mix
+   * (no extra encode) and browser uploads; RecordedGB is what was uploaded to storage.
+   */
+  compositeRecHours: number /* float64 */;
+  mixRecHours: number /* float64 */;
+  browserRecHours: number /* float64 */;
+  recordedGb: number /* float64 */;
+  /**
+   * Captions: live server captions, and the after-session transcript run.
+   */
+  captionLiveHours: number /* float64 */;
+  captionFinalHours: number /* float64 */;
+}
+/**
+ * AdminCostAI is one AI feature's calls, exactly as ai_usage recorded them.
+ */
+export interface AdminCostAI {
+  feature: string;
+  calls: number /* int */;
+  promptTokens: number /* int64 */;
+  completionTokens: number /* int64 */;
+  costUsd: number /* float64 */;
+}
+/**
+ * AdminCostCount is a number of sends of one kind.
+ */
+export interface AdminCostCount {
+  kind: string;
+  count: number /* int */;
+}
+/**
+ * AdminCostHostExtras is what a host costs outside any one session.
+ */
+export interface AdminCostHostExtras {
+  /**
+   * GB-days held in the range (GB × days stored), for storage priced by the GB-month.
+   */
+  recordingGbDays: number /* float64 */;
+  mediaGbDays: number /* float64 */;
+  knowledgeGbDays: number /* float64 */;
+  /**
+   * What is held now.
+   */
+  recordingGb: number /* float64 */;
+  mediaGb: number /* float64 */;
+  knowledgeGb: number /* float64 */;
+  ai: AdminCostAI[];
+  emails: AdminCostCount[];
+  whatsapp: AdminCostCount[];
+}
+/**
+ * AdminCostHost is one host's usage: by provider, so each part is priced at its own rates.
+ */
+export interface AdminCostHost {
+  hostId: string;
+  name: string;
+  email: string;
+  byProvider: { [key: string]: AdminCostUsage};
+  extras: AdminCostHostExtras;
+}
+/**
+ * AdminCostPlatform is everybody's usage in the range, for the shared costs: the transfer
+ * pool's effective rate, the video server's idle time and the platform share.
+ */
+export interface AdminCostPlatform {
+  byProvider: { [key: string]: AdminCostUsage};
+  /**
+   * FirstSessionAt is each provider's first session ever (RFC 3339): a box is counted from then.
+   */
+  firstSessionAt: { [key: string]: string};
+  sessionHours: number /* float64 */;
+  /**
+   * UnattributedAIUSD is AI spent with no host (the sales chat, platform jobs).
+   */
+  unattributedAiUsd: number /* float64 */;
+  /**
+   * UnattributedRecordingGBDays is storage of deleted recordings whose host is unknown.
+   */
+  unattributedRecordingGbDays: number /* float64 */;
+}
+/**
+ * AdminCostsResponse is GET /api/admin/costs.
+ */
+export interface AdminCostsResponse {
+  /**
+   * From and To are the dates asked for (To inclusive, India time); empty is all time.
+   */
+  from: string;
+  to: string;
+  provider: string;
+  /**
+   * RangeStart and RangeEnd are the effective window (RFC 3339): all time starts at the
+   * first session, and nothing ends after now.
+   */
+  rangeStart: string;
+  rangeEnd: string;
+  hosts: AdminCostHost[];
+  platform: AdminCostPlatform;
+  generatedAt: string;
+}
+/**
+ * AdminCostSession is one session in a host's drill-down.
+ */
+export interface AdminCostSession {
+  id: string;
+  topic: string;
+  kind: string;
+  delivery: string;
+  provider: string;
+  project: string;
+  startedAt: string;
+  endedAt: string;
+  usage: AdminCostUsage;
+}
+/**
+ * AdminCostHostDetail is GET /api/admin/costs/hosts/{id}.
+ */
+export interface AdminCostHostDetail {
+  from: string;
+  to: string;
+  rangeStart: string;
+  rangeEnd: string;
+  host: AdminCostHost;
+  sessions: AdminCostSession[];
+  platform: AdminCostPlatform;
+  generatedAt: string;
+}
+
+//////////
 // source: engage_v1.go
 
 /**

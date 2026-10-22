@@ -72,6 +72,7 @@ import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 import { AdminSales } from "./admin-sales";
 import { AdminCostCalculator } from "./admin-cost-calculator";
+import { AdminHostCosts } from "./admin-host-costs";
 import { ArrowLeftIcon, SparklesIcon } from "./icons";
 
 /* The admin panel: a dashboard first, then the two lists.
@@ -89,7 +90,7 @@ import { ArrowLeftIcon, SparklesIcon } from "./icons";
  * server, which needs access to the machine to change.
  */
 
-const ADMIN_TABS = ["dashboard", "accounts", "plans", "webinars", "sales", "costs"] as const;
+const ADMIN_TABS = ["dashboard", "accounts", "plans", "webinars", "sales", "costs", "hostCosts"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 
@@ -138,6 +139,7 @@ export function AdminScreen({
           webinars: "Webinars",
           sales: "Sales chats",
           costs: "Cost calculator",
+          hostCosts: "Cost by host",
         }}
         counts={salesWaiting ? { sales: salesWaiting } : undefined}
       />
@@ -152,6 +154,7 @@ export function AdminScreen({
         )}
         {tab === "sales" && <AdminSales initialId={salesConversation} onCount={setSalesWaiting} />}
         {tab === "costs" && <AdminCostCalculator />}
+        {tab === "hostCosts" && <AdminHostCosts />}
       </div>
     </div>
   );

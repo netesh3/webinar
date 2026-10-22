@@ -594,6 +594,9 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/ai", s.handleAdminAIStatus)
 
+			r.Get("/costs", s.handleAdminCosts)
+			r.Get("/costs/hosts/{id}", s.handleAdminCostHost)
+
 			r.Get("/sales", s.handleAdminSalesInbox)
 			r.Get("/sales/{id}", s.handleAdminSalesConversation)
 			r.Post("/sales/{id}/join", s.handleAdminSalesJoin)
