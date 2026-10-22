@@ -55,7 +55,7 @@ func (s *Server) handleGuestJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	wb, err := s.loadSynced(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return

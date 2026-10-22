@@ -82,3 +82,49 @@ export function switchRecording(
     topic: untouched ? to.topic.trim() : current.topic,
   };
 }
+
+/* ---- how a simulive starts (WebinarOptions.simuliveStart / simuliveDoorsOpenMin; the server's
+ * rules are api/internal/api/simulive_live.go). */
+
+/** A simulive may start a minute out (minSimuliveLead in host.go); anything else as given. */
+export const SIMULIVE_LEAD_MS = 60_000;
+
+export function scheduleLeadMs(kind: string, otherwise: number): number {
+  return kind === "simulive" ? SIMULIVE_LEAD_MS : otherwise;
+}
+
+/** The quick "start in N minutes" choices, and the doors-open ones (minutes before). */
+export const START_IN_MINUTES = [5, 10, 15, 30] as const;
+export const DOORS_OPEN_MINUTES = [0, 5, 10, 15, 30] as const;
+/** What a simulive with no choice stored opens its doors at (DefaultSimuliveDoorsOpenMin). */
+export const DEFAULT_DOORS_OPEN_MIN = 10;
+
+export type SimuliveStartMode = "auto" | "manual";
+
+/** The stored mode as the form shows it: anything but "manual" is automatic. */
+export function startMode(options: { simuliveStart?: string } | null | undefined): SimuliveStartMode {
+  return options?.simuliveStart === "manual" ? "manual" : "auto";
+}
+
+export function doorsOpenMin(options: { simuliveDoorsOpenMin?: number } | null | undefined): number {
+  const d = options?.simuliveDoorsOpenMin;
+  return typeof d === "number" && d >= 0 ? d : DEFAULT_DOORS_OPEN_MIN;
+}
+
+/** The start for "start in N minutes": now + N, rounded UP to the minute (the form's time
+ *  field has no seconds), as the date and time inputs show it in the form's zone. */
+export function startInMinutes(nowMs: number, minutes: number, timeZone: string): { date: string; time: string } {
+  const at = Math.ceil((nowMs + minutes * 60_000) / 60_000) * 60_000;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date(at));
+  const v = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? "";
+  const hour = v("hour") === "24" ? "00" : v("hour");
+  return { date: `${v("year")}-${v("month")}-${v("day")}`, time: `${hour}:${v("minute")}` };
+}

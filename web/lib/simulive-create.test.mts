@@ -4,7 +4,11 @@
 import assert from "node:assert/strict";
 import type { Recording } from "./api-types.ts";
 import {
+  doorsOpenMin,
   eligibleRecordings,
+  scheduleLeadMs,
+  startInMinutes,
+  startMode,
   simuliveDurationMin,
   simuliveEligible,
   simulivePrefill,
@@ -95,5 +99,19 @@ assert.deepEqual(switchRecording({ topic: "Session A" }, a, b), {
 });
 assert.equal(switchRecording({ topic: "My encore" }, a, b).topic, "My encore");
 assert.equal(switchRecording({ topic: "" }, null, b).topic, "Session B");
+
+// ---- how it starts
+assert.equal(startMode(undefined), "auto");
+assert.equal(startMode({ simuliveStart: "auto" }), "auto");
+assert.equal(startMode({ simuliveStart: "manual" }), "manual");
+assert.equal(doorsOpenMin({}), 10, "no choice stored: the server's default");
+assert.equal(doorsOpenMin({ simuliveDoorsOpenMin: 0 }), 0, "zero is a choice, not a missing one");
+assert.equal(scheduleLeadMs("simulive", 900_000), 60_000);
+assert.equal(scheduleLeadMs("live", 900_000), 900_000);
+// "Start in 5 minutes" at 10:02:30 UTC: 10:07:30, rounded up to 10:08, in the form's zone.
+const at = Date.parse("2026-10-22T10:02:30Z");
+assert.deepEqual(startInMinutes(at, 5, "UTC"), { date: "2026-10-22", time: "10:08" });
+assert.deepEqual(startInMinutes(at, 30, "Asia/Kolkata"), { date: "2026-10-22", time: "16:03" });
+assert.deepEqual(startInMinutes(Date.parse("2026-10-22T23:50:00Z"), 15, "UTC"), { date: "2026-10-23", time: "00:05" });
 
 console.log("simulive-create: ok");

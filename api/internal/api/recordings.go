@@ -584,6 +584,11 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			s.log.Warn("livekit webhook: could not close a visit",
 				"slug", slug, "identity", identity, "error", err)
 		}
+		// The host team leaving a simulive that has played past its end is what ends it
+		// (simulive_live.go): it was only staying live for them.
+		if strings.HasPrefix(identity, "user_") {
+			s.simuliveHostLeft(r.Context(), slug, identity)
+		}
 
 	/* One screen share at a time: mute every share but the one the room agrees on.
 	 * See share_lock.go. */

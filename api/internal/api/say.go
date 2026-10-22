@@ -155,7 +155,7 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	wb, err := s.loadSynced(r.Context(), slug)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
@@ -164,7 +164,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "say: load webinar", err)
 		return
 	}
-	if wb.Status != types.StatusLive {
+	// A simulive whose doors are open takes chat while its audience waits for the start
+	// (simulive_live.go): they are in the room, with nothing playing yet.
+	if wb.Status != types.StatusLive && !simuliveDoorsAreOpen(wb, time.Now()) {
 		httpx.Error(w, http.StatusConflict, "not_live", "This webinar isn't running.")
 		return
 	}
@@ -173,8 +175,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 	 *
 	 * This is the hottest LiveKit path in the product — every chat line, question, raised
 	 * hand and reaction from every attendee — so it reads the pin off the webinar already
-	 * loaded above rather than going back to the database. A live webinar is always pinned,
-	 * because the host had to join to start it, so this is a map lookup.
+	 * loaded above rather than going back to the database. A webinar somebody is sending
+	 * from is pinned: the sender's own join pinned it and made the room (ensureRoom) —
+	 * including a simulive nobody hosted, which the server started — so this is a map lookup.
 	 */
 	sfu, err := s.sfuFor(r.Context(), wb)
 	if err != nil {

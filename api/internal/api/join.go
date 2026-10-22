@@ -85,7 +85,7 @@ func (s *Server) handleAttendeeJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	wb, err := s.loadSynced(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "join: load webinar", err)
 		return
@@ -355,7 +355,13 @@ func (s *Server) audienceBarrier(wb types.Webinar) *barrier {
 			"slug", wb.ID, "starts_at", wb.StartsAt, "error", err)
 		return nil
 	}
-	if opens := startsAt.Add(-joinGrace); time.Now().Before(opens) {
+	// A simulive's doors open when its host chose (Options.SimuliveDoorsOpenMin): its
+	// audience waits in the room, chatting, with no video until the start.
+	grace := joinGrace
+	if wb.Kind == types.KindSimulive {
+		grace = simuliveDoorsOpen(wb)
+	}
+	if opens := startsAt.Add(-grace); time.Now().Before(opens) {
 		return &barrier{http.StatusConflict, "too_early",
 			"This webinar hasn't opened yet. You can join from " +
 				localTime(opens, wb.TimeZone) + "."}
@@ -472,7 +478,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	wb, err := s.loadSynced(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "host join: load webinar", err)
 		return
@@ -806,6 +812,8 @@ func (s *Server) issueToken(
 		Simulive:         simulive,
 		ReplayEngage:     simulive && s.replayAvailable(r.Context(), wb),
 		SimuliveCaptions: simulive && s.simuliveHasCaptions(r.Context(), wb),
+		StartsAt:         wb.StartsAt,
+		SimuliveManual:   simulive && simuliveManual(wb),
 	})
 	return true
 }

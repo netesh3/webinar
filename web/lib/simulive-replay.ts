@@ -13,9 +13,17 @@
  * everything up to there at once: the catch-up. New items appear as the position passes
  * them.
  *
- * Replayed items are folded into the room's own chat and Q&A, interleaved with what the new
- * audience says live, by the wall-clock moment each one "happens" in this session: the
- * moment position 0 played (the anchor) plus its offset.
+ * Replayed chat and questions are folded into the room's own chat and Q&A, interleaved with
+ * what the new audience says live, by the wall-clock moment each one "happens" in this
+ * session: the moment position 0 played (the anchor) plus its offset.
+ *
+ * Polls and quizzes are NOT chat lines: at a poll's moment the server opens a real poll in
+ * this simulive (api/internal/api/simulive_live.go), and the room re-reads its Polls when the
+ * video passes a poll or poll_close item (newlyCrossed). Reactions are played as a burst of
+ * floating emoji when the video passes them — never during a late joiner's catch-up.
+ *
+ * Nothing plays before the server says the session started (simuliveWaiting): a player with
+ * no start would begin at 0:00 on its own, and every viewer would be on a clock of their own.
  *
  * Pure so node can test it — simulive-replay.test.mts, run by `make test-web`. */
 
@@ -74,24 +82,27 @@ export function steadyAnchor(previous: number | null, nowMs: number, positionMs:
   return previous;
 }
 
+/** The line the host's preview shows for a poll item. The timeline carries no tally — the
+ *  simulive's audience votes in its own copy — and a quiz's answer only in the preview. */
 function pollLine(item: ReplayItem): string {
   const p = item.poll;
   if (!p) return "";
-  if (item.kind === "poll") return `Poll: ${p.question} (${p.options.join(" / ")})`;
-  const total = p.total ?? 0;
-  const parts = p.options.map((o, i) => {
-    const n = p.counts?.[i] ?? 0;
-    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
-    return `${o} ${pct}%`;
-  });
-  let line = `Poll results: ${p.question} — ${parts.join(" · ")} (${total} ${total === 1 ? "vote" : "votes"})`;
-  if (p.quiz && p.correct != null && p.options[p.correct] != null) {
-    line += `. Correct answer: ${p.options[p.correct]}`;
+  const what = p.quiz ? "Quiz" : "Poll";
+  if (item.kind === "poll") {
+    let line = `${what} opens: ${p.question} (${p.options.join(" / ")})`;
+    if (p.quiz && p.correct != null && p.options[p.correct] != null) line += ` — answer: ${p.options[p.correct]}`;
+    return line;
   }
-  return line;
+  return p.quiz ? `Quiz closes, answer revealed: ${p.question}` : `Poll closes, results shared: ${p.question}`;
 }
 
-/* The visible prefix of the timeline as the room's own messages.
+/** A reaction burst as one line: "👏 6 · ❤️ 1". */
+export function reactionLine(item: Pick<ReplayItem, "reactions">): string {
+  return (item.reactions ?? []).map((r) => `${r.emoji} ${r.count}`).join(" · ");
+}
+
+/* The visible prefix of the timeline as the room's own messages: chat and Q&A only (polls are
+ * the room's real polls, reactions float).
  *
  * Ids and identities are prefixed "replay-" / "replay:" so they can never collide with a live
  * message, a live participant or each other — and carry nothing of the original person (the
@@ -111,18 +122,16 @@ export function replayMessages(
     const at = anchorMs + it.atMs;
     const role = it.role === "host" || it.role === "panelist" ? it.role : "attendee";
     switch (it.kind) {
-      case "chat":
-      case "poll":
-      case "poll_results": {
-        const text = it.kind === "chat" ? (it.text ?? "") : pollLine(it);
+      case "chat": {
+        const text = it.text ?? "";
         if (!text) break;
         chat.push({
           kind: "chat",
           id: `replay-${it.id}`,
           from: {
             identity: `replay:${it.id}`,
-            name: it.kind === "chat" ? it.name || (role === "attendee" ? "Attendee" : "Host") : "Poll",
-            role: it.kind === "chat" ? role : "host",
+            name: it.name || (role === "attendee" ? "Attendee" : "Host"),
+            role,
           },
           destination: "everyone",
           text,
@@ -165,6 +174,54 @@ export function replayMessages(
   return { chat, questions };
 }
 
+/** How recent a passed item must be to be PLAYED (a reaction floated, a poll re-read) rather
+ *  than merely shown: a late joiner's catch-up passes minutes of items at once, and replaying
+ *  every burst of applause from before they arrived would be noise. */
+export const FRESH_MS = 6_000;
+
+/** The items the position passed since the last tick (indices prev..next of the sorted
+ *  timeline) that are recent enough to play. A seek backwards passes nothing. */
+export function newlyCrossed<T extends Pick<ReplayItem, "atMs">>(
+  items: readonly T[],
+  prevCount: number,
+  nextCount: number,
+  positionMs: number,
+  freshMs = FRESH_MS,
+): T[] {
+  if (nextCount <= prevCount) return [];
+  const out: T[] = [];
+  for (let i = Math.max(0, prevCount); i < Math.min(nextCount, items.length); i++) {
+    if (items[i].atMs >= positionMs - freshMs) out.push(items[i]);
+  }
+  return out;
+}
+
+/** Whether passing these items should make the room re-read its polls: a replayed poll
+ *  opened or closed. */
+export function crossesPoll(items: readonly Pick<ReplayItem, "kind">[]): boolean {
+  return items.some((it) => it.kind === "poll" || it.kind === "poll_close");
+}
+
+/* A replayed burst as taps on this screen: each emoji a few times (a tap already draws
+ * several copies — reaction-queue.ts), spread across the burst's window, the most-sent first.
+ * Bounded both ways, so a room of five hundred clapping replays as applause and not as a
+ * minute of it. */
+export function reactionTaps(
+  item: Pick<ReplayItem, "reactions">,
+  windowMs = 5_000,
+  maxPerEmoji = 3,
+  maxTotal = 6,
+): { emoji: string; delayMs: number }[] {
+  const plan: string[] = [];
+  for (const r of item.reactions ?? []) {
+    const n = Math.min(Math.max(0, Math.round(r.count)), maxPerEmoji);
+    for (let i = 0; i < n && plan.length < maxTotal; i++) plan.push(r.emoji);
+  }
+  if (plan.length === 0) return [];
+  const step = plan.length > 1 ? windowMs / plan.length : 0;
+  return plan.map((emoji, i) => ({ emoji, delayMs: Math.round(i * step) }));
+}
+
 /** An offset into the recording as the host's preview shows it: "4:05", "1:02:09". */
 export function formatOffset(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -174,10 +231,60 @@ export function formatOffset(ms: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+/** The host's "jump to" box: "4:05", "1:02:09", "245" (seconds) or "4m" → ms; null when it
+ *  is not a time. */
+export function parseOffset(text: string): number | null {
+  const s = text.trim().toLowerCase();
+  if (!s) return null;
+  const m = /^(\d+)\s*m(?:in)?$/.exec(s);
+  if (m) return Number(m[1]) * 60_000;
+  if (!/^\d+(:\d{1,2}){0,2}$/.test(s)) return null;
+  const parts = s.split(":").map(Number);
+  if (parts.slice(1).some((p) => p > 59)) return null;
+  let sec = 0;
+  for (const p of parts) sec = sec * 60 + p;
+  return sec * 1000;
+}
+
 /** The line the host's preview shows for one item. */
 export function previewText(item: ReplayItem): string {
-  if (item.kind === "poll" || item.kind === "poll_results") return pollLine(item);
+  if (item.kind === "poll" || item.kind === "poll_close") return pollLine(item);
+  if (item.kind === "reaction") return reactionLine(item);
   return item.text ?? "";
+}
+
+/* ---- before the start: one shared clock, strictly.
+ *
+ * A simulive's player never starts without the server's started_at: before it, the room is a
+ * waiting screen (a countdown to the scheduled start, chat open when the doors are), and when
+ * the session starts every open player begins at the shared position at once. */
+
+/** Whether a simulive room is still waiting for its start. */
+export function simuliveWaiting(simulive: boolean, startedAt: string | null | undefined): boolean {
+  if (!simulive) return false;
+  return !startedAt || Number.isNaN(Date.parse(startedAt));
+}
+
+/** The waiting screen's line: a countdown to the scheduled start, then "any moment" (the
+ *  server is starting it), or the host's to start. */
+export function waitingLabel(startsAt: string | null | undefined, nowMs: number, manual = false): string {
+  if (manual) return "Waiting for the host to start the session";
+  const start = startsAt ? Date.parse(startsAt) : Number.NaN;
+  if (Number.isNaN(start) || start - nowMs <= 0) return "Starting any moment";
+  const left = Math.ceil((start - nowMs) / 1000);
+  return `Starting in ${formatOffset(left * 1000)}`;
+}
+
+/** How long to wait before asking the server whether the session has started: often around
+ *  the start (asking is also what starts it, with no scheduler), rarely long before it, and
+ *  steadily for one the host starts. */
+export function waitingPollMs(startsAt: string | null | undefined, nowMs: number, manual = false): number {
+  if (manual) return 10_000;
+  const start = startsAt ? Date.parse(startsAt) : Number.NaN;
+  if (Number.isNaN(start)) return 10_000;
+  const left = start - nowMs;
+  if (left <= 0) return 3_000;
+  return Math.min(Math.max(left, 1_000), 60_000);
 }
 
 /** Live and replayed messages in one conversation, in the order they happened in this

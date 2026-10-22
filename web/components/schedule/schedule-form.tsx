@@ -31,7 +31,7 @@ import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
 import { planRecurrence } from "@/lib/recurrence";
 import { isMeetingKind, meetingInputBase } from "@/lib/meeting-create";
-import { simulivePrefill } from "@/lib/simulive-create";
+import { scheduleLeadMs, simulivePrefill } from "@/lib/simulive-create";
 import {
   issuesFor,
   legacyAnchor,
@@ -544,13 +544,13 @@ function ScheduleFormBody({
         if (shifted) leadAt = shifted;
       }
     }
-    const tooSoon = leadAt.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS;
+    const tooSoon = leadAt.getTime() < Date.now() + scheduleLeadMs(form.kind, MIN_SCHEDULE_LEAD_MS);
     const movingStart =
       editing &&
       webinar != null &&
       !sameStartMinute(new Date(webinar.startsAt), startsAt);
     if (tooSoon && ((!editing && status === "scheduled") || movingStart)) {
-      setFields({ startsAt: SCHEDULE_LEAD_ERROR });
+      setFields({ startsAt: form.kind === "simulive" ? "Pick a start at least a minute from now." : SCHEDULE_LEAD_ERROR });
       flushSync(() => go("webinar"));
       focusTarget("date");
       return null;

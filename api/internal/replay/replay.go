@@ -1,6 +1,11 @@
-/* Package replay builds a simulive session's engagement timeline: the chat, Q&A, host answers
- * and polls of the session a recording was made in, each placed at the offset into the video
- * at which it happened in the original.
+/* Package replay builds a simulive session's engagement timeline: the chat, Q&A, host answers,
+ * polls and quizzes, and reactions of the session a recording was made in, each placed at the
+ * offset into the video at which it happened in the original.
+ *
+ * Polls carry no numbers. A poll is two moments — opened, closed — and at each the simulive's
+ * own copy of it opens or closes (Schedule, PollActions; api/simulive_live.go), so the new
+ * audience votes and sees its own results. Reactions are per-second counts with no identity,
+ * folded into bursts (reactionBursts).
  *
  *	offset = event time − recording start
  *
@@ -56,7 +61,8 @@ type Question struct {
 	At         time.Time
 }
 
-// Poll is one poll that was opened during the original session.
+// Poll is one poll that was opened during the original session. Its votes are never read:
+// the simulive's audience votes in a copy of their own (see Schedule and PollActions).
 type Poll struct {
 	ID           string
 	Question     string
@@ -64,9 +70,15 @@ type Poll struct {
 	Options      []string
 	Correct      *int
 	ShareResults bool
-	Counts       []int
 	OpenedAt     time.Time
 	ClosedAt     *time.Time
+}
+
+// ReactionBucket is how many of one emoji the original audience sent in one second.
+type ReactionBucket struct {
+	At    time.Time
+	Emoji string
+	N     int
 }
 
 // Source is everything the original session left behind, plus the recording's window.
@@ -77,25 +89,35 @@ type Source struct {
 	Chat      []Chat
 	Questions []Question
 	Polls     []Poll
+	Reactions []ReactionBucket
 }
 
 // Item kinds (types.ReplayItem.Kind).
 const (
-	KindChat        = "chat"
-	KindQuestion    = "question"
-	KindAnswer      = "answer"
-	KindPoll        = "poll"
-	KindPollResults = "poll_results"
+	KindChat      = "chat"
+	KindQuestion  = "question"
+	KindAnswer    = "answer"
+	KindPoll      = "poll"
+	KindPollClose = "poll_close"
+	KindReaction  = "reaction"
 )
 
-// Keys name a source row for the host's curation (simulive_replay_hidden.item_key).
+// ReactionWindow is the length of one replayed reaction burst: every reaction the original
+// audience sent in these few seconds is one item, played as one burst.
+const ReactionWindow = 5 * time.Second
+
+// Keys name a source row for the host's curation (simulive_replay_hidden.item_key). A
+// reaction burst has no row; its key is its window's index into the recording.
 func ChatKey(id string) string     { return "chat:" + id }
 func QuestionKey(id string) string { return "question:" + id }
 func PollKey(id string) string     { return "poll:" + id }
+func ReactionKey(window int64) string {
+	return "reaction:" + strconv.FormatInt(window, 10)
+}
 
 // ValidKey reports whether a key is one Build could have produced.
 func ValidKey(key string) bool {
-	for _, p := range []string{"chat:", "question:", "poll:"} {
+	for _, p := range []string{"chat:", "question:", "poll:", "reaction:"} {
 		if strings.HasPrefix(key, p) && len(key) > len(p) && len(key) <= 200 {
 			return true
 		}
@@ -116,7 +138,7 @@ func (src Source) Offset(at time.Time) (int64, bool) {
 }
 
 // clampOffset is Offset for something that belongs to an item already on the timeline (an
-// answer, a poll's results): before `floor` moves up to it, past the end moves down to it.
+// answer, a poll's close): before `floor` moves up to it, past the end moves down to it.
 func (src Source) clampOffset(at time.Time, floor int64) int64 {
 	ms := at.Sub(src.RecordingStart).Milliseconds()
 	if src.Duration > 0 && ms > src.Duration.Milliseconds() {
@@ -128,9 +150,129 @@ func (src Source) clampOffset(at time.Time, floor int64) int64 {
 	return ms
 }
 
+/* ScheduledPoll is one original poll as the simulive replays it: when to open its copy and
+ * when to close it, in ms into the recording. CloseMs is -1 when nothing closes it before the
+ * session ends (the end closes every open poll).
+ *
+ * The close is the original's own close. An original that was never closed by hand was
+ * closed by the next launch (one open poll at a time, see store.OpenPoll), so the next
+ * poll's open is its close; failing that, the end of the recording. */
+type ScheduledPoll struct {
+	Key          string
+	Question     string
+	Quiz         bool
+	Options      []string
+	Correct      *int
+	ShareResults bool
+	OpenMs       int64
+	CloseMs      int64
+}
+
+// Open reports whether the copy should be accepting votes at this position.
+func (p ScheduledPoll) Open(posMs int64) bool {
+	return posMs >= p.OpenMs && (p.CloseMs < 0 || posMs < p.CloseMs)
+}
+
+// Schedule is every original poll inside the recording, in launch order. Hidden ones too:
+// whether one is replayed is PollActions' decision, so a host can hide and show it again.
+func Schedule(src Source) []ScheduledPoll {
+	var out []ScheduledPoll
+	for _, p := range src.Polls {
+		at, ok := src.Offset(p.OpenedAt)
+		if !ok {
+			continue
+		}
+		sp := ScheduledPoll{
+			Key: PollKey(p.ID), Question: Scrub(p.Question), Quiz: p.Quiz,
+			ShareResults: p.ShareResults, OpenMs: at, CloseMs: -1,
+		}
+		for _, o := range p.Options {
+			sp.Options = append(sp.Options, Scrub(o))
+		}
+		if p.Quiz && p.Correct != nil {
+			c := *p.Correct
+			sp.Correct = &c
+		}
+		if p.ClosedAt != nil {
+			sp.CloseMs = src.clampOffset(*p.ClosedAt, at)
+		}
+		out = append(out, sp)
+	}
+	sort.SliceStable(out, func(a, b int) bool { return out[a].OpenMs < out[b].OpenMs })
+	for i := range out {
+		if out[i].CloseMs >= 0 {
+			continue
+		}
+		if i+1 < len(out) {
+			out[i].CloseMs = out[i+1].OpenMs
+		} else if src.Duration > 0 {
+			out[i].CloseMs = src.Duration.Milliseconds()
+		}
+	}
+	return out
+}
+
+// Poll actions (PollAction.Op).
+const (
+	OpOpen  = "open"
+	OpClose = "close"
+)
+
+// PollAction is one change to the simulive's replayed polls.
+type PollAction struct {
+	Op   string
+	Poll ScheduledPoll
+}
+
+/* PollActions is what to do to the simulive's replayed polls at this position.
+ *
+ * have is the copies already in the simulive, key → state ("open" / "closed"). A copy is
+ * opened once, inside its window, and never again: closed (by its moment, by the host, by
+ * another launch) stays closed, so a host who closes one early is not overruled. One that
+ * is open past its moment, or that the host has hidden since, is closed. A window that
+ * passed with no copy made (nobody in the room asked during it) is skipped — there was
+ * nobody to vote. Closes come first and at most one opens, so "one open poll" holds.
+ */
+func PollActions(sched []ScheduledPoll, hidden map[string]bool, have map[string]string, posMs int64) []PollAction {
+	var closes []PollAction
+	var open *ScheduledPoll
+	for i := range sched {
+		p := sched[i]
+		state, made := have[p.Key]
+		switch {
+		case made && state == "open" && (hidden[p.Key] || !p.Open(posMs)):
+			closes = append(closes, PollAction{Op: OpClose, Poll: p})
+		case !made && !hidden[p.Key] && p.Open(posMs):
+			open = &sched[i]
+		}
+	}
+	if open != nil {
+		closes = append(closes, PollAction{Op: OpOpen, Poll: *open})
+	}
+	return closes
+}
+
+// NextBoundary is the first moment after posMs at which PollActions could answer differently
+// (a poll opens or closes), or -1 when there is none.
+func NextBoundary(sched []ScheduledPoll, posMs int64) int64 {
+	next := int64(-1)
+	consider := func(ms int64) {
+		if ms > posMs && (next < 0 || ms < next) {
+			next = ms
+		}
+	}
+	for _, p := range sched {
+		consider(p.OpenMs)
+		if p.CloseMs >= 0 {
+			consider(p.CloseMs)
+		}
+	}
+	return next
+}
+
 type entry struct {
 	item  types.ReplayItem
-	order int // kind order at the same instant: a poll before its results, a question before its answer
+	order int // kind order at the same instant: a poll before its close, a question before its answer
 	seq   int // source order, for a total order
 	ref   int // index into entries of the item this one belongs to, or -1
 }
@@ -138,9 +280,12 @@ type entry struct {
 /* Build turns a Source into the timeline.
  *
  * hidden is the host's curation (keys). preview is the host's view of it: every item,
- * hidden ones included and marked, each with its Key. The audience's view (preview false)
- * leaves hidden items out entirely and carries no keys. Hiding a question hides its answer
- * and hiding a poll hides its results.
+ * hidden ones included and marked, each with its Key (and a quiz's answer). The audience's
+ * view (preview false) leaves hidden items out entirely and carries no keys. Hiding a
+ * question hides its answer and hiding a poll hides its close.
+ *
+ * A poll is two moments with no numbers: where the original opened it and where it closed.
+ * The room re-reads its own polls at each; the poll it votes in is the simulive's copy.
  */
 func Build(src Source, hidden map[string]bool, preview bool) []types.ReplayItem {
 	var all []entry
@@ -193,32 +338,21 @@ func Build(src Source, hidden map[string]bool, preview bool) []types.ReplayItem 
 		}, 2, qi)
 	}
 
-	for _, p := range src.Polls {
-		at, ok := src.Offset(p.OpenedAt)
-		if !ok {
+	for _, p := range Schedule(src) {
+		poll := types.ReplayPoll{Question: p.Question, Options: p.Options, Quiz: p.Quiz}
+		if preview && p.Quiz {
+			poll.Correct = p.Correct
+		}
+		pi := add(types.ReplayItem{Kind: KindPoll, AtMs: p.OpenMs, Role: types.RoleHost, Poll: &poll, Key: p.Key}, 1, -1)
+		if p.CloseMs < 0 {
 			continue
 		}
-		poll := types.ReplayPoll{Question: Scrub(p.Question), Quiz: p.Quiz}
-		for _, o := range p.Options {
-			poll.Options = append(poll.Options, Scrub(o))
-		}
-		pi := add(types.ReplayItem{Kind: KindPoll, AtMs: at, Role: types.RoleHost, Poll: &poll, Key: PollKey(p.ID)}, 1, -1)
-		if p.ClosedAt == nil || !p.ShareResults {
-			continue
-		}
-		closed := src.clampOffset(*p.ClosedAt, at)
-		res := poll
-		res.Counts = append([]int(nil), p.Counts...)
-		for len(res.Counts) < len(res.Options) {
-			res.Counts = append(res.Counts, 0)
-		}
-		for _, n := range res.Counts {
-			res.Total += n
-		}
-		if p.Quiz {
-			res.Correct = p.Correct
-		}
-		add(types.ReplayItem{Kind: KindPollResults, AtMs: closed, Role: types.RoleHost, Poll: &res, Key: PollKey(p.ID)}, 3, pi)
+		closed := poll
+		add(types.ReplayItem{Kind: KindPollClose, AtMs: p.CloseMs, Role: types.RoleHost, Poll: &closed, Key: p.Key}, 3, pi)
+	}
+
+	for _, b := range reactionBursts(src) {
+		add(b, 0, -1)
 	}
 
 	idx := make([]int, len(all))
@@ -258,6 +392,53 @@ func Build(src Source, hidden map[string]bool, preview bool) []types.ReplayItem 
 			it.Key = ""
 		}
 		out = append(out, it)
+	}
+	return out
+}
+
+/* reactionBursts folds the per-second reaction counts into one item per ReactionWindow of
+ * the recording that had any: at the first second in it, each emoji with its count, most
+ * sent first. Nobody's name — a reaction never carried one. */
+func reactionBursts(src Source) []types.ReplayItem {
+	type burst struct {
+		at     int64
+		counts map[string]int
+	}
+	win := ReactionWindow.Milliseconds()
+	byWindow := map[int64]*burst{}
+	var order []int64
+	for _, r := range src.Reactions {
+		at, ok := src.Offset(r.At)
+		if !ok || r.N <= 0 || r.Emoji == "" {
+			continue
+		}
+		w := at / win
+		b := byWindow[w]
+		if b == nil {
+			b = &burst{at: at, counts: map[string]int{}}
+			byWindow[w] = b
+			order = append(order, w)
+		}
+		if at < b.at {
+			b.at = at
+		}
+		b.counts[r.Emoji] += r.N
+	}
+	sort.Slice(order, func(a, b int) bool { return order[a] < order[b] })
+	out := make([]types.ReplayItem, 0, len(order))
+	for _, w := range order {
+		b := byWindow[w]
+		rs := make([]types.ReplayReaction, 0, len(b.counts))
+		for e, n := range b.counts {
+			rs = append(rs, types.ReplayReaction{Emoji: e, Count: n})
+		}
+		sort.Slice(rs, func(a, c int) bool {
+			if rs[a].Count != rs[c].Count {
+				return rs[a].Count > rs[c].Count
+			}
+			return rs[a].Emoji < rs[c].Emoji
+		})
+		out = append(out, types.ReplayItem{Kind: KindReaction, AtMs: b.at, Reactions: rs, Key: ReactionKey(w)})
 	}
 	return out
 }

@@ -27,7 +27,7 @@ import {
   type Relay,
   type Sender,
 } from "@/lib/realtime";
-import { startPositionSec, sharedPositionMs } from "@/lib/simulive-replay";
+import { simuliveWaiting, startPositionSec, sharedPositionMs } from "@/lib/simulive-replay";
 import { useSimuliveReplay } from "@/lib/use-simulive-replay";
 import { countSince } from "@/lib/room-history";
 import { useRoomHistory } from "@/lib/room-history-sync";
@@ -48,6 +48,7 @@ import { ControlBar } from "./control-bar";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
+import { SimuliveWaiting } from "./simulive-waiting";
 import { SurveyPopup } from "./survey-popup";
 import { SessionSurvey } from "../survey/session-survey";
 import { useAudienceSurvey } from "@/lib/use-audience-survey";
@@ -264,18 +265,26 @@ export function CdnAttendeeRoom({
   // Chat and Q&A history, on joining and after every reconnect. See useRoomHistory.
   useRoomHistory(room, slug, joinKey, realtime);
 
-  /* A simulive's engagement replay (lib/simulive-replay.ts): the original session's chat,
-   * Q&A and polls, scheduled against this player's own position and folded into the room's
-   * conversation alongside what this audience says live. Everything below reads `shown`. */
+  /* A simulive's one shared clock: the server's start, from room metadata, the join, or the
+   * waiting screen asking. Until there is one, nothing plays (SimuliveWaiting). */
+  const [polledStart, setPolledStart] = useState<string | null>(null);
+  const liveStart = startedAt || polledStart || join.startedAt || null;
+  const waiting = simuliveWaiting(Boolean(join.simulive), liveStart);
+
+  /* A simulive's engagement replay (lib/simulive-replay.ts): the original session's chat and
+   * Q&A, scheduled against this player's own position and folded into the room's
+   * conversation alongside what this audience says live; its polls re-read as their moments
+   * pass, and its reactions floated. Everything below reads `shown`. */
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const replayed = useSimuliveReplay({
     slug,
     joinKey,
     enabled: Boolean(join.simulive && join.replayEngage),
     video: videoEl,
-    startedAt: startedAt ?? join.startedAt ?? null,
+    startedAt: liveStart,
     chat: realtime.chat,
     questions: realtime.questions,
+    showReaction: realtime.showReaction,
   });
   const shown = useMemo<Realtime>(
     () =>
@@ -345,7 +354,7 @@ export function CdnAttendeeRoom({
   const polls = useAudiencePolls(
     slug,
     joinKey,
-    realtime.pollsRevision,
+    realtime.pollsRevision + replayed.pollsRevision,
     !isHost,
     controls.pollsEnabled,
     room,
@@ -361,7 +370,7 @@ export function CdnAttendeeRoom({
       controls,
       topic: topic ?? initialTopic,
       coverImageUrl: initialImageUrl ?? null,
-      startedAt: startedAt ?? join.startedAt ?? null,
+      startedAt: liveStart,
       endedAt: endedAt ?? join.endedAt ?? null,
       status,
       maxDurationMin: maxDurationMin ?? join.maxDurationMin,
@@ -397,7 +406,7 @@ export function CdnAttendeeRoom({
       topic,
       initialTopic,
       initialImageUrl,
-      startedAt,
+      liveStart,
       endedAt,
       status,
       maxDurationMin,
@@ -488,6 +497,16 @@ export function CdnAttendeeRoom({
                   >
                     {/* CDN Stream Player */}
                     <div className="relative flex-1 flex items-center justify-center bg-black">
+                      {waiting ? (
+                        <SimuliveWaiting
+                          slug={slug}
+                          startsAt={join.startsAt}
+                          manual={Boolean(join.simuliveManual)}
+                          canStart={isHost && Boolean(join.simuliveManual)}
+                          coverUrl={initialImageUrl}
+                          onStarted={setPolledStart}
+                        />
+                      ) : (
                       <BroadcastPlayer
                         streamUrl={streamUrl}
                         lowLatency={Boolean(join.cdnLowLatency)}
@@ -501,10 +520,11 @@ export function CdnAttendeeRoom({
                         // else is, not at the top of the recording.
                         sharedStartMs={
                           join.simulive
-                            ? () => sharedPositionMs(startedAt ?? join.startedAt ?? null, Date.now())
+                            ? () => sharedPositionMs(liveStart, Date.now())
                             : undefined
                         }
                       />
+                      )}
                     </div>
 
                     <FileShareBar />

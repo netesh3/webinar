@@ -3078,7 +3078,44 @@ export interface WebinarOptions {
    * 	 * and only for a simulive (cleared on anything else). See api/internal/api/qa_auto.go.
    */
   simuliveAutoAnswer?: boolean;
+  /**
+   *  SimuliveStart is how a simulive starts: "auto" (or empty, the default) at starts_at by
+   * 	 * itself, or "manual" when the host or a co-host presses Start Simulive. A manual one
+   * 	 * never starts on its own; one nobody starts lapses at its scheduled end like any
+   * 	 * webinar that did not go live.
+   */
+  simuliveStart?: string;
+  /**
+   *  SimuliveDoorsOpenMin is how many minutes before the start a simulive's audience may
+   * 	 * come in, to wait (no video until it starts) and chat. Nil is DefaultSimuliveDoorsOpenMin;
+   * 	 * 0 to MaxSimuliveDoorsOpenMin.
+   */
+  simuliveDoorsOpenMin?: number /* int */;
 }
+/**
+ * SimuliveStartRequest is PUT /api/host/webinars/{slug}/simulive-start: how a scheduled
+ * simulive starts, changed from its Setup tab. DoorsOpenMin nil keeps the default.
+ */
+export interface SimuliveStartRequest {
+  simuliveStart: string;
+  doorsOpenMin?: number /* int */;
+}
+/**
+ * How a simulive starts (WebinarOptions.SimuliveStart).
+ */
+export const SimuliveStartAuto = "auto";
+/**
+ * How a simulive starts (WebinarOptions.SimuliveStart).
+ */
+export const SimuliveStartManual = "manual";
+/**
+ * How a simulive starts (WebinarOptions.SimuliveStart).
+ */
+export const DefaultSimuliveDoorsOpenMin = 10;
+/**
+ * How a simulive starts (WebinarOptions.SimuliveStart).
+ */
+export const MaxSimuliveDoorsOpenMin = 60;
 /**
  * SessionControls are the things a host flips *during* the session.
  * These live in Postgres rather than in a server's memory: a control has to
@@ -3315,6 +3352,12 @@ export interface Poll {
    * browser is holding.
    */
   myChoice: number /* int */;
+  /**
+   * Replayed is a simulive's copy of a poll from the recording's original session, opened
+   * and closed by the engagement replay at the original's moments (polls.replay_key). Once
+   * one closes, the audience sees its tally — this audience's votes, never the original's.
+   */
+  replayed?: boolean;
 }
 /**
  * PollInput creates a poll.
@@ -7145,6 +7188,14 @@ export interface JoinResponse {
    * 	 * (GET /api/webinars/{slug}/captions.vtt), so the player offers CC.
    */
   simuliveCaptions?: boolean;
+  /**
+   *  The scheduled start (RFC3339) — a simulive.s waiting screen counts down to it — and whether
+   * 	 * it waits for the host's Start Simulive (Options.SimuliveStart manual). Nothing plays
+   * 	 * before StartedAt is set: the room waits, and starts everybody at the shared position
+   * 	 * once the server says it is live.
+   */
+  startsAt?: string;
+  simuliveManual?: boolean;
 }
 /**
  * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
@@ -7940,30 +7991,42 @@ export interface IntegrationsResponse {
   integrations: IntegrationCard[];
 }
 /**
- *  ReplayPoll is a poll as a simulive replay shows it: launched, and then (if the original
- *  * shared them) its results. Counts and Total only on results; Correct only on a quiz's.
+ *  ReplayPoll is a poll or quiz on a simulive's replay timeline: the question and options
+ *  * only. It is not what the audience votes in — at its moment the server opens a real poll in
+ *  * the simulive (polls.replay_key), which the room reads through its Polls panel like any
+ *  * other — so the timeline never carries a tally, the original's or anyone's. Correct is the
+ *  * host preview's only.
  */
 export interface ReplayPoll {
   question: string;
   options: string[];
   quiz?: boolean;
-  counts?: number /* int */[];
-  total?: number /* int */;
   correct?: number /* int */;
+}
+/**
+ * ReplayReaction is one emoji of a replayed reaction burst and how many were sent.
+ */
+export interface ReplayReaction {
+  emoji: string;
+  count: number /* int */;
 }
 /**
  *  ReplayItem is one moment of a simulive's engagement replay.
  *  *
  *  * ID is this item's position in this timeline ("r1", "r2", …) — never a source id. Ref, on an
- *  * answer or a poll's results, is the ID of the question or poll it belongs to. Name is already
+ *  * answer or a poll's close, is the ID of the question or poll it belongs to. Name is already
  *  * privacy-shortened ("Priya S."); there is no identity, email or join key anywhere in it.
+ *  *
+ *  * Kinds: chat, question, answer; poll (the original opened it here — the room re-reads its
+ *  * polls) and poll_close (it closed here; a quiz's answer is revealed); reaction (a burst of
+ *  * the original audience's emoji, counts per emoji, nobody's name).
  *  *
  *  * Key and Hidden are the host preview's only (GET /api/host/webinars/{slug}/replay): the
  *  * source row an item came from, for PUT .../replay/hidden, and whether the host hid it.
  */
 export interface ReplayItem {
   id: string;
-  kind: string; // chat | question | answer | poll | poll_results
+  kind: string; // chat | question | answer | poll | poll_close | reaction
   atMs: number /* int64 */;
   name?: string;
   role?: Role;
@@ -7971,6 +8034,7 @@ export interface ReplayItem {
   anonymous?: boolean;
   ref?: string;
   poll?: ReplayPoll;
+  reactions?: ReplayReaction[];
   key?: string;
   hidden?: boolean;
 }
@@ -7989,9 +8053,69 @@ export interface ReplayTimeline {
   items: ReplayItem[];
 }
 /**
- * ReplayHideRequest hides one item of a simulive's replay, or shows it again.
+ * Replay filters (GET /api/host/webinars/{slug}/replay?filter=).
+ */
+export const ReplayFilterAll = "all";
+/**
+ * Replay filters (GET /api/host/webinars/{slug}/replay?filter=).
+ */
+export const ReplayFilterChat = "chat";
+/**
+ * Replay filters (GET /api/host/webinars/{slug}/replay?filter=).
+ */
+export const ReplayFilterQA = "qa";
+/**
+ * Replay filters (GET /api/host/webinars/{slug}/replay?filter=).
+ */
+export const ReplayFilterPolls = "polls";
+/**
+ * Replay filters (GET /api/host/webinars/{slug}/replay?filter=).
+ */
+export const ReplayFilterReactions = "reactions";
+/**
+ * ReplayCounts is how many items each filter holds, and how many of all are hidden.
+ */
+export interface ReplayCounts {
+  all: number /* int */;
+  chat: number /* int */;
+  qa: number /* int */;
+  polls: number /* int */;
+  reactions: number /* int */;
+  hidden: number /* int */;
+}
+/**
+ *  ReplayPage is one page of the host's preview: GET /api/host/webinars/{slug}/replay with
+ *  * filter (all | chat | qa | polls | reactions), q (search), at (jump: the page starting at
+ *  * the first item at or after this offset, ms), cursor and limit (default 50, at most 200).
+ *  * Total is the number of items matching the filter and search; Offset is where Items start
+ *  * among them. NextCursor / PrevCursor are empty at either end.
+ */
+export interface ReplayPage {
+  enabled: boolean;
+  durationMs: number /* int64 */;
+  items: ReplayItem[];
+  total: number /* int */;
+  offset: number /* int */;
+  nextCursor?: string;
+  prevCursor?: string;
+  counts: ReplayCounts;
+}
+/**
+ *  ReplayHideRequest hides items of a simulive's replay, or shows them again: one Key, a
+ *  * list of Keys (a page), or — with All — every item matching Filter and Q.
  */
 export interface ReplayHideRequest {
-  key: string;
+  key?: string;
+  keys?: string[];
+  all?: boolean;
+  filter?: string;
+  q?: string;
   hidden: boolean;
+}
+/**
+ * ReplayHideResponse is what a hide or show changed, and the counts after it.
+ */
+export interface ReplayHideResponse {
+  changed: number /* int */;
+  counts: ReplayCounts;
 }

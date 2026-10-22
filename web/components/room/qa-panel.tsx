@@ -22,6 +22,7 @@ export function QAPanel() {
   const [draft, setDraft] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   const [sending, setSending] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
   // Grows with what is typed, up to max-h-28, then scrolls. Collapsed to "auto"
@@ -77,9 +78,14 @@ export function QAPanel() {
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
+    setAskError(null);
     try {
       await realtime.askQuestion(text, anonymous);
       setDraft("");
+    } catch (err) {
+      // Said, not swallowed: a question that silently vanishes is one somebody asks again
+      // into a room that never heard it. The draft stays in the box.
+      setAskError(err instanceof Error ? err.message : "Your question didn't send.");
     } finally {
       setSending(false);
     }
@@ -236,6 +242,11 @@ export function QAPanel() {
                 <SendIcon className="size-4" />
               </button>
             </div>
+            {askError && (
+              <p role="alert" className="text-[12px] text-live">
+                {askError}
+              </p>
+            )}
 
             <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink-2">
               <input

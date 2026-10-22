@@ -152,7 +152,7 @@ func TestSimuliveReplayTimeline(t *testing.T) {
 	for _, it := range tl.Items {
 		got = append(got, it.Kind+"@"+time.Duration(it.AtMs*int64(time.Millisecond)).String())
 	}
-	want := "chat@5s chat@42s question@1m0s answer@2m0s poll@3m20s poll_results@4m20s"
+	want := "chat@5s chat@42s question@1m0s answer@2m0s poll@3m20s poll_close@4m20s"
 	if strings.Join(got, " ") != want {
 		t.Fatalf("timeline\n got %s\nwant %s", strings.Join(got, " "), want)
 	}
@@ -168,8 +168,9 @@ func TestSimuliveReplayTimeline(t *testing.T) {
 	if tl.Items[3].Ref != tl.Items[2].ID || tl.Items[3].Text != "Yes, by email tonight" {
 		t.Errorf("answer: %+v", tl.Items[3])
 	}
-	if p := tl.Items[5].Poll; p == nil || p.Total != 1 || p.Counts[0] != 1 {
-		t.Errorf("poll results: %+v", tl.Items[5].Poll)
+	// The original's votes are never on the timeline: the new audience votes in its own copy.
+	if p := tl.Items[5].Poll; p == nil || tl.Items[5].Ref != tl.Items[4].ID || strings.Contains(body, `"counts"`) || strings.Contains(body, `"total"`) {
+		t.Errorf("poll close: %+v %s", tl.Items[5], body)
 	}
 	if tl.Items[1].Key != "" || tl.Items[1].Hidden {
 		t.Error("audience timeline carries curation keys")
@@ -187,7 +188,7 @@ func TestSimuliveReplayTimeline(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("preview: %d %s", res.StatusCode, raw)
 	}
-	var pre types.ReplayTimeline
+	var pre types.ReplayPage
 	h.decode(raw, &pre)
 	if len(pre.Items) != 6 || pre.Items[1].Key != "chat:priya-phone-1" {
 		t.Fatalf("preview: %+v", pre.Items)
@@ -197,6 +198,12 @@ func TestSimuliveReplayTimeline(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("hide: %d %s", res.StatusCode, raw)
 	}
+	var hid types.ReplayHideResponse
+	h.decode(raw, &hid)
+	if hid.Changed != 1 || hid.Counts.Hidden != 1 {
+		t.Fatalf("hide response: %s", raw)
+	}
+	_, raw = h.do(http.MethodGet, "/api/host/webinars/"+f.sim.ID+"/replay", nil)
 	h.decode(raw, &pre)
 	if len(pre.Items) != 6 || !pre.Items[1].Hidden {
 		t.Fatalf("preview after hiding: %+v", pre.Items)
@@ -208,7 +215,7 @@ func TestSimuliveReplayTimeline(t *testing.T) {
 	for _, it := range tl.Items {
 		got = append(got, it.Kind)
 	}
-	if strings.Join(got, " ") != "chat poll poll_results" || tl.Items[0].ID != "r1" {
+	if strings.Join(got, " ") != "chat poll poll_close" || tl.Items[0].ID != "r1" {
 		t.Fatalf("after hiding: %v", got)
 	}
 	// And showing it again brings it back.

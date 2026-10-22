@@ -312,18 +312,11 @@ func (s *Server) sweepSimulive(ctx context.Context) {
 		s.log.Error("simulive sweeper: due query failed", "error", err)
 		return
 	}
+	/* The same guarded path the requests take (simulive_live.go), so a tick racing a page
+	 * view starts or ends a simulive once, and a host still in the room keeps it live. */
 	for _, slug := range due {
-		wb, err := s.store.SetStatus(ctx, slug, types.StatusLive)
-		if err != nil {
-			s.log.Error("simulive sweeper: start failed", "slug", slug, "error", err)
-			continue
-		}
-		s.log.Info("simulive started", "slug", slug)
-		if sfu, err := s.sfuFor(ctx, wb); err == nil {
-			_, _, _, _ = s.ensureRoom(ctx, wb, lk.RoomName(slug))
-			if meta, err := s.roomMetadata(ctx, wb); err == nil {
-				_ = sfu.SetMetadata(ctx, lk.RoomName(slug), meta)
-			}
+		if wb, err := s.store.WebinarBySlug(ctx, slug); err == nil {
+			s.syncSimulive(ctx, wb)
 		}
 	}
 
@@ -333,10 +326,12 @@ func (s *Server) sweepSimulive(ctx context.Context) {
 		return
 	}
 	for _, slug := range expired {
-		if _, err := s.endWebinarSession(ctx, slug); err != nil {
-			s.log.Error("simulive sweeper: end failed", "slug", slug, "error", err)
+		if wb, err := s.store.WebinarBySlug(ctx, slug); err == nil {
+			s.syncSimulive(ctx, wb)
 		}
 	}
+	// And the replayed polls of every simulive still on the air.
+	s.sweepLiveSimulives(ctx)
 }
 
 func (s *Server) sweepEmptyWebinars(ctx context.Context) {
