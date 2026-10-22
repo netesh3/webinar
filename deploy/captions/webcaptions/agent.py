@@ -5,8 +5,11 @@
 The API creates an explicit agent dispatch (agent name CAPTIONS_AGENT_NAME) for a room
 when the host turns server captions on, and deletes it when they are turned off or the
 session ends; LiveKit then starts / ends this agent's job for that room. The agent joins
-hidden, publishes no media (only its caption data packets), and subscribes to nothing by default — only to the microphones of
-the speakers SpeakerSelector picks from LiveKit's active-speaker updates.
+hidden and publishes no media (only its caption data packets). It subscribes to every
+person's microphone and share audio: LiveKit only tells a participant about the active
+speakers it is subscribed to, so subscribing to the selection alone means nobody is ever
+selected (selection.py). Only the lines of the speakers SpeakerSelector picks from those
+active-speaker updates (and share audio) reach the model.
 
 The main process also runs the finalizer thread (after-session transcripts). Job processes
 are LiveKit's own (one per room), each with its live models prewarmed.
@@ -30,7 +33,7 @@ from .finalizer import Finalizer
 from .live import LiveCaptioner
 from .poster import ApiClient, captions_shown, sender_for
 from .segmenter import Segmenter, pcm16_to_float
-from .selection import SHARE_SUFFIX, SpeakerSelector, main_source, pipeline_key, wants_audio
+from .selection import FrameWatch, LineGate, SpeakerSelector, main_source, pipeline_key, wants_key
 from .spool import RoomSpool, close_orphans, live_rooms
 from .transcriber import WhisperTranscriber
 
@@ -110,6 +113,9 @@ async def entrypoint(ctx: JobContext) -> None:
     active: list[str] = []
     pipelines: dict[str, asyncio.Task[None]] = {}
     segs: dict[str, Segmenter] = {}
+    pubs: dict[str, rtc.RemoteTrackPublication] = {}  # pipeline key -> its publication
+    requested: set[str] = set()  # publication sids we asked to subscribe to
+    watch = FrameWatch(60.0)
     background: set[asyncio.Task[None]] = set()
     # Finals reach the API in order on one thread, off the decoder: the room already has
     # the line by the time the POST starts.
@@ -171,21 +177,24 @@ async def entrypoint(ctx: JobContext) -> None:
         shown[0] = captions_shown(new)
 
     def apply_selection() -> None:
-        chosen = selector.update(active)
+        # Every person's audio is subscribed, whoever is selected: LiveKit sends active-
+        # speaker updates only for subscribed participants, so the selection (which reads
+        # them) cannot also decide the subscriptions. The selection gates the model instead,
+        # in pipeline().
+        selector.update(active)
         for p in room.remote_participants.values():
             if not _is_person(p):
                 continue
             for pub in p.track_publications.values():
                 if pub.kind != rtc.TrackKind.KIND_AUDIO or pub.source not in _AUDIO_SOURCES:
                     continue
-                want = wants_audio(p.identity, _is_share(pub), chosen)
-                if pub.subscribed != want:
-                    pub.set_subscribed(want)
-        # Microphones that dropped out of the selection stop; share audio stops only when
-        # its track goes away (track_unsubscribed).
-        for key in list(pipelines):
-            if not key.endswith(SHARE_SUFFIX) and key not in chosen:
-                pipelines.pop(key).cancel()
+                if not pub.subscribed and pub.sid not in requested:
+                    requested.add(pub.sid)
+                    log.info(
+                        "captions subscribing to %s %s (%s)",
+                        p.identity, "share audio" if _is_share(pub) else "microphone", pub.sid,
+                    )
+                    pub.set_subscribed(True)
 
     def level_changed(old: Level, new: Level) -> None:
         log.warning("cpu guard %s -> %s (host %.0f%%)", old.name, new.name, monitor.last_usage or -1)
@@ -202,15 +211,25 @@ async def entrypoint(ctx: JobContext) -> None:
             soft_utterance_s=cfg.soft_utterance_s, soft_silence_s=cfg.soft_silence_s,
         )
         segs[key] = seg
+        gate = LineGate()
+        watch.start(key, time.monotonic())
         stream = rtc.AudioStream(track, sample_rate=16_000, num_channels=1)
         try:
             async for ev in stream:
+                if watch.frame(key, time.monotonic()):
+                    log.info("captions: first audio from %s", key)
+                # Every subscribed source is segmented (one RMS per frame); only the
+                # selected speakers' lines (and share audio) go to the model.
+                chosen = wants_key(key, selector.selected)
                 for utt in seg.push(pcm16_to_float(ev.frame.data), _now_ms()):
-                    captioner.add(identity, name, utt)
-                    wake.set()
+                    if gate.take(chosen):
+                        captioner.add(identity, name, utt)
+                        wake.set()
+                gate.note(chosen, seg.in_speech)
                 # Interim text for the one source the room is listening to, while it talks.
-                if seg.in_speech and cfg.partials and captioner.partials_allowed():
-                    speaking = [k for k, s in segs.items() if s.in_speech]
+                if chosen and seg.in_speech and cfg.partials and captioner.partials_allowed():
+                    picked = selector.selected
+                    speaking = [k for k, s in segs.items() if s.in_speech and wants_key(k, picked)]
                     if main_source(active, speaking) == key:
                         snap = seg.take_partial(cfg.partial_interval_s)
                         if snap is not None and captioner.offer_partial(identity, name, snap):
@@ -218,11 +237,14 @@ async def entrypoint(ctx: JobContext) -> None:
         except asyncio.CancelledError:
             pass
         finally:
+            log.info("captions: audio from %s ended (%d frames)", key, watch.frames(key))
             if segs.get(key) is seg:
                 del segs[key]
+                watch.stop(key)
             for utt in seg.flush():
-                captioner.add(identity, name, utt)
-                wake.set()
+                if gate.take(wants_key(key, selector.selected)):
+                    captioner.add(identity, name, utt)
+                    wake.set()
             await stream.aclose()
 
     async def decoder() -> None:
@@ -247,6 +269,8 @@ async def entrypoint(ctx: JobContext) -> None:
             await asyncio.sleep(1.0)
             apply_selection()  # lets lingering slots expire on time
             captioner.stats.maybe_log()
+            for key in watch.due(time.monotonic(), muted=lambda k: bool((pub := pubs.get(k)) and pub.muted)):
+                log.warning("captions: no audio frames from %s for %.0fs while subscribed", key, watch.quiet_s)
 
     @room.on("active_speakers_changed")
     def _on_speakers(speakers: list[rtc.Participant]) -> None:
@@ -263,6 +287,8 @@ async def entrypoint(ctx: JobContext) -> None:
         if track.kind != rtc.TrackKind.KIND_AUDIO:
             return
         key = pipeline_key(p.identity, _is_share(pub))
+        log.info("captions subscribed to %s (%s, muted %s)", key, pub.sid, pub.muted)
+        pubs[key] = pub
         if old := pipelines.pop(key, None):
             old.cancel()
         # Captioned under the sharer: the line is theirs on screen, as a mic line is.
@@ -270,13 +296,26 @@ async def entrypoint(ctx: JobContext) -> None:
 
     @room.on("track_unsubscribed")
     def _on_unsubscribed(track: rtc.Track, pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant) -> None:
-        if track.kind == rtc.TrackKind.KIND_AUDIO and (t := pipelines.pop(pipeline_key(p.identity, _is_share(pub)), None)):
+        if track.kind != rtc.TrackKind.KIND_AUDIO:
+            return
+        key = pipeline_key(p.identity, _is_share(pub))
+        log.info("captions unsubscribed from %s (%s)", key, pub.sid)
+        requested.discard(pub.sid)
+        pubs.pop(key, None)
+        if t := pipelines.pop(key, None):
             t.cancel()
+
+    @room.on("track_unpublished")
+    def _on_unpublished(pub: rtc.RemoteTrackPublication, _p: rtc.RemoteParticipant) -> None:
+        requested.discard(pub.sid)
 
     @room.on("participant_disconnected")
     def _on_left(p: rtc.RemoteParticipant) -> None:
         selector.remove(p.identity)
+        for pub in p.track_publications.values():
+            requested.discard(pub.sid)
         for key in (p.identity, pipeline_key(p.identity, True)):
+            pubs.pop(key, None)
             if t := pipelines.pop(key, None):
                 t.cancel()
 

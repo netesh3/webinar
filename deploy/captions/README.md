@@ -8,7 +8,7 @@ container, never inside the API. Hindi and Hinglish are shown in **Roman script*
 
 ```
 host turns captions on ─▶ API ── agent dispatch ──▶ LiveKit ──▶ caption agent (this)
-                                                                   │ subscribes to ≤ N active mics
+                                                                   │ subscribes to every mic, transcribes ≤ N active
                                                                    │ energy gate → faster-whisper
           browsers ◀─ room packet "caption" (published by the agent, beside the SFU)
                     ◀─ API relay, only when the agent could not publish
@@ -67,7 +67,7 @@ All three internal endpoints check `X-Captions-Secret` against the API's `CAPTIO
 | `nice -n 10` | in the image's command |
 | `oom_score_adj: 800`, `mem_limit` | the first thing the kernel kills, never the SFU |
 | CPU guard | samples **host** `/proc/stat` every 2 s: > 85 % for 10 s → **degraded** (small → base, one speaker, stale windows skipped); > 95 % → **paused** (no decoding; the API is told, browsers caption themselves); back one step after < 70 % for 20 s |
-| Active speakers only | at most `CAPTIONS_MAX_SPEAKERS` mic tracks subscribed; silence stops at an RMS gate, so a 50-person room costs what a 5-person one does |
+| Active speakers only | every mic is subscribed (LiveKit only reports active speakers a participant is subscribed to), but only `CAPTIONS_MAX_SPEAKERS` of them reach the model; silence stops at an RMS gate, so a 50-person room costs what a 5-person one does |
 | One decode at a time per room | overlapping speakers queue; a backlog is dropped, not grown |
 
 The guard never touches the egress process. Audio is still written to disk while paused
