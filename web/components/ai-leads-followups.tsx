@@ -8,6 +8,7 @@ import { CopyIcon, SendIcon, SparklesIcon } from "./icons";
 import { useSession, useToast } from "./providers";
 import { Badge, Button, Card, SectionTitle } from "./ui";
 import { ENGAGE_HOME, FollowupWhatsAppActions, messagesHref } from "@/engage";
+import { aiPausedResultsNote } from "@/lib/ai-session";
 import { ApiError, api } from "@/lib/api";
 import { followupSendOffered } from "@/lib/host-features";
 import type { FollowupDraft, FollowupsResponse, Lead, LeadsResponse, Webinar } from "@/lib/api-types";
@@ -132,6 +133,8 @@ function HotLeadsCard({ topic, data, loadError }: { topic: string; data: LeadsRe
   const ranked = data.leads.filter((l) => l.score > 0);
   const shown = more ? ranked : ranked.slice(0, LEADS_SHOWN);
   const note = leadsAINote(data.aiStatus);
+  // Only beside reasons: the ranking itself counts the paused part too.
+  const pausedNote = data.aiStatus === "ready" ? aiPausedResultsNote(data.aiPausedMin) : null;
   return (
     <Card className="p-5">
       {header}
@@ -143,6 +146,7 @@ function HotLeadsCard({ topic, data, loadError }: { topic: string; data: LeadsRe
           {data.aiStatus === "processing" && <Spinner />} {note}
         </p>
       )}
+      {pausedNote && <p className="mb-3 text-[12.5px] text-ink-2">{pausedNote}</p>}
       {ranked.length === 0 ? (
         <p className="text-[13px] text-ink-2">Nobody took part in this session yet, so there are no leads.</p>
       ) : (

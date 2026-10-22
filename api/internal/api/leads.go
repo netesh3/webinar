@@ -27,7 +27,9 @@ import (
  *             reads the cache; a session run again and ended again gets new reasons once.
  *             There is no regenerate.
  *
- * Gated by sessionAIAllowed: with it off the ranking is returned and no model is called.
+ * Gated by sessionAIAllowed: with it off the ranking is returned and no model is called. The
+ * words asked or chatted while AI was paused are left out of the reasons (store.LeadRows);
+ * the counts behind the ranking keep them.
  * Under requireOwnership, so the host and co-hosts only, exactly as the rest of Results.
  */
 
@@ -293,6 +295,7 @@ func (s *Server) handleGetLeads(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out.AIStatus = s.aiOutputGate(ctx, wb)
+	out.AIPausedMin = s.aiPausedMin(ctx, slug)
 	if out.AIStatus == "" && len(top) == 0 {
 		out.AIStatus = aiStatusEmpty
 	}

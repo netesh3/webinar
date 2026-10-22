@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/netkumar/webcast/api/types"
@@ -237,26 +238,83 @@ func (s *Store) QueueRecapEmail(ctx context.Context, webinarID string, msgs ...N
 	return true, tx.Commit(ctx)
 }
 
-// TranscriptSince is the newest after-session transcript for slug stored at or after
-// since (the session's start, so a previous session's transcript is not used). found is
-// false when there is none.
+/* TranscriptSince is the after-session transcript for slug stored at or after since (the
+ * session's start, so a previous session's transcript is not used), for the AI: without the
+ * segments said while AI was paused (ai_off.go). found is false when there is none.
+ *
+ * One caption-agent job posts one transcript when it leaves the room, and a session can have
+ * several: the agent leaves when AI is paused with captions hidden and is dispatched again on
+ * resume. So every transcript since the start is read and merged in time order (a repeated
+ * post of the same lines counted once); model is the newest one's. */
 func (s *Store) TranscriptSince(ctx context.Context, slug string, since time.Time) (model string, segments []TranscriptSegment, found bool, err error) {
-	var raw []byte
-	err = s.pool.QueryRow(ctx, `
+	rows, err := s.pool.Query(ctx, `
 		SELECT t.model, t.segments
 		  FROM session_transcripts t JOIN webinars w ON w.id = t.webinar_id
 		 WHERE w.slug = $1 AND t.created_at >= $2
-		 ORDER BY t.created_at DESC, t.id DESC LIMIT 1`, slug, since).Scan(&model, &raw)
-	if noRows(err) {
-		return "", nil, false, nil
-	}
+		 ORDER BY t.created_at, t.id`, slug, since)
 	if err != nil {
 		return "", nil, false, err
 	}
-	if err := json.Unmarshal(raw, &segments); err != nil {
+	type key struct {
+		identity string
+		start    int64
+		text     string
+	}
+	seen := map[key]bool{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&model, &raw); err != nil {
+			rows.Close()
+			return "", nil, false, err
+		}
+		var segs []TranscriptSegment
+		if err := json.Unmarshal(raw, &segs); err != nil {
+			rows.Close()
+			return "", nil, false, err
+		}
+		found = true
+		for _, sg := range segs {
+			if k := (key{sg.Identity, sg.Start, sg.Text}); !seen[k] {
+				seen[k] = true
+				segments = append(segments, sg)
+			}
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return "", nil, false, err
 	}
+	if !found {
+		return "", nil, false, nil
+	}
+	sort.SliceStable(segments, func(i, j int) bool { return segments[i].Start < segments[j].Start })
+	// Said while AI was paused: out. found stays true, so a transcript that was all paused is
+	// not mistaken for one still to come.
+	windows, err := s.AIOffWindows(ctx, slug)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if len(windows) > 0 {
+		kept := segments[:0]
+		for _, sg := range segments {
+			if !windows.ContainsMs(sg.Start) {
+				kept = append(kept, sg)
+			}
+		}
+		segments = kept
+	}
 	return model, segments, true, nil
+}
+
+// TranscriptAfterEnd reports whether a transcript for slug was stored at or after the
+// session's end: for the recap, whether the one the agent posts on leaving at the end has
+// arrived, rather than only one it posted mid-session when it left on a pause.
+func (s *Store) TranscriptAfterEnd(ctx context.Context, slug string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM session_transcripts tr JOIN webinars w ON w.id = tr.webinar_id
+		                WHERE w.slug = $1 AND w.ended_at IS NOT NULL AND tr.created_at >= w.ended_at)`, slug).Scan(&ok)
+	return ok, err
 }
 
 // CaptionLine is one stored live caption line.
@@ -268,7 +326,7 @@ type CaptionLine struct {
 }
 
 /* RecapCaptions is the live caption lines for slug since since, oldest first, at most
- * limit. Name is the account's name for a stage identity ("user_" + id), else empty. */
+ * limit, for the AI: none said while AI was paused (ai_off.go). Name is the account's name for a stage identity ("user_" + id), else empty. */
 func (s *Store) RecapCaptions(ctx context.Context, slug string, since time.Time, limit int) ([]CaptionLine, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.at, c.identity, COALESCE(u.name, ''), c.body
@@ -276,6 +334,8 @@ func (s *Store) RecapCaptions(ctx context.Context, slug string, since time.Time,
 		  JOIN webinars w ON w.id = c.webinar_id
 		  LEFT JOIN users u ON starts_with(c.identity, 'user_') AND u.id::text = substr(c.identity, 6)
 		 WHERE w.slug = $1 AND c.at >= $2
+		   -- Said while AI was paused (captions shown, AI off): stored, never for the AI.
+		   AND NOT `+aiOffAtSQL("c.webinar_id", "c.at")+`
 		 ORDER BY c.at, c.id
 		 LIMIT $3`, slug, since, limit)
 	if err != nil {

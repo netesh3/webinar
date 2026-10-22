@@ -71,6 +71,7 @@ func (s *Store) ClaimAutoQuestions(ctx context.Context, slug string, limit int) 
 			SELECT q2.id FROM session_questions q2
 			  JOIN webinars w ON w.id = q2.webinar_id
 			 WHERE w.slug = $1 AND NOT q2.answered AND NOT q2.dismissed
+			   AND NOT `+aiOffAtSQL("q2.webinar_id", "q2.created_at")+`
 			   -- 'working' for minutes is a batch whose request died: taken again.
 			   AND (q2.auto_state = 'pending'
 			        OR (q2.auto_state = 'working' AND q2.auto_at < now() - interval '2 minutes'))

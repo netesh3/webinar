@@ -97,6 +97,8 @@ func (s *Store) HarvestQuestions(ctx context.Context, webinarID string) ([]Harve
 		  FROM session_questions q
 		  LEFT JOIN session_qa_clusters c ON c.id = q.cluster_id
 		 WHERE q.webinar_id = $1 AND NOT q.dismissed
+		   -- Asked while AI was paused: never harvested (ai_off.go).
+		   AND NOT `+aiOffAtSQL("q.webinar_id", "q.created_at")+`
 		   AND NOT EXISTS (SELECT 1 FROM knowledge_answer_sources src
 		                    WHERE src.webinar_id = q.webinar_id
 		                      AND src.source_key = COALESCE(q.cluster_id, 'q_' || q.id))

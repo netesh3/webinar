@@ -2018,6 +2018,11 @@ export interface LeadsResponse {
   aiStatus: string;
   sessionMin: number /* int */;
   generatedAt?: string;
+  /**
+   *  AIPausedMin is how long AI was paused during the live session (SessionRecapResponse.
+   * 	 * AIPausedMin). The ranking counts everything; the reasons leave the paused part out.
+   */
+  aiPausedMin?: number /* int */;
 }
 /**
  * FollowupDraft is one group's drafts: an email and a WhatsApp message.
@@ -2275,6 +2280,12 @@ export interface SessionRecapResponse {
   generatedAt?: string;
   emailedAt?: string;
   recap?: SessionRecap;
+  /**
+   *  AIPausedMin is how long the room's AI switch was off during the live session (the
+   * 	 * session_ai_off_intervals windows, migration 0143), rounded up; 0 when never. What was
+   * 	 * said, asked or chatted then is not in the recap, and the Results page says so.
+   */
+  aiPausedMin?: number /* int */;
 }
 
 //////////
@@ -3182,7 +3193,8 @@ export interface SessionControls {
    *  AIEnabled is the room's "AI" switch: whether this session is in AI at all. On, a
    * 	 * transcript is captured for the AI recap even with captions (CaptionsEnabled, which is
    * 	 * only whether people SEE the lines) off — by the server caption agent in a transcript-only
-   * 	 * mode, or silently by the speakers' browsers where no agent runs. Off at the end of the
+   * 	 * mode, or silently by the speakers' browsers where no agent runs. Off during the live
+   * 	 * session pauses AI until it is turned back on (AIOffThisSession); off at the end of the
    * 	 * session, no recap is written and nothing of the session goes to a model.
    * 	 *
    * 	 * On by default (webinars.ai_enabled, migration 0129), but only ever true when the host's
@@ -3196,9 +3208,10 @@ export interface SessionControls {
    */
   aiAvailable: boolean;
   /**
-   *  AIOffThisSession is set once the switch has been off at any point of the live session
-   * 	 * (migration 0133). The whole session then stays out of AI even if AI is switched back
-   * 	 * on: no recap, leads, follow-ups or Q&A assistant. Read-only; reset at the next go-live.
+   *  AIOffThisSession is whether AI is paused right now: the switch is off during the live
+   * 	 * session, so a window of session_ai_off_intervals (migration 0143) is open. Turning AI
+   * 	 * back on resumes it; what was said, asked or chatted while paused stays out of AI.
+   * 	 * (Until 0143 it latched the whole session off.) Read-only; cleared when the session ends.
    */
   aiOffThisSession?: boolean;
   locked: boolean;

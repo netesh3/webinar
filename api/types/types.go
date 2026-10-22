@@ -368,7 +368,8 @@ type SessionControls struct {
 	/* AIEnabled is the room's "AI" switch: whether this session is in AI at all. On, a
 	 * transcript is captured for the AI recap even with captions (CaptionsEnabled, which is
 	 * only whether people SEE the lines) off — by the server caption agent in a transcript-only
-	 * mode, or silently by the speakers' browsers where no agent runs. Off at the end of the
+	 * mode, or silently by the speakers' browsers where no agent runs. Off during the live
+	 * session pauses AI until it is turned back on (AIOffThisSession); off at the end of the
 	 * session, no recap is written and nothing of the session goes to a model.
 	 *
 	 * On by default (webinars.ai_enabled, migration 0129), but only ever true when the host's
@@ -378,9 +379,10 @@ type SessionControls struct {
 	// AIAvailable is whether the host's account has the ai feature, so the room knows to
 	// show the switch. Read-only: it follows the account, not PATCH /controls.
 	AIAvailable bool `json:"aiAvailable"`
-	/* AIOffThisSession is set once the switch has been off at any point of the live session
-	 * (migration 0133). The whole session then stays out of AI even if AI is switched back
-	 * on: no recap, leads, follow-ups or Q&A assistant. Read-only; reset at the next go-live. */
+	/* AIOffThisSession is whether AI is paused right now: the switch is off during the live
+	 * session, so a window of session_ai_off_intervals (migration 0143) is open. Turning AI
+	 * back on resumes it; what was said, asked or chatted while paused stays out of AI.
+	 * (Until 0143 it latched the whole session off.) Read-only; cleared when the session ends. */
 	AIOffThisSession bool `json:"aiOffThisSession,omitempty"`
 	Locked           bool `json:"locked"`
 

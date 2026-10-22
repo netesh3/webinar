@@ -69,6 +69,9 @@ type LeadsResponse struct {
 	AIStatus    string `json:"aiStatus"`
 	SessionMin  int    `json:"sessionMin"`
 	GeneratedAt string `json:"generatedAt,omitempty"`
+	/* AIPausedMin is how long AI was paused during the live session (SessionRecapResponse.
+	 * AIPausedMin). The ranking counts everything; the reasons leave the paused part out. */
+	AIPausedMin int `json:"aiPausedMin,omitempty"`
 }
 
 // FollowupDraft is one group's drafts: an email and a WhatsApp message.

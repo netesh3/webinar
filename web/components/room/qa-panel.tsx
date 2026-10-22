@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
-import { aiLockedOff } from "@/lib/ai-session";
+import { AI_PAUSED_NOTE, aiPaused } from "@/lib/ai-session";
 import { clusterIdFor, draftFor, groupOpenQuestions, qaAssistOn, topQuestions } from "@/lib/qa-clusters";
 import { answerKind, questionAuthor } from "@/lib/qa-view";
 import { assistantSignature } from "@/lib/qa-auto";
@@ -102,11 +102,11 @@ export function QAPanel() {
             </Alert>
           </div>
         )}
-        {isHost && aiLockedOff(controls, status) && (
+        {isHost && aiPaused(controls, status) && (
           // Said, so the assistant does not just vanish: see AIToggle.
           <p className="mb-3 inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 text-[10.5px] leading-5 text-ink-3">
             <SparklesIcon className="size-3" />
-            Q&amp;A assistant off: AI was switched off during this session.
+            {AI_PAUSED_NOTE}
           </p>
         )}
 
