@@ -150,10 +150,11 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 	}
 
 	h.runRecaps() // nothing left for the tick
-	if model.callCount() != 1 {
-		t.Fatalf("model calls = %d, want 1", model.callCount())
+	// The recap, and the past answers' one answered-aloud pass for the open question.
+	if model.callsFor("session_recap") != 1 || model.callsFor("qa_harvest") != 1 || model.callCount() != 2 {
+		t.Fatalf("model calls = %d (recap %d), want the recap and one harvest", model.callCount(), model.callsFor("session_recap"))
 	}
-	body := model.lastBody()
+	body := model.lastBodyFor("session_recap")
 	if body["model"] != "gpt-5-nano" || body["reasoning_effort"] != "low" {
 		t.Errorf("request = %v", body)
 	}
@@ -223,8 +224,8 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 	h.goLive(wb.ID)
 	h.endSession(wb.ID)
 	h.runRecaps()
-	if model.callCount() != 1 {
-		t.Fatalf("model calls after re-runs = %d, want 1", model.callCount())
+	if model.callsFor("session_recap") != 1 {
+		t.Fatalf("recap calls after re-runs = %d, want 1", model.callsFor("session_recap"))
 	}
 	if len(h.recapMails(wb.ID)) != 2 {
 		t.Fatal("a second end emailed again")

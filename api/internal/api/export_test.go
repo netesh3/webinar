@@ -8,6 +8,8 @@ import (
 	"github.com/livekit/protocol/livekit"
 
 	"github.com/netkumar/webcast/api/internal/ai"
+	"github.com/netkumar/webcast/api/internal/store"
+	"github.com/netkumar/webcast/api/types"
 )
 
 // SetMaintenanceHook runs f first in every maintenance lane, so a test can stand in
@@ -40,6 +42,14 @@ func ActiveBroadcast(slug string) string {
 // AIComplete is aiComplete, for the budget tests: one AI call on behalf of hostID.
 func AIComplete(s *Server, ctx context.Context, feature, hostID string, req ai.Request) (ai.Reply, error) {
 	return s.aiComplete(ctx, feature, hostID, req)
+}
+
+// SetEmbedder puts e in place of the server's embedder (the fake in tests).
+func SetEmbedder(s *Server, e ai.Embedder) { s.embedder = e }
+
+// RetrieveKnowledge is the hybrid retrieval a suggested answer uses, for a session.
+func RetrieveKnowledge(s *Server, ctx context.Context, wb types.Webinar, question string) ([]store.KnowledgeHit, error) {
+	return s.retrieveKnowledge(ctx, wb, question, knowledgeTopChunks, knowledgeTokenBudget)
 }
 
 // IsAILimit reports whether err is a monthly AI cap.

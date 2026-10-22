@@ -160,15 +160,14 @@ func (s *Server) qaAutoDraft(ctx context.Context, wb types.Webinar, created []st
 		return 0, err
 	}
 
-	var (
-		pool    excerptPool
-		items   []aiwrite.QADraftItem
-		targets []string
-	)
+	// The clusters a draft may be written for, and their searches, embedded in one call.
+	type candidate struct {
+		c     store.QANewCluster
+		asked []string
+		query string
+	}
+	var cands []candidate
 	for _, c := range created {
-		if len(items) == room {
-			break
-		}
 		if keys[c.ID] {
 			continue
 		}
@@ -181,7 +180,25 @@ func (s *Server) qaAutoDraft(ctx context.Context, wb types.Webinar, created []st
 		if drafted {
 			continue
 		}
-		hits, err := s.retrieveKnowledge(ctx, slug, c.Canonical+" "+strings.Join(asked, " "), autoDraftTopChunks, autoDraftTokenBudget)
+		cands = append(cands, candidate{c: c, asked: asked, query: c.Canonical + " " + strings.Join(asked, " ")})
+	}
+	queries := make([]string, len(cands))
+	for i, cd := range cands {
+		queries[i] = cd.query
+	}
+	vecs := s.queryVectors(ctx, wb.Host.ID, queries)
+
+	var (
+		pool    excerptPool
+		items   []aiwrite.QADraftItem
+		targets []string
+	)
+	for i, cd := range cands {
+		if len(items) == room {
+			break
+		}
+		c, asked := cd.c, cd.asked
+		hits, err := s.retrieveWith(ctx, slug, cd.query, vecs[i], autoDraftTopChunks, autoDraftTokenBudget)
 		if err != nil {
 			return 0, err
 		}
@@ -303,7 +320,7 @@ func (s *Server) handleQASuggest(w http.ResponseWriter, r *http.Request) {
 		s.log.Warn("qa suggest: knowledge", "slug", slug, "error", err)
 	}
 	if in.HasKnowledge {
-		hits, err := s.retrieveKnowledge(r.Context(), slug, in.Question+" "+strings.Join(in.Asked, " "), knowledgeTopChunks, knowledgeTokenBudget)
+		hits, err := s.retrieveKnowledge(r.Context(), wb, in.Question+" "+strings.Join(in.Asked, " "), knowledgeTopChunks, knowledgeTokenBudget)
 		if err != nil {
 			s.log.Warn("qa suggest: retrieve", "slug", slug, "error", err)
 		}

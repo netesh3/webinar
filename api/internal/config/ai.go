@@ -175,6 +175,23 @@ func normaliseAIProviders(list []AIProvider) []AIProvider {
 
 const openAIBaseURL = "https://api.openai.com/v1"
 
+/* embeddingsProvider is the OpenAI provider of the chain, for embeddings: only OpenAI is
+ * asked, because the vectors stored must all come from one model (text-embedding-3-small)
+ * to be comparable, and none of the free providers offers it. Nil without one, or when it
+ * is switched off. */
+func embeddingsProvider(list []AIProvider) *AIProvider {
+	for _, p := range list {
+		if p.Disabled || p.APIKey == "" {
+			continue
+		}
+		if u, err := url.Parse(p.BaseURL); err == nil && strings.EqualFold(u.Hostname(), "api.openai.com") {
+			e := p
+			return &e
+		}
+	}
+	return nil
+}
+
 // isOpenAIReasoningModel: gpt-5 and its variants, and the o-series (o1, o3, o4-mini…).
 func isOpenAIReasoningModel(model string) bool {
 	m := strings.ToLower(model)

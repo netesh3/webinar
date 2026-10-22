@@ -429,6 +429,11 @@ type Config struct {
 	 * chain with no paid provider never reaches them. 0 means no AI spend at all. */
 	AIMonthlyUSD     float64
 	AIHostMonthlyUSD float64
+
+	/* AIEmbeddings is the endpoint the AI knowledge embeds its chunks and questions with
+	 * (text-embedding-3-small): OpenAI's, from OPENAI_API_KEY or the AI_PROVIDERS entry on
+	 * api.openai.com. Nil means no embeddings: retrieval is full-text search alone. */
+	AIEmbeddings *AIProvider
 }
 
 // httpFromWS converts the browser-facing ws(s) URL into the http(s) form the
@@ -577,6 +582,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	c.AIProviders = aiProviders
+	c.AIEmbeddings = embeddingsProvider(aiProviders)
 	c.AIMonthlyUSD = envFloatStrict("AI_MONTHLY_USD", 20)
 	c.AIHostMonthlyUSD = envFloatStrict("AI_HOST_MONTHLY_USD", 2)
 

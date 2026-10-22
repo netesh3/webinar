@@ -483,6 +483,10 @@ func (s *Server) handleGetRecap(w http.ResponseWriter, r *http.Request) {
 			row = fresh
 		}
 	}
+	// The transcript has settled: the answered-aloud past answers, once (knowledge_answers.go).
+	if row.Status != types.RecapPending {
+		s.harvestAloudForSlug(r.Context(), slug)
+	}
 	httpx.JSON(w, http.StatusOK, recapResponse(row))
 }
 

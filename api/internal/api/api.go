@@ -170,6 +170,9 @@ type Server struct {
 	 * one when a free allowance runs out. Never nil; with no providers configured it is
 	 * a chain that answers nothing, and ai.Enabled says so. */
 	ai *ai.Chain
+	/* embedder turns the AI knowledge's text into vectors (knowledge_embed.go). Never nil;
+	 * ai.NoEmbedder without OpenAI, and retrieval is then full-text only. */
+	embedder ai.Embedder
 
 	// salesStartLimit caps new sales chats per IP; salesMsgLimit caps messages per
 	// conversation and per IP. Both protect the free AI allowances as much as the server.
@@ -260,6 +263,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		mail:          mail,
 		engage:        NoEngage{},
 		ai:            newAIChain(cfg, log),
+		embedder:      newEmbedder(cfg, log),
 		// Ten new chats a minute per IP covers an office behind one address; twelve
 		// messages a minute per conversation is faster than anyone types.
 		salesStartLimit: httpx.NewRateLimiter(10, time.Minute),
@@ -638,6 +642,14 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/knowledge", s.handleKnowledgeLibrary)
 				r.Post("/knowledge", s.handleCreateKnowledge)
 				r.Post("/knowledge/upload", s.handleUploadKnowledge)
+				// An Obsidian vault (.zip of notes). See knowledge_vault.go.
+				r.Post("/knowledge/vault", s.handleImportVault)
+				// Past answers from the host's sessions. See knowledge_answers.go.
+				r.Get("/knowledge/answers", s.handlePastAnswers)
+				r.Patch("/knowledge/answers/{id}", s.handleEditPastAnswer)
+				r.Delete("/knowledge/answers/{id}", s.handleDeletePastAnswer)
+				r.Post("/knowledge/answers/{id}/approve", s.handleApprovePastAnswer)
+				r.Post("/knowledge/answers/{id}/undo", s.handleUndoPastAnswer)
 				r.Get("/knowledge/{id}", s.handleKnowledgeDoc)
 				r.Patch("/knowledge/{id}", s.handleRenameKnowledge)
 				r.Delete("/knowledge/{id}", s.handleDeleteKnowledge)
@@ -753,6 +765,7 @@ func (s *Server) Routes() http.Handler {
 					r.Delete("/qa/drafts/{id}", s.handleQADiscardDraft)
 					// Which of the host's AI knowledge documents this session uses.
 					r.Get("/knowledge", s.handleSessionKnowledge)
+					r.Patch("/knowledge/past-answers", s.handlePatchSessionPastAnswers)
 					r.Patch("/knowledge/{docId}", s.handlePatchSessionKnowledge)
 					r.Post("/registrants/approve-all", s.handleApproveAll)
 

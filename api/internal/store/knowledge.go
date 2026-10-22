@@ -3,7 +3,11 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/netkumar/webcast/api/internal/knowledge"
 	"github.com/netkumar/webcast/api/types"
@@ -29,11 +33,15 @@ type NewKnowledgeDoc struct {
 	Bytes    int64
 	Body     string
 	Words    int
+	// Folder is a vault note's folder, as a tag; "" otherwise.
+	Folder string
+	// Chunks are the document's pieces (knowledge.Split of Body).
+	Chunks []knowledge.Chunk
 }
 
 // knowledgeDocColumns is a document as the list shows it: the first 280 characters of its text
 // as the preview.
-const knowledgeDocColumns = `d.id::text, d.title, d.source, d.filename, d.bytes, d.words,
+const knowledgeDocColumns = `d.id::text, d.title, d.source, d.filename, d.folder, d.bytes, d.words,
 	(SELECT count(*)::int FROM knowledge_chunks c WHERE c.doc_id = d.id),
 	left(d.body, 280), d.created_at, d.updated_at`
 
@@ -44,7 +52,7 @@ func scanKnowledgeDoc(r rowScanner) (types.KnowledgeDoc, error) {
 		d        types.KnowledgeDoc
 		cre, upd time.Time
 	)
-	if err := r.Scan(&d.ID, &d.Title, &d.Source, &d.Filename, &d.Bytes, &d.Words, &d.Chunks,
+	if err := r.Scan(&d.ID, &d.Title, &d.Source, &d.Filename, &d.Folder, &d.Bytes, &d.Words, &d.Chunks,
 		&d.Preview, &cre, &upd); err != nil {
 		return d, err
 	}
@@ -52,47 +60,73 @@ func scanKnowledgeDoc(r rowScanner) (types.KnowledgeDoc, error) {
 	return d, nil
 }
 
-/* CreateKnowledgeDoc stores a document and its chunks in one transaction, within the
- * library's limits (ErrLibraryFull). The host's row is locked for the count, so two uploads at
- * once cannot both squeeze under the cap. */
-func (s *Store) CreateKnowledgeDoc(ctx context.Context, hostID string, d NewKnowledgeDoc, chunks []knowledge.Chunk) (types.KnowledgeDoc, error) {
+/* CreateKnowledgeDocs stores documents and their chunks in one transaction, all or none,
+ * within the library's limits (ErrLibraryFull): a vault import is refused whole rather than
+ * half added. The host's row is locked for the count, so two uploads at once cannot both
+ * squeeze under the cap. */
+func (s *Store) CreateKnowledgeDocs(ctx context.Context, hostID string, ds []NewKnowledgeDoc) ([]types.KnowledgeDoc, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return types.KnowledgeDoc{}, err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, hostID); err != nil {
-		return types.KnowledgeDoc{}, err
+		return nil, err
 	}
 	var docs, words int
 	if err := tx.QueryRow(ctx, `
 		SELECT count(*)::int, COALESCE(sum(words), 0)::int FROM knowledge_docs WHERE host_id = $1`,
 		hostID).Scan(&docs, &words); err != nil {
-		return types.KnowledgeDoc{}, err
+		return nil, err
 	}
-	if docs >= types.KnowledgeMaxDocs || words+d.Words > types.KnowledgeMaxWords {
-		return types.KnowledgeDoc{}, ErrLibraryFull
+	adding := 0
+	for _, d := range ds {
+		adding += d.Words
 	}
-	var id string
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO knowledge_docs (host_id, title, source, filename, bytes, body, words)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id::text`,
-		hostID, d.Title, d.Source, d.Filename, d.Bytes, d.Body, d.Words).Scan(&id); err != nil {
-		return types.KnowledgeDoc{}, err
+	if docs+len(ds) > types.KnowledgeMaxDocs || words+adding > types.KnowledgeMaxWords {
+		return nil, ErrLibraryFull
 	}
-	for _, c := range chunks {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO knowledge_chunks (doc_id, seq, body, tokens) VALUES ($1, $2, $3, $4)`,
-			id, c.Seq, c.Text, c.Tokens); err != nil {
-			return types.KnowledgeDoc{}, err
+	out := make([]types.KnowledgeDoc, 0, len(ds))
+	for _, d := range ds {
+		var id string
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO knowledge_docs (host_id, title, source, filename, bytes, body, words, folder)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id::text`,
+			hostID, d.Title, d.Source, d.Filename, d.Bytes, d.Body, d.Words, d.Folder).Scan(&id); err != nil {
+			return nil, err
 		}
+		for _, c := range d.Chunks {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO knowledge_chunks (doc_id, seq, body, tokens) VALUES ($1, $2, $3, $4)`,
+				id, c.Seq, c.Text, c.Tokens); err != nil {
+				return nil, err
+			}
+		}
+		doc, err := scanKnowledgeDoc(tx.QueryRow(ctx, `SELECT `+knowledgeDocColumns+`
+			FROM knowledge_docs d WHERE d.id = $1`, id))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, doc)
 	}
-	doc, err := scanKnowledgeDoc(tx.QueryRow(ctx, `SELECT `+knowledgeDocColumns+`
-		FROM knowledge_docs d WHERE d.id = $1`, id))
+	return out, tx.Commit(ctx)
+}
+
+// CreateKnowledgeDoc stores one document (CreateKnowledgeDocs).
+func (s *Store) CreateKnowledgeDoc(ctx context.Context, hostID string, d NewKnowledgeDoc) (types.KnowledgeDoc, error) {
+	out, err := s.CreateKnowledgeDocs(ctx, hostID, []NewKnowledgeDoc{d})
 	if err != nil {
 		return types.KnowledgeDoc{}, err
 	}
-	return doc, tx.Commit(ctx)
+	return out[0], nil
+}
+
+// KnowledgeUsage is how many documents and words a host's library holds.
+func (s *Store) KnowledgeUsage(ctx context.Context, hostID string) (docs, words int, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT count(*)::int, COALESCE(sum(words), 0)::int FROM knowledge_docs WHERE host_id = $1`,
+		hostID).Scan(&docs, &words)
+	return docs, words, err
 }
 
 // KnowledgeDocs is a host's library, newest first, and the words it holds in all.
@@ -126,7 +160,7 @@ func (s *Store) KnowledgeDoc(ctx context.Context, hostID, id string) (types.Know
 		d        types.KnowledgeDoc
 		cre, upd time.Time
 	)
-	err := row.Scan(&d.ID, &d.Title, &d.Source, &d.Filename, &d.Bytes, &d.Words, &d.Chunks,
+	err := row.Scan(&d.ID, &d.Title, &d.Source, &d.Filename, &d.Folder, &d.Bytes, &d.Words, &d.Chunks,
 		&d.Preview, &cre, &upd, &body)
 	if noRows(err) {
 		return d, "", ErrNotFound
@@ -210,8 +244,8 @@ func (s *Store) SetSessionKnowledge(ctx context.Context, slug, docID string, inc
 	return err
 }
 
-// SessionHasKnowledge reports whether the session has any document to draw on: one of its
-// host's, not left out of it.
+// SessionHasKnowledge reports whether the session has anything to draw on: one of its host's
+// documents not left out of it, or an approved past answer while past answers are on.
 func (s *Store) SessionHasKnowledge(ctx context.Context, slug string) (bool, error) {
 	var ok bool
 	err := s.pool.QueryRow(ctx, `
@@ -220,7 +254,13 @@ func (s *Store) SessionHasKnowledge(ctx context.Context, slug string) (bool, err
 			  JOIN knowledge_docs d ON d.host_id = w.host_id
 			 WHERE w.slug = $1
 			   AND NOT EXISTS (SELECT 1 FROM session_knowledge_exclusions e
-			                    WHERE e.webinar_id = w.id AND e.doc_id = d.id))`, slug).Scan(&ok)
+			                    WHERE e.webinar_id = w.id AND e.doc_id = d.id))
+		    OR EXISTS (
+			SELECT 1 FROM webinars w
+			  JOIN knowledge_answers a ON a.host_id = w.host_id AND a.status = 'approved'
+			 WHERE w.slug = $1
+			   AND NOT EXISTS (SELECT 1 FROM session_past_answers_off o WHERE o.webinar_id = w.id))`,
+		slug).Scan(&ok)
 	return ok, err
 }
 
@@ -234,27 +274,52 @@ type KnowledgeHit struct {
 	Rank   float64
 }
 
-/* SearchKnowledge is the session's chunks matching a to_tsquery('simple', …) query (see
- * knowledge.TSQuery), best first, at most limit: only the session host's documents, and none
- * the session left out. Ties go to the older document's earlier chunk. */
+// PastAnswersTitle is what a past answer is cited as, among the documents.
+const PastAnswersTitle = "Past answers"
+
+// pastAnswerHitPrefix marks a hit's DocID as a past answer's id.
+const pastAnswerHitPrefix = "pa:"
+
+// IsPastAnswer reports whether a hit is a past answer rather than a document chunk.
+func (h KnowledgeHit) IsPastAnswer() bool { return strings.HasPrefix(h.DocID, pastAnswerHitPrefix) }
+
+/* SearchKnowledge is the session's chunks and approved past answers matching a
+ * to_tsquery('simple', …) query (see knowledge.TSQuery), best first, at most limit: only the
+ * session host's, none of the documents the session left out, and no past answer when it left
+ * those out. Ties go to the older document's earlier chunk. */
 func (s *Store) SearchKnowledge(ctx context.Context, slug, tsquery string, limit int) ([]KnowledgeHit, error) {
 	if tsquery == "" {
 		return []KnowledgeHit{}, nil
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT d.id::text, d.title, c.seq, c.body, c.tokens, ts_rank(c.tsv, q, 1) AS rank
-		  FROM webinars w
-		  JOIN knowledge_docs d ON d.host_id = w.host_id
-		  JOIN knowledge_chunks c ON c.doc_id = d.id,
-		       to_tsquery('simple', $2) q
-		 WHERE w.slug = $1 AND c.tsv @@ q
-		   AND NOT EXISTS (SELECT 1 FROM session_knowledge_exclusions e
-		                    WHERE e.webinar_id = w.id AND e.doc_id = d.id)
-		 ORDER BY rank DESC, d.created_at, c.seq
-		 LIMIT $3`, slug, tsquery, limit)
+		SELECT id, title, seq, body, tokens, rank FROM (
+			SELECT d.id::text AS id, d.title, c.seq, c.body, c.tokens, ts_rank(c.tsv, q, 1) AS rank,
+			       d.created_at AS at
+			  FROM webinars w
+			  JOIN knowledge_docs d ON d.host_id = w.host_id
+			  JOIN knowledge_chunks c ON c.doc_id = d.id,
+			       to_tsquery('simple', $2) q
+			 WHERE w.slug = $1 AND c.tsv @@ q
+			   AND NOT EXISTS (SELECT 1 FROM session_knowledge_exclusions e
+			                    WHERE e.webinar_id = w.id AND e.doc_id = d.id)
+			UNION ALL
+			SELECT 'pa:' || a.id::text, $4, 0, 'Q: ' || a.question || E'\nA: ' || a.answer, 0,
+			       ts_rank(a.tsv, q, 1), a.created_at
+			  FROM webinars w
+			  JOIN knowledge_answers a ON a.host_id = w.host_id AND a.status = 'approved',
+			       to_tsquery('simple', $2) q
+			 WHERE w.slug = $1 AND a.tsv @@ q
+			   AND NOT EXISTS (SELECT 1 FROM session_past_answers_off o WHERE o.webinar_id = w.id)
+		) hits
+		 ORDER BY rank DESC, at, seq
+		 LIMIT $3`, slug, tsquery, limit, PastAnswersTitle)
 	if err != nil {
 		return nil, err
 	}
+	return scanHits(rows)
+}
+
+func scanHits(rows pgx.Rows) ([]KnowledgeHit, error) {
 	defer rows.Close()
 	out := []KnowledgeHit{}
 	for rows.Next() {
@@ -262,9 +327,133 @@ func (s *Store) SearchKnowledge(ctx context.Context, slug, tsquery string, limit
 		if err := rows.Scan(&h.DocID, &h.Title, &h.Seq, &h.Text, &h.Tokens, &h.Rank); err != nil {
 			return nil, err
 		}
+		if h.IsPastAnswer() {
+			h.Tokens = knowledge.EstimateTokens(h.Text)
+		}
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// VectorMinSimilarity is the cosine similarity below which a vector neighbour is not a hit:
+// unrelated text sits around 0.1 to 0.2 with text-embedding-3-small. Without a floor every
+// question would "find" something, and the assistant would draft from noise.
+const VectorMinSimilarity = 0.3
+
+/* SearchKnowledgeByVector is the session's embedded chunks and approved past answers nearest
+ * a question's embedding (cosine), best first, at most limit each, above VectorMinSimilarity;
+ * the same scope as SearchKnowledge. Rank is the similarity.
+ *
+ * The HNSW indexes are scanned iteratively (pgvector 0.8's hnsw.iterative_scan) so the host
+ * and exclusion filters cannot leave the LIMIT unfilled; on a pgvector without the setting the
+ * search runs without it. */
+func (s *Store) SearchKnowledgeByVector(ctx context.Context, slug string, vec []float32, limit int) ([]KnowledgeHit, error) {
+	if len(vec) == 0 {
+		return []KnowledgeHit{}, nil
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SAVEPOINT iter`); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `SET LOCAL hnsw.iterative_scan = relaxed_order`); err != nil {
+		if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT iter`); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT id, title, seq, body, tokens, sim FROM (
+			(SELECT d.id::text AS id, d.title, c.seq, c.body, c.tokens,
+			        1 - (c.embedding <=> $2::halfvec) AS sim, d.created_at AS at
+			   FROM webinars w
+			   JOIN knowledge_docs d ON d.host_id = w.host_id
+			   JOIN knowledge_chunks c ON c.doc_id = d.id
+			  WHERE w.slug = $1 AND c.embedding IS NOT NULL
+			    AND NOT EXISTS (SELECT 1 FROM session_knowledge_exclusions e
+			                     WHERE e.webinar_id = w.id AND e.doc_id = d.id)
+			  ORDER BY c.embedding <=> $2::halfvec
+			  LIMIT $3)
+			UNION ALL
+			(SELECT 'pa:' || a.id::text, $4, 0, 'Q: ' || a.question || E'\nA: ' || a.answer, 0,
+			        1 - (a.embedding <=> $2::halfvec), a.created_at
+			   FROM webinars w
+			   JOIN knowledge_answers a ON a.host_id = w.host_id AND a.status = 'approved'
+			  WHERE w.slug = $1 AND a.embedding IS NOT NULL
+			    AND NOT EXISTS (SELECT 1 FROM session_past_answers_off o WHERE o.webinar_id = w.id)
+			  ORDER BY a.embedding <=> $2::halfvec
+			  LIMIT $3)
+		) hits
+		 WHERE sim >= $5
+		 ORDER BY sim DESC, at, seq
+		 LIMIT $3`, slug, VectorLiteral(vec), limit, PastAnswersTitle, VectorMinSimilarity)
+	if err != nil {
+		return nil, err
+	}
+	return scanHits(rows)
+}
+
+// VectorLiteral is a vector as pgvector reads it: "[0.1,0.2,…]".
+func VectorLiteral(v []float32) string {
+	var b strings.Builder
+	b.Grow(len(v) * 10)
+	b.WriteByte('[')
+	for i, x := range v {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(strconv.FormatFloat(float64(x), 'g', -1, 32))
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+// ChunkRef is a chunk to embed.
+type ChunkRef struct {
+	DocID string
+	Seq   int
+	Text  string
+}
+
+// ChunksWithoutEmbedding is up to limit of a host's chunks not embedded yet, oldest first.
+func (s *Store) ChunksWithoutEmbedding(ctx context.Context, hostID string, limit int) ([]ChunkRef, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.doc_id::text, c.seq, c.body FROM knowledge_chunks c
+		  JOIN knowledge_docs d ON d.id = c.doc_id
+		 WHERE d.host_id = $1 AND c.embedding IS NULL
+		 ORDER BY d.created_at, c.doc_id, c.seq
+		 LIMIT $2`, hostID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ChunkRef{}
+	for rows.Next() {
+		var c ChunkRef
+		if err := rows.Scan(&c.DocID, &c.Seq, &c.Text); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetChunkEmbeddings stores each chunk's vector, unless the chunk's text changed meanwhile.
+func (s *Store) SetChunkEmbeddings(ctx context.Context, refs []ChunkRef, vecs [][]float32) error {
+	batch := &pgx.Batch{}
+	for i, c := range refs {
+		if i >= len(vecs) || len(vecs[i]) == 0 {
+			continue
+		}
+		batch.Queue(`UPDATE knowledge_chunks SET embedding = $3::halfvec
+			WHERE doc_id::text = $1 AND seq = $2 AND body = $4`, c.DocID, c.Seq, VectorLiteral(vecs[i]), c.Text)
+	}
+	if batch.Len() == 0 {
+		return nil
+	}
+	return s.pool.SendBatch(ctx, batch).Close()
 }
 
 // ---------------------------------------------------------------- drafts

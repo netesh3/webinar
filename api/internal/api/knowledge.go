@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -28,8 +27,10 @@ import (
  *   sessions   every session uses every document of its host's; a host or co-host can untick
  *              documents for one session (session_knowledge_exclusions).
  *   retrieval  a question's content words, OR-ed as prefixes (knowledge.TSQuery), ranked with
- *              ts_rank over the session's chunks; the best few within a token budget
- *              (pickKnowledge) are what the model is given.
+ *              ts_rank over the session's chunks, fused with a vector ranking when embeddings
+ *              are available (knowledge_embed.go); the best few within a token budget
+ *              (pickKnowledge) are what the model is given. Approved past answers
+ *              (knowledge_answers.go) are searched alongside the chunks.
  *
  * Only for accounts with the ai feature: the library routes say feature_off otherwise, and a
  * session's list follows its host's account. */
@@ -63,19 +64,6 @@ func pickKnowledge(hits []store.KnowledgeHit, n, budget int) []store.KnowledgeHi
 	return out
 }
 
-// retrieveKnowledge is the session's best chunks for a question.
-func (s *Server) retrieveKnowledge(ctx context.Context, slug, question string, n, budget int) ([]store.KnowledgeHit, error) {
-	q := knowledge.TSQuery(question)
-	if q == "" {
-		return []store.KnowledgeHit{}, nil
-	}
-	hits, err := s.store.SearchKnowledge(ctx, slug, q, knowledgeSearchLimit)
-	if err != nil {
-		return nil, err
-	}
-	return pickKnowledge(hits, n, budget), nil
-}
-
 // ---------------------------------------------------------------- the library
 
 func knowledgeLimits() types.KnowledgeLimits {
@@ -96,6 +84,8 @@ func (s *Server) handleKnowledgeLibrary(w http.ResponseWriter, r *http.Request) 
 	if !s.featureAllowed(w, user, types.FeatureAI) {
 		return
 	}
+	// What earlier adds could not embed (no key then, a cap, an outage).
+	s.backfillEmbeddings(r.Context(), user.ID)
 	docs, words, err := s.store.KnowledgeDocs(r.Context(), user.ID)
 	if err != nil {
 		s.fail(w, r, "knowledge: list", err)
@@ -193,7 +183,8 @@ func (s *Server) addKnowledgeDoc(w http.ResponseWriter, r *http.Request, user st
 				strconv.Itoa(types.KnowledgeMaxDocWords)+"; split it into parts.")
 		return
 	}
-	doc, err := s.store.CreateKnowledgeDoc(r.Context(), user.ID, d, knowledge.Split(d.Body))
+	d.Chunks = knowledge.Split(d.Body)
+	doc, err := s.store.CreateKnowledgeDoc(r.Context(), user.ID, d)
 	if errors.Is(err, store.ErrLibraryFull) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "library_full",
 			"Your AI knowledge is full ("+strconv.Itoa(types.KnowledgeMaxDocs)+" documents or "+
@@ -204,6 +195,8 @@ func (s *Server) addKnowledgeDoc(w http.ResponseWriter, r *http.Request, user st
 		s.fail(w, r, "knowledge: create", err)
 		return
 	}
+	// Embedded now, while this request has the CPU; what fails is backfilled on a later read.
+	s.backfillEmbeddings(r.Context(), user.ID)
 	httpx.JSON(w, http.StatusCreated, doc)
 }
 
@@ -305,12 +298,40 @@ func (s *Server) handleSessionKnowledge(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	s.writeSessionKnowledge(w, r, slug)
+}
+
+// writeSessionKnowledge is the session's documents and past-answers tick, 200.
+func (s *Server) writeSessionKnowledge(w http.ResponseWriter, r *http.Request, slug string) {
 	docs, err := s.store.SessionKnowledgeDocs(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "session knowledge", err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, types.SessionKnowledge{Docs: docs})
+	past, err := s.store.SessionPastAnswers(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "session knowledge: past answers", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, types.SessionKnowledge{Docs: docs, PastAnswers: past})
+}
+
+// handlePatchSessionPastAnswers is PATCH /api/host/webinars/{slug}/knowledge/past-answers.
+func (s *Server) handlePatchSessionPastAnswers(w http.ResponseWriter, r *http.Request) {
+	slug, ok := s.sessionKnowledgeAllowed(w, r)
+	if !ok {
+		return
+	}
+	var in types.SessionPastAnswersPatch
+	if err := httpx.DecodeJSON(w, r, &in); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	if err := s.store.SetSessionPastAnswers(r.Context(), slug, in.Included); err != nil {
+		s.fail(w, r, "session knowledge: past answers", err)
+		return
+	}
+	s.writeSessionKnowledge(w, r, slug)
 }
 
 // handlePatchSessionKnowledge is PATCH /api/host/webinars/{slug}/knowledge/{docId}.
@@ -331,10 +352,5 @@ func (s *Server) handlePatchSessionKnowledge(w http.ResponseWriter, r *http.Requ
 		s.fail(w, r, "session knowledge: set", err)
 		return
 	}
-	docs, err := s.store.SessionKnowledgeDocs(r.Context(), slug)
-	if err != nil {
-		s.fail(w, r, "session knowledge", err)
-		return
-	}
-	httpx.JSON(w, http.StatusOK, types.SessionKnowledge{Docs: docs})
+	s.writeSessionKnowledge(w, r, slug)
 }

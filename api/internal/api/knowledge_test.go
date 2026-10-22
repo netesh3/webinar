@@ -412,6 +412,14 @@ func TestQADraftGroundedPostedOnlyOnPost(t *testing.T) {
 			t.Fatal("a discarded draft was posted")
 		}
 	}
+
+	// The session ends: the answer as posted (the host's edit, not the draft) becomes one past
+	// answer for the cluster; the discarded draft's question has no typed answer and is not one.
+	h.endSession(wb.ID)
+	past := h.pastAnswers()
+	if len(past.Answers) != 1 || past.Answers[0].Answer != edited || past.Answers[0].Question != cluster.Canonical {
+		t.Fatalf("past answers = %+v", past.Answers)
+	}
 }
 
 func TestQAAutoDraftsBatchedCappedAndOnlyWithHits(t *testing.T) {
