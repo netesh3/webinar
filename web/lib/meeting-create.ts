@@ -48,7 +48,8 @@ export function meetingInputBase(): Omit<
       autoRecord: false,
       qAndA: true,
       attendeeChat: true,
-      raiseHand: false,
+      // A hand in a meeting means "I'd like to speak", as in Zoom (lib/meeting-room.ts).
+      raiseHand: true,
       captions: false,
       multistream: false,
       postWebinarSurvey: false,
@@ -69,10 +70,11 @@ export function meetingInputBase(): Omit<
       chatDestination: "everyone",
       pollsEnabled: true,
       qaEnabled: true,
-      // Nobody needs a hand to speak when everyone already has a microphone.
-      raiseHandEnabled: false,
+      raiseHandEnabled: true,
       reactionsEnabled: true,
       captionsEnabled: false,
+      // Server captions are switched on from the room (POST …/captions/server), not at creation.
+      serverCaptions: false,
       locked: false,
     },
   };

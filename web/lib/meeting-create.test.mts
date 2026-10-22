@@ -24,8 +24,8 @@ assert.equal(instant.controls.hideAttendees, false);
 // Entry muting is the pre-join screen's; the room must not undo a guest who unmuted there.
 assert.equal(instant.controls.muteOnEntry, false);
 assert.equal(instant.controls.allowUnmute, true);
-assert.equal(instant.controls.raiseHandEnabled, false);
-assert.equal(instant.options.raiseHand, false);
+assert.equal(instant.controls.raiseHandEnabled, true);
+assert.equal(instant.options.raiseHand, true);
 assert.equal(instant.options.practiceSession, false);
 assert.equal(instant.options.emailReminders, false);
 assert.equal(instant.recurrence, undefined);
