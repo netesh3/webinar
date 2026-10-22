@@ -304,6 +304,23 @@ const (
 
 var edgeEventSeq atomic.Int64
 
+/* refuseRemovedViewer is 403 removed for an edge viewer the host removed from this run, on the
+ * stream and the beat. The browser treats that 403 as final (web/lib/edge-route.ts
+ * edgeStreamFailure) — no retry, no fresh join — so unlike refuseRemoved a failed lookup lets
+ * the request through rather than ending somebody's session over a database blip. */
+func (s *Server) refuseRemovedViewer(w http.ResponseWriter, r *http.Request, slug, identity string) bool {
+	removed, err := s.store.WasRemoved(r.Context(), slug, identity)
+	if err != nil {
+		s.log.Warn("edge: removal lookup failed, allowing", "slug", slug, "error", err)
+		return false
+	}
+	if !removed {
+		return false
+	}
+	httpx.Error(w, http.StatusForbidden, "removed", "The host removed you from this session.")
+	return true
+}
+
 /* handleEdgeEvents is the event stream an edge viewer reads instead of the LiveKit data
  * channel.
  *
@@ -331,8 +348,7 @@ func (s *Server) handleEdgeEvents(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict, "not_edge", "This webinar isn't on edge delivery.")
 		return
 	}
-	if removed, rerr := s.store.WasRemoved(r.Context(), slug, identity); rerr == nil && removed {
-		httpx.Error(w, http.StatusForbidden, "removed", "The host removed you from this webinar.")
+	if s.refuseRemovedViewer(w, r, slug, identity) {
 		return
 	}
 
@@ -425,6 +441,10 @@ func (s *Server) handleEdgeBeat(w http.ResponseWriter, r *http.Request) {
 	identity, _, err := verifyEvents([]byte(s.cfg.SessionSecret), r.URL.Query().Get("t"), slug, time.Now())
 	if err != nil || s.cfg.SessionSecret == "" {
 		httpx.Error(w, http.StatusUnauthorized, "bad_token", "Join the webinar again.")
+		return
+	}
+	// A removed viewer's beats must not reopen the seat removeEdgeViewer closed.
+	if s.refuseRemovedViewer(w, r, slug, identity) {
 		return
 	}
 	if err := s.store.TouchEdgeVisit(r.Context(), slug, identity, time.Now()); err != nil {

@@ -18,7 +18,7 @@
 
 import { useEffect, useRef } from "react";
 import { ConnectionState, RoomEvent, type Room } from "livekit-client";
-import { api } from "./api";
+import { ApiError, api } from "./api";
 import type { PresenceResponse } from "./api-types";
 import { DATA_TOPIC } from "./realtime";
 import { presenceInviteStep, presencePacket } from "./presence-step";
@@ -72,7 +72,12 @@ export function usePresenceFallback({
       let res: PresenceResponse;
       try {
         res = await api.presence(slug, { joinKey });
-      } catch {
+      } catch (e) {
+        // Removed by the host is final: asking again every 10 s would only be refused again.
+        if (e instanceof ApiError && e.code === "removed") {
+          stopped = true;
+          stop();
+        }
         return; // Best-effort: the next poll, or the connection coming back, covers it.
       }
       if (stopped) return;
@@ -94,7 +99,7 @@ export function usePresenceFallback({
       poll = undefined;
     };
     const start = () => {
-      if (wait || poll) return;
+      if (stopped || wait || poll) return;
       wait = setTimeout(() => {
         wait = undefined;
         handlers.current.onStart?.();

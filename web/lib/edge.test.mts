@@ -20,7 +20,14 @@ import {
   modeLabel,
   retryDelayMs,
 } from "./edge-hls.ts";
-import { routeEdgeEvent } from "./edge-route.ts";
+import {
+  EDGE_MAX_REFRESHES,
+  EDGE_RETRY_BASE_MS,
+  EDGE_RETRY_MAX_MS,
+  edgeRetryDelay,
+  edgeStreamFailure,
+  routeEdgeEvent,
+} from "./edge-route.ts";
 import { clockOffset, formatClock } from "./server-clock.ts";
 
 // Neither mode may set the count settings: hls.js reads them from the constructor config and,
@@ -205,5 +212,23 @@ assert.equal(
 );
 assert.equal(clockOffset([]), 0);
 assert.equal(formatClock(Date.UTC(2026, 9, 18, 7, 5, 9, 42)), "07:05:09.042");
+
+// A refused event stream: 403 is the host's removal and final, 401 a token to replace, the
+// rest a retry (instant-webinar-4277 looped 181 times by treating a 403 like a 401).
+assert.equal(edgeStreamFailure(403), "removed");
+assert.equal(edgeStreamFailure(401), "expired");
+for (const status of [404, 409, 500, 502, 503, null]) assert.equal(edgeStreamFailure(status), "retry");
+// Backoff: doubling from the base, capped, never tight, and jitter only ever shortens it.
+assert.equal(edgeRetryDelay(1, () => 1), EDGE_RETRY_BASE_MS);
+assert.equal(edgeRetryDelay(2, () => 1), EDGE_RETRY_BASE_MS * 2);
+assert.equal(edgeRetryDelay(3, () => 1), EDGE_RETRY_BASE_MS * 4);
+assert.equal(edgeRetryDelay(50, () => 1), EDGE_RETRY_MAX_MS);
+assert.equal(edgeRetryDelay(1e9, () => 1), EDGE_RETRY_MAX_MS);
+assert.equal(edgeRetryDelay(0, () => 1), EDGE_RETRY_BASE_MS);
+for (let n = 1; n < 30; n++) {
+  const d = edgeRetryDelay(n, () => 0);
+  assert.ok(d >= EDGE_RETRY_BASE_MS * 0.75 && d <= EDGE_RETRY_MAX_MS, `attempt ${n}: ${d}`);
+}
+assert.ok(EDGE_MAX_REFRESHES >= 1 && EDGE_MAX_REFRESHES <= 5);
 
 console.log("edge: ok");
