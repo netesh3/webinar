@@ -54,3 +54,11 @@ func SetRecapDelay(d time.Duration) func() {
 	recapDelay = d
 	return func() { recapDelay = old }
 }
+
+// SetQAClusterTiming makes the Q&A assistant's check run on the request path (sync) and sets
+// how long a question waits for a pass; the returned func restores both.
+func SetQAClusterTiming(sync bool, every time.Duration) func() {
+	oldSync, oldEvery := qaClusterSync, qaClusterEvery
+	qaClusterSync, qaClusterEvery = sync, every
+	return func() { qaClusterSync, qaClusterEvery = oldSync, oldEvery }
+}

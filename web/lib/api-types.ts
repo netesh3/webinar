@@ -52,6 +52,14 @@ export const AIFeatureWebinarSetup = "webinar_setup";
  */
 export const AIFeatureRecap = "recap";
 /**
+ * The live Q&A assistant: grouping duplicate questions, and a host's draft answer.
+ */
+export const AIFeatureQACluster = "qa_cluster";
+/**
+ * AI feature names, as recorded in ai_usage and reported per feature.
+ */
+export const AIFeatureQAAnswer = "qa_answer";
+/**
  * AIFeatureUsage is one AI feature's calls this month.
  */
 export interface AIFeatureUsage {
@@ -110,6 +118,61 @@ export interface AIWebinarSetup {
   registrationHeadline: string;
   registrationBullets: string[];
   socialPosts: AISocialPosts;
+}
+/**
+ *  The live Q&A assistant, for the host and co-hosts only (api/internal/api/qa_assist.go).
+ *  *
+ *  * QACluster is questions that ask the same thing, under one short canonical wording. A
+ *  * question no grouping pass has reached yet is reported as a cluster of its own, with
+ *  * Provisional set and an id of "q_" + the question's id, so the panel and the ranking treat
+ *  * every open question alike.
+ */
+export interface QACluster {
+  id: string;
+  canonical: string;
+  questionIds: string[];
+  /**
+   * Askers is how many different people asked it; Upvotes is the questions' votes summed.
+   */
+  askers: number /* int */;
+  upvotes: number /* int */;
+  /**
+   * Open is how many of its questions are neither answered nor hidden.
+   */
+  open: number /* int */;
+  /**
+   * LatestAt is when its newest question was asked (RFC 3339).
+   */
+  latestAt: string;
+  score: number /* float64 */;
+  provisional?: boolean;
+}
+/**
+ * QAClustersResponse is GET /api/host/webinars/{slug}/qa/clusters.
+ */
+export interface QAClustersResponse {
+  /**
+   * Enabled is false when the session may not use AI (the account feature or the room's
+   * AI switch is off): the panel then shows the plain list, as without the assistant.
+   */
+  enabled: boolean;
+  /**
+   * Limited is set while grouping is paused at an AI cap.
+   */
+  limited: boolean;
+  clusters: QACluster[];
+  /**
+   * Top is the "Top questions" strip: cluster ids, best first, ranked on upvotes, askers
+   * and recency. Empty with fewer than two open clusters.
+   */
+  top: string[];
+}
+/**
+ * QASuggestResponse is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: a private
+ * draft for the host. Never posted, never stored.
+ */
+export interface QASuggestResponse {
+  answer: string;
 }
 
 //////////

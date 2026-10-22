@@ -275,6 +275,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			// Still delivered live, but it will be missing from the report — say so.
 			s.log.Warn("say: record question failed", "slug", slug, "question", packet.ID, "error", err)
+		} else {
+			// The Q&A assistant's batching check, beside the request (qa_assist.go).
+			defer s.qaQuestionAsked(r.Context(), wb)
 		}
 	case types.MsgUpvote:
 		if added, err := s.store.UpvoteQuestion(

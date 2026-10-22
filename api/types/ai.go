@@ -32,6 +32,9 @@ const (
 	AIFeatureSalesChat    = "sales_chat"
 	AIFeatureWebinarSetup = "webinar_setup"
 	AIFeatureRecap        = "recap"
+	// The live Q&A assistant: grouping duplicate questions, and a host's draft answer.
+	AIFeatureQACluster = "qa_cluster"
+	AIFeatureQAAnswer  = "qa_answer"
 )
 
 // AIFeatureUsage is one AI feature's calls this month.
@@ -83,4 +86,44 @@ type AIWebinarSetup struct {
 	RegistrationHeadline string        `json:"registrationHeadline"`
 	RegistrationBullets  []string      `json:"registrationBullets"`
 	SocialPosts          AISocialPosts `json:"socialPosts"`
+}
+
+/* The live Q&A assistant, for the host and co-hosts only (api/internal/api/qa_assist.go).
+ *
+ * QACluster is questions that ask the same thing, under one short canonical wording. A
+ * question no grouping pass has reached yet is reported as a cluster of its own, with
+ * Provisional set and an id of "q_" + the question's id, so the panel and the ranking treat
+ * every open question alike. */
+type QACluster struct {
+	ID          string   `json:"id"`
+	Canonical   string   `json:"canonical"`
+	QuestionIDs []string `json:"questionIds"`
+	// Askers is how many different people asked it; Upvotes is the questions' votes summed.
+	Askers  int `json:"askers"`
+	Upvotes int `json:"upvotes"`
+	// Open is how many of its questions are neither answered nor hidden.
+	Open int `json:"open"`
+	// LatestAt is when its newest question was asked (RFC 3339).
+	LatestAt    string  `json:"latestAt"`
+	Score       float64 `json:"score"`
+	Provisional bool    `json:"provisional,omitempty"`
+}
+
+// QAClustersResponse is GET /api/host/webinars/{slug}/qa/clusters.
+type QAClustersResponse struct {
+	// Enabled is false when the session may not use AI (the account feature or the room's
+	// AI switch is off): the panel then shows the plain list, as without the assistant.
+	Enabled bool `json:"enabled"`
+	// Limited is set while grouping is paused at an AI cap.
+	Limited  bool        `json:"limited"`
+	Clusters []QACluster `json:"clusters"`
+	// Top is the "Top questions" strip: cluster ids, best first, ranked on upvotes, askers
+	// and recency. Empty with fewer than two open clusters.
+	Top []string `json:"top"`
+}
+
+// QASuggestResponse is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: a private
+// draft for the host. Never posted, never stored.
+type QASuggestResponse struct {
+	Answer string `json:"answer"`
 }
