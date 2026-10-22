@@ -1355,6 +1355,15 @@ func (s *Server) endWebinarSession(ctx context.Context, slug string) (types.Webi
 		s.log.Warn("end webinar: could not stop the stream destination", "slug", slug, "error", err)
 	}
 
+	// The caption agent goes with the room (deleting the room ends its job anyway); the
+	// flags are cleared so the next session starts on the host's choice, not this one's.
+	if sfu, err := s.sfuFor(ctx, wb); err == nil {
+		s.turnOffServerCaptions(ctx, slug, sfu)
+	}
+	if err := s.store.ClearServerCaptions(ctx, slug); err != nil {
+		s.log.Warn("end webinar: could not clear server captions", "slug", slug, "error", err)
+	}
+
 	if sfu, err := s.sfuFor(ctx, wb); err != nil {
 		s.log.Warn("end webinar: could not resolve the livekit project",
 			"slug", slug, "error", err)
@@ -1518,6 +1527,14 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		} else if changed > 0 {
 			s.log.Info("attendee visibility changed",
 				"slug", slug, "hidden", *p.HideAttendees, "participants", changed)
+		}
+	}
+
+	// Captions off is captions off, whichever engine was producing them: the caption agent
+	// leaves with the switch rather than transcribing a room nobody shows the lines in.
+	if p.CaptionsEnabled != nil && !*p.CaptionsEnabled && s.turnOffServerCaptions(r.Context(), slug, sfu) {
+		if fresh, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+			wb = fresh
 		}
 	}
 

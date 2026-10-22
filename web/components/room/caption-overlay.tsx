@@ -22,6 +22,12 @@ import { useRoomUI } from "./context";
  * polls use, so it also applies to someone who joins ten minutes later and it
  * survives the host reloading. The audience gets no toggle of their own: what
  * stops the captions is the same switch that stops them being produced.
+ *
+ * Where the server caption agent is deployed (deploy/captions) the host's switch
+ * asks for it first, and while it reports itself live (controls.serverCaptions)
+ * the browsers stop recognising: the lines arrive as the same "caption" packets,
+ * from the server, so this overlay does not know the difference. On-device
+ * Whisper stays as the fallback whenever server captions are not live.
  */
 
 /** How long a caption stays up after the last packet for it.
@@ -121,9 +127,13 @@ export function CaptionsSession() {
     ?.audioTrack?.mediaStreamTrack;
 
   // Runs for every publisher, not just the host: Whisper only ever hears the
-  // microphone published from this tab.
+  // microphone published from this tab. Stands down while the server is
+  // captioning the room (controls.serverCaptions: the caption agent on the
+  // egress host, multilingual, has said it is live) and takes over again the
+  // moment it is not — switched off, never picked up, or paused because the
+  // box needed the CPU for video.
   useLocalCaptions({
-    active: on && permissions.canPublish,
+    active: on && permissions.canPublish && !controls.serverCaptions,
     track: mic,
     slug,
     joinKey,
@@ -157,6 +167,20 @@ export function useCaptionsMoreAction():
       // Written to the API, which persists it and mirrors it into room metadata.
       // Nothing local is set: this control reacts to the same broadcast as every
       // other browser, which is what keeps them in agreement.
+      //
+      // On asks for server captions first (Hindi, English and Hinglish, and no
+      // speaker's laptop doing the work). Where none are deployed, or the
+      // agent could not be dispatched, the ordinary switch turns on on-device
+      // captions instead. Off is the ordinary switch, which also removes the
+      // agent.
+      if (!on) {
+        try {
+          await api.setServerCaptions(slug, { on: true });
+          return;
+        } catch {
+          // Fall through to on-device captions.
+        }
+      }
       await api.updateControls(slug, { captionsEnabled: !on } satisfies ControlsPatch);
     } catch (err) {
       notify(err instanceof Error ? err.message : "That didn't apply.", "error");
@@ -177,7 +201,11 @@ export function useCaptionsMoreAction():
     active: on,
     busy,
     title:
-      on && recording
+      on && controls.serverCaptions
+        ? recording
+          ? "Captions are on for everyone, from the server. This session is being recorded."
+          : "Captions are on for everyone, from the server"
+        : on && recording
         ? "Captions are on for everyone. This session is being recorded."
         : on
           ? "Captions are on for everyone"

@@ -49,6 +49,7 @@ import type {
   ChatStats,
   CoHostPatch,
   ControlsPatch,
+  ServerCaptionsRequest,
   EngagementAttendeeDetail,
   EngagementAttendeePage,
   EngagementSummary,
@@ -733,6 +734,12 @@ export const api = {
   /** Partial by design: only the controls named in the patch change. */
   updateControls: (slug: string, body: ControlsPatch) =>
     patch<Webinar>(`/api/host/webinars/${seg(slug)}/controls`, body),
+
+  /** Server-side captions on or off (the caption agent on the egress host). On also turns
+   *  captions on. 503 `server_captions_unavailable` where no agent is deployed — the caller
+   *  then turns on ordinary, on-device captions instead. */
+  setServerCaptions: (slug: string, body: ServerCaptionsRequest) =>
+    post<Webinar>(`/api/host/webinars/${seg(slug)}/captions/server`, body),
 
   /** The host's moderation roster, read from the SFU's server API so it
    *  includes the hidden attendees the host's own browser cannot see. */

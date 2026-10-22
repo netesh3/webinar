@@ -1,0 +1,7 @@
+# Pinned: the agent protocol and the CTranslate2 build are the two things an unpinned
+# upgrade breaks silently. Bump together, then load-test (README.md).
+livekit-agents==1.8.8
+livekit==1.1.20
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+numpy>=1.26,<3

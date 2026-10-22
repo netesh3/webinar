@@ -14,6 +14,14 @@
 #   sfu-public-ip     (optional) the SFU box's public IP: traffic to it is sent to
 #                     sfu-private-ip instead, so it stays on the VPC
 #
+# Server-side live captions (deploy/captions), optional — all three set, or none:
+#   captions-image    the caption agent image (built from deploy/captions and pushed to a
+#                     registry this VM can pull from; workers have no source to build from)
+#   captions-secret   CAPTIONS_SECRET, the API's
+#   captions-api-url  (optional) default https://webinarliv.com
+# With them the worker also runs the caption agent beside egress, capped at half the vCPUs
+# with low cpu_shares and nice, so the composite keeps the CPU it was sized for.
+#
 # The first boot installs Docker and pulls the image (a few minutes); later boots only rewrite
 # the config and start the container, about a minute from power-on to taking a job.
 set -euo pipefail
@@ -25,6 +33,9 @@ LK_API_KEY="$(md lk-api-key)"
 LK_API_SECRET="$(md lk-api-secret)"
 REDIS_PASSWORD="$(md redis-password)"
 SFU_PUBLIC_IP="$(md sfu-public-ip 2>/dev/null || true)"
+CAPTIONS_IMAGE="$(md captions-image 2>/dev/null || true)"
+CAPTIONS_SECRET="$(md captions-secret 2>/dev/null || true)"
+CAPTIONS_API_URL="$(md captions-api-url 2>/dev/null || true)"
 
 # Talk to the SFU over the VPC, not its public IP. LiveKit tells every client, this worker
 # included, to send media to node_ip (public), and the signalling hostname resolves there
@@ -98,17 +109,62 @@ services:
 YAML
 sed -i "s/__SFU_PRIVATE_IP__/${SFU_PRIVATE_IP}/" docker-compose.yml.new
 
+# Server captions beside egress, when the metadata asks for them. Half the vCPUs at most
+# (2 of 4, 1 of 2), cpu_shares 256 against egress's 1024, nice 10 in the image, and the
+# agent's own CPU guard: the composite this worker exists for always wins. On a 2 vCPU
+# worker the live model drops to base, which is what one core can keep up with.
+CAPTIONS=0
+if [[ -n "$CAPTIONS_IMAGE" && ${#CAPTIONS_SECRET} -ge 32 ]]; then
+  CAPTIONS=1
+  CAPTIONS_CPUS=$(( CPUS / 2 > 0 ? CPUS / 2 : 1 ))
+  if (( CPUS >= 4 )); then CAPTIONS_MODEL=small; else CAPTIONS_MODEL=base; fi
+  cat >>docker-compose.yml.new <<YAML
+  captions:
+    image: ${CAPTIONS_IMAGE}
+    network_mode: host
+    restart: unless-stopped
+    cpus: ${CAPTIONS_CPUS}
+    cpu_shares: 256
+    mem_limit: 4g
+    oom_score_adj: 800
+    env_file: captions.env
+    volumes:
+      - captions_models:/models
+      - captions_spool:/var/lib/captions
+    stop_grace_period: 40s
+volumes:
+  captions_models:
+  captions_spool:
+YAML
+  cat >captions.env.new <<ENV
+LIVEKIT_URL=wss://${SFU_DOMAIN}
+LIVEKIT_API_KEY=${LK_API_KEY}
+LIVEKIT_API_SECRET=${LK_API_SECRET}
+CAPTIONS_API_URL=${CAPTIONS_API_URL:-https://webinarliv.com}
+CAPTIONS_SECRET=${CAPTIONS_SECRET}
+CAPTIONS_CPUS=${CAPTIONS_CPUS}
+CAPTIONS_MODEL=${CAPTIONS_MODEL}
+CAPTIONS_MAX_ROOMS=1
+ENV
+  chmod 600 captions.env.new
+else
+  rm -f captions.env
+fi
+
 changed=0
-for f in egress.yaml docker-compose.yml; do
+files=(egress.yaml docker-compose.yml)
+[[ "$CAPTIONS" == 1 ]] && files+=(captions.env)
+for f in "${files[@]}"; do
   if ! cmp -s "$f.new" "$f"; then mv "$f.new" "$f"; changed=1; else rm -f "$f.new"; fi
 done
 
 # Pull only what is missing: a boot is about a minute from a webinar waiting on it.
 docker image inspect livekit/egress:v1.15.0 >/dev/null 2>&1 && docker image inspect alpine/socat:1.8.0.3 >/dev/null 2>&1 \
+  && { [[ "$CAPTIONS" != 1 ]] || docker image inspect "$CAPTIONS_IMAGE" >/dev/null 2>&1; } \
   || docker compose pull --quiet
 if [[ "$changed" == 1 ]]; then
-  docker compose up -d --force-recreate
+  docker compose up -d --force-recreate --remove-orphans
 else
-  docker compose up -d
+  docker compose up -d --remove-orphans
 fi
 echo "egress worker up: wss://${SFU_DOMAIN}, redis ${SFU_PRIVATE_IP}:6379, rtmp 127.0.0.1:1935 -> ${SFU_PRIVATE_IP}:1935"
