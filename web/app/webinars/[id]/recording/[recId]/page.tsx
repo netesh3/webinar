@@ -1,12 +1,14 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ParticipantHeader } from "@/components/participant-header";
 import { Badge, Button, Card } from "@/components/ui";
 import { CopyField, Spinner } from "@/components/controls";
 import { LockIcon } from "@/components/icons";
-import { VideoPlayer } from "@/components/video-player";
+import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
+import { RecordingChapters } from "@/components/recording-chapters";
+import { chapterSeekTimes } from "@/lib/recap";
 import { recordingSources, playableRecordingParts } from "@/lib/recording-parts";
 import { useToast } from "@/components/providers";
 import { api } from "@/lib/api";
@@ -37,6 +39,11 @@ export default function RecordingReplayPage({
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
   const playable = recording ? playableRecordingParts(recording) : [];
+  const player = useRef<VideoPlayerHandle>(null);
+  // The AI recap's chapters, when the host's session has some (sent once unlocked).
+  const chapters = recording?.unlocked
+    ? chapterSeekTimes(recording.chapters ?? [], recording.sessionStartedAt, playable)
+    : [];
   const isUploading =
     recording !== null &&
     playable.length === 0 &&
@@ -240,12 +247,15 @@ export default function RecordingReplayPage({
             <Card className="overflow-hidden shadow-lg">
               <VideoPlayer
                 key={recording.id}
+                ref={player}
                 sources={playerSources}
                 durationMs={recording.durationMs}
+                chapters={chapters}
                 onError={() => {
                   setError("The video file is unavailable or could not be loaded from storage.");
                 }}
               />
+              <RecordingChapters chapters={chapters} onSeek={(sec) => player.current?.seek(sec)} />
 
               <div className="border-t border-line p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

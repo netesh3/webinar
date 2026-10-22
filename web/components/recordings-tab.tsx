@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { FeatureWhatsAppCRM } from "@/lib/api-types";
-import type { Recording, Webinar } from "@/lib/api-types";
+import type { RecapChapter, Recording, Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { formatBytes, formatClock } from "@/lib/format";
 import { ConfirmModal, CopyField, Modal, Spinner, Toggle, Alert } from "./controls";
@@ -24,8 +24,10 @@ import {
   YouTubeIcon,
 } from "./icons";
 import { Badge, Button, Card, Empty } from "./ui";
-import { VideoPlayer } from "./video-player";
-import { recordingSources } from "@/lib/recording-parts";
+import { VideoPlayer, type VideoPlayerHandle } from "./video-player";
+import { RecordingChapters } from "./recording-chapters";
+import { playableRecordingParts, recordingSources } from "@/lib/recording-parts";
+import { chapterSeekTimes } from "@/lib/recap";
 
 /* Recordings of one webinar.
  *
@@ -54,6 +56,29 @@ export function RecordingsTab({
   const [sharing, setSharing] = useState<Recording | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Recording | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const player = useRef<VideoPlayerHandle>(null);
+
+  /* The AI recap's chapters, for the player. Read once the session has ended (that is when
+   * a recap exists); a session without one simply has no chapters. */
+  const [recapChapters, setRecapChapters] = useState<RecapChapter[]>([]);
+  const ended = w.status === "ended";
+  useEffect(() => {
+    if (!ended) return;
+    const ctl = new AbortController();
+    async function load() {
+      try {
+        const res = await api.sessionRecap(w.id, ctl.signal);
+        if (!ctl.signal.aborted) setRecapChapters(res.recap?.chapters ?? []);
+      } catch {
+        // No recap is no chapters.
+      }
+    }
+    void load();
+    return () => ctl.abort();
+  }, [ended, w.id]);
+  const chapters = playing
+    ? chapterSeekTimes(recapChapters, w.startedAt, playableRecordingParts(playing))
+    : [];
 
   // Poll while any recording is still processing or recording, so the row
   // transitions to "Ready" without requiring a manual page refresh. A ready row
@@ -127,9 +152,12 @@ export function RecordingsTab({
         <Card className="overflow-hidden">
           <VideoPlayer
             key={playing.id}
+            ref={player}
             sources={recordingSources(playing, (id) => api.recordingFileURL(w.id, id))}
             durationMs={playing.durationMs}
+            chapters={chapters}
           />
+          <RecordingChapters chapters={chapters} onSeek={(sec) => player.current?.seek(sec)} />
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3">
             <p className="text-[12.5px] text-ink-2">
               Recorded by {playing.startedBy || "a presenter"}

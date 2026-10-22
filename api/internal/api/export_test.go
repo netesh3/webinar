@@ -44,3 +44,13 @@ func AIComplete(s *Server, ctx context.Context, feature, hostID string, req ai.R
 
 // IsAILimit reports whether err is a monthly AI cap.
 func IsAILimit(err error) bool { return errors.Is(err, errAILimit) }
+
+// RunRecaps is the recap lane of RunTick on its own.
+func RunRecaps(s *Server, ctx context.Context) { s.runRecaps(ctx) }
+
+// SetRecapDelay makes a recap due this long after the end; the returned func restores it.
+func SetRecapDelay(d time.Duration) func() {
+	old := recapDelay
+	recapDelay = d
+	return func() { recapDelay = old }
+}

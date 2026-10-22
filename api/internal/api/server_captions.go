@@ -416,5 +416,9 @@ func (s *Server) handleInternalTranscript(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.log.Info("session transcript stored", "slug", slug, "model", model, "segments", len(segments))
+	// The AI recap was waiting for this: write it on the next tick.
+	if err := s.store.NudgeRecap(r.Context(), slug); err != nil {
+		s.log.Warn("internal transcript: could not nudge the recap", "slug", slug, "error", err)
+	}
 	httpx.JSON(w, http.StatusCreated, map[string]any{"status": "ok", "segments": len(segments)})
 }

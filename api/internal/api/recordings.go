@@ -808,6 +808,14 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 		Parts:            pubParts,
 	}
 	s.stampPublicRecording(&res)
+	// The AI recap's chapters, for a viewer who may watch it. See recap.go.
+	if unlocked {
+		if chapters, err := s.store.RecapChapters(r.Context(), slug); err == nil && len(chapters) > 0 {
+			if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && wb.StartedAt != "" {
+				res.Chapters, res.SessionStartedAt = chapters, wb.StartedAt
+			}
+		}
+	}
 
 	httpx.JSON(w, http.StatusOK, res)
 }

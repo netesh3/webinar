@@ -172,10 +172,16 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
  */
 func (s *Server) RunTick(ctx context.Context) bool {
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		s.runMaintenance(ctx)
+	}()
+	// The AI recaps (recap.go): a lane of their own, because one is a model call that can
+	// take most of a minute, and neither a reminder nor a retention sweep should wait on it.
+	go func() {
+		defer wg.Done()
+		s.runRecaps(ctx)
 	}()
 	ran := s.runRealtime(ctx)
 	wg.Wait()

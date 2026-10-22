@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { formatClock } from "@/lib/format";
+import { chapterAt, type PlayerChapter } from "@/lib/recap";
 import {
   FullscreenExitIcon,
   FullscreenIcon,
@@ -20,6 +21,11 @@ interface VideoSource {
   durationMs?: number;
 }
 
+/** What a parent can do to the player: jump to a moment (a chapter) and play from it. */
+export interface VideoPlayerHandle {
+  seek: (sec: number) => void;
+}
+
 interface VideoPlayerProps {
   src?: string;
   sources?: VideoSource[];
@@ -27,6 +33,10 @@ interface VideoPlayerProps {
   className?: string;
   onError?: () => void;
   poster?: string;
+  /** AI recap chapters, already placed on this playlist (lib/recap.ts chapterSeekTimes):
+   *  marked on the seek bar, and named in the time readout and the hover tooltip. */
+  chapters?: PlayerChapter[];
+  ref?: Ref<VideoPlayerHandle>;
 }
 
 export function VideoPlayer({
@@ -36,6 +46,8 @@ export function VideoPlayer({
   className = "",
   onError,
   poster,
+  chapters = [],
+  ref,
 }: VideoPlayerProps) {
   const playlist =
     sources && sources.length > 0
@@ -213,6 +225,17 @@ export function VideoPlayer({
   function skip(seconds: number) {
     seekGlobal(currentTime + seconds);
   }
+
+  useImperativeHandle(ref, () => ({
+    seek: (sec: number) => {
+      seekGlobal(sec);
+      const video = videoRef.current;
+      if (video?.paused) {
+        playAfterLoadRef.current = true;
+        void video.play().catch(() => {});
+      }
+    },
+  }));
 
   function handleVolumeChange(val: number) {
     const video = videoRef.current;
@@ -436,6 +459,8 @@ export function VideoPlayer({
   }, []);
 
   const progressPercent = effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
+  const currentChapter = chapters[chapterAt(chapters, currentTime)];
+  const hoverChapter = hoverTime !== null ? chapters[chapterAt(chapters, hoverTime)] : undefined;
   const bufferedPercent = effectiveDuration > 0 ? (buffered / effectiveDuration) * 100 : 0;
 
   return (
@@ -509,6 +534,18 @@ export function VideoPlayer({
               className="absolute inset-y-0 left-0 rounded-full bg-brand transition-all"
               style={{ width: `${progressPercent}%` }}
             />
+            {/* Chapter markers: a gap in the track where each chapter starts. */}
+            {effectiveDuration > 0 &&
+              chapters.map((c) =>
+                c.startSec > 0 && c.startSec < effectiveDuration ? (
+                  <span
+                    key={`${c.startSec}-${c.title}`}
+                    aria-hidden
+                    className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-black/70"
+                    style={{ left: `${(c.startSec / effectiveDuration) * 100}%` }}
+                  />
+                ) : null,
+              )}
           </div>
 
           {/* Scrubber Knob */}
@@ -524,6 +561,7 @@ export function VideoPlayer({
               style={{ left: `${hoverPos}px` }}
             >
               {formatClock(hoverTime * 1000)}
+              {hoverChapter && <span className="ml-1.5 font-sans">{hoverChapter.title}</span>}
             </div>
           )}
         </div>
@@ -591,6 +629,11 @@ export function VideoPlayer({
               <span>{formatClock(currentTime * 1000)}</span>
               <span className="mx-1 text-white/40">/</span>
               <span>{formatClock((effectiveDuration || 0) * 1000)}</span>
+              {currentChapter && (
+                <span className="ml-2 hidden max-w-[16rem] truncate align-bottom font-sans text-white/70 sm:inline-block">
+                  · {currentChapter.title}
+                </span>
+              )}
             </div>
           </div>
 
