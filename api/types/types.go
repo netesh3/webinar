@@ -335,6 +335,58 @@ type SessionControls struct {
 	// change without polling. Messages still carry the destination they were sent
 	// with, so switching the setting never rewrites history.
 	ChatDestination ChatDestination `json:"chatDestination"`
+
+	/* AudienceLayout is how the composite arranges the stage: the picture edge (LL-HLS)
+	 * viewers, CDN viewers and recordings get, drawn by the egress from
+	 * web/app/recorder-template. The egress page is in the room and reads this from room
+	 * metadata, so a change re-lays the composite live without restarting the egress.
+	 * Panelists' own views are not affected. Missing means AudienceLayoutAuto. */
+	AudienceLayout AudienceLayout `json:"audienceLayout"`
+}
+
+// AudienceLayout names a composite layout; web/lib/composite-layouts.ts draws each one.
+type AudienceLayout string
+
+const (
+	// AudienceLayoutAuto is the layout the composite always had: a share next to (or, on
+	// edge, under) the cameras, otherwise the active speaker with a strip.
+	AudienceLayoutAuto AudienceLayout = "auto"
+	// AudienceLayoutSpeaker is the active speaker large with a filmstrip.
+	AudienceLayoutSpeaker AudienceLayout = "speaker"
+	// AudienceLayoutGrid is equal tiles, one page at most.
+	AudienceLayoutGrid AudienceLayout = "grid"
+	// AudienceLayoutShareOnly is the share alone; speaker when nobody shares.
+	AudienceLayoutShareOnly AudienceLayout = "share_only"
+	// AudienceLayoutShareSpeaker is the share with the active speaker in a corner bubble.
+	AudienceLayoutShareSpeaker AudienceLayout = "share_speaker"
+	// AudienceLayoutSideBySide is the share on the left two thirds, the speaker on the right.
+	AudienceLayoutSideBySide AudienceLayout = "side_by_side"
+	// AudienceLayoutVideoOnly is cameras only; a share is ignored.
+	AudienceLayoutVideoOnly AudienceLayout = "video_only"
+)
+
+// AudienceLayouts is every layout this server accepts, in the order the picker shows them.
+var AudienceLayouts = []AudienceLayout{
+	AudienceLayoutAuto, AudienceLayoutSpeaker, AudienceLayoutGrid, AudienceLayoutShareOnly,
+	AudienceLayoutShareSpeaker, AudienceLayoutSideBySide, AudienceLayoutVideoOnly,
+}
+
+// Valid reports whether l is a layout the composite knows how to draw.
+func (l AudienceLayout) Valid() bool {
+	for _, v := range AudienceLayouts {
+		if l == v {
+			return true
+		}
+	}
+	return false
+}
+
+// OrDefault is l, or auto for an unset or unknown value.
+func (l AudienceLayout) OrDefault() AudienceLayout {
+	if l.Valid() {
+		return l
+	}
+	return AudienceLayoutAuto
 }
 
 // ChatDestination is the audience for a chat message.
@@ -387,6 +439,8 @@ type ControlsPatch struct {
 	// A pointer for the same reason as the others: "not mentioned" and "set to
 	// everyone" are different requests.
 	ChatDestination *ChatDestination `json:"chatDestination,omitempty"`
+	// Refused unless Valid: see AudienceLayout.
+	AudienceLayout *AudienceLayout `json:"audienceLayout,omitempty"`
 }
 
 // ------------------------------------------------------------------- polls

@@ -300,6 +300,11 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And a meeting guest at the door: waiting polls, a denial is final, full and locked
 	# retry, and no key means the name field rather than "register".
 	cd web && node --experimental-strip-types --no-warnings lib/meeting-lobby.test.mts
+	# The composite's layouts (what edge viewers and recordings see): every box inside the
+	# frame, nothing overlapping but a PiP, one page of grid, and each layout's fallback.
+	cd web && node --experimental-strip-types --no-warnings lib/composite-layouts.test.mts
+	# A streaming viewer's room: no Participants, Invite or Settings, and no meeting-info card.
+	cd web && node --experimental-strip-types --no-warnings lib/audience-tools.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

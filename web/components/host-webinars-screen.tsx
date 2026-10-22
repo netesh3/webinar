@@ -103,6 +103,7 @@ function instantWebinarInput(
       captionsEnabled: false,
       serverCaptions: false,
       locked: false,
+      audienceLayout: "auto",
     },
   };
 }
