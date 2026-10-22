@@ -78,6 +78,7 @@ export function meetingInputBase(): Omit<
       aiEnabled: false,
       aiAvailable: false,
       locked: false,
+      audienceLayout: "auto",
     },
   };
 }

@@ -255,6 +255,7 @@ export function initialState(
       aiEnabled: false,
       aiAvailable: false,
       locked: false,
+      audienceLayout: "auto",
     },
     streamKey: "",
     streamWatchUrl: "",

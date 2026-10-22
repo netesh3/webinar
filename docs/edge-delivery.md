@@ -91,10 +91,17 @@ both can run side by side on the same deployment and be compared.
     carries the latency, mode, stall count and median TTFB.
 - **Layout.** Edge webinars' egress loads the composite at `<template>/edge`. While someone
   shares their screen the share fills the **whole frame** and up to three camera tiles sit
-  small over the bottom-right corner (`lib/composite-layout.ts`), for cameras that are on only:
+  small over the bottom-right corner (`lib/composite-layouts.ts`), for cameras that are on only:
   someone with their camera off gets no initials tile over the slides. Next to the standard 22%
   camera strip a share got only ~1000×560 of a 1280×720 frame, which made slide text
-  unreadable. Recordings and the CDN broadcast keep the standard layout.
+  unreadable. Recordings and the CDN broadcast keep the standard layout. That is the `auto`
+  **audience layout**; the host can pick another in Host controls (speaker, grid, share only,
+  share + speaker bubble, side by side, cameras only). It is a session control
+  (`audienceLayout`, PATCH `/controls`) mirrored into room metadata, so the egress page, which
+  is in the room, re-lays the composite live without restarting the egress. Tiles are the
+  stage only (camera/share publishers or camera-permitted participants; never the egress or
+  an agent), thumbnails under 300px ask for the low simulcast layer, and the grid stops at
+  one page (16).
 - **A bad destination no longer takes the mix down.** The compositor starts on our origin
   alone and each platform (YouTube or pasted key, LinkedIn, Instagram, Facebook) is attached
   with its own `UpdateStream`. A platform that refuses its key is retired for the session

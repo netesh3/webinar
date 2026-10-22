@@ -105,6 +105,7 @@ function instantWebinarInput(
       aiEnabled: false,
       aiAvailable: false,
       locked: false,
+      audienceLayout: "auto",
     },
   };
 }

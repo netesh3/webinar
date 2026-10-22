@@ -68,6 +68,7 @@ const CONTROLS: SessionControls = {
   aiAvailable: false,
   pollsEnabled: true,
   locked: false,
+  audienceLayout: "auto",
   chatDestination: "everyone",
 };
 

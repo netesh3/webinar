@@ -17,6 +17,7 @@ import {
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { EndWebinarDialog } from "./host-survey";
+import { AudienceLayoutPicker } from "./audience-layout-picker";
 
 /* The host's in-session control panel.
  *
@@ -283,6 +284,9 @@ export function HostControls() {
             </button>
           </section>
           )}
+
+          {/* What edge viewers and the recording see. Renders nothing without a composite. */}
+          <AudienceLayoutPicker />
 
           <section>
             <button

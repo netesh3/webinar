@@ -1505,6 +1505,13 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Refused for the same reason: a typo should not silently become "auto".
+	if p.AudienceLayout != nil && !p.AudienceLayout.Valid() {
+		httpx.Fields(w, map[string]string{
+			"audienceLayout": "Not a layout this server knows.",
+		})
+		return
+	}
 	// The AI switch is for an account that has AI. Turning it off is always allowed.
 	if p.AIEnabled != nil && *p.AIEnabled {
 		hostID, err := s.store.HostIDFor(r.Context(), slug)
