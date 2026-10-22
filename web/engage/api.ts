@@ -4,6 +4,7 @@
  * nothing about these routes and this module can be dropped without touching it. Same
  * fetch plumbing (lib/http.ts): same cookie, same ApiError. */
 import type {
+  FollowupTemplateResponse,
   Account,
   CRMAudienceResponse,
   CRMBotPauseRequest,
@@ -525,6 +526,12 @@ export const engageApi = {
     ),
 
   /** The ready-made templates a host can submit to Meta from here. */
+  /** Our session follow-up template and its status on the host's WABA. */
+  followupTemplate: () =>
+    request<FollowupTemplateResponse>("/api/host/crm/followup-template", fresh),
+  /** Submits it to Meta (once); answers with the status. */
+  submitFollowupTemplate: () =>
+    post<FollowupTemplateResponse>("/api/host/crm/followup-template"),
   crmStarterTemplates: () =>
     request<CRMStarterTemplatesResponse>("/api/host/crm/templates/starters", fresh),
   createCrmStarterTemplates: () =>

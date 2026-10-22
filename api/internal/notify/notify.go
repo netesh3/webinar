@@ -55,6 +55,16 @@ type Message struct {
 	// header off. Neither is copied into From.
 	InReplyTo  string
 	References string
+	/* FromName replaces the display name on From, keeping SMTP.From's address (the one
+	 * the relay authenticated): a host's follow-up reads as from them. Empty keeps
+	 * SMTP.From as it is. */
+	FromName string
+	// MessageID sets the Message-ID header (angle brackets included), so a reply's
+	// In-Reply-To can find the stored copy. Empty leaves it to the relay.
+	MessageID string
+	/* ListUnsubscribe is the unsubscribe link (RFC 2369), written with the one-click
+	 * List-Unsubscribe-Post (RFC 8058) that Gmail and Yahoo ask of bulk senders. */
+	ListUnsubscribe string
 }
 
 // Transport delivers a message, or explains why it did not.
@@ -177,6 +187,9 @@ func (s SMTP) compose(m Message, now time.Time) string {
 	 */
 	from := header(s.From)
 	if a, err := mail.ParseAddress(s.From); err == nil {
+		if name := header(m.FromName); name != "" {
+			a.Name = name
+		}
 		from = a.String()
 	}
 	var b strings.Builder
@@ -185,9 +198,15 @@ func (s SMTP) compose(m Message, now time.Time) string {
 	// Reply-To is omitted when empty or unparsable. A value that does not parse
 	// as an address is dropped rather than written raw: the field is host-adjacent
 	// data, and a bad value must not become a second header.
+	// A list ("host@example.com, inbox@webinarliv.com") is allowed: a follow-up's reply
+	// goes to the host's own mailbox and to the inbox that threads it.
 	if reply := header(m.ReplyTo); reply != "" {
-		if a, err := mail.ParseAddress(reply); err == nil {
-			fmt.Fprintf(&b, "Reply-To: %s\r\n", a.String())
+		if list, err := mail.ParseAddressList(reply); err == nil && len(list) > 0 {
+			parts := make([]string, len(list))
+			for i, a := range list {
+				parts[i] = a.String()
+			}
+			fmt.Fprintf(&b, "Reply-To: %s\r\n", strings.Join(parts, ", "))
 		}
 	}
 	// Q-encoded when it is not plain ASCII: a subject carrying a registrant's name in
@@ -199,6 +218,13 @@ func (s SMTP) compose(m Message, now time.Time) string {
 	}
 	if refs := header(m.References); refs != "" {
 		fmt.Fprintf(&b, "References: %s\r\n", refs)
+	}
+	if id := header(m.MessageID); id != "" {
+		fmt.Fprintf(&b, "Message-ID: %s\r\n", id)
+	}
+	if u := header(m.ListUnsubscribe); u != "" {
+		fmt.Fprintf(&b, "List-Unsubscribe: <%s>\r\n", u)
+		b.WriteString("List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n")
 	}
 	fmt.Fprintf(&b, "Date: %s\r\n", now.Format(time.RFC1123Z))
 	b.WriteString("MIME-Version: 1.0\r\n")

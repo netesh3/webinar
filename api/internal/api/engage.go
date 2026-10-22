@@ -78,6 +78,14 @@ type Engage interface {
 	 * stored type — for a webinar cover picked from the gallery. store.ErrNotFound when
 	 * the file is not this host's, or there is no CRM. The caller closes the reader. */
 	OpenMediaForHost(ctx context.Context, hostID, mediaID string) (io.ReadCloser, string, error)
+
+	/* The AI follow-ups' WhatsApp (followup_send.go). FollowupWhatsApp says, per
+	 * registration of the host's session, whether and how a follow-up could go on
+	 * WhatsApp now; SendFollowupWhatsApp sends one, deciding again, and files it in the
+	 * contact's thread; LogFollowupEmail notes a follow-up email on the contact. */
+	FollowupWhatsApp(ctx context.Context, host store.User, slug string, registrationIDs []string) types.FollowupWAState
+	SendFollowupWhatsApp(ctx context.Context, host store.User, slug string, in types.FollowupWASend) types.FollowupWAResult
+	LogFollowupEmail(ctx context.Context, host store.User, slug, registrationID, subject string)
 }
 
 // NoEngage is a deployment without the CRM: no routes, no messages, no columns.
@@ -108,6 +116,17 @@ func (NoEngage) WhatsAppUsage(_ context.Context, days int) (types.AdminWhatsAppU
 func (NoEngage) OpenMediaForHost(context.Context, string, string) (io.ReadCloser, string, error) {
 	return nil, "", store.ErrNotFound
 }
+func (NoEngage) FollowupWhatsApp(_ context.Context, _ store.User, _ string, ids []string) types.FollowupWAState {
+	out := types.FollowupWAState{Contacts: map[string]types.FollowupWAContact{}}
+	for _, id := range ids {
+		out.Contacts[id] = types.FollowupWAContact{Reason: types.FollowupReasonNotConnected}
+	}
+	return out
+}
+func (NoEngage) SendFollowupWhatsApp(context.Context, store.User, string, types.FollowupWASend) types.FollowupWAResult {
+	return types.FollowupWAResult{Status: types.FollowupStatusSkipped, Reason: types.FollowupReasonNotConnected}
+}
+func (NoEngage) LogFollowupEmail(context.Context, store.User, string, string, string) {}
 
 /* UseEngage plugs the CRM in. Called once, by main (and the test harness), before Routes.
  * A nil argument means NoEngage. */

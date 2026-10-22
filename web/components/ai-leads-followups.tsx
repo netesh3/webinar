@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Spinner } from "./controls";
-import { CopyIcon, SparklesIcon } from "./icons";
-import { useToast } from "./providers";
+import { FollowupSendDialog } from "./followup-send-dialog";
+import { CopyIcon, SendIcon, SparklesIcon } from "./icons";
+import { useSession, useToast } from "./providers";
 import { Badge, Button, Card, SectionTitle } from "./ui";
-import { FollowupWhatsAppActions, messagesHref } from "@/engage";
+import { ENGAGE_HOME, FollowupWhatsAppActions, messagesHref } from "@/engage";
 import { ApiError, api } from "@/lib/api";
 import type { FollowupDraft, FollowupsResponse, Lead, LeadsResponse, Webinar } from "@/lib/api-types";
 import { useDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import type { ChannelPref } from "@/lib/followup-send";
 import {
   FOLLOWUP_GROUPS,
   csvFileName,
@@ -238,6 +240,10 @@ function FollowupsCard({ webinar, leads }: { webinar: Webinar; leads: LeadsRespo
   const [edit, setEdit] = useState<FollowupDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [poll, setPoll] = useState(0);
+  const [sending, setSending] = useState<{ keys: string[]; pref: ChannelPref } | null>(null);
+  const { account } = useSession();
+  // Sending goes from the host's own number and in their name: the host only, not a co-host.
+  const canSend = Boolean(account && account.id === webinar.host.id);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -383,7 +389,7 @@ function FollowupsCard({ webinar, leads }: { webinar: Webinar; leads: LeadsRespo
     <Card className="p-5">
       {header}
       <p className="mb-3 text-[12.5px] text-ink-3">
-        Drafts written by AI for each group. Edit them here; nothing is sent until you send it.
+        Drafts written by AI for each group. Edit them here, then send them from the list below: you review every message first, and nothing is sent until you press Send.
       </p>
       {groupTabs}
       <p className="mb-3 text-[12.5px] text-ink-2">
@@ -472,10 +478,146 @@ function FollowupsCard({ webinar, leads }: { webinar: Webinar; leads: LeadsRespo
               </Button>
             </div>
           )}
+          {canSend && (
+            <FollowupPeople
+              key={group}
+              people={people}
+              dirty={dirty}
+              whatsappConnected={Boolean(account?.whatsapp)}
+              onSend={(keys, pref) => setSending({ keys, pref })}
+            />
+          )}
         </div>
       ) : (
         <p className="text-[13px] text-ink-2">No draft for this group.</p>
       )}
+      {sending && (
+        <FollowupSendDialog
+          slug={slug}
+          topic={webinar.topic}
+          keys={sending.keys}
+          group={group}
+          lang={language}
+          pref={sending.pref}
+          onClose={() => setSending(null)}
+        />
+      )}
     </Card>
+  );
+}
+
+/** Rows shown before "Show all" in the people list under the drafts. */
+const PEOPLE_SHOWN = 8;
+
+/* The people of the open group, under its drafts: a Send email / Send WhatsApp per person,
+ * and ticks for "Send to selected". Every button opens the review screen; nothing is sent
+ * from here. Disabled while the draft has unsaved edits, since the review screen reads the
+ * saved one. */
+function FollowupPeople({
+  people,
+  dirty,
+  whatsappConnected,
+  onSend,
+}: {
+  people: Lead[];
+  dirty: boolean;
+  whatsappConnected: boolean;
+  onSend: (keys: string[], pref: ChannelPref) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [all, setAll] = useState(false);
+  if (people.length === 0) return null;
+  const shown = all ? people : people.slice(0, PEOPLE_SHOWN);
+  const toggle = (key: string) =>
+    setPicked((p) => {
+      const next = new Set(p);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const everyone = picked.size === people.length;
+  return (
+    <div className="mt-1 border-t border-line pt-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-[12.5px] font-medium text-ink-2">Send to people in this group</span>
+        <label className="flex items-center gap-1.5 text-[12px] text-ink-2">
+          <input
+            type="checkbox"
+            checked={everyone}
+            onChange={() => setPicked(everyone ? new Set() : new Set(people.map((l) => l.key)))}
+          />
+          Select all {people.length}
+        </label>
+        <Button
+          type="button"
+          size="sm"
+          className="ml-auto"
+          disabled={dirty || picked.size === 0}
+          onClick={() => onSend([...picked], "auto")}
+        >
+          <SendIcon className="size-3.5" />
+          Send to selected{picked.size ? ` (${picked.size})` : ""}
+        </Button>
+      </div>
+      {dirty && <p className="mb-2 text-[12px] text-ink-3">Save the draft first: sending uses the saved one.</p>}
+      <ul className="grid gap-1">
+        {shown.map((l) => (
+          <li key={l.key} className="flex flex-wrap items-center gap-2 rounded-md px-1 py-1 hover:bg-surface-2">
+            <input
+              type="checkbox"
+              aria-label={`Select ${l.name || "Guest"}`}
+              checked={picked.has(l.key)}
+              onChange={() => toggle(l.key)}
+            />
+            <span className="text-[13px] text-ink">{l.name || "Guest"}</span>
+            <span className="truncate text-[11.5px] text-ink-3">{[l.email, l.phone].filter(Boolean).join(" · ")}</span>
+            <span className="ml-auto flex gap-1">
+              <button
+                type="button"
+                className="h-7 rounded-md px-2 text-[12px] text-ink-2 hover:bg-surface hover:text-ink disabled:opacity-40"
+                disabled={dirty || !l.email}
+                title={l.email ? undefined : "No email address"}
+                onClick={() => onSend([l.key], "email")}
+              >
+                Send email
+              </button>
+              <button
+                type="button"
+                className="h-7 rounded-md px-2 text-[12px] text-ink-2 hover:bg-surface hover:text-ink disabled:opacity-40"
+                disabled={dirty || !whatsappConnected || l.whatsappStatus !== "opted_in"}
+                title={
+                  !whatsappConnected
+                    ? "Connect WhatsApp to send"
+                    : l.whatsappStatus !== "opted_in"
+                      ? "Didn't opt in to WhatsApp"
+                      : undefined
+                }
+                onClick={() => onSend([l.key], "whatsapp")}
+              >
+                Send WhatsApp
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {people.length > PEOPLE_SHOWN && (
+        <button
+          type="button"
+          className="mt-1 text-[12.5px] font-medium text-brand hover:underline"
+          onClick={() => setAll((a) => !a)}
+        >
+          {all ? "Show fewer" : `Show all ${people.length}`}
+        </button>
+      )}
+      {!whatsappConnected && (
+        <p className="mt-2 text-[12px] text-ink-3">
+          Follow-ups go by email.{" "}
+          <Link href={`${ENGAGE_HOME}?view=setup`} className="text-brand hover:underline">
+            Connect WhatsApp
+          </Link>{" "}
+          to send them from your business number too.
+        </p>
+      )}
+    </div>
   );
 }

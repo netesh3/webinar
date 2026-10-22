@@ -199,6 +199,29 @@ func TestComposeReplyTo(t *testing.T) {
 	}
 }
 
+func TestComposeFollowupHeaders(t *testing.T) {
+	s := SMTP{Host: "h", From: "Webinar Liv <hello@example.test>"}
+	got := s.compose(Message{
+		To: "a@example.com", Subject: "Thanks", Body: "hello", FromName: "Priya Sharma",
+		ReplyTo: "priya@example.com, priya@webinarliv.com", MessageID: "<followup-1@webinarliv.com>",
+		ListUnsubscribe: "https://x.test/api/email/unsubscribe/tok",
+	}, time.Unix(0, 0))
+	for _, want := range []string{
+		`From: "Priya Sharma" <hello@example.test>` + "\r\n",
+		"Reply-To: <priya@example.com>, <priya@webinarliv.com>\r\n",
+		"Message-ID: <followup-1@webinarliv.com>\r\n",
+		"List-Unsubscribe: <https://x.test/api/email/unsubscribe/tok>\r\n",
+		"List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if s.envelopeFrom() != "hello@example.test" {
+		t.Error("the envelope must stay the authenticated address")
+	}
+}
+
 func TestInboxAddress(t *testing.T) {
 	if got := InboxAddress(" GSP "); got != "gsp@webinarliv.com" {
 		t.Errorf("InboxAddress = %q", got)

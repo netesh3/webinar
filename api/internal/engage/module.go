@@ -163,6 +163,9 @@ func (s *Module) Mount(public, host chi.Router) {
 	host.Get("/crm/audience/summary", s.handleCRMAudienceSummary)
 	host.Get("/crm/templates/starters", s.handleCRMStarterTemplates)
 	host.Post("/crm/templates/starters", s.handleCreateCRMStarterTemplates)
+	// Our session follow-up template (followup_send.go): its status, and one-click submit.
+	host.Get("/crm/followup-template", s.handleFollowupTemplate)
+	host.Post("/crm/followup-template", s.handleSubmitFollowupTemplate)
 	host.Post("/crm/templates", s.handleCreateCRMWording)
 	host.Put("/crm/templates/mapping", s.handleSetCRMTemplateMapping)
 	host.Post("/crm/media", s.handleUploadCRMMedia)
