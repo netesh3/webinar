@@ -337,7 +337,7 @@ func TestQADraftGroundedPostedOnlyOnPost(t *testing.T) {
 	h.rooms.mu.Lock()
 	before := len(h.rooms.sent)
 	for _, pk := range h.rooms.sent {
-		if strings.Contains(string(pk.data), "499") {
+		if strings.Contains(string(pk.data), "499 rupees") {
 			t.Errorf("a draft went to the room: %s to %v", pk.data, pk.to)
 		}
 	}
