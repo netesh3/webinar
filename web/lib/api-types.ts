@@ -3941,6 +3941,23 @@ export interface HostWebinarPage {
    * 	 * does not have to re-derive which tab it is rendering.
    */
   total: number /* int */;
+  /**
+   *  Recordings is the playable cloud recording behind each row that has one,
+   * 	 * keyed by webinar slug, so a Completed row can show a recording badge
+   * 	 * without a request per row. Rows with nothing ready are absent. Host-only:
+   * 	 * it lives on the page rather than on Webinar so no public read carries it.
+   */
+  recordings?: { [key: string]: HostRecordingSummary};
+}
+/**
+ *  HostRecordingSummary is what a host list row says about its recordings:
+ *  * how many recording sessions are ready to play, and their combined length.
+ *  * Ready means status ready with bytes on disk — processing, failed and
+ *  * retention-deleted recordings are not counted.
+ */
+export interface HostRecordingSummary {
+  count: number /* int */;
+  durationMs: number /* int64 */;
 }
 /**
  * HostWebinarCounts is the per-tab tally behind the host list's badges.

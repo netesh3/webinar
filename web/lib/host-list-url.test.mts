@@ -11,6 +11,8 @@ import {
   parseListUrl,
   sameListState,
   urlDate,
+  urlRecording,
+  type ListUrlState,
 } from "./host-list-url.ts";
 
 let failures = 0;
@@ -25,7 +27,7 @@ function eq<T>(actual: T, expected: T, what: string): void {
   console.log(`  FAIL  ${what}\n        got ${a}\n        want ${e}`);
 }
 
-const none = { tab: "", q: "", from: "", to: "" };
+const none = { tab: "", q: "", from: "", to: "", recording: "" as const };
 
 console.log("\nurlDate");
 eq(urlDate("2026-03-10"), "2026-03-10", "a real date passes");
@@ -40,12 +42,12 @@ console.log("\nparseListUrl");
 eq(parseListUrl(new URLSearchParams("")), none, "the bare address");
 eq(
   parseListUrl(new URLSearchParams("tab=past&q=pricing+101&from=2026-03-01&to=2026-03-31")),
-  { tab: "past", q: "pricing 101", from: "2026-03-01", to: "2026-03-31" },
+  { tab: "past", q: "pricing 101", from: "2026-03-01", to: "2026-03-31", recording: "" },
   "every field",
 );
 eq(
   parseListUrl(new URLSearchParams("tab=attending&from=nope&to=2026-02-31")),
-  { tab: "attending", q: "", from: "", to: "" },
+  { tab: "attending", q: "", from: "", to: "", recording: "" },
   "bad dates read as unset",
 );
 eq(parseListUrl(new URLSearchParams("q=50%25+off")).q, "50% off", "percent decodes");
@@ -57,7 +59,7 @@ eq(listUrlQuery({ ...none, tab: "drafts" }), "tab=drafts", "another tab is");
 eq(listUrlQuery({ ...none, q: "   " }), "", "a blank search is not written");
 eq(listUrlQuery({ ...none, q: " a b " }), "q=a+b", "search is trimmed");
 eq(
-  listUrlQuery({ tab: "attending", q: "x", from: "2026-01-01", to: "2026-01-31" }),
+  listUrlQuery({ tab: "attending", q: "x", from: "2026-01-01", to: "2026-01-31", recording: "" }),
   "tab=attending&q=x&from=2026-01-01&to=2026-01-31",
   "stable order",
 );
@@ -65,12 +67,33 @@ eq(listUrlQuery({ ...none, from: "garbage" }), "", "a bad date is not written");
 eq(listUrl("/host", none), "/host", "bare path for the default");
 eq(listUrl("/host/meetings", { ...none, tab: "past", q: "sync" }), "/host/meetings?tab=past&q=sync", "path and query");
 
+console.log("\nrecording");
+eq(urlRecording("with"), "with", "with passes");
+eq(urlRecording("without"), "without", "without passes");
+eq(urlRecording("yes"), "", "anything else is dropped");
+eq(urlRecording(null), "", "absent is empty");
+eq(parseListUrl(new URLSearchParams("tab=past&recording=with")).recording, "with", "read on Completed");
+eq(parseListUrl(new URLSearchParams("tab=past&recording=maybe")).recording, "", "a bad value reads as unset");
+eq(parseListUrl(new URLSearchParams("recording=with")).recording, "", "ignored on the default tab");
+eq(parseListUrl(new URLSearchParams("tab=drafts&recording=without")).recording, "", "ignored on Drafts");
+eq(
+  listUrlQuery({ tab: "past", q: "demo", from: "2026-01-01", to: "", recording: "without" }),
+  "tab=past&q=demo&from=2026-01-01&recording=without",
+  "written last, with the other filters",
+);
+eq(listUrlQuery({ ...none, tab: "upcoming", recording: "with" }), "", "not written off Completed");
+eq(listUrlQuery({ ...none, tab: "attending", recording: "with" }), "tab=attending", "not on Attending either");
+eq(sameListState({ ...none, tab: "past", recording: "with" }, { ...none, tab: "past" }), false, "a recording filter differs");
+eq(filtersActive({ q: "", from: "", to: "", recording: "with" }), true, "the recording filter is a filter");
+
 console.log("\nround trip");
 for (const s of [
-  { tab: "past", q: "pricing", from: "2026-03-01", to: "" },
-  { tab: "attending", q: "50% & more", from: "", to: "2026-12-31" },
-  { tab: "drafts", q: "", from: "", to: "" },
-]) {
+  { tab: "past", q: "pricing", from: "2026-03-01", to: "", recording: "" },
+  { tab: "past", q: "", from: "", to: "", recording: "with" },
+  { tab: "past", q: "x", from: "", to: "2026-12-31", recording: "without" },
+  { tab: "attending", q: "50% & more", from: "", to: "2026-12-31", recording: "" },
+  { tab: "drafts", q: "", from: "", to: "", recording: "" },
+] satisfies ListUrlState[]) {
   eq(parseListUrl(new URLSearchParams(listUrlQuery(s))), s, `round trip ${JSON.stringify(s)}`);
 }
 eq(

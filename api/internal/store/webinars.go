@@ -372,6 +372,38 @@ type HostWebinarFilter struct {
 	// the counts as well as the rows, so the Webinars tab badges never count a
 	// meeting and the Meetings page pages through meetings alone.
 	Kind HostWebinarKind
+	// Recording narrows Completed to sessions with, or without, a playable
+	// recording; empty is both. Only the Completed tab honours it — nothing
+	// upcoming or drafted has been recorded — and only the Completed count
+	// narrows with it, so that badge still agrees with the list under it while
+	// the other two badges keep describing their own tabs.
+	Recording HostRecordingFilter
+}
+
+// HostRecordingFilter is the Completed tab's recording narrowing.
+type HostRecordingFilter string
+
+const (
+	HostRecordingWith    HostRecordingFilter = "with"
+	HostRecordingWithout HostRecordingFilter = "without"
+)
+
+/* hasReadyRecording is true for a webinar with at least one recording a host
+ * can play: ready, with bytes. A take still recording or processing, or one
+ * that failed, is not a recording yet; retention deletes the row outright, so
+ * an expired one is simply gone. Served by recordings_webinar_idx. */
+const hasReadyRecording = `EXISTS (SELECT 1 FROM recordings r
+	 WHERE r.webinar_id = w.id AND r.status = 'ready' AND r.size_bytes > 0)`
+
+// sql is the condition this filter adds, or "" for no narrowing.
+func (f HostRecordingFilter) sql() string {
+	switch f {
+	case HostRecordingWith:
+		return " AND " + hasReadyRecording
+	case HostRecordingWithout:
+		return " AND NOT " + hasReadyRecording
+	}
+	return ""
 }
 
 // HostWebinarKind is which of the portal's lists a host page is for.
@@ -440,6 +472,11 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 
 	where := " WHERE w.host_id = $1" + narrow +
 		" AND " + f.Tab.statusWhere()
+	pastOnly := ""
+	if f.Tab == HostTabPast {
+		pastOnly = f.Recording.sql()
+		where += pastOnly
+	}
 
 	col, dir := f.Tab.order()
 	if f.Cursor != "" {
@@ -481,7 +518,7 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 		},
 		func(ctx context.Context) error {
 			var err error
-			counts, err = s.hostWebinarCounts(ctx, narrow, countArgs...)
+			counts, err = s.hostWebinarCounts(ctx, narrow, pastOnly, countArgs...)
 			return err
 		},
 	); err != nil {
@@ -496,7 +533,15 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 		return types.HostWebinarPage{}, err
 	}
 
-	page := types.HostWebinarPage{Items: items, Counts: counts}
+	// Only Completed rows carry a recording badge, so only that tab pays for it.
+	var recs map[string]types.HostRecordingSummary
+	if f.Tab == HostTabPast {
+		if recs, err = s.readyRecordingSummaries(ctx, items); err != nil {
+			return types.HostWebinarPage{}, err
+		}
+	}
+
+	page := types.HostWebinarPage{Items: items, Counts: counts, Recordings: recs}
 	switch f.Tab {
 	case HostTabPast:
 		page.Total = counts.Past
@@ -514,16 +559,56 @@ func (s *Store) ByHostPage(ctx context.Context, hostID string, f HostWebinarFilt
 // hostWebinarCounts tallies all three tabs in one pass under the same narrowing
 // clause as the page. The buckets are HostWebinarTab.statusWhere, so a lapsed
 // scheduled webinar is counted under Completed and not also under Upcoming.
-func (s *Store) hostWebinarCounts(ctx context.Context, narrow string, args ...any) (types.HostWebinarCounts, error) {
+// pastOnly narrows the Completed count alone (the recording filter).
+func (s *Store) hostWebinarCounts(ctx context.Context, narrow, pastOnly string, args ...any) (types.HostWebinarCounts, error) {
 	var out types.HostWebinarCounts
 	err := s.pool.QueryRow(ctx, `
 		SELECT
 		  count(*) FILTER (WHERE `+HostTabUpcoming.statusWhere()+`),
-		  count(*) FILTER (WHERE `+HostTabPast.statusWhere()+`),
+		  count(*) FILTER (WHERE `+HostTabPast.statusWhere()+pastOnly+`),
 		  count(*) FILTER (WHERE `+HostTabDrafts.statusWhere()+`)
 		  FROM webinars w
 		 WHERE w.host_id = $1`+narrow, args...).Scan(&out.Upcoming, &out.Past, &out.Drafts)
 	return out, err
+}
+
+/* readyRecordingSummaries is the recording badge for each row on a page that
+ * has one: playable recording sessions (a session is a first take and the takes
+ * folded under it) and their combined length. Only ready parts with bytes
+ * count, the same rule as the Completed filter. Rows with none are left out. */
+func (s *Store) readyRecordingSummaries(ctx context.Context, list []types.Webinar) (map[string]types.HostRecordingSummary, error) {
+	if len(list) == 0 {
+		return nil, nil
+	}
+	slugs := make([]string, len(list))
+	for i, w := range list {
+		slugs[i] = w.ID
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT w.slug, count(DISTINCT COALESCE(r.parent_id, r.id)), COALESCE(sum(r.duration_ms), 0)::bigint
+		  FROM webinars w
+		  JOIN recordings r ON r.webinar_id = w.id
+		 WHERE w.slug = ANY($1) AND r.status = 'ready' AND r.size_bytes > 0
+		 GROUP BY w.slug`, slugs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out map[string]types.HostRecordingSummary
+	for rows.Next() {
+		var (
+			slug string
+			sum  types.HostRecordingSummary
+		)
+		if err := rows.Scan(&slug, &sum.Count, &sum.DurationMs); err != nil {
+			return nil, err
+		}
+		if out == nil {
+			out = map[string]types.HostRecordingSummary{}
+		}
+		out[slug] = sum
+	}
+	return out, rows.Err()
 }
 
 /* likeLiteral makes a host's search text mean itself inside an ILIKE pattern.

@@ -8,6 +8,7 @@ import { useShareOrigin, useToast } from "./providers";
 import { Badge, Button, ButtonLink, Card, Empty, kindLabel } from "./ui";
 import { WebinarListCard } from "./webinar-list-card";
 import { CopyWebinarDialog } from "./copy-webinar";
+import { PlayIcon } from "./icons";
 import {
   formatCount,
   formatDayShort,
@@ -17,7 +18,7 @@ import {
   tzLabel,
 } from "@/lib/format";
 import { api } from "@/lib/api";
-import type { Webinar } from "@/lib/api-types";
+import type { HostRecordingSummary, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { canGoLive, goLiveWaitReason } from "@/lib/go-live";
 import { useNow } from "@/lib/clock";
@@ -38,10 +39,14 @@ import { isMeetingKind } from "@/lib/meeting-create";
 export function HostWebinarRows({
   webinars,
   readOnly = false,
+  recordings,
 }: {
   webinars: Webinar[];
   /** Panelist rows: someone else owns these, so no start or delete. */
   readOnly?: boolean;
+  /** The page's playable recordings by slug (HostWebinarPage.recordings), for the
+   *  badge on a Completed row. Absent rows have none. */
+  recordings?: Record<string, HostRecordingSummary>;
 }) {
   const router = useRouter();
   const { notify } = useToast();
@@ -115,7 +120,12 @@ export function HostWebinarRows({
 
   function card(w: Webinar) {
     return (w.status === "ended" || w.didntGoLive) && !readOnly ? (
-      <CompletedCard key={w.id} webinar={w} onCopy={() => setCopying(w)} />
+      <CompletedCard
+        key={w.id}
+        webinar={w}
+        recording={recordings?.[w.id]}
+        onCopy={() => setCopying(w)}
+      />
     ) : (
       <HostCard
         key={w.id}
@@ -558,7 +568,15 @@ function HostCard({
  * question itself (did people come, and did they stay?) and has one way in: the card,
  * or See results. Attendees, recording, survey and Delete are all on that page, so the
  * list does not repeat them. */
-function CompletedCard({ webinar: w, onCopy }: { webinar: Webinar; onCopy: () => void }) {
+function CompletedCard({
+  webinar: w,
+  recording,
+  onCopy,
+}: {
+  webinar: Webinar;
+  recording?: HostRecordingSummary;
+  onCopy: () => void;
+}) {
   const href = `/host/${w.id}`;
   const r = w.report;
   const registered = w.registrantCount;
@@ -572,10 +590,11 @@ function CompletedCard({ webinar: w, onCopy }: { webinar: Webinar; onCopy: () =>
       title={w.topic}
       titleDataTour
       badge={
-        w.didntGoLive || w.kind === "simulive" ? (
+        w.didntGoLive || w.kind === "simulive" || recording ? (
           <>
             {w.kind === "simulive" && <Badge tone="brand">Simulive</Badge>}
             {w.didntGoLive && <Badge tone="neutral">Didn&apos;t go live</Badge>}
+            {recording && <RecordingBadge slug={w.id} recording={recording} />}
           </>
         ) : undefined
       }
@@ -624,6 +643,24 @@ function CompletedCard({ webinar: w, onCopy }: { webinar: Webinar; onCopy: () =>
         </div>
       }
     />
+  );
+}
+
+/** "Recording · 42 min", or "2 recordings · 1 hr 5 min", linking to the session's
+ *  Recording tab. Above the card's stretched title link so it keeps its own click. */
+function RecordingBadge({ slug, recording }: { slug: string; recording: HostRecordingSummary }) {
+  const minutes = recording.durationMs > 0 ? Math.max(1, Math.round(recording.durationMs / 60_000)) : 0;
+  const noun = recording.count > 1 ? `${recording.count} recordings` : "Recording";
+  const label = minutes > 0 ? `${noun} · ${formatDuration(minutes)}` : noun;
+  return (
+    <Link
+      href={`/host/${slug}?tab=recording`}
+      title="Open the recording"
+      className="relative z-10 inline-flex items-center gap-1 rounded-full border border-brand-line bg-brand-soft px-2.5 py-0.5 text-[11.5px] font-medium whitespace-nowrap text-brand outline-none hover:border-brand focus-visible:ring-2 focus-visible:ring-brand/40"
+    >
+      <PlayIcon className="size-3 shrink-0" aria-hidden />
+      {label}
+    </Link>
   );
 }
 

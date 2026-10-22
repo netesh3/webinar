@@ -1073,6 +1073,20 @@ type HostWebinarPage struct {
 	 * the Counts field for the requested tab — sent separately so the footer
 	 * does not have to re-derive which tab it is rendering. */
 	Total int `json:"total"`
+	/* Recordings is the playable cloud recording behind each row that has one,
+	 * keyed by webinar slug, so a Completed row can show a recording badge
+	 * without a request per row. Rows with nothing ready are absent. Host-only:
+	 * it lives on the page rather than on Webinar so no public read carries it. */
+	Recordings map[string]HostRecordingSummary `json:"recordings,omitempty"`
+}
+
+/* HostRecordingSummary is what a host list row says about its recordings:
+ * how many recording sessions are ready to play, and their combined length.
+ * Ready means status ready with bytes on disk — processing, failed and
+ * retention-deleted recordings are not counted. */
+type HostRecordingSummary struct {
+	Count      int   `json:"count"`
+	DurationMs int64 `json:"durationMs"`
 }
 
 // HostWebinarCounts is the per-tab tally behind the host list's badges.

@@ -6,6 +6,10 @@
  * narrowed the same way. Defaults are left out, so the bare /host is still the
  * unfiltered Upcoming list.
  *
+ * ?recording=with|without narrows Completed (tab=past) to sessions that do, or
+ * do not, have a playable recording. It means nothing on the other tabs, so it
+ * is only read and written alongside tab=past.
+ *
  * Pure, so it is tested without a browser: lib/host-list-url.test.mts. */
 
 export type ListUrlState = {
@@ -14,7 +18,21 @@ export type ListUrlState = {
   q: string;
   from: string;
   to: string;
+  /** Completed only: "" is every session. */
+  recording: RecordingFilter;
 };
+
+/** The Completed tab's recording filter, the API's ?recording= spelled the same. */
+export type RecordingFilter = "" | "with" | "without";
+
+/** The tab the recording filter belongs to. */
+export const RECORDING_TAB = "past";
+
+/** A value the API takes, or "" — a hand-edited ?recording=yes is not a 422. */
+export function urlRecording(raw: string | null | undefined): RecordingFilter {
+  const v = (raw ?? "").trim();
+  return v === "with" || v === "without" ? v : "";
+}
 
 /** The tab the bare address means. Not written to the URL. */
 export const DEFAULT_LIST_TAB = "upcoming";
@@ -29,11 +47,13 @@ export function urlDate(raw: string | null | undefined): string {
 }
 
 export function parseListUrl(params: { get(name: string): string | null }): ListUrlState {
+  const tab = params.get("tab") ?? "";
   return {
-    tab: params.get("tab") ?? "",
+    tab,
     q: params.get("q") ?? "",
     from: urlDate(params.get("from")),
     to: urlDate(params.get("to")),
+    recording: tab === RECORDING_TAB ? urlRecording(params.get("recording")) : "",
   };
 }
 
@@ -47,6 +67,8 @@ export function listUrlQuery(s: ListUrlState): string {
   const to = urlDate(s.to);
   if (from) qs.set("from", from);
   if (to) qs.set("to", to);
+  const recording = s.tab === RECORDING_TAB ? urlRecording(s.recording) : "";
+  if (recording) qs.set("recording", recording);
   return qs.toString();
 }
 
@@ -63,8 +85,10 @@ export function sameListState(a: ListUrlState, b: ListUrlState): boolean {
 }
 
 /** Any narrowing at all, the "Clear" button and the "No sessions match" empty state. */
-export function filtersActive(s: Pick<ListUrlState, "q" | "from" | "to">): boolean {
-  return s.q.trim() !== "" || s.from !== "" || s.to !== "";
+export function filtersActive(
+  s: Pick<ListUrlState, "q" | "from" | "to"> & { recording?: RecordingFilter },
+): boolean {
+  return s.q.trim() !== "" || s.from !== "" || s.to !== "" || (s.recording ?? "") !== "";
 }
 
 /** The date ends ordered rather than validated: a range picked later-date-first

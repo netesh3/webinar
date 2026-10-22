@@ -202,6 +202,8 @@ type HostWebinarQuery = {
   q?: string;
   from?: string;
   to?: string;
+  /** Completed only: sessions with, or without, a playable recording. */
+  recording?: "with" | "without";
   limit?: number;
   cursor?: string;
 };
@@ -220,6 +222,7 @@ function hostWebinarsKey(params: HostWebinarQuery): string {
     params.from ?? "",
     params.to ?? "",
     params.kind ?? "",
+    params.recording ?? "",
   );
   const limit = params.limit ?? HOST_WEBINAR_PAGE_SIZE;
   if (!params.cursor && limit === HOST_WEBINAR_PAGE_SIZE) {
@@ -231,6 +234,7 @@ function hostWebinarsKey(params: HostWebinarQuery): string {
   if (params.q) qs.set("q", params.q);
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);
+  if (params.recording) qs.set("recording", params.recording);
   qs.set("limit", String(limit));
   if (params.cursor) qs.set("cursor", params.cursor);
   return `${HOST_LIST_PREFIX}${qs.toString()}`;
@@ -243,6 +247,7 @@ function hostWebinarsPath(params: HostWebinarQuery): string {
   if (params.q) qs.set("q", params.q);
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);
+  if (params.recording) qs.set("recording", params.recording);
   if (params.limit) qs.set("limit", String(params.limit));
   if (params.cursor) qs.set("cursor", params.cursor);
   const s = qs.toString();

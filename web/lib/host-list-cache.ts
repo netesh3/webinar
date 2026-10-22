@@ -24,8 +24,10 @@ export function hostListFilterKey(
   from: string,
   to: string,
   kind: HostListKind | "" = "",
+  /** Completed's ?recording=, "" for every session. */
+  recording = "",
 ): string {
-  return `${kind}\0${tab}\0${q}\0${from}\0${to}`;
+  return `${kind}\0${tab}\0${q}\0${from}\0${to}\0${recording}`;
 }
 
 export function hostListPageKey(filter: string, page: number): string {
