@@ -1,0 +1,128 @@
+# Deploy the self-hosted LiveKit stack (and server captions) to the DigitalOcean video server
+# (sfu-blr-1, LiveKit project do-blr — see deploy/digitalocean/README.md).
+# The same files and redeploy.sh as Deploy LiveKit (Hetzner); a second box, not a second stack.
+#
+# Triggers:
+#   - workflow_dispatch — manual deploy from the Actions tab
+#   - push to main — when deploy/livekit-hetzner/**, deploy/captions/** or this workflow change
+#
+# Repository secrets:
+#   DO_SSH_HOST         — root@152.42.156.192 (the reserved IP)
+#   DO_SSH_PRIVATE_KEY  — a deploy key whose public half is in the box's
+#                         /root/.ssh/authorized_keys (not anybody's personal key)
+#   GRAFANA_ADMIN_PASSWORD — optional, as for Hetzner
+#
+# Until both SSH secrets are set the job SKIPS with a notice rather than failing, so a merge to
+# main is not red while the box is being set up. Box settings (CAPTIONS_*, HLS_PART_DURATION, …)
+# live in /opt/livekit/.env on the box and are never overwritten, nor are .env.keys and the
+# generated livekit.yaml.
+
+name: Deploy LiveKit (DigitalOcean)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/livekit-hetzner/**"
+      - "deploy/captions/**"
+      - ".github/workflows/livekit-do-deploy.yml"
+
+concurrency:
+  group: deploy-livekit-do
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check DigitalOcean SSH secrets
+        env:
+          DO_SSH_HOST: ${{ secrets.DO_SSH_HOST }}
+          DO_SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "${DO_SSH_HOST}" ] || [ -z "${DO_SSH_PRIVATE_KEY}" ]; then
+            echo "::notice::DO_SSH_HOST / DO_SSH_PRIVATE_KEY not set: skipping the DigitalOcean deploy (see this workflow's header)."
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure SSH
+        if: env.SKIP != 'true'
+        env:
+          DO_SSH_HOST: ${{ secrets.DO_SSH_HOST }}
+          DO_SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$DO_SSH_PRIVATE_KEY" > "$HOME/.ssh/do_deploy"
+          chmod 600 "$HOME/.ssh/do_deploy"
+          host_only="${DO_SSH_HOST#*@}"
+          user_part="${DO_SSH_HOST%%@*}"
+          if [ "$user_part" = "$DO_SSH_HOST" ]; then
+            user_part=root
+          fi
+          ssh-keyscan -H "$host_only" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          {
+            echo "Host livekit-do"
+            echo "  HostName ${host_only}"
+            echo "  User ${user_part}"
+            echo "  IdentityFile ${HOME}/.ssh/do_deploy"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+          } > "$HOME/.ssh/config"
+          chmod 600 "$HOME/.ssh/config"
+          echo "SSH_CONFIG=$HOME/.ssh/config" >> "$GITHUB_ENV"
+
+      - name: Validate Caddyfile
+        if: env.SKIP != 'true'
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/livekit-hetzner/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e DOMAIN=validate.example.com \
+            caddy:2-alpine \
+            caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
+
+      - name: Sync deploy files (preserve secrets)
+        if: env.SKIP != 'true'
+        run: |
+          rsync -az \
+            --exclude '.env.keys' \
+            --exclude '.env' \
+            --exclude 'livekit.yaml' \
+            -e "ssh -F ${SSH_CONFIG}" \
+            deploy/livekit-hetzner/ \
+            livekit-do:/opt/livekit/
+          rsync -az --delete \
+            --exclude 'tests' --exclude '__pycache__' --exclude '.pytest_cache' \
+            -e "ssh -F ${SSH_CONFIG}" \
+            deploy/captions/ \
+            livekit-do:/opt/livekit/captions/
+
+      - name: Regenerate config and restart compose
+        if: env.SKIP != 'true'
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          printf '%s' "${GRAFANA_ADMIN_PASSWORD}" | ssh -F "${SSH_CONFIG}" livekit-do \
+            'chmod +x /opt/livekit/redeploy.sh /opt/livekit/install.sh && GRAFANA_ADMIN_PASSWORD="$(cat)" /opt/livekit/redeploy.sh'
+
+      - name: Health check
+        if: env.SKIP != 'true'
+        env:
+          DO_SSH_HOST: ${{ secrets.DO_SSH_HOST }}
+        run: |
+          host_only="${DO_SSH_HOST#*@}"
+          for i in $(seq 1 20); do
+            if curl -fsS -m 5 "https://${host_only}.sslip.io/" >/dev/null; then
+              echo "LiveKit answers at https://${host_only}.sslip.io"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "LiveKit did not answer after redeploy" >&2
+          exit 1

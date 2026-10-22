@@ -57,8 +57,11 @@ go to Hetzner unless an admin assigns a host to `do-blr` (Admin → Accounts →
 direct viewers get one shared, cacheable session). Put a Bunny pull zone in front of it before
 real audiences. Then re-run **Deploy API (Cloud Run)**. See [ADDING-AN-SFU.md](../../docs/ADDING-AN-SFU.md).
 
-Not covered by CI: the Hetzner deploy workflow only targets Hetzner, so changes to
-`deploy/livekit-hetzner/**` reach this box only by the rsync + `redeploy.sh` above.
+CI: **Deploy LiveKit (DigitalOcean)** (`.github/workflows/livekit-do-deploy.yml`) syncs
+`deploy/livekit-hetzner/` and `deploy/captions/` here and runs `redeploy.sh` on every push to
+main that changes them, like the Hetzner workflow. It needs the repo secrets `DO_SSH_HOST`
+(`root@152.42.156.192`) and `DO_SSH_PRIVATE_KEY` (a deploy key in the box's
+`authorized_keys`); without them it skips with a notice.
 
 ## Account limits
 
