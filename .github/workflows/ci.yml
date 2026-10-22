@@ -98,7 +98,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: deploy/livekit-hetzner/mixrec/go.mod
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      # ffmpeg for the real concat test (it skips without it). No `apt-get update`, which
+      # hung past the job's timeout, and capped, so a slow mirror skips the test rather
+      # than failing the job.
+      - run: sudo apt-get install -y -qq --no-install-recommends ffmpeg || echo "::warning::ffmpeg not installed; the concat test will skip"
+        timeout-minutes: 4
+        continue-on-error: true
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -count=1 ./...
