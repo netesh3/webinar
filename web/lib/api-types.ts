@@ -2382,7 +2382,7 @@ export interface SessionControls {
    * 	 * (migration 0133). The whole session then stays out of AI even if AI is switched back
    * 	 * on: no recap, leads, follow-ups or Q&A assistant. Read-only; reset at the next go-live.
    */
-  aiOffThisSession: boolean;
+  aiOffThisSession?: boolean;
   locked: boolean;
   /**
    * ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or

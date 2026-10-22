@@ -339,7 +339,7 @@ type SessionControls struct {
 	/* AIOffThisSession is set once the switch has been off at any point of the live session
 	 * (migration 0133). The whole session then stays out of AI even if AI is switched back
 	 * on: no recap, leads, follow-ups or Q&A assistant. Read-only; reset at the next go-live. */
-	AIOffThisSession bool `json:"aiOffThisSession"`
+	AIOffThisSession bool `json:"aiOffThisSession,omitempty"`
 	Locked           bool `json:"locked"`
 
 	// ChatDestination decides where an ATTENDEE's chat goes: to the whole room, or
