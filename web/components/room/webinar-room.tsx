@@ -29,8 +29,10 @@ import { shareModeOfHint } from "@/lib/share-mode";
 import { publishLedger } from "@/lib/republish";
 import {
   PRESENCE_HEARTBEAT_MS,
+  isScheduledPresenter as scheduledPresenter,
   loadMedia,
   markLeft,
+  opensPromoted,
   recordPresence,
   rejoinEntry,
   saveMedia,
@@ -194,7 +196,11 @@ export function WebinarRoom({
     onLeaveProp();
   }, [depart, onLeaveProp]);
   const [currentJoin, setCurrentJoin] = useState<JoinResponse>(initialJoin);
-  const [promotedToStage, setPromotedToStage] = useState(false);
+  // An attendee back while on the stage starts promoted, so a demotion returns them to the
+  // feed (lib/rejoin.ts opensPromoted).
+  const [promotedToStage, setPromotedToStage] = useState(() =>
+    opensPromoted(door, initialJoin.role),
+  );
   const [transitioning, setTransitioning] = useState(false);
 
   /* One promotion at a time. An edge viewer hears about the same promotion twice — the
@@ -231,8 +237,11 @@ export function WebinarRoom({
     }
   }, [slug, joinKey]);
 
-  const isScheduledPresenter =
-    initialJoin.role === "host" || initialJoin.role === "panelist";
+  /* The stage door, not the first join's role (lib/rejoin.ts). Read off the role alone, a
+   * promoted attendee who had reloaded was "scheduled": their demotion re-mounted WebRTC with
+   * the edge join's empty token ("Reconnecting…", a Join that could not join), and their
+   * reconnects on stage asked api.hostJoin for a session they do not have. */
+  const isScheduledPresenter = scheduledPresenter(door, initialJoin.role);
 
   /* A new credential for a reconnection attempt.
    *
