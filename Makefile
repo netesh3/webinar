@@ -104,6 +104,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/layout.test.mts
 	# In-app browser (Instagram/Facebook WebView) and phone detection.
 	cd web && node --experimental-strip-types --no-warnings lib/device.test.mts
+	# Which browsers route background-processor frames through a 2D canvas, so an
+	# iPhone presenter with blur on is not sent upside down (lib/frame-orientation.ts).
+	cd web && node --experimental-strip-types --no-warnings lib/frame-orientation.test.mts
 	# And whether an empty stage means the host hasn't started. It doesn't, once
 	# a host or panelist is in the room — camera off and mic muted still count.
 	cd web && node --experimental-strip-types --no-warnings lib/stage-presence.test.mts

@@ -8,6 +8,7 @@ import {
 import { LOW_LIGHT_GLSL, LOW_LIGHT_LIFT } from "./low-light-curve";
 import { HumanSeg, loadHumanSeg, type Matte } from "./humanseg";
 import { PresenterLock, type FaceBox } from "./presenter-lock";
+import { browserNeedsUprightCopy } from "./frame-orientation";
 
 /* Segmentation and compositing, done ourselves.
  *
@@ -1060,6 +1061,16 @@ function canvas2d(w: number, h: number): Canvas2D {
   return { canvas, ctx };
 }
 
+/** `c` at w×h, made if there is none yet. Resizing clears it, which a full redraw does not mind. */
+function sized(c: Canvas2D | null, w: number, h: number): Canvas2D {
+  if (!c) return canvas2d(w, h);
+  if (c.canvas.width !== w || c.canvas.height !== h) {
+    c.canvas.width = w;
+    c.canvas.height = h;
+  }
+  return c;
+}
+
 // ------------------------------------------------------------------- the engine
 
 /* Minimal shapes for the two MediaPipe types used here.
@@ -1238,13 +1249,15 @@ class Engine {
     this.panAt = 0;
   }
 
-  /** The frame, uploaded once and sampled by every pass. Mips only when a pass reads them. */
-  upload(frame: VideoFrame, mips: boolean): void {
+  /** The frame, uploaded once and sampled by every pass. Mips only when a pass reads them.
+   *  `source` is the frame's pixels when they are not the frame itself: a 2D canvas it was
+   *  drawn into, the same size, on WebKit (see lib/frame-orientation.ts). */
+  upload(frame: VideoFrame, mips: boolean, source: TexImageSource = frame): void {
     const gl = this.gl;
     this.fit(frame.displayWidth, frame.displayHeight);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.frame);
-    upload(gl, frame);
+    upload(gl, source);
     if (mips) gl.generateMipmap(gl.TEXTURE_2D);
   }
 
@@ -1883,6 +1896,13 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   /** So a persistent per-frame fault is reported once rather than 30 times a second. */
   private reportedFrameFailure = false;
 
+  /* WebKit's GPU hand-offs, routed through 2D canvases so a phone's picture goes out the
+   * right way up: see lib/frame-orientation.ts. Decided once; the canvases are made the
+   * first time a frame needs them. */
+  private readonly uprightCopy = browserNeedsUprightCopy();
+  private uprightIn: Canvas2D | null = null;
+  private uprightOut: Canvas2D | null = null;
+
   /* Presenter lock: faces, and who among them is presenting. */
   private readonly lock = new PresenterLock();
   private faces: FaceDetector | null = null;
@@ -2085,12 +2105,12 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
           this.modelFrame(engine, this.model, frame, controller);
           return;
         }
-        engine.upload(frame, true);
+        this.uploadFrame(engine, frame, true);
         engine.forgetHistory();
         mode = this.modeFor(engine, background);
         this.easeVeil(engine.hasHistory, started);
       } else {
-        engine.upload(frame, false);
+        this.uploadFrame(engine, frame, false);
         engine.forgetHistory();
       }
       engine.render(
@@ -2099,10 +2119,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
         lowLight,
         background.kind === "blur" ? background.radius : VEIL_RADIUS,
       );
-      output = new VideoFrame(engine.canvas as unknown as CanvasImageSource, {
-        timestamp: frame.timestamp,
-        alpha: "discard",
-      });
+      output = this.frameFrom(engine, frame.timestamp);
       // Lost while drawing: what was drawn went nowhere and the frame is black.
       if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST);
     } catch (err) {
@@ -2130,6 +2147,34 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   }
 
   // ------------------------------------------------------------------ internals
+
+  /* The frame into the engine. Straight from the VideoFrame everywhere but WebKit, where it
+   * is drawn into a 2D canvas first — drawImage being the read that orients a phone camera's
+   * buffer the way its <video> shows it, and the one the model's mask is already cut from. */
+  private uploadFrame(engine: Engine, frame: VideoFrame, mips: boolean): void {
+    if (!this.uprightCopy) {
+      engine.upload(frame, mips);
+      return;
+    }
+    const w = frame.displayWidth;
+    const h = frame.displayHeight;
+    this.uprightIn = sized(this.uprightIn, w, h);
+    this.uprightIn.ctx.drawImage(frame, 0, 0, w, h);
+    engine.upload(frame, mips, this.uprightIn.canvas as unknown as TexImageSource);
+  }
+
+  /* The engine's picture as a frame to send. On WebKit, through a 2D canvas rather than a
+   * VideoFrame of the WebGL canvas itself, whose rows WebKit can read bottom-up. */
+  private frameFrom(engine: Engine, timestamp: number): VideoFrame {
+    let source: AnyCanvas = engine.canvas;
+    if (this.uprightCopy) {
+      const { width, height } = engine.canvas;
+      this.uprightOut = sized(this.uprightOut, width, height);
+      this.uprightOut.ctx.drawImage(engine.canvas, 0, 0, width, height);
+      source = this.uprightOut.canvas;
+    }
+    return new VideoFrame(source as unknown as CanvasImageSource, { timestamp, alpha: "discard" });
+  }
 
   /* The presenter lock's face detector, loaded alongside the model. Optional: if it fails
    * to load, the background carries on without the lock. */
@@ -2322,15 +2367,12 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     try {
       if (this.lockActive()) this.lock.apply(mask.alpha, mask.w, mask.h, performance.now(), LOCK_REGION);
       const refined = model.refine(mask);
-      engine.upload(frame, true);
+      this.uploadFrame(engine, frame, true);
       engine.ingestMatte(refined.alpha, refined.w, refined.h);
       const mode = this.modeFor(engine, background);
       this.easeVeil(engine.hasHistory, started);
       engine.render(mode, this.veil, lowLight, background.kind === "blur" ? background.radius : VEIL_RADIUS);
-      output = new VideoFrame(engine.canvas as unknown as CanvasImageSource, {
-        timestamp: frame.timestamp,
-        alpha: "discard",
-      });
+      output = this.frameFrom(engine, frame.timestamp);
       if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST);
     } catch (err) {
       output?.close();
