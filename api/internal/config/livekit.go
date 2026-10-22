@@ -114,6 +114,42 @@ type LiveKitProject struct {
 
 	// Label is the human name shown in the admin "Video server" select. Defaults to the id.
 	Label string `json:"label,omitempty"`
+
+	/* Provider is who bills for this project's servers, for the admin cost report: "gcp",
+	 * "hetzner" or "do". Empty is worked out from the rest (CostProvider). */
+	Provider string `json:"provider,omitempty"`
+}
+
+/* CostProvider is who bills for the project's servers: Provider when set, else GCP for a
+ * project whose VMs the API starts (sfuVm, egressPool), else what the id or label says
+ * (CostProviderOfName). */
+func (p LiveKitProject) CostProvider() string {
+	switch v := strings.ToLower(strings.TrimSpace(p.Provider)); v {
+	case "gcp", "hetzner", "do":
+		return v
+	}
+	if p.SfuVM != nil || p.EgressPool != nil {
+		return "gcp"
+	}
+	return CostProviderOfName(p.ID + " " + p.Label)
+}
+
+/* CostProviderOfName guesses the provider from a project's id and label, word by word:
+ * "do-blr" and "Bangalore (DigitalOcean test)" are DigitalOcean, "india" and "Mumbai" GCP,
+ * and anything else Hetzner, which runs the default box. */
+func CostProviderOfName(name string) string {
+	words := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	for _, w := range words {
+		switch w {
+		case "do", "digitalocean", "blr", "blr1", "bangalore":
+			return "do"
+		case "gcp", "gce", "india", "mumbai":
+			return "gcp"
+		}
+	}
+	return "hetzner"
 }
 
 // SfuVM is one VM by name.

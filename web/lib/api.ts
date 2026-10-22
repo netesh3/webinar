@@ -48,6 +48,8 @@ import type {
   AdminStats,
   AdminUser,
   AdminWhatsAppUsage,
+  AdminCostsResponse,
+  AdminCostHostDetail,
   AlertsResponse,
   AppConfig,
   ApprovalsResponse,
@@ -240,6 +242,16 @@ function hostWebinarsKey(params: HostWebinarQuery): string {
   qs.set("limit", String(limit));
   if (params.cursor) qs.set("cursor", params.cursor);
   return `${HOST_LIST_PREFIX}${qs.toString()}`;
+}
+
+// The cost report's query: empty parts are left out (an empty range is all time).
+function costQuery(q: { from?: string; to?: string; provider?: string; fresh?: boolean }): string {
+  const qs = new URLSearchParams();
+  if (q.from) qs.set("from", q.from);
+  if (q.to) qs.set("to", q.to);
+  if (q.provider) qs.set("provider", q.provider);
+  if (q.fresh) qs.set("fresh", "1");
+  return qs.toString();
 }
 
 function hostWebinarsPath(params: HostWebinarQuery): string {
@@ -1469,6 +1481,14 @@ export const api = {
       `/api/admin/stats/whatsapp?days=${days}`,
       fresh,
     ),
+
+  /** Every host's recorded usage over a date range (YYYY-MM-DD, inclusive), for the
+   *  Cost by host report; priced in the browser (lib/host-costs.ts). */
+  adminCosts: (q: { from?: string; to?: string; provider?: string; fresh?: boolean }) =>
+    request<AdminCostsResponse>(`/api/admin/costs?${costQuery(q)}`, fresh),
+  /** One host's usage and their sessions, for the drill-down. */
+  adminCostHost: (id: string, q: { from?: string; to?: string; provider?: string; fresh?: boolean }) =>
+    request<AdminCostHostDetail>(`/api/admin/costs/hosts/${seg(id)}?${costQuery(q)}`, fresh),
 
   /** Every account, for the admin panel. Admin-only server side; `q` filters by
    *  email or name. */

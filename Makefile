@@ -367,6 +367,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/autoplay-sound.test.mts
 	# The admin cost calculator: transfer pools, render concurrency, the AI cap, recording sizes.
 	cd web && node --experimental-strip-types --no-warnings lib/cost-calculator.test.mts
+	# Cost by host: recorded usage priced at those rates, the pool shared by GB, the platform share.
+	cd web && node --experimental-strip-types --no-warnings lib/host-costs.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
