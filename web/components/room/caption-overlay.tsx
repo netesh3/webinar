@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Track } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
 import { api } from "@/lib/api";
 import type { ControlsPatch } from "@/lib/api-types";
 import { captionEngine } from "@/lib/ai-session";
+import {
+  edgeHoldMs,
+  getEdgeVideoDelay,
+  subscribeEdgeVideoDelay,
+  type CaptionLine,
+} from "@/lib/caption-sync";
 import { useLocalCaptions } from "@/lib/local-captions";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
@@ -38,14 +44,51 @@ import { useRoomUI } from "./context";
  *  the room having gone quiet. Scaled by length so a long line is not pulled away
  *  mid-read, and capped low enough that the audience's last line clears promptly
  *  once the host switches captions off. */
-function holdMs(text: string): number {
-  return Math.min(8_000, 2_500 + text.length * 55);
+function holdMs(line: CaptionLine): number {
+  // Interim text is refreshed every second or so and replaced by its final: if neither
+  // comes, it was noise, and it should not hang about as long as a real line.
+  if (line.partial) return 3_000;
+  return Math.min(8_000, 2_500 + line.text.length * 55);
+}
+
+const noDelay = () => null;
+
+/* An edge viewer's video is seconds behind the room; their captions are not. Each line is
+ * held until the video reaches it (lib/caption-sync.ts edgeHoldMs), each on its own timer —
+ * a newer line arriving does not cancel an older one still due, so interim text grows in
+ * step with the video. Everywhere else (no edge player measuring) lines show on arrival. */
+function useVideoSyncedCaption(line: CaptionLine | null): CaptionLine | null {
+  const delaySec = useSyncExternalStore(subscribeEdgeVideoDelay, getEdgeVideoDelay, noDelay);
+  const [held, setHeld] = useState<CaptionLine | null>(null);
+  const delayRef = useRef(delaySec);
+  useEffect(() => {
+    delayRef.current = delaySec;
+  }, [delaySec]);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    if (!line || delayRef.current == null) return;
+    const pending = timers.current;
+    const timer = setTimeout(() => {
+      pending.delete(timer);
+      // Never step back to an older line than the one showing.
+      setHeld((current) => (current && current.at > line.at ? current : line));
+    }, edgeHoldMs(delayRef.current, line.lagMs));
+    pending.add(timer);
+  }, [line]);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const t of pending) clearTimeout(t);
+      pending.clear();
+    };
+  }, []);
+  return delaySec == null ? line : held;
 }
 
 export function CaptionOverlay() {
   const { realtime, controls } = useRoomUI();
   const on = controls.captionsEnabled;
-  const line = realtime.captions;
+  const line = useVideoSyncedCaption(realtime.captions);
 
   /* The line that was mid-air when the switch last came on, so it is not
    * replayed: without this, switching captions off and straight back on flashes
@@ -74,11 +117,14 @@ export function CaptionOverlay() {
     if (!line?.text) return;
     // `line` is a fresh object per packet, so a caption still being revised
     // restarts its own countdown instead of vanishing mid-sentence.
-    const timer = setTimeout(() => setStale(line), holdMs(line.text));
+    const timer = setTimeout(() => setStale(line), holdMs(line));
     return () => clearTimeout(timer);
   }, [line]);
 
   const text = on && line && line !== stale && line !== ignored ? line.text : "";
+  // Interim text (the server's guess at a line still being spoken) is a shade lighter,
+  // and settles to full white when its final replaces it, in the same box, so nothing jumps.
+  const interim = Boolean(line?.partial);
 
   if (!text) return null;
 
@@ -92,7 +138,8 @@ export function CaptionOverlay() {
         // Sized and spaced like a caption track rather than body copy: broadcast
         // captions are read at a glance from across a room, and the 13px chip this
         // replaced was smaller than the chat it was competing with.
-        className="max-w-[min(100%,46rem)] rounded-xl bg-black/80 px-4 py-2.5 text-center text-[16px] leading-[1.45] font-medium tracking-[0.005em] text-white shadow-lg backdrop-blur-sm [text-wrap:pretty] sm:text-[19px] sm:leading-[1.5]"
+        data-interim={interim || undefined}
+        className={`max-w-[min(100%,46rem)] rounded-xl bg-black/80 px-4 py-2.5 text-center text-[16px] leading-[1.45] font-medium tracking-[0.005em] shadow-lg backdrop-blur-sm transition-colors duration-200 [text-wrap:pretty] sm:text-[19px] sm:leading-[1.5] ${interim ? "text-white/75" : "text-white"}`}
         style={{ textShadow: "0 1px 2px rgb(0 0 0 / 0.6)" }}
       >
         {text}

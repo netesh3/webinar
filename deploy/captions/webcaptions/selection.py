@@ -120,3 +120,21 @@ def pipeline_key(identity: str, is_share: bool) -> str:
 
 def wants_audio(identity: str, is_share: bool, chosen) -> bool:
     return True if is_share else identity in chosen
+
+
+def main_source(active: Iterable[str], speaking: Iterable[str]) -> str | None:
+    """The one pipeline key that gets interim captions: the source the room is listening to.
+
+    `speaking` is the pipeline keys mid-line right now. Share audio wins (a video played
+    into a share is what everyone is hearing); then the loudest active speaker, in
+    LiveKit's order; then, while the active list lags behind, whoever is mid-line."""
+    now = sorted(set(speaking))
+    if not now:
+        return None
+    for key in now:
+        if key.endswith(SHARE_SUFFIX):
+            return key
+    for identity in active:
+        if identity in now:
+            return identity
+    return now[0]

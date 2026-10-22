@@ -37,6 +37,7 @@ import {
   STARTUP_GRACE_MS,
   type PlaybackMode,
 } from "@/lib/edge-hls";
+import { setEdgeVideoDelay } from "@/lib/caption-sync";
 import { deviceSummary } from "@/lib/device";
 import { trackEvent } from "@/lib/telemetry";
 import { useAppConfig } from "../providers";
@@ -351,6 +352,13 @@ export function EdgePlayer({
       hlsRef.current = null;
     };
   }, [playbackUrl, lowLatency]);
+
+  // The caption overlay holds each line by this much, so captions land with the video they
+  // caption rather than seconds ahead of it (lib/caption-sync.ts).
+  useEffect(() => {
+    setEdgeVideoDelay(loading ? null : latency);
+  }, [latency, loading]);
+  useEffect(() => () => setEdgeVideoDelay(null), []);
 
   const latencyRef = useRef(latency);
   const modeRef = useRef(mode);

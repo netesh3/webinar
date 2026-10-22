@@ -4,6 +4,14 @@ Audio arrives as 10-20 ms frames of 16 kHz mono. Silence is recognised by RMS al
 numpy reduction per frame — and never reaches the model, which is what makes a quiet room
 free. Speech is collected into an utterance that is closed after `silence_end_s` of quiet,
 or at `max_utterance_s` so a monologue still produces a caption every few seconds.
+
+Between the two, once a line is `soft_utterance_s` long it is closed at the first short
+pause (`soft_silence_s`): a monologue is then cut at a breath between phrases, a few seconds
+in, rather than mid-word at the hard cap. That is both sooner and better for Whisper, which
+decodes a whole phrase more accurately than half a word.
+
+While a line is open, take_partial hands out the audio so far, at most once every
+`interval_s` of new audio, for an interim (display-only) caption.
 """
 
 from __future__ import annotations
@@ -46,10 +54,16 @@ class Segmenter:
         max_utterance_s: float = 6.0,
         min_voiced_s: float = 0.3,
         pre_roll_s: float = 0.2,
+        soft_utterance_s: float | None = None,
+        soft_silence_s: float = 0.25,
     ) -> None:
         self.gate = energy_gate
         self.silence_end_s = silence_end_s
         self.max_utterance_s = max_utterance_s
+        # None or >= max: no soft cut (the old behaviour).
+        self.soft_utterance_s = soft_utterance_s
+        self.soft_silence_s = min(soft_silence_s, silence_end_s)
+        self._partial_len = 0
         self.min_voiced_s = min_voiced_s
         self._pre_roll_n = int(pre_roll_s * SAMPLE_RATE)
         self._pre: deque[np.ndarray] = deque()
@@ -94,7 +108,7 @@ class Segmenter:
             else:
                 self._silence += n
 
-        if self._silence >= self.silence_end_s * SAMPLE_RATE:
+        if self._silence >= self._silence_needed() * SAMPLE_RATE:
             u = self._close(trim_tail=self._silence)
             if u:
                 out.append(u)
@@ -103,6 +117,32 @@ class Segmenter:
             if u:
                 out.append(u)
         return out
+
+    def _silence_needed(self) -> float:
+        soft = self.soft_utterance_s
+        if soft is not None and soft < self.max_utterance_s and self._len >= soft * SAMPLE_RATE:
+            return self.soft_silence_s
+        return self.silence_end_s
+
+    @property
+    def open_started_at_ms(self) -> int | None:
+        """started_at_ms of the line being collected, or None between lines."""
+        return self._start_ms if self._chunks else None
+
+    def take_partial(self, interval_s: float = 1.0, min_voiced_s: float = 0.6) -> Utterance | None:
+        """The open line so far, if it has grown by `interval_s` since the last one handed
+        out (and has enough speech in it to be worth decoding). The copy is the caller's."""
+        if not self._chunks or self._voiced < min_voiced_s * SAMPLE_RATE:
+            return None
+        if self._len - self._partial_len < interval_s * SAMPLE_RATE:
+            return None
+        self._partial_len = self._len
+        # Trailing quiet is not worth decoding twice: cut it like _close does.
+        audio = np.concatenate(self._chunks)
+        if self._silence > 0:
+            audio = audio[: len(audio) - self._silence]
+        return Utterance(audio=audio.astype(np.float32, copy=False), started_at_ms=self._start_ms,
+                         voiced_s=self._voiced / SAMPLE_RATE)
 
     def flush(self) -> list[Utterance]:
         """The speaker went away mid-sentence: close whatever is open."""
@@ -122,6 +162,7 @@ class Segmenter:
         voiced = self._voiced
         start = self._start_ms
         self._chunks, self._len, self._voiced, self._silence = [], 0, 0, 0
+        self._partial_len = 0
         # Keep a little of the trailing quiet (Whisper likes a pause at the end), not all.
         keep_tail = min(trim_tail, int(0.3 * SAMPLE_RATE))
         if trim_tail > keep_tail:

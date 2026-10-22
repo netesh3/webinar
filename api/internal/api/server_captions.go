@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
+	"github.com/netkumar/webcast/api/internal/realtime"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -31,7 +33,11 @@ import (
  *     browser caption goes and fans it out as the same "caption" room packet, from the
  *     speaker's own Sender, so the existing overlay renders it unchanged. The packet goes
  *     through sendRoomPacket, whose edge tap (edgeRoom) also puts it on the realtime bus, so
- *     LL-HLS viewers get it over SSE like WebRTC participants get it from the SFU;
+ *     LL-HLS viewers get it over SSE like WebRTC participants get it from the SFU. A current
+ *     agent publishes the packet to the room itself first (it sits beside the SFU, and this
+ *     relay was most of a line's delay after decoding) and says so (published): then only
+ *     the edge copy goes from here. Interim (partial) lines come here only for an edge room,
+ *     go only to its audience, and are never stored;
  *   - records the agent's own report of whether it is live (handleInternalCaptionStatus),
  *     which is what SessionControls.ServerCaptions — the browsers' "skip local Whisper" —
  *     follows;
@@ -211,12 +217,40 @@ type internalCaption struct {
 	Slug     string `json:"slug"`
 	Identity string `json:"identity"`
 	Text     string `json:"text"`
-	// StartedAt is when the speech began, Unix milliseconds. Logged for latency only: the row
-	// is stamped on arrival like a browser caption, so the two sources order the same way.
+	// StartedAt / EndedAt bound the speech the line covers, Unix milliseconds (the agent's
+	// clock). For latency, and for the edge audience's sync (lagMs below): the row is stamped
+	// on arrival like a browser caption, so the two sources order the same way.
 	StartedAt int64 `json:"startedAt"`
+	EndedAt   int64 `json:"endedAt"`
+	// Published: the agent has already put this line on the room itself (it sits beside the
+	// SFU), so it is stored and copied to the edge audience but not sent to the SFU again.
+	Published bool `json:"published"`
+	// Partial is interim text for a line still being spoken: display-only, for the edge
+	// audience (the room has it from the agent). Never stored, never kept for the AI.
+	Partial bool `json:"partial"`
+}
+
+/* captionPacket is the "caption" room packet (web/lib/realtime.ts decodes it). id ties a
+ * line's partials to its final, which replaces them; lagMs is how old the end of the speech
+ * is as the packet leaves, which an edge viewer — whose video is seconds behind — uses to
+ * hold the line until the video gets there. Both are omitted for an agent too old to send
+ * the times, which leaves the packet exactly what it was. */
+func captionPacket(from wireSender, req internalCaption, text string, now time.Time) map[string]any {
+	pkt := map[string]any{"kind": "caption", "from": from, "text": text}
+	if req.EndedAt > 0 && req.StartedAt > 0 {
+		pkt["id"] = from.Identity + ":" + strconv.FormatInt(req.StartedAt, 10)
+		pkt["startedAt"] = req.StartedAt
+		pkt["endedAt"] = req.EndedAt
+		pkt["lagMs"] = max(0, now.UnixMilli()-req.EndedAt)
+	}
+	if req.Partial {
+		pkt["partial"] = true
+	}
+	return pkt
 }
 
 func (s *Server) handleInternalCaption(w http.ResponseWriter, r *http.Request) {
+	began := time.Now()
 	var req internalCaption
 	if err := decodeAgentJSON(w, r, 64<<10, &req); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
@@ -258,9 +292,23 @@ func (s *Server) handleInternalCaption(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict, "captions_off", "Server captions are off for this session.")
 		return
 	}
+	if req.Partial && !display {
+		httpx.Error(w, http.StatusConflict, "captions_hidden", "Captions aren't shown in this session.")
+		return
+	}
+	edge := s.isEdge(r.Context(), slug)
+	// The agent posts partials only for an edge room (it learns which from this answer).
+	ok := map[string]any{"status": "ok", "edge": edge}
 	sfu, err := s.sfuFor(r.Context(), wb)
 	if err != nil {
 		s.failSFU(w, r, wb, err)
+		return
+	}
+	if req.Partial {
+		if edge {
+			s.publishCaptionEdge(r.Context(), slug, captionPacket(s.captionSpeaker(r.Context(), sfu, slug, identity), req, text, time.Now()))
+		}
+		httpx.JSON(w, http.StatusOK, ok)
 		return
 	}
 	if err := s.store.AppendCaption(r.Context(), slug, identity, text); err != nil {
@@ -269,19 +317,39 @@ func (s *Server) handleInternalCaption(w http.ResponseWriter, r *http.Request) {
 	}
 	if !display {
 		// Transcript only: kept for the AI recap, shown to nobody.
-		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
+		httpx.JSON(w, http.StatusOK, ok)
 		return
 	}
-	from := s.captionSpeaker(r.Context(), sfu, slug, identity)
-	if err := s.sendRoomPacket(r.Context(), sfu, slug, nil, map[string]any{
-		"kind": "caption",
-		"from": from,
-		"text": text,
-	}); err != nil {
+	pkt := captionPacket(s.captionSpeaker(r.Context(), sfu, slug, identity), req, text, time.Now())
+	if req.Published {
+		// The room has it already, from the agent; only the edge audience still needs it.
+		s.publishCaptionEdge(r.Context(), slug, pkt)
+	} else if err := s.sendRoomPacket(r.Context(), sfu, slug, nil, pkt); err != nil {
 		// Stored already; the room missing one line is not worth failing the agent over.
 		s.log.Warn("internal caption: fan-out failed", "slug", slug, "error", err)
 	}
-	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
+	/* Latency, per line: age_ms is speech start -> relayed, end_age_ms speech end -> relayed
+	 * (the agent's decode, its POST and this handler), handler_ms this handler alone. The
+	 * agent logs its own side once a minute ("caption latency"). */
+	attrs := []any{"slug", slug, "published", req.Published, "edge", edge,
+		"handler_ms", time.Since(began).Milliseconds()}
+	if req.StartedAt > 0 {
+		attrs = append(attrs, "age_ms", time.Now().UnixMilli()-req.StartedAt)
+	}
+	if req.EndedAt > 0 {
+		attrs = append(attrs, "end_age_ms", time.Now().UnixMilli()-req.EndedAt)
+	}
+	s.log.Info("internal caption: relayed", attrs...)
+	httpx.JSON(w, http.StatusOK, ok)
+}
+
+// publishCaptionEdge copies a caption packet to the edge audience only (no SFU send).
+func (s *Server) publishCaptionEdge(ctx context.Context, slug string, pkt map[string]any) {
+	body, err := json.Marshal(pkt)
+	if err != nil {
+		return
+	}
+	s.publishEdge(ctx, slug, realtime.KindPacket, body, nil)
 }
 
 /* captionSpeaker is the Sender a caption is labelled with: the speaker's own name and role,
@@ -374,7 +442,10 @@ func (s *Server) handleInternalCaptionStatus(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"status": "ok", "serverCaptions": wb.Controls.ServerCaptions})
+	// edge: the agent sends interim captions to the API only for an edge room's audience.
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"status": "ok", "serverCaptions": wb.Controls.ServerCaptions, "edge": s.isEdge(r.Context(), slug),
+	})
 }
 
 type internalTranscript struct {

@@ -5,7 +5,7 @@
 The API creates an explicit agent dispatch (agent name CAPTIONS_AGENT_NAME) for a room
 when the host turns server captions on, and deletes it when they are turned off or the
 session ends; LiveKit then starts / ends this agent's job for that room. The agent joins
-hidden, cannot publish, and subscribes to nothing by default — only to the microphones of
+hidden, publishes no media (only its caption data packets), and subscribes to nothing by default — only to the microphones of
 the speakers SpeakerSelector picks from LiveKit's active-speaker updates.
 
 The main process also runs the finalizer thread (after-session transcripts). Job processes
@@ -15,9 +15,11 @@ are LiveKit's own (one per room), each with its live models prewarmed.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from livekit import rtc
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, JobProcess, JobRequest, WorkerPermissions, cli
@@ -26,15 +28,16 @@ from .config import Config
 from .cpuguard import CpuGuard, GuardMonitor, Level
 from .finalizer import Finalizer
 from .live import LiveCaptioner
-from .poster import ApiClient
+from .poster import ApiClient, captions_shown, sender_for
 from .segmenter import Segmenter, pcm16_to_float
-from .selection import SHARE_SUFFIX, SpeakerSelector, pipeline_key, wants_audio
+from .selection import SHARE_SUFFIX, SpeakerSelector, main_source, pipeline_key, wants_audio
 from .spool import RoomSpool, close_orphans, live_rooms
 from .transcriber import WhisperTranscriber
 
 log = logging.getLogger("captions.agent")
 
 IDENTITY_PREFIX = "CAP_"  # filtered from every roster; see api/internal/lk/agents.go
+DATA_TOPIC = "webcast"  # the room packets' topic: api/internal/api/say.go dataTopic, web/lib/realtime.ts
 
 
 def _guard(cfg: Config) -> CpuGuard:
@@ -45,17 +48,33 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _models(cfg: Config) -> dict[str, WhisperTranscriber]:
+    """live, fallback and partial, one instance per distinct model name (the partial and
+    language-detection models are the fallback by default, so they cost no extra memory)."""
+    by_name: dict[str, WhisperTranscriber] = {}
+
+    def get(name: str) -> WhisperTranscriber:
+        if name not in by_name:
+            by_name[name] = WhisperTranscriber(name, cfg.cpu_threads, cfg.model_dir, cfg.prompt)
+        return by_name[name]
+
+    detector = get(cfg.detect_model_name)
+    out = {"live": get(cfg.model), "fallback": get(cfg.fallback_model), "partial": get(cfg.partial_model_name)}
+    for t in by_name.values():
+        if t is not detector:
+            t.detector = detector
+    return out
+
+
 def prewarm(proc: JobProcess) -> None:
     """Runs once per job process, before it is handed a room: the live models load here so
-    a dispatch does not wait on them."""
+    a dispatch does not wait on them. (A throwaway first decode was measured too: CTranslate2's
+    first call is no slower than the rest, so there is nothing more to warm.)"""
     cfg = Config.from_env()
-    live = WhisperTranscriber(cfg.model, cfg.cpu_threads, cfg.model_dir, cfg.prompt)
-    fallback = WhisperTranscriber(cfg.fallback_model, cfg.cpu_threads, cfg.model_dir, cfg.prompt)
-    live.load()
-    if cfg.fallback_model != cfg.model:
-        fallback.load()
-    proc.userdata["live"] = live
-    proc.userdata["fallback"] = fallback
+    models = _models(cfg)
+    for t in {id(t): t for t in models.values()}.values():
+        t.load()
+    proc.userdata.update(models)
 
 
 async def on_request(req: JobRequest) -> None:
@@ -81,20 +100,21 @@ async def entrypoint(ctx: JobContext) -> None:
     cfg = Config.from_env()
     room_name = ctx.job.room.name
     api = ApiClient(cfg.api_url, cfg.secret)
-    live_t = ctx.proc.userdata.get("live") or WhisperTranscriber(cfg.model, cfg.cpu_threads, cfg.model_dir, cfg.prompt)
-    fallback_t = ctx.proc.userdata.get("fallback") or WhisperTranscriber(
-        cfg.fallback_model, cfg.cpu_threads, cfg.model_dir, cfg.prompt
-    )
+    models = _models(cfg) if "live" not in ctx.proc.userdata else ctx.proc.userdata
     spool = RoomSpool(cfg.spool_dir, room_name, ctx.job.id, cfg.spool_max_mb * 1024 * 1024) if cfg.final_enabled else None
     monitor = GuardMonitor(_guard(cfg), cfg.cpu_sample_s)
-    captioner = LiveCaptioner(cfg, api, room_name, live_t, fallback_t, lambda: monitor.level, spool)
     selector = SpeakerSelector(cfg.max_speakers, cfg.speaker_linger_s)
 
     loop = asyncio.get_running_loop()
     wake = asyncio.Event()
     active: list[str] = []
     pipelines: dict[str, asyncio.Task[None]] = {}
+    segs: dict[str, Segmenter] = {}
     background: set[asyncio.Task[None]] = set()
+    # Finals reach the API in order on one thread, off the decoder: the room already has
+    # the line by the time the POST starts.
+    poster = ThreadPoolExecutor(max_workers=1, thread_name_prefix="caption-post")
+    shown: list[bool | None] = [None]
 
     def spawn(coro) -> None:
         t = asyncio.ensure_future(coro)
@@ -103,7 +123,52 @@ async def entrypoint(ctx: JobContext) -> None:
 
     await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_NONE)
     room = ctx.room
-    log.info("captions joined %s (model %s, language %s, script %s)", room_name, cfg.model, cfg.language, cfg.script)
+    shown[0] = captions_shown(room.metadata)
+
+    def publish(packet: dict) -> bool:
+        """From the decoder thread: the packet onto the room, waited for briefly so the API
+        knows whether it still has to relay it."""
+        data = json.dumps(packet, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        fut = asyncio.run_coroutine_threadsafe(
+            room.local_participant.publish_data(data, reliable=True, topic=DATA_TOPIC), loop
+        )
+        try:
+            fut.result(timeout=2.0)
+            return True
+        except Exception as err:
+            fut.cancel()
+            log.warning("caption publish to %s failed (the API relays it): %s", room_name, err)
+            return False
+
+    def sender_of(identity: str, name: str) -> dict:
+        p = room.remote_participants.get(identity)
+        return sender_for(identity, p.name if p and p.name else name, p.metadata if p else None)
+
+    def post_async(fn) -> None:
+        def run() -> None:
+            try:
+                fn()
+            except Exception:
+                log.exception("caption post failed")
+
+        try:
+            poster.submit(run)
+        except RuntimeError:  # shutting down: a decode that was mid-flight posts inline
+            run()
+
+    captioner = LiveCaptioner(
+        cfg, api, room_name, models["live"], models["fallback"], lambda: monitor.level, spool,
+        partial=models["partial"], publish=publish, display=lambda: shown[0], sender_of=sender_of,
+        post_async=post_async,
+    )
+    log.info(
+        "captions joined %s (model %s, partials %s, language %s, script %s, shown %s)",
+        room_name, cfg.model, cfg.partial_model_name if cfg.partials else "off", cfg.language, cfg.script, shown[0],
+    )
+
+    @room.on("room_metadata_changed")
+    def _on_metadata(_old: str, new: str) -> None:
+        shown[0] = captions_shown(new)
 
     def apply_selection() -> None:
         chosen = selector.update(active)
@@ -131,29 +196,49 @@ async def entrypoint(ctx: JobContext) -> None:
     monitor.on_change = lambda old, new: loop.call_soon_threadsafe(level_changed, old, new)
     monitor.start()
 
-    async def pipeline(identity: str, name: str, track: rtc.Track) -> None:
-        seg = Segmenter(cfg.energy_gate, cfg.silence_end_s, cfg.max_utterance_s)
+    async def pipeline(key: str, identity: str, name: str, track: rtc.Track) -> None:
+        seg = Segmenter(
+            cfg.energy_gate, cfg.silence_end_s, cfg.max_utterance_s,
+            soft_utterance_s=cfg.soft_utterance_s, soft_silence_s=cfg.soft_silence_s,
+        )
+        segs[key] = seg
         stream = rtc.AudioStream(track, sample_rate=16_000, num_channels=1)
         try:
             async for ev in stream:
                 for utt in seg.push(pcm16_to_float(ev.frame.data), _now_ms()):
                     captioner.add(identity, name, utt)
                     wake.set()
+                # Interim text for the one source the room is listening to, while it talks.
+                if seg.in_speech and cfg.partials and captioner.partials_allowed():
+                    speaking = [k for k, s in segs.items() if s.in_speech]
+                    if main_source(active, speaking) == key:
+                        snap = seg.take_partial(cfg.partial_interval_s)
+                        if snap is not None and captioner.offer_partial(identity, name, snap):
+                            wake.set()
         except asyncio.CancelledError:
             pass
         finally:
+            if segs.get(key) is seg:
+                del segs[key]
             for utt in seg.flush():
                 captioner.add(identity, name, utt)
                 wake.set()
             await stream.aclose()
 
     async def decoder() -> None:
+        # Finals first, always; a partial only when none is waiting.
         while True:
             await wake.wait()
             wake.clear()
-            while (p := captioner.next_pending()) is not None:
+            while True:
+                if (p := captioner.next_pending()) is not None:
+                    work = captioner.process
+                elif (p := captioner.next_partial()) is not None:
+                    work = captioner.process_partial
+                else:
+                    break
                 try:
-                    await asyncio.to_thread(captioner.process, p)
+                    await asyncio.to_thread(work, p)
                 except Exception:
                     log.exception("caption decode failed")
 
@@ -161,6 +246,7 @@ async def entrypoint(ctx: JobContext) -> None:
         while True:
             await asyncio.sleep(1.0)
             apply_selection()  # lets lingering slots expire on time
+            captioner.stats.maybe_log()
 
     @room.on("active_speakers_changed")
     def _on_speakers(speakers: list[rtc.Participant]) -> None:
@@ -180,7 +266,7 @@ async def entrypoint(ctx: JobContext) -> None:
         if old := pipelines.pop(key, None):
             old.cancel()
         # Captioned under the sharer: the line is theirs on screen, as a mic line is.
-        pipelines[key] = asyncio.ensure_future(pipeline(p.identity, p.name or p.identity, track))
+        pipelines[key] = asyncio.ensure_future(pipeline(key, p.identity, p.name or p.identity, track))
 
     @room.on("track_unsubscribed")
     def _on_unsubscribed(track: rtc.Track, pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant) -> None:
@@ -202,6 +288,7 @@ async def entrypoint(ctx: JobContext) -> None:
         await asyncio.gather(*pipelines.values(), return_exceptions=True)
         if spool is not None:
             spool.mark_done()  # the finalizer in the main process picks it up
+        await asyncio.to_thread(poster.shutdown, True)  # the last finals reach the API
         await asyncio.to_thread(captioner.report, None, True)
 
     ctx.add_shutdown_callback(on_shutdown)
@@ -219,7 +306,9 @@ def _load(server: AgentServer) -> float:
 def build_server(cfg: Config) -> AgentServer:
     server = AgentServer(
         permissions=WorkerPermissions(
-            can_publish=False, can_subscribe=True, can_publish_data=False, can_update_metadata=False, hidden=True
+            # can_publish_data: the agent publishes its caption packets to the room itself
+            # (live.py). Still no media and no metadata, and hidden from every roster.
+            can_publish=False, can_subscribe=True, can_publish_data=True, can_update_metadata=False, hidden=True
         ),
         setup_fnc=prewarm,
         load_fnc=_load,

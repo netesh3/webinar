@@ -109,13 +109,27 @@ class Transcriber(Protocol):
 class WhisperTranscriber:
     """One faster-whisper model, loaded on first use. Thread-safe: calls are serialised."""
 
-    def __init__(self, name: str, cpu_threads: int, download_root: str, prompt: str = "") -> None:
+    def __init__(
+        self, name: str, cpu_threads: int, download_root: str, prompt: str = "",
+        detector: "WhisperTranscriber | None" = None,
+    ) -> None:
+        """`detector`: a (cheaper) model to pick the language with. Detection is a whole
+        extra encoder pass — the encoder runs on 30 s of padded audio whatever the line's
+        length, and is most of a live decode — so on `small` it doubled the decode of every
+        re-detect line (2.3 s -> 4.7 s measured); on `base` it costs about a quarter of that."""
         self.name = name
         self._threads = cpu_threads
         self._root = download_root
         self._prompt = prompt or ""
         self._model = None
         self._lock = threading.Lock()
+        self.detector = detector if detector is not self else None
+
+    def detect(self, audio: np.ndarray, previous_language: str | None = None) -> str:
+        with self._lock:
+            self._load_locked()
+            _, _, probs = self._model.detect_language(audio=audio, language_detection_segments=1)
+            return choose_language(probs, previous_language)
 
     def load(self) -> None:
         with self._lock:
@@ -141,10 +155,13 @@ class WhisperTranscriber:
     def transcribe(
         self, audio: np.ndarray, language: str | None = None, previous_language: str | None = None, final: bool = False
     ) -> Result:
+        lang = language
+        if lang is None and self.detector is not None and not final:
+            # Outside our own lock: the detector has its own (and never calls back here).
+            lang = self.detector.detect(audio, previous_language)
         with self._lock:
             self._load_locked()
             model = self._model
-            lang = language
             if lang is None:
                 _, _, probs = model.detect_language(audio=audio, language_detection_segments=1)
                 lang = choose_language(probs, previous_language)
