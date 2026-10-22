@@ -5,15 +5,29 @@ import { SparklesIcon } from "./icons";
 
 /* The AI recap's chapters under a recording: each one jumps the player to where that part
  * of the session starts. The times are the recording's own (lib/recap.ts chapterSeekTimes),
- * so they match the player's clock rather than the session's. */
+ * so they match the player's clock rather than the session's. The same chapters are marked
+ * on the player's seek bar.
+ *
+ * pending: the recap is still being written (it waits for the after-session transcript),
+ * so say the chapters are on their way rather than show nothing. */
 export function RecordingChapters({
   chapters,
+  pending = false,
   onSeek,
 }: {
   chapters: PlayerChapter[];
+  pending?: boolean;
   onSeek: (sec: number) => void;
 }) {
-  if (chapters.length === 0) return null;
+  if (chapters.length === 0) {
+    if (!pending) return null;
+    return (
+      <p className="flex items-center gap-1.5 border-t border-line px-4 py-3 text-[12.5px] text-ink-3">
+        <SparklesIcon className="size-3.5 text-brand" />
+        AI chapters appear here once the recap is written, usually within 20 minutes of the end.
+      </p>
+    );
+  }
   return (
     <div className="border-t border-line px-4 py-3">
       <p className="mb-1.5 text-[12px] font-semibold tracking-wide text-ink-3 uppercase">

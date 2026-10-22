@@ -43,7 +43,11 @@ export function chapterSeekTimes(
   const sessionStart = sessionStartedAt ? Date.parse(sessionStartedAt) : NaN;
   const known = Number.isFinite(sessionStart) && parts.every((p) => Number.isFinite(Date.parse(p.createdAt)));
   let offset = 0;
-  let prevEnd = 0;
+  /* A take may start before go-live (Record pressed backstage, or a clock a second or two
+   * apart): its start is then negative, and the session's 0:00 lies inside it rather than
+   * at its first frame. Only takes after the first are kept from overlapping the one
+   * before. */
+  let prevEnd = known ? -Infinity : 0;
   const spans = parts.map((p) => {
     const dur = Math.max(0, p.durationMs / 1000);
     const start = known ? Math.max(prevEnd, (Date.parse(p.createdAt) - sessionStart) / 1000) : prevEnd;

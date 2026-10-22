@@ -226,7 +226,7 @@ func (s *Server) writeAndSaveRecap(ctx context.Context, wb types.Webinar, in aiw
 		s.log.Error("recap: save", "slug", wb.ID, "error", err)
 		return recap, &recapOutcome{status: types.RecapFailed, reason: types.RecapReasonFailed, retry: true}
 	}
-	s.log.Info("ai recap written", "slug", wb.ID, "source", source, "model", model)
+	s.log.Info("ai recap written", "slug", wb.ID, "source", source, "model", model, "chapters", len(recap.Chapters), "lines", len(in.Lines), "durationSec", in.DurationSec)
 	return recap, nil
 }
 
