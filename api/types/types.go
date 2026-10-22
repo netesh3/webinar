@@ -1154,9 +1154,10 @@ const (
 	 * features after it. Each call counts against the monthly AI caps
 	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
 	 *
-	 * ON by default, in every tier (migrations/0126), like the whiteboard: the caps bound
-	 * what it can spend. Off for an account means no AI buttons, and the AI routes
-	 * answer 403 feature_off. */
+	 * Opt-in: off for every account until an admin turns it on for that host (Admin ->
+	 * Accounts, or in a plan tier's defaults). 0126 had it on in every tier; 0127 took
+	 * that back (2026-10-22). Off means no AI buttons, the AI routes answer 403
+	 * feature_off, and no recap is made. */
 	FeatureAI = "ai"
 )
 

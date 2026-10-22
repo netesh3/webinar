@@ -38,8 +38,8 @@ func TestFeatureConversionKeepsEveryonesFeatures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Plus AI writing, which every tier has given since migrations/0126.
-		want := append(slices.Clone(old), types.FeatureAI)
+		// AI writing is opt-in (migrations/0127), so conversion adds nothing.
+		want := slices.Clone(old)
 		slices.Sort(want)
 		if !slices.Equal(u.Features, want) {
 			t.Errorf("%s: features after conversion = %v, want %v", email, u.Features, want)

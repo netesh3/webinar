@@ -25,6 +25,20 @@ func setupPost(h *harness, body any) (*http.Response, []byte) {
 	return h.do(http.MethodPost, "/api/host/ai/webinar-setup", body)
 }
 
+// enableAI switches AI writing on for a host, as an admin does: it is opt-in
+// (migrations/0127).
+func enableAI(t *testing.T, h *harness, email string) {
+	t.Helper()
+	u, err := h.store.UserByEmail(t.Context(), email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := h.store.SetFeatureOverride(t.Context(), u.ID, types.FeatureAI, &on); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAIWebinarSetupWritesADraft(t *testing.T) {
 	h, model := aiHarness(t, setupReply, nil)
 
@@ -34,6 +48,7 @@ func TestAIWebinarSetupWritesADraft(t *testing.T) {
 	}
 
 	h.login("priya@acme.dev")
+	enableAI(t, h, "priya@acme.dev")
 	res, raw := setupPost(h, types.AIWebinarSetupRequest{Idea: "budgeting for people in their first job", Language: "hinglish"})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status %d body %s", res.StatusCode, raw)
@@ -72,6 +87,7 @@ func TestAIWebinarSetupWritesADraft(t *testing.T) {
 func TestAIWebinarSetupValidates(t *testing.T) {
 	h, model := aiHarness(t, setupReply, nil)
 	h.login("priya@acme.dev")
+	enableAI(t, h, "priya@acme.dev")
 	for name, in := range map[string]types.AIWebinarSetupRequest{
 		"empty":    {Idea: "   "},
 		"too long": {Idea: strings.Repeat("a", 301)},
@@ -90,6 +106,7 @@ func TestAIWebinarSetupRefusals(t *testing.T) {
 	h, model := aiHarness(t, setupReply, func(c *config.Config) { c.AIHostMonthlyUSD = 0.01 })
 	ctx := context.Background()
 	h.login("priya@acme.dev")
+	enableAI(t, h, "priya@acme.dev")
 
 	// The first draft ($0.045) crosses this host's tiny cap; the next is refused.
 	if res, raw := setupPost(h, types.AIWebinarSetupRequest{Idea: "yoga for desk workers"}); res.StatusCode != http.StatusOK {
@@ -122,6 +139,7 @@ func TestAIWebinarSetupRefusals(t *testing.T) {
 func TestAIWebinarSetupWithNoProvider(t *testing.T) {
 	h := newHarness(t)
 	h.login("priya@acme.dev")
+	enableAI(t, h, "priya@acme.dev")
 	res, raw := setupPost(h, types.AIWebinarSetupRequest{Idea: "yoga"})
 	if res.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(raw), "ai_unavailable") {
 		t.Fatalf("no provider: %d %s", res.StatusCode, raw)
@@ -131,6 +149,7 @@ func TestAIWebinarSetupWithNoProvider(t *testing.T) {
 func TestAIWebinarSetupRejectsAReplyThatDoesNotMatch(t *testing.T) {
 	h, _ := aiHarness(t, `{"title":"Only a title"}`, nil)
 	h.login("priya@acme.dev")
+	enableAI(t, h, "priya@acme.dev")
 	if res, raw := setupPost(h, types.AIWebinarSetupRequest{Idea: "yoga"}); res.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("invalid reply: %d %s, want 503", res.StatusCode, raw)
 	}
