@@ -66,6 +66,47 @@ Tier 2: 10 droplets, 10 reserved IPs, 1 load balancer — enough for this box, t
 egress workers. When more are needed: Account → Resource Limits → **Increase your limit**, either
 Prepay (instant) or a free support ticket (1–2 business days); ask for ~25 droplets.
 
+## Alerts
+
+Set 2026-10-22. Both kinds email the account owner.
+
+- **Spend alert** (Billing → Spend alerts): "Webinar Liv monthly cap", **$100/month**, total spend,
+  thresholds 50 / 75 / 90 / 100 %. Expected spend is ~$84/month (this c-4), so a normal month
+  stays under the 90 % mail and anything forgotten or runaway crosses it. **"Pause usage" is
+  deliberately off**: it would stop resources, i.e. end live webinars. Raise the budget when a
+  second video server or an API droplet is added (~$170–250).
+- **Monitoring alerts** (`doctl monitoring alert list`), on every droplet tagged `webinar-sfu`,
+  so a second SFU is covered by tagging it:
+
+  | Metric | Fires at | Meaning |
+  |---|---|---|
+  | CPU | > 80 % for 10 min | near capacity: resize to c-8 or add a second SFU |
+  | Memory | > 85 % for 10 min | same |
+  | Disk | > 85 % for 5 min | logs or recordings filling the disk |
+  | Public outbound | > 400 Mbps for 10 min | heavy meeting/webinar traffic; watch the 5 TB/month transfer |
+
+## When to grow (not needed yet)
+
+Decided 2026-10-22: one c-4 SFU here, the API stays on Cloud Run. Revisit when usage or the
+alerts say so.
+
+**A second video server (or a c-8).** One 4-vCPU box carries the SFU plus, in this test setup,
+the edge composite (~1–1.5 cores per edge webinar, measured). Twenty coaches running 20–30
+meetings a month each could put 6–8 rooms on at once in the evening, a couple of them 50 people,
+which is more than one c-4 does comfortably. One box is also one failure: a crash or reboot drops
+every live room on it. Options: resize to **c-8** ($168/month, same capacity as two c-4s, no
+redundancy), or a **second c-4** registered as its own `LIVEKIT_PROJECTS` entry (redundancy:
+half the rooms on each, new rooms go to the healthy one). Trigger: overlapping evening sessions
+from paying coaches, or the CPU alert firing.
+
+**The API on DigitalOcean.** Cloud Run is cheaper today (~$9–13/month, 148 instance-hours in the
+30 days to 2026-10-22) because it scales to zero. It flips with edge viewers: each holds the event
+stream open for the whole webinar, so an edge webinar keeps ceil(viewers / 500) instances billed
+for its length — ~$35–45/month at twenty coaches, against a fixed $12–24 for an API droplet with
+no request timeout on those streams. Other reasons: one provider, the API beside the SFUs in
+Bangalore. Trigger: the Cloud Run bill passing ~$25–30/month, or its limits getting in the way.
+It may never be worth it.
+
 ## Removing it
 
 Unassign any host from `do-blr` (or set `"disabled": true` on the entry and redeploy the API),
