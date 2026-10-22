@@ -165,7 +165,7 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		}
 		// Never at the audience's expense: a running mix is left alone. See
 		// startEgressRecording.
-		info, _, err := s.startEgressRecording(r.Context(), wb, sfu, key, s3Opts)
+		info, _, err := s.startEgressRecording(r.Context(), wb, sfu, id, key, s3Opts)
 		if errors.Is(err, errRecordingNoRoom) {
 			_, _ = s.store.FinishRecording(r.Context(), id, 0)
 			httpx.Error(w, http.StatusServiceUnavailable, "recording_no_capacity",
@@ -292,6 +292,26 @@ func (s *Server) handleCompleteRecording(w http.ResponseWriter, r *http.Request)
 			id = activeRec.ID
 			lookupErr = nil
 		}
+	}
+
+	if lookupErr == nil && isMixRecording(rec.EgressID) {
+		/* Recorded from the audience mix (mixrec.go): the mix keeps running, only its
+		 * recording output comes off, and the recorder on the SFU box uploads the file and
+		 * reports it. Nothing to stop in LiveKit and nothing to put back. */
+		_, _ = s.store.MarkRecordingProcessing(r.Context(), id, durationMs)
+		if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+			sfu, sfuErr := s.sfuFor(r.Context(), wb)
+			if sfuErr != nil {
+				sfu = nil
+			}
+			s.stopMixRecording(r.Context(), wb, sfu, id)
+			if sfu != nil {
+				s.pushRoomMetadata(r, sfu, wb)
+			}
+		}
+		s.log.Info("mix recording stopping", "slug", slug, "recording", id)
+		httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "stopping"})
+		return
 	}
 
 	if lookupErr == nil && rec.EgressID != "" {

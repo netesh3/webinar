@@ -32,6 +32,9 @@
 #     Cloud Scheduler calls every minute so reminders send while scaled to zero.
 #   CAPTIONS_SECRET — optional, >= 32 chars. Turns on server-side live captions: the
 #     caption agent (deploy/captions) posts lines with it. Same value on the agent's side.
+#   MIXREC_SECRET — optional, >= 32 chars. Edge cloud recordings record the running mix
+#     through the SFU box's mix recorder (deploy/livekit-hetzner/mixrec). Same value in the
+#     box's /opt/livekit/.env.
 #   META_WEBHOOK_VERIFY_TOKEN — must match the Verify token on the Meta app's
 #     WhatsApp webhook, whose callback is {API}/api/webhooks/whatsapp
 #   ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET / ZOOM_REDIRECT_URL / ZOOM_TOKEN_KEY —
@@ -134,6 +137,8 @@ jobs:
       TICK_SECRET: ${{ secrets.TICK_SECRET }}
       # Server-side live captions (deploy/captions). Optional; unset keeps on-device captions.
       CAPTIONS_SECRET: ${{ secrets.CAPTIONS_SECRET }}
+      # Cloud recording from the edge mix (deploy/livekit-hetzner/mixrec). Optional.
+      MIXREC_SECRET: ${{ secrets.MIXREC_SECRET }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}

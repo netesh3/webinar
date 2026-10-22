@@ -25,10 +25,20 @@
 	}
 }
 
+# The mix recorder (mixrec/, docker-compose.mixrec.yml): start/stop calls from the API, which
+# finds it at <live origin>/../mixrec. It checks X-Mixrec-Secret itself. Not running (no
+# MIXREC_SECRET in .env) is a 502, and the API then records as before.
+(mix_recorder) {
+	handle_path /mixrec/* {
+		reverse_proxy 127.0.0.1:7895
+	}
+}
+
 {$DOMAIN} {
 	encode gzip
 
 	import live_origin
+	import mix_recorder
 
 	# `handle` (not `handle_path`) — Grafana's GF_SERVER_SERVE_FROM_SUB_PATH
 	# expects the /grafana prefix to still be in the request it receives and
@@ -54,6 +64,7 @@ live.webinarliv.com {
 	tls internal
 
 	import live_origin
+	import mix_recorder
 
 	handle {
 		respond 404

@@ -1,0 +1,23 @@
+# Cloud recording from the edge mix (mixrec/, api/internal/api/mixrec.go). Opt-in: redeploy.sh
+# adds this file only when /opt/livekit/.env has MIXREC_SECRET (32+ characters, the API's own).
+#
+# The API gives the running mix a second RTMP output, rec/{slug}; MediaMTX records it under
+# ./recordings (mediamtx.yml.template); this joins the segments into an MP4 (a copy, never an
+# encode), uploads it to a URL the API signs, and reports it. Never touches the mix itself.
+# Low priority so a remux cannot slow video.
+services:
+  mixrec:
+    image: ${MIXREC_IMAGE:-webinarliv-mixrec:local}
+    build: ./mixrec
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [mediamtx]
+    cpus: ${MIXREC_CPUS:-1}
+    cpu_shares: 256
+    mem_limit: 512m
+    oom_score_adj: 500
+    # Written by redeploy.sh from .env (MIXREC_SECRET, MIXREC_API_URL), mode 600.
+    env_file: mixrec.env
+    volumes:
+      - ./recordings:/recordings
+    stop_grace_period: 20s

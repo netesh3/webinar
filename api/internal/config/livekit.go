@@ -108,6 +108,10 @@ type LiveKitProject struct {
 	 * webinar needs it and start it again before one does. Nil leaves the box alone. */
 	SfuVM *SfuVM `json:"sfuVm,omitempty"`
 
+	/* MixRecorderURL is the mix recorder on this project's SFU box (deploy/livekit-hetzner/
+	 * mixrec), overriding MIXREC_URL and the default derived from broadcastHlsBase. */
+	MixRecorderURL string `json:"mixRecorderUrl,omitempty"`
+
 	// Label is the human name shown in the admin "Video server" select. Defaults to the id.
 	Label string `json:"label,omitempty"`
 }
@@ -222,6 +226,7 @@ func normaliseLiveKitProjects(list []LiveKitProject) []LiveKitProject {
 		p.BroadcastHLSBase = strings.TrimRight(strings.TrimSpace(p.BroadcastHLSBase), "/")
 		p.EdgePlaybackBase = strings.TrimRight(strings.TrimSpace(p.EdgePlaybackBase), "/")
 		p.Label = strings.TrimSpace(p.Label)
+		p.MixRecorderURL = strings.TrimRight(strings.TrimSpace(p.MixRecorderURL), "/")
 		if p.HTTPURL == "" {
 			p.HTTPURL = httpFromWS(p.URL)
 		}

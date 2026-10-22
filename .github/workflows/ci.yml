@@ -44,6 +44,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
       captions: ${{ steps.filter.outputs.captions }}
+      mixrec: ${{ steps.filter.outputs.mixrec }}
     steps:
       - uses: actions/checkout@v4
       - id: filter
@@ -60,6 +61,9 @@ jobs:
               - '.github/workflows/ci.yml'
             captions:
               - 'deploy/captions/**'
+              - '.github/workflows/ci.yml'
+            mixrec:
+              - 'deploy/livekit-hetzner/mixrec/**'
               - '.github/workflows/ci.yml'
 
   # The server caption agent's unit tests (deploy/captions). numpy and pytest only: no
@@ -79,6 +83,25 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q tests
+
+  # The mix recorder on the SFU box (deploy/livekit-hetzner/mixrec): stdlib Go, its own module.
+  mixrec:
+    needs: changes
+    if: needs.changes.outputs.mixrec == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: deploy/livekit-hetzner/mixrec
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: deploy/livekit-hetzner/mixrec/go.mod
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -count=1 ./...
 
   # Formatting, vet, generated types, and every package except internal/api.
   api-checks:

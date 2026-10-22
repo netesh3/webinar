@@ -130,6 +130,44 @@ and viewers play it through a CDN pull zone (Bunny) or directly. See `docs/edge-
 | MediaMTX | `docker-compose.egress.yml` · `:1935` RTMP in, `127.0.0.1:8888` LL-HLS out (behind Caddy) |
 | Public origin | `{BROADCAST_HLS_BASE}/<slug>/index.m3u8`, or the project's `edgePlaybackBase` |
 
+### Recording from the mix (optional)
+
+Cloud recording of an Edge webinar used to start a second Chrome compositor beside the mix,
+which a box with one compositor's worth of CPU (DigitalOcean c-4) refuses. With the mix
+recorder on, **Record** instead gives the running mix a second RTMP output,
+`rtmp://<origin>/rec/<slug>`: the same encoded stream (egress tees it, as it does for YouTube),
+so no new encode and the audience's `live/<slug>` is never touched. MediaMTX records every
+`rec/*` path to fMP4 segments in `/opt/livekit/recordings/rec/<slug>/`. The **mix recorder**
+(`mixrec/`, `docker-compose.mixrec.yml`, `127.0.0.1:7895`, behind Caddy on `/mixrec/*`) gets
+start/stop from the API, waits for the segments to close, joins them into one MP4
+(`ffmpeg -c copy`), PUTs it to the recording's storage key through a URL the API signs, and
+reports size and duration to `POST /api/internal/mix-recordings/{id}/complete`. The recording
+then shows in the Recording tab like any other. No bucket credentials on the box.
+
+Works in remote-egress mode too: the rec URL uses the same host as `BROADCAST_RTMP_BASE`, so
+the workers push it to this box's MediaMTX over the VPC like the mix itself.
+
+To turn it on:
+
+1. Generate one secret: `openssl rand -hex 32`.
+2. API (Cloud Run): `MIXREC_SECRET=<it>`. Needs `RECORDINGS_MODE=egress` and
+   `RECORDINGS_BACKEND=s3`. The recorder is found at the live origin with `/live` replaced by
+   `/mixrec` (e.g. `https://<box>.sslip.io/mixrec`); set `MIXREC_URL` or the project's
+   `mixRecorderUrl` in `LIVEKIT_PROJECTS` if it lives elsewhere.
+3. This box, `/opt/livekit/.env`: `MIXREC_SECRET=<it>`, and `MIXREC_API_URL` if the API is not
+   `https://webinarliv.com`. Optional: `MIXREC_CPUS` (default 1), `MIXREC_IMAGE`.
+4. `redeploy.sh` (CI does it on push): builds `mixrec/`, starts it, and adds the `rec/*`
+   recording path to MediaMTX. Check `curl https://<box>/mixrec/v1/health` → `ok`.
+
+Fallback, in order: no mix running (standard delivery, or the mix not up yet) → the usual
+composite recording; recorder not configured, not answering, or the mix refusing the extra
+output → a compositor of the recording's own (or `recording_no_capacity`), as before.
+A mix that dies mid-recording is restarted with the recording output too, and the recorder
+joins the segments either side of the gap. A job never stopped (the API unreachable) is
+finished once its segments have been idle for 3 minutes. Segments are deleted after upload;
+MediaMTX deletes anything left after 72 h. One PUT is at most 5 GiB (about 6 h at the default
+edge bitrate).
+
 Until 2026-10-20 this box was also the **WHEP** origin of the CDN Broadcast mode (WebRTC on
 UDP 8189, plus an ffmpeg per live mix re-encoding the audio to Opus). That mode was retired;
 `redeploy.sh` closes 8189 on boxes that still had it open.

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -88,6 +89,15 @@ type Config struct {
 	 * POST /api/host/webinars/{slug}/captions/server answers 503, so the browsers keep
 	 * captioning on-device. At least 32 characters. */
 	CaptionsSecret string
+	/* MixRecSecret switches on recording from the audience mix (api/mixrec.go): the shared
+	 * secret between this API and the mix recorder on each SFU box
+	 * (deploy/livekit-hetzner/mixrec), sent both ways in X-Mixrec-Secret. Empty means a
+	 * recording started while an edge mix runs is its own compositor, as before. At least 32
+	 * characters. */
+	MixRecSecret string
+	/* MixRecURL is where the mix recorder answers, when it is not the live origin's
+	 * /mixrec (the box's own Caddy, see MixRecorderURLFor). A project's mixRecorderUrl wins. */
+	MixRecURL string
 	// CaptionsAgentName is the LiveKit agent name the caption agent registers under
 	// (CAPTIONS_AGENT_NAME on both sides). Default "webinar-captions".
 	CaptionsAgentName string
@@ -475,6 +485,8 @@ func Load() (Config, error) {
 		TickSecret:           strings.TrimSpace(env("TICK_SECRET", "")),
 		CaptionsSecret:       strings.TrimSpace(env("CAPTIONS_SECRET", "")),
 		CaptionsAgentName:    strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
+		MixRecSecret:         strings.TrimSpace(env("MIXREC_SECRET", "")),
+		MixRecURL:            strings.TrimRight(strings.TrimSpace(env("MIXREC_URL", "")), "/"),
 		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
 		AdminPassword:        env("ADMIN_PASSWORD", ""),
 		SMTPHost:             env("SMTP_HOST", ""),
@@ -694,6 +706,9 @@ func (c Config) validate() error {
 	// Short secrets are refused: this endpoint is public and triggers sends.
 	if c.CaptionsSecret != "" && len(c.CaptionsSecret) < 32 {
 		errs = append(errs, errors.New("CAPTIONS_SECRET must be at least 32 characters (openssl rand -hex 32)"))
+	}
+	if c.MixRecSecret != "" && len(c.MixRecSecret) < 32 {
+		errs = append(errs, errors.New("MIXREC_SECRET must be at least 32 characters (openssl rand -hex 32)"))
 	}
 	if c.TickSecret != "" && len(c.TickSecret) < 32 {
 		errs = append(errs, errors.New("TICK_SECRET must be at least 32 characters (openssl rand -hex 32)"))
@@ -989,6 +1004,51 @@ func (c Config) EdgePlaybackURLFor(projectID, slug string) string {
 
 // LiveKitProjectByID is the configured project with that id.
 func (c Config) LiveKitProjectByID(id string) (LiveKitProject, bool) { return c.liveKitProject(id) }
+
+/* MixRecorderURLFor is the mix recorder on the SFU box a project's rooms live on: the
+ * sidecar that records the edge mix from MediaMTX (deploy/livekit-hetzner/mixrec). Empty
+ * when record-from-mix is off (no MIXREC_SECRET) or there is no live origin to find it by.
+ *
+ * The project's mixRecorderUrl, else MIXREC_URL, else the box's own Caddy: the live origin
+ * (broadcastHlsBase, else BROADCAST_HLS_BASE) with /live replaced by /mixrec. That origin is
+ * the box MediaMTX runs on, which is where the recording's files are written. */
+func (c Config) MixRecorderURLFor(projectID string) string {
+	if c.MixRecSecret == "" {
+		return ""
+	}
+	p, ok := c.liveKitProject(projectID)
+	switch {
+	case ok && p.MixRecorderURL != "":
+		return p.MixRecorderURL
+	case c.MixRecURL != "":
+		return c.MixRecURL
+	}
+	base := c.BroadcastHLSBase
+	if ok && p.BroadcastHLSBase != "" {
+		base = p.BroadcastHLSBase
+	}
+	if base == "" {
+		return ""
+	}
+	return strings.TrimSuffix(base, "/live") + "/mixrec"
+}
+
+/* MixRecRTMPURL is the second push a running mix is given while it is recorded: the same
+ * MediaMTX as BroadcastRTMPURL (loopback, or the SFU box's VPC address in remote-egress
+ * mode), on path rec/{slug}, which MediaMTX records (mediamtx.yml.template). */
+func (c Config) MixRecRTMPURL(slug string) string {
+	slug = strings.TrimSpace(slug)
+	if c.BroadcastRTMPBase == "" || slug == "" {
+		return ""
+	}
+	u, err := url.Parse(c.BroadcastRTMPBase)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	u.Path = "/rec/" + slug
+	u.RawQuery = ""
+	return u.String()
+}
 
 func (c Config) liveKitProject(id string) (LiveKitProject, bool) {
 	for _, p := range c.LiveKitProjects {

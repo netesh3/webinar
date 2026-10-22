@@ -240,9 +240,44 @@ if [[ "$CAPTIONS" != 1 ]]; then
   rm -f captions.env
 fi
 
+# Cloud recording from the edge mix (./mixrec, docker-compose.mixrec.yml). Opt-in with
+# MIXREC_SECRET (the API's, 32+ chars) in .env; MIXREC_API_URL defaults to https://webinarliv.com.
+# Needs MediaMTX, so only alongside docker-compose.egress.yml. Without it the API records an
+# edge webinar with a compositor of its own, as before.
+MIXREC=0
+MIXREC_SECRET_VALUE="$(env_value MIXREC_SECRET)"
+if [[ -n "$MIXREC_SECRET_VALUE" ]]; then
+  if (( ${#MIXREC_SECRET_VALUE} < 32 )); then
+    echo "MIXREC_SECRET is under 32 characters; the mix recorder not started" >&2
+  elif [[ ! -f docker-compose.mixrec.yml || ! -f mixrec/Dockerfile || ! -f docker-compose.egress.yml || ! -f egress.yaml ]]; then
+    echo "MIXREC_SECRET set but docker-compose.mixrec.yml, mixrec/ or docker-compose.egress.yml is missing; sync deploy files" >&2
+  else
+    umask 077
+    {
+      echo "MIXREC_SECRET=${MIXREC_SECRET_VALUE}"
+      echo "MIXREC_API_URL=$(env_value MIXREC_API_URL | sed 's|/*$||' | grep . || echo https://webinarliv.com)"
+    } >mixrec.env
+    umask 022
+    mkdir -p recordings
+    COMPOSE_ARGS+=("-f" "docker-compose.mixrec.yml")
+    MIXREC=1
+  fi
+fi
+if [[ "$MIXREC" != 1 ]]; then
+  docker ps -aq --filter label=com.docker.compose.service=mixrec | xargs -r docker rm -f >/dev/null
+  rm -f mixrec.env
+fi
+
+BUILD_SERVICES=()
 if [[ "$CAPTIONS" == 1 && -z "$(env_value CAPTIONS_IMAGE)" ]]; then
   # Built here from ./captions; the first build takes a few minutes, later ones are cached.
-  docker compose "${COMPOSE_ARGS[@]}" build captions
+  BUILD_SERVICES+=(captions)
+fi
+if [[ "$MIXREC" == 1 && -z "$(env_value MIXREC_IMAGE)" ]]; then
+  BUILD_SERVICES+=(mixrec)
+fi
+if (( ${#BUILD_SERVICES[@]} > 0 )); then
+  docker compose "${COMPOSE_ARGS[@]}" build "${BUILD_SERVICES[@]}"
   docker compose "${COMPOSE_ARGS[@]}" pull --ignore-buildable
 else
   docker compose "${COMPOSE_ARGS[@]}" pull
@@ -299,5 +334,8 @@ fi
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
 if [[ "$CAPTIONS" == 1 ]]; then
   echo "Server captions: on (docker compose logs captions; first start downloads the models)"
+fi
+if [[ "$MIXREC" == 1 ]]; then
+  echo "Mix recorder: on (https://${DOMAIN}/mixrec/v1/health; docker compose logs mixrec)"
 fi
 echo "Grafana: https://${DOMAIN}/grafana/ (user: admin, password in ${TARGET}/.env.keys)"

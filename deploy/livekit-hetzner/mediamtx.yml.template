@@ -74,4 +74,23 @@ pprof: false
 playback: false
 
 paths:
+  # Cloud recording of an edge webinar (api/internal/api/mixrec.go). While a host records, the
+  # API gives the running mix a second RTMP output, rec/{slug}: the same encoded stream, so no
+  # second compositor and no change to live/{slug}, which the audience watches. Everything
+  # pushed here is written to /recordings/rec/{slug}/ as fMP4 segments, which the mix recorder
+  # (mixrec/) joins into an MP4, uploads and deletes. Nothing pushes here unless the API asked
+  # it to, so with the recorder off this costs nothing.
+  #
+  # A path of its own rather than `record` toggled on live/{slug} through MediaMTX's API: a
+  # named config for a path all_others is serving makes MediaMTX close that path, dropping
+  # the egress's publish (the audience's stream), and recording all_others records every room.
+  "~^rec/":
+    record: true
+    recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+    recordFormat: fmp4
+    recordPartDuration: 1s
+    recordSegmentDuration: 15m
+    # A backstop only: the recorder deletes segments once the API has the file. Kept long
+    # enough to recover one by hand if an upload failed.
+    recordDeleteAfter: 72h
   all_others:
