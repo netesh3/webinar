@@ -10,7 +10,7 @@ import {
   type Room,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SHARE_MODE_FPS, shareModeOfHint, type ShareMode } from "./share-mode.ts";
+import { SHARE_MODE_FPS, shareModeOfHint, type ShareCodec, type ShareMode } from "./share-mode.ts";
 
 /* Watching the connection, and doing something about it.
  *
@@ -145,6 +145,40 @@ const RTT_OK_MS = 300;
  * enough to follow a genuine route change.
  */
 const RTT_WINDOW_SAMPLES = 30;
+
+/* What a simulcast sender is putting on the wire, from its outbound-rtp reports.
+ *
+ * There is one outbound-rtp per encoding. Telemetry used to keep whichever came last, so a
+ * share with its 1080p layer switched off and one with it on could log the same 1280x720 —
+ * which is exactly the difference between sharp and blurry for every viewer. This reads all of
+ * them: the top layer actually being sent, every layer's size and frame rate, and the limit
+ * the browser reports (any encoding's, preferring one that is limited). */
+export type OutboundSummary = {
+  frameWidth?: number;
+  frameHeight?: number;
+  framesPerSecond?: number;
+  qualityLimitationReason: string;
+  /** "1920x1080@15,1280x720@15", top first; only encodings sending frames. */
+  layers: string;
+};
+
+export function summariseOutbound(reports: readonly Record<string, unknown>[]): OutboundSummary {
+  const n = (v: unknown) => (typeof v === "number" ? v : undefined);
+  const sending = reports
+    .filter((r) => r.active !== false && (n(r.frameHeight) ?? 0) > 0)
+    .sort((a, b) => (n(b.frameHeight) ?? 0) - (n(a.frameHeight) ?? 0));
+  const top = sending[0];
+  const limited = reports.map((r) => r.qualityLimitationReason).find((q) => typeof q === "string" && q !== "none");
+  return {
+    frameWidth: n(top?.frameWidth),
+    frameHeight: n(top?.frameHeight),
+    framesPerSecond: n(top?.framesPerSecond),
+    qualityLimitationReason: typeof limited === "string" ? limited : "none",
+    layers: sending
+      .map((r) => `${n(r.frameWidth)}x${n(r.frameHeight)}@${Math.round(n(r.framesPerSecond) ?? 0)}`)
+      .join(","),
+  };
+}
 
 /**
  * floorFrom is the best round trip seen recently — this route with no queue in it.
@@ -316,19 +350,22 @@ export const LADDER: Record<
  * EVERY viewer fell to 360p@5 at once — the "goes blurry in between". Now the worst a
  * viewer can land on is 720p.
  *
- * The rungs, per layer (fps is the share mode's: 15 sharp, 30 video):
+ * The rungs, per layer (fps is the share mode's: 15 sharp, 30 video), H264 / VP9 sharp
+ * (VP9 video mode spends what H264 does):
  *
- *            720p        1080p     total
- *   full     1500        4000      5500 kbps
- *   reduced  1500        off       1500 kbps
- *   minimal  1500@8      off       1500 kbps   ← fps down, not bitrate/resolution
+ *            720p          1080p        total
+ *   full     1500 / 700    4000 / 2500  5500 / 3200 kbps
+ *   reduced  1500 / 700    off          1500 / 700 kbps
+ *   minimal  same @8 fps   off                       ← fps down, not bitrate/resolution
+ *
+ * (SHARE_BITRATES says why VP9 spends less.)
  *
  * Under bandwidth pressure the share is also given priority over the camera
  * (prioritiseShare): share encodings "high", camera "very-low", so the browser's pacer
  * and bandwidth estimator starve the face before the slides. The structural fix for the
  * India→EU round trip is an SFU nearer India; this keeps the share readable until then.
  *
- * WHY 1.5 / 4 Mbps. Desktop content needs bitrate more than faces — H.264 spends a thin
+ * WHY 1.5 / 4 Mbps (H264). Desktop content needs bitrate more than faces — H.264 spends a thin
  * budget on motion and leaves text muddy — but a top layer the uplink cannot sustain is
  * worse than a slightly softer one it can: at ~200 ms RTT the estimator backs off hard and
  * often, and a 5–7.5 Mbps top layer (the old 1080p/1440p values) was paused more than it
@@ -352,11 +389,49 @@ export const SHARE_FLOOR_DESKTOP = { width: 1280, height: 720 } as const;
 /** Mobile publisher capture/encode floor (360p equivalent). */
 export const SHARE_FLOOR_MOBILE = { width: 640, height: 360 } as const;
 
-/** The 720p share layer: the lowest any viewer gets, still readable. */
+/** The 720p share layer: the lowest any viewer gets, still readable. H264's value. */
 export const SHARE_720_BITRATE = 1_500_000;
 
-/** The 1080p top layer (the capture itself) for fullscreen desktop viewers. */
+/** The 1080p top layer (the capture itself) for fullscreen desktop viewers. H264's value. */
 export const SHARE_1080_BITRATE = 4_000_000;
+
+/* What each share layer may spend, by codec.
+ *
+ * H264 keeps the 1.5 / 4 Mbps it was tuned at: Chrome's H264 spends a new slide's first frame
+ * and then barely refines it (share-mode.ts, shareCodec), so it needs the headroom.
+ *
+ * VP9 (desktop Chromium, most presenters) does not, and the H264 numbers were costing it the
+ * top layer. libwebrtc fills simulcast layers bottom up: the 1080p layer is only switched on
+ * once the estimate covers the 720p layer's TARGET (its maxBitrate) plus the 1080p layer's
+ * minimum (~800 kbps, x1.35 hysteresis for screen content). At 1.5 Mbps that is ~2.6 Mbps of
+ * uplink before anyone sees 1080p; below it the browser sends 720p only, reports
+ * qualityLimitationReason "bandwidth", and every viewer drops to 1280x720 at once. Production,
+ * 2026-10-22 (instant-webinar-4277, edge, three panelists): a panelist's 1728x1080 share went
+ * "bandwidth" ten seconds in, with 14 ms RTT, and the host and a panelist both received
+ * 1152x720 for the next minute and a half. Across the week, 22% of share samples were bandwidth
+ * limited.
+ *
+ * Only the sharp mode (slides, the default) changes. VP9 at 1080p on a still slide measured
+ * 48.6 dB PSNR at 1.5 Mbps (share-mode.ts), so 2.5 Mbps is ample for 15 fps text, and a 720p
+ * slide at 700 kbps has about three times the bits per pixel that measurement had at 500 kbps. Now 1080p is on from ~1.8 Mbps of uplink, and the
+ * whole share tops out at 3.2 Mbps instead of 5.5, which also lets more subscribers' downlinks
+ * carry the 1080p layer (the SFU drops a viewer to 720p when it does not fit). */
+export const SHARE_BITRATES: Record<ShareCodec, Record<ShareMode, { floor: number; top: number }>> = {
+  h264: {
+    sharp: { floor: SHARE_720_BITRATE, top: SHARE_1080_BITRATE },
+    video: { floor: SHARE_720_BITRATE, top: SHARE_1080_BITRATE },
+  },
+  vp9: {
+    sharp: { floor: 700_000, top: 2_500_000 },
+    // A played clip is motion at 30 fps, which does need the bits: video mode keeps H264's.
+    video: { floor: SHARE_720_BITRATE, top: SHARE_1080_BITRATE },
+  },
+};
+
+/** Which share codec a published track is in: track.codec, set by livekit-client at publish. */
+export function shareCodecOfTrack(codec: string | undefined): ShareCodec {
+  return codec?.toLowerCase() === "vp9" ? "vp9" : "h264";
+}
 
 /* Two encodings.
  *
@@ -366,22 +441,22 @@ export const SHARE_1080_BITRATE = 4_000_000;
  * layer below 720p for a congested moment to drop everybody onto. Capture is 1080p at most
  * (SHARE_CAPTURE_MAX); the top layer is the first thing the ladder turns off.
  */
-export function shareLayers(mode: ShareMode): VideoPreset[] {
+export function shareLayers(mode: ShareMode, codec: ShareCodec = "h264"): VideoPreset[] {
   return [
     new VideoPreset(
       SHARE_FLOOR_DESKTOP.width,
       SHARE_FLOOR_DESKTOP.height,
-      SHARE_720_BITRATE,
+      SHARE_BITRATES[codec][mode].floor,
       SHARE_MODE_FPS[mode],
     ),
   ];
 }
 
-export function shareTop(mode: ShareMode): VideoPreset {
-  return new VideoPreset(1920, 1080, SHARE_1080_BITRATE, SHARE_MODE_FPS[mode]);
+export function shareTop(mode: ShareMode, codec: ShareCodec = "h264"): VideoPreset {
+  return new VideoPreset(1920, 1080, SHARE_BITRATES[codec][mode].top, SHARE_MODE_FPS[mode]);
 }
 
-/** The publish defaults (roomOptions): the sharp mode. */
+/** The publish defaults (roomOptions): the sharp mode, H264's bitrates. */
 export const SHARE_LAYERS = shareLayers("sharp");
 export const SHARE_TOP = shareTop("sharp");
 
@@ -392,18 +467,24 @@ export type ShareRung = {
   maxFramerate?: number;
 };
 
-export const SHARE_LADDER: Record<PublishTier, ShareRung[]> = {
-  full: [
-    { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate },
-    { maxBitrate: SHARE_TOP.encoding.maxBitrate },
-  ],
-  reduced: [{ maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate }, { maxBitrate: 0 }],
-  // Hold 720p and its bitrate; cut fps. The floor layer is never dropped or starved.
-  minimal: [
-    { maxBitrate: SHARE_LAYERS[0].encoding.maxBitrate, maxFramerate: 8 },
-    { maxBitrate: 0 },
-  ],
-};
+/* The rungs for a codec and mode. applyShareLadder re-applies them on every sample, so they
+ * have to be the published codec's own numbers: H264's here would put a sharp VP9 share
+ * straight back on the 1.5 / 4 Mbps that kept its 1080p layer off. And because it runs every
+ * sample, a mid-share switch to video (or back) moves the bitrates within a few seconds. */
+export function shareLadder(
+  codec: ShareCodec = "h264",
+  mode: ShareMode = "sharp",
+): Record<PublishTier, ShareRung[]> {
+  const { floor, top } = SHARE_BITRATES[codec][mode];
+  return {
+    full: [{ maxBitrate: floor }, { maxBitrate: top }],
+    reduced: [{ maxBitrate: floor }, { maxBitrate: 0 }],
+    // Hold 720p and its bitrate; cut fps. The floor layer is never dropped or starved.
+    minimal: [{ maxBitrate: floor, maxFramerate: 8 }, { maxBitrate: 0 }],
+  };
+}
+
+export const SHARE_LADDER: Record<PublishTier, ShareRung[]> = shareLadder("h264");
 
 /* What a rung costs, in kbps, derived from the rungs themselves.
  *
@@ -428,13 +509,13 @@ export function needKbps(tier: PublishTier, sharing = false): number {
 }
 
 /** What the share alone costs at a tier, in bits/sec (no audio). */
-export function shareNeedBits(tier: PublishTier): number {
-  return SHARE_LADDER[tier].reduce((total, rung) => total + rung.maxBitrate, 0);
+export function shareNeedBits(tier: PublishTier, codec: ShareCodec = "h264"): number {
+  return shareLadder(codec)[tier].reduce((total, rung) => total + rung.maxBitrate, 0);
 }
 
 /** Share-only budget in kbps (includes the same audio allowance as needKbps). */
-export function shareNeedKbps(tier: PublishTier): number {
-  return Math.round(shareNeedBits(tier) / 1000) + AUDIO_KBPS;
+export function shareNeedKbps(tier: PublishTier, codec: ShareCodec = "h264"): number {
+  return Math.round(shareNeedBits(tier, codec) / 1000) + AUDIO_KBPS;
 }
 
 /** What a sample says about whether the ladder should move. */
@@ -677,11 +758,13 @@ export function useNetworkHealth(
       try {
         const params = sender.getParameters();
         if (!params.encodings?.length) return;
-        const wanted = SHARE_LADDER[next];
+        // The published codec's rungs: VP9 and H264 shares spend differently (SHARE_BITRATES).
+        const codec = shareCodecOfTrack(track.codec);
         // Read back off the track, so a mid-share mode switch is honoured here too.
         const mode = shareModeOfHint(track.mediaStreamTrack?.contentHint);
-        const layers = shareLayers(mode);
-        const top = shareTop(mode);
+        const wanted = shareLadder(codec, mode)[next];
+        const layers = shareLayers(mode, codec);
+        const top = shareTop(mode, codec);
         /* Neither layer may keep a congestion-era scaleResolutionDownBy that left text soft:
          * the low layer is the 720p floor, and the top layer IS the capture (scale 1). */
         const sourceH =

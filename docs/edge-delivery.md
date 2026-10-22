@@ -157,6 +157,31 @@ so watch its CPU in Grafana during the test, and go back to the defaults if the 
 to suffer. Raise the bitrate only after the CDN pull zone is in place: the current path to the
 origin struggles even at 1.7 Mbps.
 
+**How big a share is in the mix.** The mix is drawn at the encoding's size, so a presenter's
+1080p share is scaled down to whatever box the layout gives it, and no bitrate gets that
+back. At 1280×720: share only and share + speaker draw it at 1280×720 (0.67 of 1080p);
+speaker view, the edge default while somebody shares, at 960×540 (0.5, so 14 px code lands at
+7 px); the old auto layout drew it at about 990×557. The recorder template always takes the
+share's 1080p layer (`ShareVideo`, no adaptiveStream), so this scaling happens once.
+
+The encoding is fixed for an egress's lifetime: LiveKit cannot change it on a running job,
+and restarting the mix at each share start and stop would cut every edge viewer (and the mix
+recording) twice per share. So the share profile is chosen per deployment, with these costs
+per attendee-hour at the calculator's $0.005/GB (`edgeGbPerViewerHour`, 6% HLS overhead,
+96 kbps audio):
+
+| `EDGE_ENCODING_*` | speaker-view share | GB / attendee-hour | $ / attendee-hour |
+|---|---|---|---|
+| 1280×720, 1000 kbps (production today) | 960×540 | 0.52 | 0.0026 |
+| 1920×1080 @ 15 fps, 1300 kbps, high | 1440×810 | 0.67 | 0.0033 (+27%) |
+| 1920×1080 @ 15 fps, 1600 kbps, high | 1440×810 | 0.81 | 0.0040 (+55%) |
+
+1080p at 15 fps is about 1.7× the pixel rate of 720p at 20 fps: the composite measured
+0.7 cores average and 1.7 peak at 720p20 on the DO box (EG_8myRDkubzvv4, 2026-10-22), so
+expect ~1.2 / ~2.9 there. Only move to it where the egress is not sharing four cores with
+the SFU. Lowering `EDGE_ENCODING_FPS` from 20 to 15 at the same resolution and bitrate gives
+each frame a third more bits for the price of nothing, and slides do not need 20 fps.
+
 These apply only to edge webinars' egress. The keyframe interval is fixed at 1s, which gives
 clean LL-HLS segments and a fast first frame. Values are validated at startup: a bad value
 refuses to boot rather than falling back silently. Raise the resolution only where the egress
