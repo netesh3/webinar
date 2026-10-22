@@ -234,7 +234,66 @@ export type CostInputs = {
   priceInr: number;
   priceIncludesGst: boolean;
   paymentFeePercent: number;
+
+  // Minimum price.
+  /** Gross margin wanted on net revenue (after GST and the payment fee), 0–99. */
+  targetMarginPercent: number;
+  /** Support and overhead per coach a month, in rupees. */
+  overheadInr: number;
+  /** The plan's attendee cap; attendees beyond it are priced as overage. */
+  planAttendeeCap: number;
 };
+
+export type Preset = "light" | "typical" | "heavy";
+
+/** Usage presets for the minimum-price section. Typical is the defaults. */
+export const PRESETS: Record<Preset, { label: string; usage: Partial<CostInputs> }> = {
+  light: {
+    label: "Light",
+    usage: {
+      webinarsPerMonth: 4,
+      hoursPerWebinar: 1,
+      viewersPerWebinar: 100,
+      meetingsPerMonth: 10,
+      participantsPerMeeting: 5,
+      hoursPerMeeting: 1,
+      simulivesPerMonth: 2,
+      hoursPerSimulive: 1,
+      viewersPerSimulive: 50,
+    },
+  },
+  typical: {
+    label: "Typical",
+    usage: {
+      webinarsPerMonth: 8,
+      hoursPerWebinar: 1.5,
+      viewersPerWebinar: 300,
+      meetingsPerMonth: 25,
+      participantsPerMeeting: 10,
+      hoursPerMeeting: 1,
+      simulivesPerMonth: 4,
+      hoursPerSimulive: 1,
+      viewersPerSimulive: 100,
+    },
+  },
+  heavy: {
+    label: "Heavy",
+    usage: {
+      webinarsPerMonth: 12,
+      hoursPerWebinar: 2,
+      viewersPerWebinar: 500,
+      meetingsPerMonth: 40,
+      participantsPerMeeting: 15,
+      hoursPerMeeting: 1,
+      simulivesPerMonth: 8,
+      hoursPerSimulive: 1.5,
+      viewersPerSimulive: 300,
+    },
+  },
+};
+
+/** Attendee caps by plan tier (launch pricing). */
+export const PLAN_CAPS = [200, 300, 500] as const;
 
 export const DEFAULT_INPUTS: CostInputs = {
   provider: "do",
@@ -323,6 +382,10 @@ export const DEFAULT_INPUTS: CostInputs = {
   priceInr: 4999,
   priceIncludesGst: true,
   paymentFeePercent: 2,
+
+  targetMarginPercent: 60,
+  overheadInr: 300,
+  planAttendeeCap: 300,
 };
 
 /** HLS segments and HTTP add about 6% to the encoded bitrate. */
@@ -715,4 +778,70 @@ export function compareProviders(inputs: CostInputs): Record<Provider, CostResul
     Provider,
     CostResult
   >;
+}
+
+// ---------------------------------------------------------------- minimum price
+
+const GST = 0.18;
+
+/** The price that leaves `costInr` after GST (when the price includes it), the payment fee
+ *  and a gross margin of `marginPercent` on the net: cost ÷ (1 − margin) ÷ (1 − fee) × 1.18. */
+export function grossUp(costInr: number, marginPercent: number, feePercent: number, includesGst: boolean): number {
+  const margin = Math.min(99, nonNeg(marginPercent)) / 100;
+  const fee = Math.min(99, nonNeg(feePercent)) / 100;
+  return (nonNeg(costInr) / (1 - margin) / (1 - fee)) * (includesGst ? 1 + GST : 1);
+}
+
+/** Up to the next price ending in 99: 2,950 → 2,999, 2,999 → 2,999, 3,000 → 3,099. */
+export function roundUpTo99(inr: number): number {
+  if (!(inr > 0)) return 0;
+  return Math.ceil((inr + 1) / 100) * 100 - 1;
+}
+
+export type Pricing = {
+  /** The coach's cost a month (usage and share of fixed costs) plus overhead, in rupees. */
+  costInr: number;
+  breakEvenInr: number;
+  minimumInr: number;
+  /** Break-even at other coach counts, to show what scale does to the fixed costs. */
+  breakEvenAt: { coaches: number; inr: number }[];
+  /** Margin at the current price, overhead included. Null without a price. */
+  currentMarginPercent: number | null;
+  currentMarginInr: number | null;
+  /** Attendees beyond the plan cap, and the per attendee-hour price that keeps the margin. */
+  overage: { attendeeHours: number; perAttendeeHourInr: number; monthInr: number } | null;
+};
+
+export function calculatePricing(raw: CostInputs, scale: number[] = [1, 10, 50]): Pricing {
+  const i = withDefaults(raw);
+  const rate = nonNeg(i.inrPerUsd) || 1;
+  const fee = nonNeg(i.paymentFeePercent);
+  const costAt = (r: CostResult) => r.monthUsd * rate + nonNeg(i.overheadInr);
+  const r = calculateCost(i);
+  const costInr = costAt(r);
+  const breakEvenInr = grossUp(costInr, 0, fee, i.priceIncludesGst);
+  const minimumInr = roundUpTo99(grossUp(costInr, i.targetMarginPercent, fee, i.priceIncludesGst));
+  const breakEvenAt = scale.map((coaches) => ({
+    coaches,
+    inr: grossUp(costAt(calculateCost({ ...i, coaches })), 0, fee, i.priceIncludesGst),
+  }));
+
+  let currentMarginInr: number | null = null;
+  let currentMarginPercent: number | null = null;
+  if (nonNeg(i.priceInr) > 0) {
+    const net = (i.priceIncludesGst ? i.priceInr / (1 + GST) : i.priceInr) * (1 - Math.min(99, fee) / 100);
+    currentMarginInr = net - costInr;
+    currentMarginPercent = (currentMarginInr / net) * 100;
+  }
+
+  const cap = nonNeg(i.planAttendeeCap);
+  const over = cap > 0 ? Math.max(0, nonNeg(i.viewersPerWebinar) - cap) : 0;
+  let overage: Pricing["overage"] = null;
+  if (over > 0) {
+    const attendeeHours = over * nonNeg(i.webinarsPerMonth) * nonNeg(i.hoursPerWebinar) * pct(i.watchPercent);
+    const perAttendeeHourInr = grossUp(r.perViewerHourUsd * rate, i.targetMarginPercent, fee, i.priceIncludesGst);
+    overage = { attendeeHours, perAttendeeHourInr, monthInr: attendeeHours * perAttendeeHourInr };
+  }
+
+  return { costInr, breakEvenInr, minimumInr, breakEvenAt, currentMarginPercent, currentMarginInr, overage };
 }

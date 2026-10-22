@@ -3,14 +3,18 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   calculateCost,
+  calculatePricing,
   compareProviders,
   DEFAULT_INPUTS,
   GROUP_LABELS,
+  PLAN_CAPS,
+  PRESETS,
   PROVIDERS,
   RECORDING_STORES,
   withDefaults,
   type CostGroup,
   type CostInputs,
+  type Preset,
   type Provider,
   type ProviderRates,
   type RecordingStore,
@@ -62,6 +66,7 @@ export function AdminCostCalculator() {
     }));
   const r = useMemo(() => calculateCost(inputs), [inputs]);
   const compare = useMemo(() => compareProviders(inputs), [inputs]);
+  const pricing = useMemo(() => calculatePricing(inputs), [inputs]);
   const rates = inputs.providers[inputs.provider];
   const rate = inputs.inrPerUsd > 0 ? inputs.inrPerUsd : 1;
   const inr = (usd: number) =>
@@ -146,6 +151,26 @@ export function AdminCostCalculator() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <div className="grid content-start gap-5">
+          <Card className="p-4">
+            <SectionTitle>Coach presets</SectionTitle>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(PRESETS) as Preset[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setInputs((prev) => ({ ...prev, ...PRESETS[p].usage }))}
+                  className="rounded-md border border-line px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
+                >
+                  {PRESETS[p].label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11.5px] text-ink-3">
+              Light: 4 webinars × 1 h × 100, 10 meetings × 5. Typical: 8 × 1.5 h × 300, 25 × 10. Heavy: 12 ×
+              2 h × 500, 40 × 15. Sets the usage only.
+            </p>
+          </Card>
+
           <Card className="p-4">
             <SectionTitle>Webinars per coach</SectionTitle>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -395,6 +420,16 @@ export function AdminCostCalculator() {
                 label="Price includes 18% GST"
               />
             </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {num("targetMarginPercent", "Target gross margin", { suffix: "%" })}
+              {num("overheadInr", "Support and overhead", { suffix: "₹/mo", hint: "Per coach." })}
+              <SelectField
+                label="Plan attendee cap"
+                value={String(inputs.planAttendeeCap)}
+                onChange={(v) => set("planAttendeeCap", Number(v))}
+                options={PLAN_CAPS.map((c) => ({ id: String(c), label: `${c} attendees` }))}
+              />
+            </div>
           </Card>
 
           <Card className="p-4">
@@ -471,6 +506,45 @@ export function AdminCostCalculator() {
               }
             />
           </div>
+
+          <Card className="p-4">
+            <SectionTitle>Minimum price ({name})</SectionTitle>
+            <div className="grid grid-cols-2 gap-3">
+              <Stat
+                label="Break-even price"
+                value={`₹${count(pricing.breakEvenInr)}`}
+                note={`Cost ₹${count(pricing.costInr)} incl. overhead, grossed up for fee${inputs.priceIncludesGst ? " and GST" : ""}`}
+              />
+              <Stat
+                label={`Minimum at ${inputs.targetMarginPercent}% margin`}
+                value={`₹${count(pricing.minimumInr)}`}
+                note="Rounded up to a ₹99 ending"
+                tone="brand"
+              />
+            </div>
+            <p className="mt-3 text-[12.5px] text-ink-2">
+              {pricing.currentMarginPercent == null
+                ? "Enter a plan price to see its margin."
+                : `At ₹${count(inputs.priceInr)}: ${Math.round(pricing.currentMarginPercent)}% margin (₹${count(pricing.currentMarginInr!)} a month, overhead included).`}
+            </p>
+            <p className="mt-1 text-[12.5px] text-ink-2">
+              Break-even by scale:{" "}
+              {pricing.breakEvenAt.map((b, n) => (
+                <span key={b.coaches} className="tabular-nums">
+                  {n > 0 && " · "}
+                  {b.coaches} {b.coaches === 1 ? "coach" : "coaches"} ₹{count(b.inr)}
+                </span>
+              ))}
+            </p>
+            {pricing.overage && (
+              <p className="mt-1 text-[12.5px] text-warn">
+                {inputs.viewersPerWebinar} attendees is over the {inputs.planAttendeeCap} cap:{" "}
+                {count(pricing.overage.attendeeHours)} extra attendee-hours a month. Overage at the same margin: ₹
+                {pricing.overage.perAttendeeHourInr.toFixed(2)} per attendee-hour (≈ ₹{count(pricing.overage.monthInr)} a
+                month).
+              </p>
+            )}
+          </Card>
 
           <Card className="overflow-hidden">
             <table className="w-full text-left text-[13px]">

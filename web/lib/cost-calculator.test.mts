@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import {
   aiUsd,
   calculateCost,
+  calculatePricing,
+  grossUp,
+  PRESETS,
+  roundUpTo99,
   compareProviders,
   DEFAULT_INPUTS,
   DEFAULT_PROVIDERS,
@@ -147,5 +151,39 @@ assert.equal(calculateCost({ ...DEFAULT_INPUTS, priceInr: 0 }).marginUsd, null);
 const z = calculateCost({ ...DEFAULT_INPUTS, webinarsPerMonth: -3, meetingsPerMonth: NaN, simulivesPerMonth: 0 });
 assert.equal(z.monthUsd, 0);
 assert.equal(z.webinarUsd, 0);
+
+// Minimum price: gross-up for margin, payment fee and GST.
+near(grossUp(1000, 0, 0, false), 1000);
+near(grossUp(1000, 0, 0, true), 1180);
+near(grossUp(1000, 0, 2, true), 1180 / 0.98);
+near(grossUp(1000, 60, 2, true), (1000 / 0.4 / 0.98) * 1.18);
+// The grossed-up price really does leave the margin: net × (1 − 60%) = cost.
+const gp = grossUp(1234, 60, 2, true);
+near((gp / 1.18) * 0.98 * 0.4, 1234, 1e-6);
+assert.equal(roundUpTo99(2950), 2999);
+assert.equal(roundUpTo99(2999), 2999);
+assert.equal(roundUpTo99(3000), 3099);
+assert.equal(roundUpTo99(0), 0);
+
+const pr = calculatePricing(DEFAULT_INPUTS);
+near(pr.costInr, d.monthUsd * 100 + 300, 1e-6);
+near(pr.breakEvenInr, (pr.costInr / 0.98) * 1.18, 1e-6);
+assert.ok(pr.minimumInr >= grossUp(pr.costInr, 60, 2, true) && pr.minimumInr % 100 === 99, `${pr.minimumInr}`);
+// ₹4,999 margin, overhead included.
+near(pr.currentMarginInr!, (4999 / 1.18) * 0.98 - pr.costInr, 1e-6);
+// Scale: the fixed share falls as coaches grow.
+assert.deepEqual(pr.breakEvenAt.map((x) => x.coaches), [1, 10, 50]);
+assert.ok(pr.breakEvenAt[0].inr > pr.breakEvenAt[1].inr && pr.breakEvenAt[1].inr > pr.breakEvenAt[2].inr);
+// Presets order by cost; Typical is the defaults.
+const at = (p: keyof typeof PRESETS) => calculatePricing({ ...DEFAULT_INPUTS, ...PRESETS[p].usage }).minimumInr;
+assert.ok(at("light") < at("typical") && at("typical") < at("heavy"));
+assert.equal(at("typical"), pr.minimumInr);
+// Overage: none at the cap; Heavy (500) on a 300 plan prices 200 extra at the same margin.
+assert.equal(pr.overage, null);
+const hv = { ...DEFAULT_INPUTS, ...PRESETS.heavy.usage };
+const ho = calculatePricing(hv).overage!;
+near(ho.attendeeHours, 200 * 12 * 2 * 0.7, 1e-6);
+near(ho.perAttendeeHourInr, grossUp(calculateCost(hv).perViewerHourUsd * 100, 60, 2, true), 1e-9);
+assert.equal(calculatePricing({ ...hv, planAttendeeCap: 500 }).overage, null);
 
 console.log("cost-calculator: ok");
