@@ -178,5 +178,6 @@ func (s *Server) resolveMentions(
 // isRecorderIdentity matches the egress and recorder participants the SFU lists
 // alongside people. Mirrors isBotOrEgress in web/lib/roster.ts.
 func isRecorderIdentity(identity string) bool {
-	return strings.HasPrefix(identity, "EG_") || strings.HasPrefix(identity, "REC_")
+	return strings.HasPrefix(identity, "EG_") || strings.HasPrefix(identity, "REC_") ||
+		strings.HasPrefix(identity, lk.CaptionAgentPrefix)
 }

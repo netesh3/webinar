@@ -195,6 +195,10 @@ ENV_VARS=(
 # reminders, drips and meeting limits run while the service is scaled to zero. See
 # deploy/cloud-scheduler-tick.sh, which needs the same value.
 [[ -n "${TICK_SECRET:-}" ]] && ENV_VARS+=("TICK_SECRET=${TICK_SECRET}")
+# Server-side live captions (deploy/captions): the caption agent's shared secret. Unset, the
+# host's Captions button keeps using on-device captions.
+[[ -n "${CAPTIONS_SECRET:-}" ]] && ENV_VARS+=("CAPTIONS_SECRET=${CAPTIONS_SECRET}")
+[[ -n "${CAPTIONS_AGENT_NAME:-}" ]] && ENV_VARS+=("CAPTIONS_AGENT_NAME=${CAPTIONS_AGENT_NAME}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")

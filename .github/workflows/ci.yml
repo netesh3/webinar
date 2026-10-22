@@ -43,6 +43,7 @@ jobs:
     outputs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
+      captions: ${{ steps.filter.outputs.captions }}
     steps:
       - uses: actions/checkout@v4
       - id: filter
@@ -57,6 +58,27 @@ jobs:
             web:
               - 'web/**'
               - '.github/workflows/ci.yml'
+            captions:
+              - 'deploy/captions/**'
+              - '.github/workflows/ci.yml'
+
+  # The server caption agent's unit tests (deploy/captions). numpy and pytest only: no
+  # LiveKit, no model.
+  captions:
+    needs: changes
+    if: needs.changes.outputs.captions == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: deploy/captions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests
 
   # Formatting, vet, generated types, and every package except internal/api.
   api-checks:

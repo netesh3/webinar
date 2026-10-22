@@ -593,6 +593,11 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			s.log.Warn("livekit webhook: could not close open visits",
 				"slug", slug, "error", err)
 		}
+		// The caption agent left with the room; its dispatch went with it.
+		if err := s.store.ClearServerCaptions(r.Context(), slug); err != nil {
+			s.log.Warn("livekit webhook: could not clear server captions",
+				"slug", slug, "error", err)
+		}
 
 	/* A platform refusing its stream mid-session shows up here, as a failed stream result
 	 * on a compositor that is otherwise fine. Retired so egress stops retrying it and the

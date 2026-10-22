@@ -85,6 +85,18 @@ Set 2026-10-22. Both kinds email the account owner.
   | Disk | > 85 % for 5 min | logs or recordings filling the disk |
   | Public outbound | > 400 Mbps for 10 min | heavy meeting/webinar traffic; watch the 5 TB/month transfer |
 
+## Server captions (optional, off)
+
+The caption agent (`deploy/captions`: faster-whisper, English/Hindi/Hinglish, Roman script by
+default) can run on this box beside egress. Not enabled. To try it: the same 32+ character
+`CAPTIONS_SECRET` on the API (Cloud Run env) and in `/opt/livekit/.env` with
+`CAPTIONS_ENABLED=true`, sync `deploy/captions/` to `/opt/livekit/captions/` (the Hetzner
+workflow does this; here it is a manual `rsync`), then `redeploy.sh`. It is capped at 2 of the
+4 vCPUs (`CAPTIONS_CPUS`) at low priority and pauses itself above 95 % host CPU, but on a c-4
+that already carries the SFU and an edge composite the live `small` model (~1.5–2 cores for 1–2
+speakers) is the first thing to load-test; `CAPTIONS_MODEL=base` halves it. Memory: up to 4 GB
+(`CAPTIONS_MEMORY`) of the 8. Sizing in `deploy/captions/README.md`.
+
 ## When to grow (not needed yet)
 
 Decided 2026-10-22: one c-4 SFU here, the API stays on Cloud Run. Revisit when usage or the

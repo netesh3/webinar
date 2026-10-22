@@ -81,6 +81,16 @@ type Config struct {
 	 * right for an always-on process whose own ticker is enough. At least 32 characters. */
 	TickSecret string
 
+	/* CaptionsSecret switches on server-side live captions (deploy/captions): the shared
+	 * secret the caption agent sends in X-Captions-Secret to POST /api/internal/captions,
+	 * /captions/status and /transcripts. Empty means those endpoints do not exist and
+	 * POST /api/host/webinars/{slug}/captions/server answers 503, so the browsers keep
+	 * captioning on-device. At least 32 characters. */
+	CaptionsSecret string
+	// CaptionsAgentName is the LiveKit agent name the caption agent registers under
+	// (CAPTIONS_AGENT_NAME on both sides). Default "webinar-captions".
+	CaptionsAgentName string
+
 	// Recording.
 	//
 	// RecordingsBackend is the storage seam: "disk", or "s3" for an
@@ -448,6 +458,8 @@ func Load() (Config, error) {
 		DefaultMaxMeetingMin: envInt("DEFAULT_MAX_MEETING_MIN", 180),
 		EmptyRoomCloseMin:    envInt("EMPTY_ROOM_CLOSE_MIN", 10),
 		TickSecret:           strings.TrimSpace(env("TICK_SECRET", "")),
+		CaptionsSecret:       strings.TrimSpace(env("CAPTIONS_SECRET", "")),
+		CaptionsAgentName:    strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
 		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
 		AdminPassword:        env("ADMIN_PASSWORD", ""),
 		SMTPHost:             env("SMTP_HOST", ""),
@@ -662,6 +674,9 @@ func (c Config) validate() error {
 		errs = append(errs, errors.New("EMPTY_ROOM_CLOSE_MIN must be >= 0"))
 	}
 	// Short secrets are refused: this endpoint is public and triggers sends.
+	if c.CaptionsSecret != "" && len(c.CaptionsSecret) < 32 {
+		errs = append(errs, errors.New("CAPTIONS_SECRET must be at least 32 characters (openssl rand -hex 32)"))
+	}
 	if c.TickSecret != "" && len(c.TickSecret) < 32 {
 		errs = append(errs, errors.New("TICK_SECRET must be at least 32 characters (openssl rand -hex 32)"))
 	}

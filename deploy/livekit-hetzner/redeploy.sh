@@ -209,7 +209,44 @@ if [[ "$EGRESS_REMOTE" == "true" ]]; then
   docker ps -aq --filter label=com.docker.compose.service=egress | xargs -r docker rm -f >/dev/null
 fi
 
-docker compose "${COMPOSE_ARGS[@]}" pull
+# Server-side live captions (deploy/captions, synced to ./captions). Opt-in with
+# CAPTIONS_ENABLED=true and CAPTIONS_SECRET (the API's, 32+ chars) in .env; every other
+# CAPTIONS_* line in .env is passed to the agent as is. A missing secret skips captions
+# with a warning rather than failing the LiveKit redeploy. Capped and deprioritised so it
+# cannot slow video: see docker-compose.captions.yml.
+CAPTIONS=0
+if [[ "$(env_value CAPTIONS_ENABLED)" == "true" ]]; then
+  CAPTIONS_SECRET_VALUE="$(env_value CAPTIONS_SECRET)"
+  if (( ${#CAPTIONS_SECRET_VALUE} < 32 )); then
+    echo "CAPTIONS_ENABLED=true but CAPTIONS_SECRET is missing or under 32 characters; captions not started" >&2
+  elif [[ ! -f docker-compose.captions.yml || ! -f captions/Dockerfile ]]; then
+    echo "CAPTIONS_ENABLED=true but docker-compose.captions.yml or captions/ is missing; sync deploy files" >&2
+  else
+    umask 077
+    {
+      echo "LIVEKIT_URL=ws://127.0.0.1:7880"
+      echo "LIVEKIT_API_KEY=${API_KEY}"
+      echo "LIVEKIT_API_SECRET=${API_SECRET}"
+      echo "CAPTIONS_API_URL=$(env_value CAPTIONS_API_URL | sed 's|/*$||' | grep . || echo https://webinarliv.com)"
+      grep -E '^CAPTIONS_' .env | grep -vE '^CAPTIONS_(ENABLED|IMAGE|MEMORY|API_URL)=' | tr -d '"' || true
+    } >captions.env
+    umask 022
+    COMPOSE_ARGS+=("-f" "docker-compose.captions.yml")
+    CAPTIONS=1
+  fi
+fi
+if [[ "$CAPTIONS" != 1 ]]; then
+  docker ps -aq --filter label=com.docker.compose.service=captions | xargs -r docker rm -f >/dev/null
+  rm -f captions.env
+fi
+
+if [[ "$CAPTIONS" == 1 && -z "$(env_value CAPTIONS_IMAGE)" ]]; then
+  # Built here from ./captions; the first build takes a few minutes, later ones are cached.
+  docker compose "${COMPOSE_ARGS[@]}" build captions
+  docker compose "${COMPOSE_ARGS[@]}" pull --ignore-buildable
+else
+  docker compose "${COMPOSE_ARGS[@]}" pull
+fi
 docker compose "${COMPOSE_ARGS[@]}" up -d --remove-orphans
 # redis.conf is bind-mounted and read at start only, like the Caddyfile below. Before
 # LiveKit, so LiveKit never comes up against a Redis with the old password.
@@ -234,4 +271,7 @@ if [[ -f docker-compose.egress.yml ]]; then
 fi
 
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
+if [[ "$CAPTIONS" == 1 ]]; then
+  echo "Server captions: on (docker compose logs captions; first start downloads the models)"
+fi
 echo "Grafana: https://${DOMAIN}/grafana/ (user: admin, password in ${TARGET}/.env.keys)"

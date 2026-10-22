@@ -365,6 +365,9 @@ func (s *Server) Routes() http.Handler {
 		if s.cfg.TickSecret != "" {
 			r.Post("/internal/tick", s.handleInternalTick)
 		}
+		/* The server caption agent's endpoints (deploy/captions). Not mounted without
+		 * CAPTIONS_SECRET. See server_captions.go. */
+		s.mountCaptionsInternal(r)
 
 		/* One webinar BY SLUG stays public; the LIST does not.
 		 *
@@ -656,6 +659,9 @@ func (s *Server) Routes() http.Handler {
 					r.Post("/start", s.handleStartWebinar)
 					r.Post("/end", s.handleEndWebinar)
 					r.Patch("/controls", s.handleUpdateControls)
+					// Server-side captions on or off: dispatches or removes the caption
+					// agent. See server_captions.go.
+					r.Post("/captions/server", s.handleHostServerCaptions)
 
 					// The cover image. Client-compressed and cropped before it gets here —
 					// see web/lib/webinar-image.ts — so this is a plain replace, not an

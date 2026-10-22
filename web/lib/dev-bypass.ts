@@ -63,6 +63,7 @@ const CONTROLS: SessionControls = {
   raiseHandEnabled: true,
   reactionsEnabled: true,
   captionsEnabled: false,
+  serverCaptions: false,
   pollsEnabled: true,
   locked: false,
   chatDestination: "everyone",

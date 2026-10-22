@@ -27,6 +27,7 @@ on:
     branches: [main]
     paths:
       - "deploy/livekit-hetzner/**"
+      - "deploy/captions/**"
       - ".github/workflows/livekit-hetzner-deploy.yml"
 
 concurrency:
@@ -106,6 +107,13 @@ jobs:
             -e "ssh -F ${SSH_CONFIG}" \
             deploy/livekit-hetzner/ \
             livekit-hetzner:/opt/livekit/
+          # The caption agent's source, built on the box only when CAPTIONS_ENABLED=true
+          # (see redeploy.sh). Synced either way so turning it on needs no second deploy.
+          rsync -az --delete \
+            --exclude 'tests' --exclude '__pycache__' --exclude '.pytest_cache' \
+            -e "ssh -F ${SSH_CONFIG}" \
+            deploy/captions/ \
+            livekit-hetzner:/opt/livekit/captions/
 
       - name: Regenerate config and restart compose
         env:

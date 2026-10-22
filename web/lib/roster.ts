@@ -54,7 +54,7 @@ export type HostRosterSections = {
 };
 
 export function isBotOrEgress(identity: string): boolean {
-  return identity.startsWith("EG_") || identity.startsWith("REC_");
+  return identity.startsWith("EG_") || identity.startsWith("REC_") || identity.startsWith("CAP_");
 }
 
 /** Host and panelists in one section, attendees in another, raised hands as a

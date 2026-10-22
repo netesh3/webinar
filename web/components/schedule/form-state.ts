@@ -251,6 +251,7 @@ export function initialState(
       // Follows the "Live captions" option above: the API seeds the control from
       // it on create, so the form does not have to keep the two in step itself.
       captionsEnabled: false,
+      serverCaptions: false,
       locked: false,
     },
     streamKey: "",
