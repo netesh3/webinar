@@ -7,7 +7,7 @@ import { HostWebinarBrowser } from "./host-webinar-browser";
 import { HostWebinarList } from "./host-webinar-list";
 import { Alert, Spinner } from "./controls";
 import { dismissWelcome, useHostWelcome } from "./host-welcome";
-import { CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, PlayIcon } from "./icons";
+import { CalendarIcon, CheckIcon, ChevronRightIcon, CloseIcon, PlayIcon, RotateCwIcon } from "./icons";
 import { DEFAULT_ATTENDEE_LIMIT, SCHEDULE_LEAD_ERROR } from "./schedule/form-state";
 import {
   useAppConfig,
@@ -16,6 +16,7 @@ import {
   useToast,
 } from "./providers";
 import { ButtonLink, Card } from "./ui";
+import { SimuliveCreateCard } from "./simulive-info";
 import { ApiError, api, type HostWebinarTab } from "@/lib/api";
 import { dropCache } from "@/lib/http";
 import { FOLLOW_UP_FETCH_LIMIT, followUpListCacheKey } from "@/lib/follow-up-nudge";
@@ -25,7 +26,7 @@ import {
   hostListFilterKey,
   hostListPageKey,
 } from "@/lib/host-list-cache";
-import { FeatureEdgeDelivery, type Webinar, type WebinarInput } from "@/lib/api-types";
+import { FeatureCloudRecording, FeatureEdgeDelivery, type Webinar, type WebinarInput } from "@/lib/api-types";
 import {
   instantDeliveryFor,
   readInstantDelivery,
@@ -197,6 +198,9 @@ export function HostWebinarsScreen() {
   const createActions = hostHomeCreateActions(account?.features);
   const edgeAllowed = (account?.features ?? []).includes(FeatureEdgeDelivery);
   const twoColumns = hostHomeCreateColumns(createActions) === 2;
+  /* "Simulive" plays one of the host's cloud recordings, so it is offered where recording
+   * is: an account without cloud_recording has nothing to replay and no way to make one. */
+  const offerSimulive = (account?.features ?? []).includes(FeatureCloudRecording);
   /* Read during the prefetch's callback. The prefetch itself must not restart when
    * the session resolves, or it would drop the list it just fetched. */
   const statusRef = useRef(status);
@@ -411,7 +415,7 @@ export function HostWebinarsScreen() {
       <div
         className={
           twoColumns
-            ? "mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2"
+            ? `mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2${offerSimulive && createActions.includes("instant") ? " lg:grid-cols-3" : ""}`
             : "mb-6 grid grid-cols-1"
         }
       >
@@ -422,6 +426,15 @@ export function HostWebinarsScreen() {
             subtitle="Pick a date and invite people"
           />
         </Link>
+        {offerSimulive && (
+          <SimuliveCreateCard cardClass={actionCardClass}>
+            <ActionCardBody
+              icon={<RotateCwIcon className="size-4" />}
+              title="Simulive"
+              subtitle="Replay a past recording as a scheduled live session"
+            />
+          </SimuliveCreateCard>
+        )}
         {createActions.includes("instant") && (
           <div className="flex flex-col gap-1.5">
             <button

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ScheduleForm } from "@/components/schedule/schedule-form";
+import { ScheduleHeading } from "@/components/simulive-discover";
 
 export default function ScheduleWebinarPage() {
   return (
@@ -10,9 +11,8 @@ export default function ScheduleWebinarPage() {
       >
         ← Your webinars
       </Link>
-      <h1 className="mb-1 text-[24px] font-semibold tracking-[-0.02em]">
-        Schedule a webinar
-      </h1>
+      {/* "Schedule a Simulive", with its explainer, when opened for a recording. */}
+      <ScheduleHeading />
       <ScheduleForm />
     </>
   );

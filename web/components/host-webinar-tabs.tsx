@@ -10,6 +10,7 @@ import { AILeadsAndFollowups } from "./ai-leads-followups";
 import { RecordingsTab } from "./recordings-tab";
 import { SimuliveReplayCard } from "./simulive-replay-card";
 import { SimuliveAutoCard } from "./simulive-auto-card";
+import { SimuliveAutopilotCard } from "./simulive-discover";
 import { EngagementTab } from "./engagement/engagement-tab";
 import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
@@ -239,6 +240,9 @@ export function HostWebinarTabs({
           recordings={recordings}
           onChanged={onChanged}
         />
+      )}
+      {tab === "Results" && ended && (
+        <SimuliveAutopilotCard webinar={w} recordings={recordings} />
       )}
       {tab === "Results" && ended && (
         <div className="mb-4">

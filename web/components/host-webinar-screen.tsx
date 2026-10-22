@@ -295,6 +295,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
             <Badge tone={kind.tone} dot={isLive}>
               {kind.text}
             </Badge>
+            {webinar.kind === "simulive" && <Badge tone="brand">Simulive</Badge>}
             {webinar.didntGoLive && <Badge tone="neutral">Didn&apos;t go live</Badge>}
             {!meeting && webinar.approval === "manual" && !isEnded && (
               <Badge tone="warn">

@@ -29,6 +29,7 @@ import { RecordingChapters } from "./recording-chapters";
 import { playableRecordingParts, recordingSources } from "@/lib/recording-parts";
 import { chapterSeekTimes } from "@/lib/recap";
 import { simuliveEligible, simuliveScheduleHref } from "@/lib/simulive-create";
+import { SimuliveInfoButton } from "./simulive-info";
 
 /* Recordings of one webinar.
  *
@@ -661,16 +662,19 @@ function RecordingCard({
           )}
         </div>
         {ready && simuliveHref && !busy && (
-          <ButtonLink
-            href={simuliveHref}
-            variant="secondary"
-            size="sm"
-            className="mt-2 w-full"
-            title="Schedule this recording to play as a live session"
-          >
-            <PlayIcon className="size-3.5" />
-            Replay as Simulive
-          </ButtonLink>
+          <div className="mt-2 flex items-center gap-1">
+            <ButtonLink
+              href={simuliveHref}
+              variant="secondary"
+              size="sm"
+              className="flex-1"
+              title="Schedule this recording to play as a live session"
+            >
+              <PlayIcon className="size-3.5" />
+              Replay as Simulive
+            </ButtonLink>
+            <SimuliveInfoButton />
+          </div>
         )}
       </div>
     </Card>

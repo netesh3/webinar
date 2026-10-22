@@ -296,6 +296,7 @@ function HostCard({
   onCopy: () => void;
 }) {
   const kind = kindLabel(w);
+  const simulive = w.kind === "simulive";
   const isDraft = w.status === "draft";
   const isEnded = w.status === "ended";
   const isLive = w.status === "live";
@@ -361,10 +362,14 @@ function HostCard({
                 {meeting && <Badge tone="brand">Meeting</Badge>}
               </>
             ) : (
-              <Badge tone={kind.tone} dot={isLive}>
-                {kind.text}
-              </Badge>
+              /* A scheduled simulive is not a "Live webinar": its own badge says what it is. */
+              !(simulive && w.status === "scheduled") && (
+                <Badge tone={kind.tone} dot={isLive}>
+                  {kind.text}
+                </Badge>
+              )
             )}
+            {simulive && <Badge tone="brand">Simulive</Badge>}
             {upcoming && (
               <span className="text-[12px] text-ink-3">
                 {formatDayShort(w.startsAt, w.timeZone)} ·{" "}
@@ -553,7 +558,12 @@ function CompletedCard({ webinar: w, onCopy }: { webinar: Webinar; onCopy: () =>
       title={w.topic}
       titleDataTour
       badge={
-        w.didntGoLive ? <Badge tone="neutral">Didn&apos;t go live</Badge> : undefined
+        w.didntGoLive || w.kind === "simulive" ? (
+          <>
+            {w.kind === "simulive" && <Badge tone="brand">Simulive</Badge>}
+            {w.didntGoLive && <Badge tone="neutral">Didn&apos;t go live</Badge>}
+          </>
+        ) : undefined
       }
       when={`${formatDayShort(w.startsAt, w.timeZone)} · ${formatTimeRange(w.startsAt, w.durationMin, w.timeZone)} ${tzLabel(w.startsAt, w.timeZone)}${w.series ? ` · Session ${w.occurrenceIndex || ""} of a series` : ""}`}
       meta={
