@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from webcaptions.poster import ApiClient, TranscriptLine, caption_payload, status_payload, transcript_payload
+from webcaptions.poster import USER_AGENT, ApiClient, TranscriptLine, caption_payload, status_payload, transcript_payload
 
 SECRET = "s" * 40
 
@@ -41,11 +41,13 @@ def test_transcript_payload_sorted_and_without_blanks():
 
 class _Recorder(BaseHTTPRequestHandler):
     calls: list = []
+    agents: list = []
     statuses: list = []
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers["Content-Length"]))
         type(self).calls.append((self.path, self.headers.get("X-Captions-Secret"), json.loads(body)))
+        type(self).agents.append(self.headers.get("User-Agent"))
         status = type(self).statuses.pop(0) if type(self).statuses else 200
         self.send_response(status)
         self.end_headers()
@@ -58,6 +60,7 @@ class _Recorder(BaseHTTPRequestHandler):
 @pytest.fixture
 def api():
     _Recorder.calls = []
+    _Recorder.agents = []
     _Recorder.statuses = []
     srv = HTTPServer(("127.0.0.1", 0), _Recorder)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -72,6 +75,8 @@ def test_client_sends_secret_header_and_json(api):
     assert path == "/api/internal/captions"
     assert secret == SECRET
     assert body["text"] == "नमस्ते sab"  # UTF-8, not escaped away
+    # Not urllib's default: Cloudflare answers "Python-urllib/3.x" with a 403.
+    assert rec.agents[0] == USER_AGENT and "urllib" not in rec.agents[0].lower()
 
 
 def test_client_returns_4xx_without_retrying(api):

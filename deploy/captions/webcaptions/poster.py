@@ -18,6 +18,11 @@ import logging
 import time
 import urllib.error
 import urllib.request
+
+# Our own User-Agent, not urllib's. Cloudflare in front of webinarliv.com answers urllib's
+# default ("Python-urllib/3.x") with a 403 before the request reaches the API, so on the first
+# live test every line and status post was refused while curl from the same box got through.
+USER_AGENT = "webinarliv-captions/1.0 (+https://webinarliv.com)"
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -86,7 +91,11 @@ class ApiClient:
                 self._base + path,
                 data=body,
                 method="POST",
-                headers={"Content-Type": "application/json", "X-Captions-Secret": self._secret},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": USER_AGENT,
+                    "X-Captions-Secret": self._secret,
+                },
             )
             try:
                 with urllib.request.urlopen(req, timeout=self._timeout) as res:
