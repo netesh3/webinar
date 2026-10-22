@@ -45,7 +45,7 @@ import { useHostRoster } from "./participants";
 import { useNetworkHealth } from "@/lib/network";
 import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
-import { stageFrame, useCompact } from "@/lib/compact";
+import { STAGE_PLAYER_FRAME, stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
 import { canElementFullscreen, useFullscreen } from "@/lib/fullscreen";
 import { playerControls, simuliveCorrection, SIMULIVE_BLOCKED_KEYS } from "@/lib/simulive-clock";
@@ -508,7 +508,7 @@ export function CdnAttendeeRoom({
                     style={stageFrame(compact, panelOpen)}
                   >
                     {/* CDN Stream Player */}
-                    <div className="relative flex-1 flex items-center justify-center bg-black">
+                    <div className={STAGE_PLAYER_FRAME}>
                       {waiting ? (
                         <SimuliveWaiting
                           slug={slug}
@@ -552,6 +552,10 @@ export function CdnAttendeeRoom({
                     />
                     <RecordingBanner />
                     <ChatNotifications chatVisible={chatVisible} />
+                    {/* Inside the stage, not the room column: anchored to the stage's own bottom
+                        edge, so a caption stays on the picture (and off the docked panel, which
+                        on a phone sits right under a short stage strip) — never under the control bar. */}
+                    <CaptionOverlay />
                   </div>
 
                   <PollPopup />
@@ -563,7 +567,6 @@ export function CdnAttendeeRoom({
                     enabled
                   />
                   <CtaPopup />
-                  <CaptionOverlay />
                   <RoomHeader />
                   <SidePanel />
                 </div>

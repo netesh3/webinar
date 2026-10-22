@@ -130,12 +130,14 @@ export function OwnShareView({
         <Elapsed share={share} />
       </div>
 
-      <div className="relative min-h-0 flex-1 px-3">
+      <div className="relative min-h-0 flex-1 overflow-hidden px-3">
         {showLive ? (
           <div className="relative size-full">
+            {/* absolute inset-0, as in tile.tsx: an in-flow <video> can size itself from the
+                window's own frame (Safari does) and push the button row under the control bar. */}
             <VideoTrack
               trackRef={{ participant, source: Track.Source.ScreenShare, publication: publication! }}
-              className="size-full object-contain"
+              className="absolute inset-0 size-full object-contain"
             />
             <PreviewTag kind="live" />
           </div>
@@ -212,7 +214,7 @@ export function PresenterPip({
         <div className="relative min-h-0 flex-1">
           <VideoTrack
             trackRef={{ participant, source: Track.Source.ScreenShare, publication: publication! }}
-            className="h-full w-full object-contain"
+            className="absolute inset-0 h-full w-full object-contain"
           />
           <PreviewTag kind="live" compact />
           {share.frozen && <FrozenWarning isWindow compact />}

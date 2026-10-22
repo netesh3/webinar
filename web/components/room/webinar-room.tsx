@@ -1770,6 +1770,10 @@ function ConnectedRoom({
                       left as a number. Given the same `chatVisible` the badge uses, so
                       the two cannot disagree about whether you are looking at it. */}
                   <ChatNotifications chatVisible={chatVisible} />
+                  {/* Inside the stage, not the room column: anchored to the stage's own bottom
+                      edge, so a caption stays on the picture (and off the docked panel, which
+                      on a phone sits right under a short stage strip) — never under the control bar. */}
+                  <CaptionOverlay />
                 </div>
 
                 {/* A poll the host just launched, brought to the attendee rather than left
@@ -1786,7 +1790,6 @@ function ConnectedRoom({
                   {/* The host's side of it: answers coming in, and End. */}
                   {isHost && <HostSurveyPill />}
                 <CtaPopup />
-                <CaptionOverlay />
 
                 {/* Applies the stored virtual background to whatever camera track is
                     published, and re-applies it when the track is replaced. Renders nothing;
