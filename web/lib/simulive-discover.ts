@@ -5,6 +5,7 @@
  * simulive is simulive-create.ts's rule; this file only orders and picks from it. */
 
 import type { Recording, Webinar } from "./api-types.ts";
+import { simuliveAllowed } from "./host-features.ts";
 import { simuliveEligible } from "./simulive-create.ts";
 
 /** The "Simulive" create option: the recording picker, which then opens the schedule form. */
@@ -39,7 +40,7 @@ export function firstPlayablePart(rec: Pick<Recording, "id" | "parts">): string 
 }
 
 /** The recording the Results card offers to replay, or null when there is no card: the
- *  session is over, it is the viewer's own (the server only schedules a host's own
+ *  session is over, the account has the simulive switch, it is the viewer's own (the server only schedules a host's own
  *  recordings), it is not itself a simulive (a simulive is never recorded), and it has a
  *  ready recording. The newest one, since that is the one the host just made. */
 export function autopilotRecording<
@@ -47,10 +48,12 @@ export function autopilotRecording<
 >(
   webinar: Pick<Webinar, "status" | "kind"> & { host: Pick<Webinar["host"], "id"> },
   recordings: readonly R[] | null | undefined,
-  viewer: { id: string; canHost: boolean } | null | undefined,
+  viewer: { id: string; canHost: boolean; features?: readonly string[] | null } | null | undefined,
 ): R | null {
   if (webinar.status !== "ended" || webinar.kind === "simulive") return null;
   if (!viewer?.canHost || viewer.id !== webinar.host.id) return null;
+  // The account's simulive switch (Admin -> Accounts): the server refuses a simulive without it.
+  if (!simuliveAllowed(viewer)) return null;
   return simuliveLibrary(recordings)[0] ?? null;
 }
 

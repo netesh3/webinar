@@ -297,6 +297,7 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# Hot leads and the follow-up writer: tags, signal chips, the ranked CSV, the groups,
 	# their empty states, and a draft turned into WhatsApp template wording.
 	cd web && node --experimental-strip-types --no-warnings lib/leads.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/host-features.test.mts
 	# Sending the follow-ups: which channel each person starts on (WhatsApp, else email),
 	# the reasons in words, the chunks, and the template preview the server mirrors.
 	cd web && node --experimental-strip-types --no-warnings lib/followup-send.test.mts

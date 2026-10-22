@@ -28,7 +28,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import {
   ChannelEmail,
-  FeatureAI,
+  FeatureAIKnowledge,
   FeatureCloudRecording,
   FeatureJoinWithoutRegistration,
   type CustomQuestion,
@@ -111,7 +111,7 @@ export function HostWebinarTabs({
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
   // The AI knowledge pick: the session's documents, for an account with AI. A co-host on
   // someone else's session reads the host's; the server answers feature_off for the rest.
-  const aiKnowledge = (account?.features ?? []).includes(FeatureAI);
+  const aiKnowledge = (account?.features ?? []).includes(FeatureAIKnowledge);
   /* A meeting has no People and no Follow up (lib/host-tabs.ts meetingTabs), and its Overview
    * and Setup leave out what is about registrants. Recording, chat, Q&A, polls and Results are
    * the webinar's own, because a meeting's room has all of them. */

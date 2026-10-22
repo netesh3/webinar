@@ -28,11 +28,25 @@ import (
 // the ai feature AND the session's own switch (controls.aiEnabled) is on AND it was never
 // switched off during the live session (controls.aiOffThisSession, migration 0133).
 func (s *Server) sessionAIAllowed(ctx context.Context, wb types.Webinar) bool {
-	if !wb.Controls.AIEnabled || wb.Controls.AIOffThisSession {
-		return false
-	}
+	return s.sessionAIBlock(ctx, wb) == ""
+}
+
+/* sessionAIBlock is why sessionAIAllowed says no, so a screen can say the right thing:
+ * ai_off when the host's ACCOUNT does not have the ai feature (an admin decides),
+ * ai_session_off when the account has it but this session's own switch was off at the end
+ * or at any point while live (the host decided), "" when AI may be used. The account is
+ * asked first: a session's switch on an account without AI is not the reason. */
+func (s *Server) sessionAIBlock(ctx context.Context, wb types.Webinar) string {
 	host, err := s.store.UserByID(ctx, wb.Host.ID)
-	return err == nil && host.HasFeature(types.FeatureAI)
+	if err != nil || !host.HasFeature(types.FeatureAI) {
+		return types.RecapReasonAIOff
+	}
+	/* AIEnabled as read is already false on an account without AI (store: AIEnabled &&
+	 * AIAvailable), so it is only the session's own switch here. */
+	if !wb.Controls.AIEnabled || wb.Controls.AIOffThisSession {
+		return types.RecapReasonAISessionOff
+	}
+	return ""
 }
 
 /* syncAITranscript brings the caption agent in line with the session's switches, for a live

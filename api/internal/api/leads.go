@@ -45,6 +45,7 @@ const (
 // AI status words for the two features (LeadsResponse.AIStatus, FollowupsResponse.Status).
 const (
 	aiStatusOff         = types.RecapReasonAIOff
+	aiStatusSessionOff  = types.RecapReasonAISessionOff
 	aiStatusLimit       = types.RecapReasonAILimit
 	aiStatusUnavailable = types.RecapReasonAIUnavailable
 	aiStatusNotEnded    = types.RecapReasonNotEnded
@@ -158,11 +159,14 @@ func plural(n int, word string) string {
 /* aiOutputGate says whether a session's AI output may be written now, and if not, why.
  * The order is the order a host can do something about it. */
 func (s *Server) aiOutputGate(ctx context.Context, wb types.Webinar) string {
-	switch {
-	case wb.Status != types.StatusEnded:
+	if wb.Status != types.StatusEnded {
 		return aiStatusNotEnded
-	case !s.sessionAIAllowed(ctx, wb):
-		return aiStatusOff
+	}
+	// ai_off (the account) or ai_session_off (this session's switch): told apart.
+	if block := s.sessionAIBlock(ctx, wb); block != "" {
+		return block
+	}
+	switch {
 	case !s.ai.Enabled():
 		return aiStatusUnavailable
 	}

@@ -13,12 +13,13 @@ import {
 import { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, useReplies } from "@/engage";
 import { ApiError, api } from "@/lib/api";
 import {
-  FeatureAI,
+  FeatureAIKnowledge,
   IntegrationActionNavigate,
   IntegrationStatusConnected,
   type IntegrationCard,
 } from "@/lib/api-types";
 import { appHome } from "@/lib/access";
+import { meetingsOffered } from "@/lib/host-features";
 import { noteAttendeeVisit } from "@/lib/host-welcome";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
@@ -337,9 +338,11 @@ function HostPrimaryNav() {
     pathname === "/host/meetings" ||
     pathname.startsWith("/host/meetings/") ||
     pathname === "/host/new/meeting";
-  // The AI knowledge library: only for an account with the ai feature (the server refuses
-  // the rest anyway).
-  const hasAI = (account?.features ?? []).includes(FeatureAI);
+  // The AI knowledge library: only for an account with ai_knowledge, which is only in effect
+  // with ai (the server refuses the rest anyway).
+  const hasAI = (account?.features ?? []).includes(FeatureAIKnowledge);
+  // Meetings: on for every host unless an admin turned them off (the server refuses a create).
+  const hasMeetings = meetingsOffered(account);
   const onKnowledge = pathname === "/host/knowledge" || pathname.startsWith("/host/knowledge/");
   const onWebinars =
     !onMeetings &&
@@ -368,12 +371,14 @@ function HostPrimaryNav() {
         active={onWebinars}
         icon={<CalendarIcon />}
       />
-      <Item
-        href="/host/meetings"
-        label="Meetings"
-        active={onMeetings}
-        icon={<CameraIcon />}
-      />
+      {hasMeetings && (
+        <Item
+          href="/host/meetings"
+          label="Meetings"
+          active={onMeetings}
+          icon={<CameraIcon />}
+        />
+      )}
       <Item
         href={PEOPLE_HREF}
         label="Audience"

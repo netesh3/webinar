@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type { Recording, Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { formatClock } from "@/lib/format";
+import { simuliveAllowed } from "@/lib/host-features";
 import { simuliveScheduleHref } from "@/lib/simulive-create";
 import {
   autopilotRecording,
@@ -30,16 +31,25 @@ import { Badge, ButtonLink, Card, Empty } from "./ui";
 /** The schedule page's heading: "Schedule a Simulive" when it was opened for a recording. */
 export function ScheduleHeading() {
   const simulive = Boolean(useSearchParams().get("simulive")?.trim());
+  const { account, status } = useSession();
   if (!simulive) {
     return (
       <h1 className="mb-1 text-[24px] font-semibold tracking-[-0.02em]">Schedule a webinar</h1>
     );
   }
   return (
-    <div className="mb-1 flex items-center gap-1.5">
-      <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Schedule a Simulive</h1>
-      <SimuliveInfoButton />
-    </div>
+    <>
+      <div className="mb-1 flex items-center gap-1.5">
+        <h1 className="text-[24px] font-semibold tracking-[-0.02em]">Schedule a Simulive</h1>
+        <SimuliveInfoButton />
+      </div>
+      {/* The server refuses a simulive without the account's switch: say so before the form. */}
+      {status !== "loading" && !simuliveAllowed(account) && (
+        <p role="alert" className="mb-3 text-[13px] text-warn">
+          Simulive isn&apos;t switched on for this account, so this can&apos;t be saved. Ask us to turn it on.
+        </p>
+      )}
+    </>
   );
 }
 
@@ -47,10 +57,14 @@ export function ScheduleHeading() {
  *  opens the simulive schedule form for it. */
 export function SimulivePicker() {
   const hydrated = useHydrated();
+  const { account, status } = useSession();
   const [library, setLibrary] = useState<Recording[] | null>(null);
   const [failed, setFailed] = useState(false);
+  // The account's simulive switch: without it the server refuses the schedule this leads to.
+  const allowed = simuliveAllowed(account);
 
   useEffect(() => {
+    if (!allowed) return;
     let active = true;
     api
       .hostRecordingLibrary()
@@ -66,7 +80,7 @@ export function SimulivePicker() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [allowed]);
 
   return (
     <>
@@ -84,7 +98,12 @@ export function SimulivePicker() {
         Pick a past recording. It plays at the time you choose, like a live webinar.
       </p>
 
-      {library === null ? (
+      {status !== "loading" && !allowed ? (
+        <Empty
+          title="Simulive isn't switched on for this account"
+          hint="Ask us to turn on Simulive to replay your recordings as live sessions."
+        />
+      ) : library === null ? (
         <div className="flex items-center gap-2 py-10 text-[13px] text-ink-3">
           <Spinner className="size-4" /> Loading your recordings…
         </div>

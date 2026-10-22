@@ -218,6 +218,45 @@ func (s *Store) SetFeatureOverride(ctx context.Context, userID, feature string, 
 	return u, err
 }
 
+// FeatureChange is one override in SetFeatureOverrides: State as SetFeatureOverride's.
+type FeatureChange struct {
+	Feature string
+	State   *bool
+}
+
+/* SetFeatureOverrides applies several overrides to one account in one transaction, each the
+ * same set arithmetic as SetFeatureOverride, and returns the account as it ends. */
+func (s *Store) SetFeatureOverrides(ctx context.Context, userID string, changes []FeatureChange) (User, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback(ctx)
+	var u User
+	for _, c := range changes {
+		on := c.State != nil && *c.State
+		off := c.State != nil && !*c.State
+		u, err = scanUser(tx.QueryRow(ctx, `
+			UPDATE users
+			   SET features = CASE WHEN $3 THEN array_remove(features, $2) || ARRAY[$2]::text[]
+			                       ELSE array_remove(features, $2) END,
+			       features_off = CASE WHEN $4 THEN array_remove(features_off, $2) || ARRAY[$2]::text[]
+			                           ELSE array_remove(features_off, $2) END
+			 WHERE id = $1
+			RETURNING `+userColumns, userID, c.Feature, on, off))
+		if noRows(err) {
+			return User{}, ErrNotFound
+		}
+		if err != nil {
+			return User{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return User{}, err
+	}
+	return u, nil
+}
+
 /* FeatureOverrideConversionSQL moves accounts from "every switch on the account" to
  * "plan, then overrides" without changing what anyone has. Every tier starts with
  * whiteboard, so it leaves users.features (now the tier's), and an account that had it
@@ -392,6 +431,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		if u.MeetingCap != nil {
 			u.MeetingSeats = *u.MeetingCap
 		}
+		u.Features = types.EffectiveFeatures(u.Features)
 		if u.Features == nil {
 			u.Features = []string{}
 		}

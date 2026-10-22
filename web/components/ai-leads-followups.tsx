@@ -9,6 +9,7 @@ import { useSession, useToast } from "./providers";
 import { Badge, Button, Card, SectionTitle } from "./ui";
 import { ENGAGE_HOME, FollowupWhatsAppActions, messagesHref } from "@/engage";
 import { ApiError, api } from "@/lib/api";
+import { followupSendOffered } from "@/lib/host-features";
 import type { FollowupDraft, FollowupsResponse, Lead, LeadsResponse, Webinar } from "@/lib/api-types";
 import { useDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import type { ChannelPref } from "@/lib/followup-send";
@@ -243,7 +244,8 @@ function FollowupsCard({ webinar, leads }: { webinar: Webinar; leads: LeadsRespo
   const [sending, setSending] = useState<{ keys: string[]; pref: ChannelPref } | null>(null);
   const { account } = useSession();
   // Sending goes from the host's own number and in their name: the host only, not a co-host.
-  const canSend = Boolean(account && account.id === webinar.host.id);
+  // And only with the account's "Send follow-ups" switch (followup_send, which needs ai).
+  const canSend = Boolean(account && account.id === webinar.host.id && followupSendOffered(account));
 
   useEffect(() => {
     const ctl = new AbortController();

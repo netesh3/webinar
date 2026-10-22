@@ -12,6 +12,7 @@ import { ButtonLink, Card } from "./ui";
 import { api } from "@/lib/api";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
+import { meetingsOffered } from "@/lib/host-features";
 import { instantMeetingInput } from "@/lib/meeting-create";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 
@@ -94,6 +95,16 @@ export function HostMeetingsScreen() {
   return (
     <>
       <h1 className="sr-only">Your meetings</h1>
+      {/* Meetings switched off for this account (Admin -> Accounts): the server refuses a new
+       * one, so neither card is offered. Meetings already held stay listed below. */}
+      {!meetingsOffered(account) ? (
+        <Card className="mb-6 p-5">
+          <h2 className="text-[15px] font-semibold">Meetings aren&apos;t switched on for this account</h2>
+          <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
+            Ask us to turn on meetings to start or schedule one.
+          </p>
+        </Card>
+      ) : (
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
@@ -116,6 +127,7 @@ export function HostMeetingsScreen() {
           />
         </Link>
       </div>
+      )}
 
       <HostWebinarBrowser kind="meeting" reloadToken={reloadToken} />
     </>

@@ -17,10 +17,12 @@ const MIN_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
 const MAX_LABEL = 80;
 
-/** Whether an account may switch Auto mode on: it needs both the ai and replay_engage features. */
+/** Whether an account may switch Auto mode on: the simulive_auto feature, which is only in
+ *  effect with ai, replay_engage and simulive too (the server drops it otherwise; checked here
+ *  as well so an older account payload cannot offer it). */
 export function autoModeAvailable(features: readonly string[] | null | undefined): boolean {
   const f = features ?? [];
-  return f.includes("ai") && f.includes("replay_engage");
+  return ["simulive_auto", "ai", "replay_engage", "simulive"].every((k) => f.includes(k));
 }
 
 /** The label the host's audience would see, worked out the way the server does it (for the

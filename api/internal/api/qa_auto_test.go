@@ -273,6 +273,11 @@ func TestQAAutoOffByDefaultAndGated(t *testing.T) {
 		t.Fatal("auto mode ran without ai")
 	}
 	f.feature(types.FeatureAI, true)
+	// Its own switch (simulive_auto, on in every tier) turned off for this account.
+	f.feature(types.FeatureSimuliveAuto, false)
+	res, raw = h.do(http.MethodPut, "/api/host/webinars/"+f.sim.ID+"/replay/auto", types.SimuliveAutoAnswerRequest{Enabled: true})
+	h.wantError(res, raw, http.StatusForbidden, "feature_off")
+	f.feature(types.FeatureSimuliveAuto, true)
 
 	// The host switches it on: the next question is answered.
 	res, raw = h.do(http.MethodPut, "/api/host/webinars/"+f.sim.ID+"/replay/auto", types.SimuliveAutoAnswerRequest{Enabled: true})

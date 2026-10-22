@@ -20,7 +20,7 @@ import (
  * not fit is refused whole, with how much room there is, rather than half imported. */
 func (s *Server) handleImportVault(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
-	if !s.featureAllowed(w, user, types.FeatureAI) {
+	if !s.featureAllowed(w, user, types.FeatureAIKnowledge) {
 		return
 	}
 	filename := clipRunes(path.Base(strings.ReplaceAll(strings.TrimSpace(r.URL.Query().Get("filename")), "\\", "/")), 200)

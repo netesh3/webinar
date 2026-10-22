@@ -103,7 +103,7 @@ type followupContext struct {
 }
 
 /* loadFollowupContext reads everything one plan or send needs, or writes the refusal:
- * 409 not_ended / no_drafts, 403 ai_off. */
+ * 409 not_ended / no_drafts, 403 feature_off (account) or ai_session_off (this session). */
 func (s *Server) loadFollowupContext(w http.ResponseWriter, r *http.Request, lang string, keys []string) (followupContext, bool) {
 	ctx := r.Context()
 	var fc followupContext
@@ -112,12 +112,25 @@ func (s *Server) loadFollowupContext(w http.ResponseWriter, r *http.Request, lan
 		s.fail(w, r, "followup send: webinar", err)
 		return fc, false
 	}
-	switch {
-	case wb.Status != types.StatusEnded:
+	if wb.Status != types.StatusEnded {
 		httpx.Error(w, http.StatusConflict, "not_ended", "Follow-ups can be sent once the session has ended.")
 		return fc, false
-	case !s.sessionAIAllowed(ctx, wb):
+	}
+	/* The account first (ai, then followup_send, which needs ai), then the session's own
+	 * switch: an account without the feature is told so, a session kept out of AI is told
+	 * that instead. */
+	switch s.sessionAIBlock(ctx, wb) {
+	case types.RecapReasonAIOff:
 		httpx.Error(w, http.StatusForbidden, "feature_off", "AI follow-ups aren't switched on for this account.")
+		return fc, false
+	case types.RecapReasonAISessionOff:
+		httpx.Error(w, http.StatusForbidden, types.RecapReasonAISessionOff,
+			"AI was off for this session, so it has no follow-up drafts to send.")
+		return fc, false
+	}
+	if !s.hostFeature(ctx, wb.Host.ID, types.FeatureFollowupSend) {
+		httpx.Error(w, http.StatusForbidden, "feature_off",
+			featureLabel(types.FeatureFollowupSend)+" isn't switched on for this account.")
 		return fc, false
 	}
 	fu, err := s.followups(ctx, wb, lang, false)

@@ -90,6 +90,13 @@ assert.equal(leadsAINote("empty"), null);
 assert.match(leadsAINote("ai_limit")!, /AI limit reached/);
 assert.match(leadsAINote("ai_off")!, /switched off/);
 assert.match(leadsAINote("something new")!, /couldn't be written/);
+// The account has AI and only this session's switch was off: never "for this account".
+assert.match(leadsAINote("ai_session_off")!, /AI was off for this session/);
+assert.doesNotMatch(leadsAINote("ai_session_off")!, /account/);
+assert.match(followupsEmptyState("ai_session_off")!.title, /AI was off for this session/);
+assert.doesNotMatch(followupsEmptyState("ai_session_off")!.detail, /account|Ask us/);
+assert.match(followupsEmptyState("ai_off")!.title, /for this account/);
+assert.match(followupsEmptyState("empty")!.title, /Nobody to follow up/);
 assert.equal(followupsEmptyState("ready"), null);
 assert.equal(followupsEmptyState("processing")!.pending, true);
 assert.match(followupsEmptyState("ai_limit")!.title, /AI limit reached/);

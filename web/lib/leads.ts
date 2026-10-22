@@ -156,6 +156,8 @@ export function leadsAINote(aiStatus: string): string | null {
       return "AI reasons are added once the session ends.";
     case "ai_off":
       return "AI is switched off for this account, so there are no AI reasons. The ranking is counted from what people did.";
+    case "ai_session_off":
+      return "AI was off for this session, so there are no AI reasons. Sessions with the AI switch on get them automatically. The ranking is counted from what people did.";
     case "ai_limit":
       return "AI limit reached for this month, so there are no AI reasons. The ranking is counted from what people did.";
     case "ai_unavailable":
@@ -179,6 +181,11 @@ export function followupsEmptyState(status: string): FollowupsEmpty | null {
       return {
         title: "AI is switched off for this account",
         detail: "Ask us to turn on AI writing to get follow-up drafts after every session.",
+      };
+    case "ai_session_off":
+      return {
+        title: "AI was off for this session",
+        detail: "AI was off for this session, so there are no AI drafts. Sessions with the AI switch on get them automatically. You can still export each group below.",
       };
     case "ai_limit":
       return {

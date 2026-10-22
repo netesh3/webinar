@@ -1,6 +1,8 @@
 import {
   FeatureCloudRecording,
   FeatureInstantWebinar,
+  FeatureMeetings,
+  FeatureSimulive,
   FeatureWhatsAppCRM,
   FeatureZoom,
 } from "@/lib/api-types";
@@ -51,6 +53,8 @@ export const DEV_BYPASS_ACCOUNT: Account = {
     FeatureCloudRecording,
     FeatureInstantWebinar,
     FeatureZoom,
+    FeatureMeetings,
+    FeatureSimulive,
   ],
 };
 

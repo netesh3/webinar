@@ -70,7 +70,7 @@ assert.equal(
 );
 
 // The Results card: ended, the viewer's own, not a simulive, with a ready recording.
-const host = { id: "h1", canHost: true };
+const host = { id: "h1", canHost: true, features: ["simulive", "cloud_recording"] };
 const ended = { status: "ended" as const, kind: "live" as const, host: { id: "h1" } };
 const recs = [
   rec({ id: "first", createdAt: "2026-10-22T09:00:00Z" }),
@@ -83,6 +83,9 @@ assert.equal(autopilotRecording({ ...ended, kind: "simulive" }, recs, host), nul
 assert.equal(autopilotRecording(ended, recs, { id: "cohost", canHost: true }), null);
 assert.equal(autopilotRecording(ended, recs, { id: "h1", canHost: false }), null);
 assert.equal(autopilotRecording(ended, recs, null), null);
+// No card for an account without the simulive switch, cloud recording or not.
+assert.equal(autopilotRecording(ended, recs, { ...host, features: ["cloud_recording"] }), null);
+assert.equal(autopilotRecording(ended, recs, { id: "h1", canHost: true }), null);
 assert.equal(autopilotRecording(ended, [], host), null);
 assert.equal(autopilotRecording(ended, [rec({ status: "processing" })], host), null);
 // A meeting's recording qualifies (the simulive made from it is a webinar).

@@ -366,7 +366,7 @@ func TestRazorpayPlanGraceAndRestore(t *testing.T) {
 	if err := h.store.Pool().QueryRow(ctx, `SELECT effective_features('', '{}', '{}')`).Scan(&defaults); err != nil {
 		t.Fatal(err)
 	}
-	if a := h.me(); a.Plan != "" || fmt.Sprint(a.Features) != fmt.Sprint(defaults) {
+	if a := h.me(); a.Plan != "" || fmt.Sprint(a.Features) != fmt.Sprint(types.EffectiveFeatures(defaults)) {
 		t.Fatalf("after lapse: plan %q features %v, want none and %v", a.Plan, a.Features, defaults)
 	}
 

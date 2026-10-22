@@ -583,6 +583,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/plan-features", s.handlePlanFeatures)
 			r.Put("/plan-features", s.handleSetPlanFeatures)
 			r.Patch("/users/{id}/features", s.handleSetFeature)
+			r.Put("/users/{id}/features", s.handleSetFeatures)
 			r.Delete("/users/{id}", s.handleAdminDeleteUser)
 
 			r.Get("/webinars", s.handleAdminWebinars)
@@ -880,5 +881,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		// The admin screen renders one switch per entry, so the list of switches
 		// travels with the operator settings rather than with the accounts.
 		FeatureCatalogue: types.Features,
+		FeatureGroups:    types.FeatureGroups,
 	})
 }

@@ -1,4 +1,4 @@
-import type { Feature, PlanFeatures } from "./api-types.ts";
+import type { Feature, FeatureGrant, FeatureGroup, PlanFeatures } from "./api-types.ts";
 
 /* Which switches an admin sees under Features on an account row.
  *
@@ -19,6 +19,10 @@ export type AccountFeatureRow = {
   source: "feature";
   label: string;
   description: string;
+  /* The FeatureGroup heading it is filed under. */
+  group: string;
+  /* The switches it needs to be in effect (Feature.requires). */
+  requires: string[];
 };
 
 export function accountFeatureRows(
@@ -31,6 +35,8 @@ export function accountFeatureRows(
         source: "feature",
         label: f.label,
         description: f.description,
+        group: f.group,
+        requires: f.requires ?? [],
       }))
     : [];
   return features;
@@ -79,5 +85,57 @@ export function withOverride(
   const next = { ...(overrides ?? {}) };
   if (state === "inherit") delete next[key];
   else next[key] = state === "on";
+  return next;
+}
+
+/* The rows under their group headings, in the server's group order; a row whose group the
+ * server did not list goes under "Other" at the end, so nothing is ever hidden. Empty groups
+ * are left out. */
+export type AccountFeatureGroup = { key: string; label: string; rows: AccountFeatureRow[] };
+
+export function groupFeatureRows(
+  rows: readonly AccountFeatureRow[],
+  groups: readonly FeatureGroup[] | null | undefined,
+): AccountFeatureGroup[] {
+  const known = groups ?? [];
+  const out: AccountFeatureGroup[] = known.map((g) => ({ key: g.key, label: g.label, rows: [] }));
+  const other: AccountFeatureGroup = { key: "other", label: "Other", rows: [] };
+  for (const row of rows) {
+    (out.find((g) => g.key === row.group) ?? other).rows.push(row);
+  }
+  return [...out, other].filter((g) => g.rows.length > 0);
+}
+
+/* The labels of the switches a row needs that are not in effect for this account, e.g.
+ * ["AI writing"] for AI knowledge on an account without AI. Empty when nothing is missing.
+ * The server already leaves such a row out of `features`; this says why. */
+export function unmetRequirements(
+  row: Pick<AccountFeatureRow, "requires">,
+  features: readonly string[] | null | undefined,
+  catalogue: readonly Feature[],
+): string[] {
+  const on = new Set(features ?? []);
+  return row.requires
+    .filter((key) => !on.has(key))
+    .map((key) => catalogue.find((f) => f.key === key)?.label ?? key);
+}
+
+/* The one request that sets every row of a group to the same state (PUT …/features). */
+export function bulkGrants(rows: readonly AccountFeatureRow[], state: OverrideState): FeatureGrant[] {
+  return rows.map((row) =>
+    state === "inherit"
+      ? { feature: row.id, enabled: false, inherit: true }
+      : { feature: row.id, enabled: state === "on" },
+  );
+}
+
+// The override map after a bulk change, matching what the server now stores.
+export function withOverrides(
+  overrides: Record<string, boolean> | null | undefined,
+  keys: readonly string[],
+  state: OverrideState,
+): Record<string, boolean> {
+  let next = { ...(overrides ?? {}) };
+  for (const key of keys) next = withOverride(next, key, state);
   return next;
 }

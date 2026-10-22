@@ -998,6 +998,12 @@ func (h *harness) newWebinar(topic string, mutate func(*types.WebinarInput)) typ
 	if mutate != nil {
 		mutate(&in)
 	}
+	/* A simulive needs the account's simulive switch (off for a new account, migrations/
+	 * 0142). Tests that make one are about the simulive, not the switch, which
+	 * TestSimuliveAndMeetingsNeedTheirSwitch covers. */
+	if in.Kind == types.KindSimulive {
+		grantFeature(h.t, h, meAccount(h.t, h).ID, types.FeatureSimulive)
+	}
 	var placeAt time.Time
 	place := false
 	if at, err := time.Parse(time.RFC3339, in.StartsAt); err == nil {

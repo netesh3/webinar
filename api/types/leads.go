@@ -15,8 +15,10 @@ const (
 )
 
 /* Why the AI part is not there (LeadsResponse.AIStatus, FollowupsResponse.Status):
- * ready, or one of the recap's reasons — ai_off, ai_limit, ai_unavailable, not_ended,
- * processing, failed — or empty (nobody to write for). */
+ * ready, or one of the recap's reasons — ai_off (the ACCOUNT has no ai feature),
+ * ai_session_off (the account has AI but this session's AI switch was off), ai_limit (the
+ * monthly AI budget is used up), ai_unavailable, not_ended, processing, failed — or empty
+ * (nobody took part, so nobody to write for). */
 const (
 	AIStatusReady = "ready"
 )
@@ -89,7 +91,7 @@ type FollowupGroup struct {
 /* FollowupsResponse is GET /api/host/webinars/{slug}/followups[?lang=en|hinglish].
  * Language is what the drafts are in: detected from what was said unless the host picked.
  * ReplayLink fills {{replay_link}}: the latest public recording, empty when there is none. Errors: 429 ai_limit, 503 ai_unavailable. Status says why there are no drafts
- * otherwise (ai_off, not_ended, empty, processing, failed). */
+ * otherwise (ai_off, ai_session_off, not_ended, empty, processing, failed). */
 type FollowupsResponse struct {
 	Status      string          `json:"status"`
 	Language    string          `json:"language"`

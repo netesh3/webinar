@@ -143,7 +143,7 @@ func (s *Server) qaAutoDraft(ctx context.Context, wb types.Webinar, created []st
 		return 0, nil
 	}
 	slug := wb.ID
-	has, err := s.store.SessionHasKnowledge(ctx, slug)
+	has, err := s.sessionKnowledge(ctx, wb)
 	if err != nil || !has {
 		return 0, err
 	}
@@ -316,7 +316,7 @@ func (s *Server) handleQASuggest(w http.ResponseWriter, r *http.Request) {
 
 	// The knowledge: the best chunks for the question; with none, topic and description only.
 	var pool excerptPool
-	if in.HasKnowledge, err = s.store.SessionHasKnowledge(r.Context(), slug); err != nil {
+	if in.HasKnowledge, err = s.sessionKnowledge(r.Context(), wb); err != nil {
 		s.log.Warn("qa suggest: knowledge", "slug", slug, "error", err)
 	}
 	if in.HasKnowledge {
