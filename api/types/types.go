@@ -36,6 +36,8 @@ const (
 	KindLive      WebinarKind = "live"
 	KindSimulive  WebinarKind = "simulive"
 	KindRecurring WebinarKind = "recurring"
+	// KindMeeting is a meeting: everyone admitted is on the stage, sized by PlanMeetingCap.
+	KindMeeting WebinarKind = "meeting"
 )
 
 type ApprovalMode string
@@ -2991,6 +2993,11 @@ type AdminUser struct {
 	// PlanStageSeats is the plan's stage cap; StageSeats is what applies (override or plan).
 	PlanStageSeats int `json:"planStageSeats"`
 	StageSeats     int `json:"stageSeats"`
+	// MeetingCap is an admin's override of the plan's meeting size (PlanMeetingCap); nil uses
+	// the plan. PlanMeetingSeats is the plan's; MeetingSeats is what applies.
+	MeetingCap       *int `json:"meetingCap,omitempty"`
+	PlanMeetingSeats int  `json:"planMeetingSeats"`
+	MeetingSeats     int  `json:"meetingSeats"`
 	// Plan is the paid tier, empty for the launch default.
 	Plan Plan `json:"plan,omitempty"`
 	// TrialFlag is set when this account's free trial matched an earlier trial's
@@ -3470,6 +3477,14 @@ type SetUserStageCapRequest struct {
 // MaxStageCapOverride is the largest stage an admin may allow one account.
 const MaxStageCapOverride = 25
 
+// SetUserMeetingCapRequest is PATCH /api/admin/users/{id}/meeting-cap. Null goes back to the plan.
+type SetUserMeetingCapRequest struct {
+	MeetingCap *int `json:"meetingCap"`
+}
+
+// MaxMeetingCapOverride is the most people an admin may allow in one account's meetings.
+const MaxMeetingCapOverride = 50
+
 type SetUserMaxDurationRequest struct {
 	MaxDurationMin *int `json:"maxDurationMin"`
 }
@@ -3516,6 +3531,17 @@ func PlanStageCap(p Plan) int {
 	default:
 		return 3
 	}
+}
+
+/* PlanMeetingCap is the most people in one meeting at once, host included, on a plan.
+ *
+ * The same on every plan for now: 10, with an admin raising a particular account up to
+ * MaxMeetingCapOverride. Separate from PlanStageCap on purpose — a meeting is all stage, so its
+ * size is the whole room, and webinars keep their own stage caps. In a meeting each person
+ * downloads at most a page of grid tiles (180p past nine), so traffic grows with the room,
+ * not with its square as a webinar stage's does. */
+func PlanMeetingCap(_ Plan) int {
+	return 10
 }
 
 // Valid is true for a paid plan.
