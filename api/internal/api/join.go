@@ -226,7 +226,8 @@ func (s *Server) joinAsAttendee(
 	isCdnAttendee := false
 	var cdnStreamURL string
 	var cdnLowLatency bool
-	if wb.Kind == types.KindSimulive {
+	// Live after the recording, the audience is in the ordinary live room instead.
+	if simuliveReplaying(wb) {
 		if u := s.simulivePlaybackURL(r.Context(), wb); u != "" {
 			cdnBroadcast = true
 			isCdnAttendee = !grant.Granted
@@ -357,11 +358,12 @@ func (s *Server) audienceBarrier(wb types.Webinar) *barrier {
 	}
 	// A simulive's doors open when its host chose (Options.SimuliveDoorsOpenMin): its
 	// audience waits in the room, chatting, with no video until the start.
-	grace := joinGrace
+	opens := startsAt.Add(-joinGrace)
 	if wb.Kind == types.KindSimulive {
-		grace = simuliveDoorsOpen(wb)
+		// Brought forward by the host's "Open doors now" or an earlier start set from the room.
+		opens, _ = simuliveDoorsOpenAt(wb)
 	}
-	if opens := startsAt.Add(-grace); time.Now().Before(opens) {
+	if time.Now().Before(opens) {
 		return &barrier{http.StatusConflict, "too_early",
 			"This webinar hasn't opened yet. You can join from " +
 				localTime(opens, wb.TimeZone) + "."}
@@ -545,6 +547,11 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Live after a simulive's recording: one of the host team is back within the grace.
+	if wb.SimuliveHostGoneAt != "" {
+		_ = s.store.ClearSimuliveHostGone(r.Context(), slug)
+	}
+
 	// Same as attendee join / Start: do not block the host token on egress RPC.
 	if wb.Status == types.StatusLive {
 		go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
@@ -559,7 +566,9 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 	/* A simulive's host team drops in to watch, chat and answer: they get the recording the
 	 * audience plays and a grant with no audio or video at all (Spec.NoMedia), so nothing of
 	 * theirs can reach anyone. Nor a record control — a simulive is never recorded. */
-	simulive := wb.Kind == types.KindSimulive
+	/* Once its recording has ended with them there (live after), they are on an ordinary
+	 * stage — still not recorded (issueToken). */
+	simulive := simuliveReplaying(wb)
 	streamURL := ""
 	if simulive {
 		streamURL = s.simulivePlaybackURL(r.Context(), wb)
@@ -572,7 +581,7 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 		MutedByHost: muted,
 		CoHost:      coHost,
 		NoMedia:     simulive,
-	}, !simulive, streamURL != "", streamURL, false)
+	}, wb.Kind != types.KindSimulive, streamURL != "", streamURL, false)
 }
 
 // ensureRoom creates the room with the capacity ceiling and seeds its metadata
@@ -721,6 +730,10 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 		Recording:          recording,
 		RecordingStartedAt: recordingStartedAt,
 		MaxDurationMin:     wb.MaxDurationMin,
+		SimuliveStartAt:    wb.SimuliveStartAt,
+		SimuliveDoorsOpen:  wb.SimuliveDoorsOpen,
+		SimuliveLiveAt:     wb.SimuliveLiveAt,
+		SimuliveLiveWith:   simuliveLiveWith(wb),
 	})
 	if err != nil {
 		return "", err
@@ -772,10 +785,15 @@ func (s *Server) issueToken(
 	s.log.Info("token issued",
 		"room", spec.Room, "role", spec.Role, "identity", spec.Identity,
 		"hidden", spec.Hidden, "audio_only", spec.AudioOnly, "cdn", cdnBroadcast)
-	simulive := wb.Kind == types.KindSimulive
+	simulive := simuliveReplaying(wb)
+	simuliveLive := wb.Kind == types.KindSimulive && !simulive
 	publishes := lk.CanPublish(spec.Role) && !spec.NoMedia
-	// A simulive is never recorded, whoever asks (refuseSimuliveRecording).
-	canRecord = canRecord && !simulive
+	// A simulive is never recorded, whoever asks (refuseSimuliveRecording) — nor its live part.
+	canRecord = canRecord && wb.Kind != types.KindSimulive
+	var simuliveLength int64
+	if simulive {
+		simuliveLength, _ = s.store.SimuliveLengthMs(r.Context(), wb.ID)
+	}
 	httpx.JSON(w, http.StatusOK, types.JoinResponse{
 		Token: tok,
 		// The project's OWN address, not a global one. This is why the client is threaded
@@ -814,6 +832,9 @@ func (s *Server) issueToken(
 		SimuliveCaptions: simulive && s.simuliveHasCaptions(r.Context(), wb),
 		StartsAt:         wb.StartsAt,
 		SimuliveManual:   simulive && simuliveManual(wb),
+		SimuliveStartAt:  wb.SimuliveStartAt,
+		SimuliveLengthMs: simuliveLength,
+		SimuliveLive:     simuliveLive && wb.Status == types.StatusLive,
 	})
 	return true
 }

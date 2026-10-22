@@ -742,6 +742,13 @@ func (s *Server) Routes() http.Handler {
 					r.Put("/replay/auto", s.handlePutSimuliveAuto)
 					// How a simulive starts: by itself, or by the host (simulive_live.go).
 					r.Put("/simulive-start", s.handleSetSimuliveStart)
+					// The host in the room before it starts: start now, start in N min, delay,
+					// cancel, open the doors early, end (simulive_host.go).
+					r.Post("/simulive/start-now", s.handleSimuliveStartNow)
+					r.Put("/simulive/start-at", s.handleSimuliveStartAt)
+					r.Delete("/simulive/start-at", s.handleSimuliveCancelStart)
+					r.Post("/simulive/open-doors", s.handleSimuliveOpenDoors)
+					r.Post("/simulive/end", s.handleSimuliveEnd)
 
 					r.Get("/polls", s.handleListPolls)
 					r.Post("/polls", s.handleCreatePoll)

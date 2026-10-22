@@ -84,7 +84,9 @@ func (s *Server) qaAutoAvailable(ctx context.Context, hostID string) bool {
  * the switch on, an account with both features, the AI provider configured, and the session's
  * AI allowed (sessionAIAllowed). */
 func (s *Server) qaAutoOn(ctx context.Context, wb types.Webinar) bool {
-	if wb.Kind != types.KindSimulive || !wb.Options.SimuliveAutoAnswer || wb.Status != types.StatusLive || !s.ai.Enabled() {
+	// Not once the host team is live after the recording: a human is answering.
+	if wb.Kind != types.KindSimulive || !wb.Options.SimuliveAutoAnswer || wb.Status != types.StatusLive ||
+		wb.SimuliveLiveAt != "" || !s.ai.Enabled() {
 		return false
 	}
 	return s.sessionAIAllowed(ctx, wb) && s.hostFeature(ctx, wb.Host.ID, types.FeatureReplayEngage)

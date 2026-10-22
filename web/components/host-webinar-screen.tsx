@@ -354,6 +354,20 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                 Rejoin room
               </ButtonLink>
             ) : (
+              <>
+              {/* A simulive's room may be entered any time before the start without starting
+                  it (api/internal/api/simulive_host.go): the host waits with the early
+                  audience, and starts it now or in a few minutes from there. */}
+              {webinar.kind === "simulive" && (
+                <ButtonLink
+                  href={bypass ? "/preview/room" : `/host/${slug}/room`}
+                  variant="secondary"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Enter room
+                </ButtonLink>
+              )}
               <Button
                 onClick={() => void start()}
                 disabled={busy || !liveOpen}
@@ -362,6 +376,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
                 {busy && <Spinner className="size-4" />}
                 {meeting ? "▶ Start meeting" : webinar.kind === "simulive" ? "▶ Start Simulive" : "▶ Go live"}
               </Button>
+              </>
             )}
             <Menu
               label="More actions"

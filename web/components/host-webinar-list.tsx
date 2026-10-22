@@ -471,6 +471,20 @@ function HostCard({
               >
                 Copy link
               </Button>
+              {/* A simulive's room may be entered any time before the start, without starting
+                  it: the host waits with the early audience and starts it from there. */}
+              {scheduled && simulive && (
+                <ButtonLink
+                  href={roomHref}
+                  size="sm"
+                  variant="secondary"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pointer-events-auto"
+                >
+                  Enter room
+                </ButtonLink>
+              )}
               {scheduled && (
                 <Button
                   size="sm"
@@ -479,7 +493,7 @@ function HostCard({
                   disabled={busy || !liveOpen}
                   aria-describedby={showWait ? waitReasonId : undefined}
                 >
-                  {busy ? "Starting…" : meeting ? "Start" : "Go live"}
+                  {busy ? "Starting…" : meeting ? "Start" : simulive ? "Start Simulive" : "Go live"}
                 </Button>
               )}
               {isLive && (

@@ -32,7 +32,8 @@ const webinarColumns = `
 	w.ai_enabled, ('ai' = ANY (effective_features(effective_plan(h.id), h.features, h.features_off))),
 	w.ai_off_this_session,
 	w.locked, w.audience_layout, w.sfu_project, w.image_key,
-	w.simulive_recording_id::text,
+	w.simulive_recording_id::text, w.simulive_start_at, w.simulive_doors_open,
+	w.simulive_live_at, w.simulive_host_gone_at,
 	w.stream_watch, w.stream_on, (w.stream_ingest <> ''),
 	coalesce(w.venue, 'app'), coalesce(w.zoom_id, ''), w.delivery,
 	h.id, h.name, h.title, h.org, h.initials, h.hue,
@@ -64,6 +65,9 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		imageKey    string
 		c           types.SessionControls
 		simuliveID  *string
+		simStartAt  *time.Time
+		simLiveAt   *time.Time
+		simGoneAt   *time.Time
 		streamWatch string
 		streamOn    bool
 		streamSaved bool
@@ -83,7 +87,8 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.PollsEnabled, &c.CaptionsEnabled, &c.ServerCaptions,
 		&c.AIEnabled, &c.AIAvailable, &c.AIOffThisSession,
 		&c.Locked, &c.AudienceLayout, &w.SFUProject, &imageKey,
-		&simuliveID,
+		&simuliveID, &simStartAt, &w.SimuliveDoorsOpen,
+		&simLiveAt, &simGoneAt,
 		&streamWatch, &streamOn, &streamSaved,
 		&w.Venue, &w.ZoomID, &w.Delivery,
 		&hostID, &w.Host.Name, &w.Host.Title, &w.Host.Org, &w.Host.Initials, &w.Host.Hue,
@@ -99,6 +104,15 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	w.SeriesException = exception
 	if simuliveID != nil && *simuliveID != "" {
 		w.SimuliveRecordingID = *simuliveID
+	}
+	if simStartAt != nil {
+		w.SimuliveStartAt = simStartAt.UTC().Format(time.RFC3339)
+	}
+	if simLiveAt != nil {
+		w.SimuliveLiveAt = simLiveAt.UTC().Format(time.RFC3339)
+	}
+	if simGoneAt != nil {
+		w.SimuliveHostGoneAt = simGoneAt.UTC().Format(time.RFC3339)
 	}
 	w.StreamWatchURL = streamWatch
 	w.StreamConfigured = streamOn
@@ -853,12 +867,15 @@ func (s *Store) SetStatus(ctx context.Context, slug string, status types.Webinar
 	case types.StatusLive:
 		// A new live session starts AI-clean, unless the switch is already off.
 		col = `started_at = coalesce(started_at, now()), ended_at = NULL, empty_since = NULL,
+		       simulive_start_at = NULL,
 		       ai_off_this_session = NOT ai_enabled,
 		       captions_shown_live = captions_shown_live OR captions_enabled`
 	case types.StatusEnded:
 		col = `ended_at = now(), empty_since = NULL`
 	case types.StatusScheduled, types.StatusDraft:
-		col = `started_at = NULL, ended_at = NULL, empty_since = NULL`
+		col = `started_at = NULL, ended_at = NULL, empty_since = NULL,
+		       simulive_start_at = NULL, simulive_doors_open = false,
+		       simulive_live_at = NULL, simulive_host_gone_at = NULL`
 	default:
 		return types.Webinar{}, fmt.Errorf("%w: unknown status %q", ErrInvalid, status)
 	}

@@ -128,6 +128,7 @@ import { MeetingLimitBanner, endedByLimit } from "./meeting-limit-banner";
 import { KeepScreenOn } from "@/lib/wake-lock";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 import { EdgeAudienceRoom } from "./edge-audience-room";
+import { liveWithLabel } from "@/lib/simulive-host";
 import { EdgeBadge } from "./edge-badge";
 import { JoinTap } from "./join-tap";
 
@@ -222,6 +223,8 @@ export function WebinarRoom({
     opensPromoted(door, initialJoin.role),
   );
   const [transitioning, setTransitioning] = useState(false);
+  // "Live with Asha": a simulive going live with its host after the recording (below).
+  const [transitionLabel, setTransitionLabel] = useState<string | null>(null);
 
   /* One promotion at a time. An edge viewer hears about the same promotion twice — the
    * accept response and the stage-granted event — and a second join while the first is in
@@ -243,6 +246,32 @@ export function WebinarRoom({
       promoting.current = false;
     }
   }, [slug, joinKey]);
+
+  /* A simulive's recording ended with the host team in the room, and it carries on live
+   * (api/internal/api/simulive_host.go): everyone re-joins through the door they came in by —
+   * the host team for a stage grant (mic and camera off), the audience for the live room. */
+  const goingLive = useRef(false);
+  const handleSimuliveLive = useCallback(
+    async (hostName?: string) => {
+      if (goingLive.current) return;
+      goingLive.current = true;
+      setTransitionLabel(liveWithLabel(hostName));
+      setTransitioning(true);
+      try {
+        const fresh = scheduledPresenter(door, initialJoin.role)
+          ? await api.hostJoin(slug)
+          : await api.join(slug, joinKey);
+        setCurrentJoin(fresh);
+      } catch {
+        // The session ended meanwhile, or the API is unreachable: the room shows what it can.
+        goingLive.current = false;
+      } finally {
+        setTransitioning(false);
+        setTransitionLabel(null);
+      }
+    },
+    [slug, joinKey, door, initialJoin.role],
+  );
 
   const handleDemoted = useCallback(async () => {
     setTransitioning(true);
@@ -333,7 +362,7 @@ export function WebinarRoom({
       <main className="grid min-h-dvh place-items-center bg-stage">
         <div className="flex flex-col items-center gap-3">
           <Spinner className="size-8 text-brand" />
-          <p className="text-[13px] text-white">Updating stage status...</p>
+          <p className="text-[13px] text-white">{transitionLabel ?? "Updating stage status..."}</p>
         </div>
       </main>
     );
@@ -359,7 +388,8 @@ export function WebinarRoom({
    * watching the recording, chatting and answering — with a grant that publishes no audio or
    * video at all (JoinResponse.simulive, lk.Spec.NoMedia). */
   const simulivePresenter = isScheduledPresenter && Boolean(currentJoin.simulive);
-  if (webinarUsesCdn && (!isScheduledPresenter || simulivePresenter) && !promotedToStage) {
+  // Live after a simulive's recording, the audience is in the ordinary live room below.
+  if (webinarUsesCdn && !currentJoin.simuliveLive && (!isScheduledPresenter || simulivePresenter) && !promotedToStage) {
     return (
       <CdnAttendeeRoom
         join={currentJoin}
@@ -370,6 +400,7 @@ export function WebinarRoom({
         onLeave={onLeave}
         onPromoted={handlePromoted}
         presenter={simulivePresenter}
+        onSimuliveLive={handleSimuliveLive}
       />
     );
   }
@@ -519,7 +550,9 @@ function RoomSession({
   // A publisher checks their devices first; an attendee publishes nothing, so a
   // preview screen would be a pointless click between them and the webinar. A publisher
   // coming back after a refresh already checked them, minutes ago.
-  const [checked, setChecked] = useState(!join.canPublish || rejoined);
+  // The host team going live after a simulive's recording walks straight on, mic and camera
+  // off (rejoinEntry(null)): the audience is already waiting for them.
+  const [checked, setChecked] = useState(!join.canPublish || rejoined || Boolean(join.simuliveLive));
   const [entry, setEntry] = useState<Entry>(() => ({
     ...(meetingEntry
       ? meetingRejoinEntry(rejoined ? restored : null, hostMuted)
