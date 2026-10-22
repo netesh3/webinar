@@ -13,6 +13,7 @@ import {
 import { ENGAGE_HOME, MESSAGES_HREF, PEOPLE_HREF, useReplies } from "@/engage";
 import { ApiError, api } from "@/lib/api";
 import {
+  FeatureAI,
   IntegrationActionNavigate,
   IntegrationStatusConnected,
   type IntegrationCard,
@@ -22,7 +23,7 @@ import { noteAttendeeVisit } from "@/lib/host-welcome";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
-import { BookmarkIcon, CalendarIcon, CameraIcon, MaterialIcon, MenuIcon, SettingsIcon, UsersIcon, WhatsAppIcon } from "./icons";
+import { BookmarkIcon, CalendarIcon, CameraIcon, MaterialIcon, MenuIcon, SettingsIcon, SparklesIcon, UsersIcon, WhatsAppIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { useTheme } from "./theme";
@@ -336,8 +337,13 @@ function HostPrimaryNav() {
     pathname === "/host/meetings" ||
     pathname.startsWith("/host/meetings/") ||
     pathname === "/host/new/meeting";
+  // The AI knowledge library: only for an account with the ai feature (the server refuses
+  // the rest anyway).
+  const hasAI = (account?.features ?? []).includes(FeatureAI);
+  const onKnowledge = pathname === "/host/knowledge" || pathname.startsWith("/host/knowledge/");
   const onWebinars =
     !onMeetings &&
+    !onKnowledge &&
     !onPeople &&
     !onWhatsApp &&
     !onEmail &&
@@ -374,6 +380,14 @@ function HostPrimaryNav() {
         active={onPeople}
         icon={<UsersIcon />}
       />
+      {hasAI && (
+        <Item
+          href="/host/knowledge"
+          label="AI knowledge"
+          active={onKnowledge}
+          icon={<SparklesIcon />}
+        />
+      )}
       <button
         type="button"
         className="sb-int-h"

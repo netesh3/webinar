@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { CopyField, Spinner, Tabs } from "./controls";
 import { ApprovalQueue } from "./approval-queue";
 import { AIRecapCard } from "./ai-recap-card";
+import { SessionKnowledgeCard } from "./knowledge/session-knowledge-card";
 import { AILeadsAndFollowups } from "./ai-leads-followups";
 import { RecordingsTab } from "./recordings-tab";
 import { EngagementTab } from "./engagement/engagement-tab";
@@ -23,6 +24,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import {
   ChannelEmail,
+  FeatureAI,
   FeatureCloudRecording,
   FeatureJoinWithoutRegistration,
   type CustomQuestion,
@@ -103,6 +105,9 @@ export function HostWebinarTabs({
   const { whatsappConnect } = useAppConfig();
   const { account } = useSession();
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
+  // The AI knowledge pick: the session's documents, for an account with AI. A co-host on
+  // someone else's session reads the host's; the server answers feature_off for the rest.
+  const aiKnowledge = (account?.features ?? []).includes(FeatureAI);
   /* A meeting has no People and no Follow up (lib/host-tabs.ts meetingTabs), and its Overview
    * and Setup leave out what is about registrants. Recording, chat, Q&A, polls and Results are
    * the webinar's own, because a meeting's room has all of them. */
@@ -190,6 +195,7 @@ export function HostWebinarTabs({
       {tab === "Setup" && meeting && (
         <div className="grid gap-4">
           <SettingsTab webinar={w} />
+          {aiKnowledge && <SessionKnowledgeCard slug={w.id} />}
           <HostLinkCard webinar={w} />
         </div>
       )}
@@ -217,6 +223,7 @@ export function HostWebinarTabs({
             />
           </Card>
           <SettingsTab webinar={w} />
+          {aiKnowledge && <SessionKnowledgeCard slug={w.id} />}
           <StageTab webinar={w} onChanged={onChanged} />
           <HostLinkCard webinar={w} />
         </div>

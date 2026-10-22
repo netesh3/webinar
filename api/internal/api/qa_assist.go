@@ -8,13 +8,11 @@ import (
 	"math"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/ai"
 	"github.com/netkumar/webcast/api/internal/aiwrite"
 	"github.com/netkumar/webcast/api/internal/httpx"
@@ -30,9 +28,9 @@ import (
  *             shows "3 people asked this" once instead of three cards.
  *   rank      a "Top questions" strip: clusters by upvotes, askers and recency, counted here
  *             (rankQAClusters), never by a model.
- *   suggest   on the host's click, one call drafts a short answer from the session's topic and
- *             the last few minutes of transcript. Returned to that host only; never posted,
- *             never stored.
+ *   draft     a short answer grounded in the host's AI knowledge, on a host's click or, for a
+ *             new cluster the knowledge has hits for, unasked and batched with the grouping
+ *             pass. Host team only until a host posts it. See qa_drafts.go.
  *
  * All of it only while sessionAIAllowed (the account's ai feature AND the room's AI switch);
  * otherwise GET /qa/clusters says enabled:false and the panel is the plain list it always was.
@@ -233,6 +231,17 @@ func (s *Server) runQAPass(ctx context.Context, wb types.Webinar) (bool, error) 
 		}
 	}
 	announce := len(plan.assign) > 0
+	if passErr == nil && len(plan.created) > 0 {
+		// The new clusters' drafts, from the knowledge: one call for all of them.
+		n, err := s.qaAutoDraft(bg, wb, plan.created, plan.members(qs))
+		switch {
+		case errors.Is(err, errAILimit):
+			passErr = err
+		case err != nil:
+			s.log.Warn("qa assist: auto drafts", "slug", slug, "error", err)
+		}
+		announce = announce || n > 0
+	}
 	switch {
 	case errors.Is(passErr, errAILimit):
 		now := time.Now()
@@ -335,6 +344,17 @@ type qaPlan struct {
 	groups   []qaGroup
 	created  []store.QANewCluster
 	assign   map[string]string
+}
+
+// members is each cluster the plan created, with the questions it placed in it.
+func (p *qaPlan) members(qs []store.QAQuestion) map[string][]store.QAQuestion {
+	out := map[string][]store.QAQuestion{}
+	for _, q := range qs {
+		if cid, ok := p.assign[q.ID]; ok {
+			out[cid] = append(out[cid], q)
+		}
+	}
+	return out
 }
 
 func (p *qaPlan) join(g qaGroup, clusterID string) {
@@ -547,105 +567,13 @@ func (s *Server) handleQAClusters(w http.ResponseWriter, r *http.Request) {
 	}
 	out.Clusters = buildQAClusters(qs, time.Now())
 	out.Top = rankQAClusters(out.Clusters, qaTopN)
+	if drafts, err := s.store.QADrafts(r.Context(), slug); err != nil {
+		s.log.Warn("qa clusters: drafts", "slug", slug, "error", err)
+	} else {
+		attachQADrafts(out.Clusters, drafts)
+	}
 	if at, err := s.store.QALimitedAt(r.Context(), slug); err == nil && !at.IsZero() {
 		out.Limited = true
 	}
 	httpx.JSON(w, http.StatusOK, out)
-}
-
-// handleQASuggest is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: one call, a
-// private draft for the host who asked. Nothing is posted or stored.
-func (s *Server) handleQASuggest(w http.ResponseWriter, r *http.Request) {
-	slug := slugFromContext(r.Context())
-	id := chi.URLParam(r, "id")
-	wb, err := s.store.WebinarBySlug(r.Context(), slug)
-	if err != nil {
-		s.fail(w, r, "qa suggest: webinar", err)
-		return
-	}
-	if !s.sessionAIAllowed(r.Context(), wb) {
-		httpx.Error(w, http.StatusForbidden, "ai_off", "AI is off for this session.")
-		return
-	}
-
-	in := aiwrite.QAAnswerInput{Topic: wb.Topic, Description: wb.Summary}
-	if d := strings.TrimSpace(wb.Descript); d != "" {
-		in.Description = d
-	}
-	if qid, ok := strings.CutPrefix(id, qaProvisional); ok {
-		text, err := s.store.QAQuestionText(r.Context(), slug, qid)
-		if errors.Is(err, store.ErrNotFound) {
-			httpx.Error(w, http.StatusNotFound, "not_found", "That question isn't in this session.")
-			return
-		}
-		if err != nil {
-			s.fail(w, r, "qa suggest: question", err)
-			return
-		}
-		in.Question, in.Asked = text, []string{text}
-	} else {
-		canonical, err := s.store.QAClusterCanonical(r.Context(), slug, id)
-		if errors.Is(err, store.ErrNotFound) {
-			httpx.Error(w, http.StatusNotFound, "not_found", "That question isn't in this session.")
-			return
-		}
-		if err != nil {
-			s.fail(w, r, "qa suggest: cluster", err)
-			return
-		}
-		asked, err := s.store.QAQuestionTexts(r.Context(), slug, id, 5)
-		if err != nil {
-			s.fail(w, r, "qa suggest: questions", err)
-			return
-		}
-		in.Question, in.Asked = canonical, asked
-	}
-
-	user := userFromContext(r.Context())
-	if ok, retry := s.aiWriteLimit.Allow(user.ID); !ok {
-		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
-		httpx.Error(w, http.StatusTooManyRequests, "rate_limited", "That's a lot of drafts in a minute. Try again shortly.")
-		return
-	}
-
-	lines, err := s.store.RecapCaptions(r.Context(), slug, time.Now().Add(-qaAnswerTranscript), 400)
-	if err != nil {
-		s.log.Warn("qa suggest: captions", "slug", slug, "error", err)
-	}
-	for _, l := range lines {
-		name := l.Name
-		if name == "" {
-			name = "Speaker"
-		}
-		in.Recent = append(in.Recent, name+": "+l.Text)
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 19*time.Second)
-	defer cancel()
-	// Charged to the session's host, whose allowance it is, whichever co-host clicked.
-	reply, err := s.aiComplete(ctx, types.AIFeatureQAAnswer, wb.Host.ID, ai.Request{
-		Messages:       aiwrite.QAAnswerMessages(in),
-		MaxTokens:      400,
-		AttemptTimeout: 15 * time.Second,
-	})
-	switch {
-	case errors.Is(err, errAILimit):
-		httpx.Error(w, http.StatusTooManyRequests, "ai_limit",
-			aiLimitMessage+" Suggested answers are paused; you can still answer by hand.")
-		return
-	case errors.Is(err, ai.ErrUnavailable):
-		httpx.Error(w, http.StatusServiceUnavailable, "ai_unavailable",
-			"Suggested answers aren't available right now. Try again in a minute.")
-		return
-	case err != nil:
-		s.fail(w, r, "qa suggest", err)
-		return
-	}
-	answer := aiwrite.CleanQAAnswer(reply.Text)
-	if answer == "" {
-		httpx.Error(w, http.StatusServiceUnavailable, "ai_unavailable",
-			"Suggested answers aren't available right now. Try again in a minute.")
-		return
-	}
-	httpx.JSON(w, http.StatusOK, types.QASuggestResponse{Answer: answer})
 }

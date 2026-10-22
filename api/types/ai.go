@@ -35,6 +35,8 @@ const (
 	// The live Q&A assistant: grouping duplicate questions, and a host's draft answer.
 	AIFeatureQACluster = "qa_cluster"
 	AIFeatureQAAnswer  = "qa_answer"
+	// Draft answers the assistant writes unasked, from the AI knowledge, batched with grouping.
+	AIFeatureQAAutoDraft = "qa_autodraft"
 )
 
 // AIFeatureUsage is one AI feature's calls this month.
@@ -107,6 +109,41 @@ type QACluster struct {
 	LatestAt    string  `json:"latestAt"`
 	Score       float64 `json:"score"`
 	Provisional bool    `json:"provisional,omitempty"`
+	// Draft is the answer waiting for the host team's review, if any (host team only).
+	Draft *QADraft `json:"draft,omitempty"`
+}
+
+/* QADraft is a draft answer to one cluster (or one ungrouped question), for the host and
+ * co-hosts only. Nothing reaches the audience until a host posts it (POST
+ * /qa/drafts/{id}/post), after editing it if they like; it is then the host's answer on each
+ * open question, through the ordinary answer path. */
+type QADraft struct {
+	ID     string `json:"id"`
+	Answer string `json:"answer"`
+	// Grounded is true when the answer comes from the host's AI knowledge (or what was said in
+	// the session). False is a general answer, and the answer then starts "Not in your
+	// knowledge — general answer:" when the session has knowledge to draw on.
+	Grounded bool `json:"grounded"`
+	// Sources are the titles of the knowledge documents the answer drew on.
+	Sources []string `json:"sources"`
+	// Auto is a draft written unasked, when the question arrived.
+	Auto      bool   `json:"auto"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// QAPostDraftRequest is POST /api/host/webinars/{slug}/qa/drafts/{id}/post: the answer as the
+// host edited it (at most QAAnswerMaxRunes characters).
+type QAPostDraftRequest struct {
+	Answer string `json:"answer"`
+}
+
+// QAAnswerMaxRunes bounds a posted answer: what the room's answer packet carries.
+const QAAnswerMaxRunes = 600
+
+// QAPostDraftResponse is the questions the answer was posted on, now answered.
+type QAPostDraftResponse struct {
+	QuestionIDs []string `json:"questionIds"`
+	Answer      string   `json:"answer"`
 }
 
 // QAClustersResponse is GET /api/host/webinars/{slug}/qa/clusters.
@@ -122,8 +159,101 @@ type QAClustersResponse struct {
 	Top []string `json:"top"`
 }
 
-// QASuggestResponse is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: a private
-// draft for the host. Never posted, never stored.
+/* QASuggestResponse is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: a draft for
+ * the host team, grounded in the session's AI knowledge where it covers the question. Kept as
+ * the cluster's draft (replacing an earlier one) until posted or discarded; never posted by
+ * itself. Answer is Draft.Answer. */
 type QASuggestResponse struct {
-	Answer string `json:"answer"`
+	Answer string  `json:"answer"`
+	Draft  QADraft `json:"draft"`
+}
+
+/* The AI knowledge: a host's library of documents (pasted text, or TXT, Markdown, PDF and
+ * DOCX uploads, of which only the extracted text is kept) that grounds the live Q&A
+ * assistant's draft answers. Every session uses every document unless a host unticks it for
+ * that session. Only for accounts with the ai feature. See api/internal/api/knowledge.go. */
+
+// The library's limits. Separate from the media quota: no file is stored, only its text.
+const (
+	KnowledgeMaxDocs        = 50
+	KnowledgeMaxDocWords    = 50_000
+	KnowledgeMaxWords       = 250_000
+	KnowledgeMaxUploadBytes = 10 << 20
+	KnowledgeMaxTitleRunes  = 120
+)
+
+// KnowledgeDoc is one document in the library.
+type KnowledgeDoc struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Source is text (pasted), txt, md, pdf or docx.
+	Source   string `json:"source"`
+	Filename string `json:"filename,omitempty"`
+	Bytes    int64  `json:"bytes"`
+	Words    int    `json:"words"`
+	Chunks   int    `json:"chunks"`
+	// Preview is the start of the extracted text.
+	Preview   string `json:"preview"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// KnowledgeLimits are the caps the library is held to.
+type KnowledgeLimits struct {
+	MaxDocs        int   `json:"maxDocs"`
+	MaxDocWords    int   `json:"maxDocWords"`
+	MaxWords       int   `json:"maxWords"`
+	MaxUploadBytes int64 `json:"maxUploadBytes"`
+}
+
+// KnowledgeLibrary is GET /api/host/knowledge: the host's documents, newest first.
+type KnowledgeLibrary struct {
+	Docs      []KnowledgeDoc  `json:"docs"`
+	UsedWords int             `json:"usedWords"`
+	Limits    KnowledgeLimits `json:"limits"`
+}
+
+// KnowledgeDocDetail is GET /api/host/knowledge/{id}: a document with its extracted text (the
+// first KnowledgeTextPreviewRunes characters; Truncated when there is more).
+type KnowledgeDocDetail struct {
+	Doc       KnowledgeDoc `json:"doc"`
+	Text      string       `json:"text"`
+	Truncated bool         `json:"truncated"`
+}
+
+// KnowledgeTextPreviewRunes bounds the text a document's detail returns.
+const KnowledgeTextPreviewRunes = 20_000
+
+/* KnowledgeCreateRequest is POST /api/host/knowledge: pasted text. Uploads are POST
+ * /api/host/knowledge/upload?filename=…&title=… with the raw file as the body. Errors: 403
+ * feature_off, 413 too_large, 415 unsupported, 422 (fields title/text; unreadable, no_text,
+ * too_long, library_full). */
+type KnowledgeCreateRequest struct {
+	Title string `json:"title"`
+	Text  string `json:"text"`
+}
+
+// KnowledgeRenameRequest is PATCH /api/host/knowledge/{id}.
+type KnowledgeRenameRequest struct {
+	Title string `json:"title"`
+}
+
+// SessionKnowledgeDoc is one library document as a session sees it.
+type SessionKnowledgeDoc struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Source   string `json:"source"`
+	Words    int    `json:"words"`
+	Included bool   `json:"included"`
+}
+
+// SessionKnowledge is GET /api/host/webinars/{slug}/knowledge: the session host's library,
+// each document ticked unless it was left out of this session.
+type SessionKnowledge struct {
+	Docs []SessionKnowledgeDoc `json:"docs"`
+}
+
+// SessionKnowledgePatch is PATCH /api/host/webinars/{slug}/knowledge/{docId}.
+type SessionKnowledgePatch struct {
+	Included bool `json:"included"`
 }

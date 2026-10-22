@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import type { QACluster } from "./api-types.ts";
+import type { QACluster, QADraft } from "./api-types.ts";
 import type { Question } from "./realtime.ts";
-import { askedLabel, clusterIdFor, groupOpenQuestions, qaAssistOn, suggestError, topQuestions } from "./qa-clusters.ts";
+import { askedLabel, clusterIdFor, draftFor, groupOpenQuestions, pickDraft, qaAssistOn, suggestError, topQuestions } from "./qa-clusters.ts";
 
 const q = (id: string, who: string, votes = 0): Question => ({
   kind: "question",
@@ -74,5 +74,18 @@ assert.deepEqual(topQuestions(["fee", "solo"], clusters, [q("1", "a")]), []);
 // Errors: the server's sentence when there is one.
 assert.equal(suggestError(new Error("AI limit reached for this month.")), "AI limit reached for this month.");
 assert.equal(suggestError(null), "Couldn't draft an answer. Try again.");
+
+// Drafts: the cluster's own, and the newer of this host's and the server's, minus one just
+// posted or discarded.
+const d = (id: string, at: string): QADraft => ({ id, answer: id, grounded: true, sources: [], auto: false, createdAt: at });
+const withDraft = [{ ...c("fee", ["1"]), draft: d("server", "2026-10-22T10:00:00Z") }, c("solo", ["2"])];
+assert.equal(draftFor("fee", withDraft)?.id, "server");
+assert.equal(draftFor("solo", withDraft), undefined);
+assert.equal(draftFor("q_9", withDraft), undefined);
+assert.equal(pickDraft(null, undefined, null), null);
+assert.equal(pickDraft(d("mine", "2026-10-22T10:00:05Z"), d("server", "2026-10-22T10:00:00Z"), null)?.id, "mine");
+assert.equal(pickDraft(d("mine", "2026-10-22T09:00:00Z"), d("server", "2026-10-22T10:00:00Z"), null)?.id, "server");
+assert.equal(pickDraft(d("mine", "2026-10-22T10:00:05Z"), d("server", "2026-10-22T10:00:00Z"), "mine")?.id, "server");
+assert.equal(pickDraft(null, d("server", "2026-10-22T10:00:00Z"), "server"), null);
 
 console.log("qa-clusters: ok");

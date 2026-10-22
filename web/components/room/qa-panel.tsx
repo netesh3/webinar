@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { clusterIdFor, groupOpenQuestions, qaAssistOn, topQuestions } from "@/lib/qa-clusters";
+import { clusterIdFor, draftFor, groupOpenQuestions, qaAssistOn, topQuestions } from "@/lib/qa-clusters";
 import { answerKind, questionAuthor } from "@/lib/qa-view";
 import { Alert } from "../controls";
 import { ArrowUpIcon, CheckIcon, EyeOffIcon, PinIcon, SendIcon } from "../icons";
@@ -42,6 +42,11 @@ export function QAPanel() {
   const top = assist ? topQuestions(assist.top, assist.clusters, open) : [];
   const markAnswered = (ids: string[]) => {
     for (const id of ids) void persist(id, { answered: true, answer: "" });
+  };
+  // A posted draft: the server already stored the answer on each question; this is the
+  // room's usual answer packet for each, the same one Send answer sends.
+  const posted = (ids: string[], answer: string) => {
+    for (const id of ids) void realtime.modQuestion(id, { answered: true, answer });
   };
 
   async function persist(
@@ -90,7 +95,15 @@ export function QAPanel() {
         ) : (
           <div className="space-y-2.5">
             {assist?.limited && <QALimitNote />}
-            {assist && <TopQuestionsStrip items={top} slug={slug} onAnswered={markAnswered} />}
+            {assist && (
+              <TopQuestionsStrip
+                items={top}
+                slug={slug}
+                clusters={assist.clusters}
+                onAnswered={markAnswered}
+                onPosted={posted}
+              />
+            )}
             {done.length > 0 && open.length > 0 && <SectionLabel title="Open" count={open.length} />}
             {items
               ? items.map((item) =>
@@ -99,7 +112,9 @@ export function QAPanel() {
                       key={item.id}
                       item={item}
                       slug={slug}
+                      draft={draftFor(item.id, assist?.clusters ?? [])}
                       onAnswered={markAnswered}
+                      onPosted={posted}
                       renderQuestion={(q) => (
                         <QuestionCard
                           key={q.id}
@@ -127,7 +142,9 @@ export function QAPanel() {
                         <SuggestAnswer
                           slug={slug}
                           clusterId={clusterIdFor(item.question.id, assist?.clusters ?? [])}
+                          draft={draftFor(clusterIdFor(item.question.id, assist?.clusters ?? []), assist?.clusters ?? [])}
                           onAnswered={() => markAnswered([item.question.id])}
+                          onPosted={posted}
                         />
                       }
                     />

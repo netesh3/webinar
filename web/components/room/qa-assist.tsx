@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { QAClustersResponse } from "@/lib/api-types";
+import type { QAClustersResponse, QADraft } from "@/lib/api-types";
+import { answerProblem, draftSourceChips, MAX_ANSWER_CHARS } from "@/lib/knowledge";
 import { useCoalescingReader } from "@/lib/polls";
-import { askedLabel, suggestError, type QAItem, type TopQuestion } from "@/lib/qa-clusters";
+import { askedLabel, draftFor, pickDraft, suggestError, type QAItem, type TopQuestion } from "@/lib/qa-clusters";
 import type { Question } from "@/lib/realtime";
-import { ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, SparklesIcon } from "../icons";
+import { ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, SendIcon, SparklesIcon } from "../icons";
 import { useToast } from "../providers";
 
 /* The live Q&A assistant's pieces of the host's Q&A panel (qa-panel.tsx): the Top questions
- * strip, a cluster card ("3 people asked this", expandable to the originals) and the private
- * suggested answer. Only ever drawn for the host and co-hosts, while qaAssistOn and the
- * server's enabled hold; see api/internal/api/qa_assist.go. */
+ * strip, a cluster card ("3 people asked this", expandable to the originals) and the draft
+ * answer (from the AI knowledge; host team only until a host posts it). Only ever drawn for the
+ * host and co-hosts, while qaAssistOn and the server's enabled hold; see
+ * api/internal/api/qa_assist.go and qa_drafts.go. */
 
 // How often the panel re-reads the clusters while it is open. The read is also what lets a
 // waiting question's pass run (the server's batching window is 20 s).
@@ -54,10 +56,12 @@ export function QALimitNote() {
   );
 }
 
-export function TopQuestionsStrip({ items, slug, onAnswered }: {
+export function TopQuestionsStrip({ items, slug, clusters, onAnswered, onPosted }: {
   items: TopQuestion[];
   slug: string;
+  clusters: QAClustersResponse["clusters"];
   onAnswered: (questionIds: string[]) => void;
+  onPosted: (questionIds: string[], answer: string) => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -79,7 +83,20 @@ export function TopQuestionsStrip({ items, slug, onAnswered }: {
             </div>
             <div className="pl-5">
               {t.askers > 1 && <p className="text-[10.5px] text-ink-3">{askedLabel(t.askers, t.questionIds.length)}</p>}
-              <SuggestAnswer slug={slug} clusterId={t.id} onAnswered={() => onAnswered(t.questionIds)} />
+              {draftFor(t.id, clusters) ? (
+                // The draft itself is on the question's card in the list, not twice.
+                <p className="mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-medium text-brand">
+                  <SparklesIcon className="size-3" />
+                  Draft answer ready below
+                </p>
+              ) : (
+                <SuggestAnswer
+                  slug={slug}
+                  clusterId={t.id}
+                  onAnswered={() => onAnswered(t.questionIds)}
+                  onPosted={onPosted}
+                />
+              )}
             </div>
           </li>
         ))}
@@ -88,11 +105,13 @@ export function TopQuestionsStrip({ items, slug, onAnswered }: {
   );
 }
 
-export function ClusterCard({ item, slug, renderQuestion, onAnswered }: {
+export function ClusterCard({ item, slug, draft, renderQuestion, onAnswered, onPosted }: {
   item: Extract<QAItem, { kind: "cluster" }>;
   slug: string;
+  draft?: QADraft;
   renderQuestion: (q: Question) => React.ReactNode;
   onAnswered: (questionIds: string[]) => void;
+  onPosted: (questionIds: string[], answer: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ids = item.questions.map((q) => q.id);
@@ -134,85 +153,176 @@ export function ClusterCard({ item, slug, renderQuestion, onAnswered }: {
           Mark answered
         </button>
       </div>
-      <SuggestAnswer slug={slug} clusterId={item.id} onAnswered={() => onAnswered(ids)} />
+      <SuggestAnswer
+        slug={slug}
+        clusterId={item.id}
+        draft={draft}
+        onAnswered={() => onAnswered(ids)}
+        onPosted={onPosted}
+      />
       {open && <div className="mt-2 space-y-2 border-l-2 border-line pl-2.5">{item.questions.map(renderQuestion)}</div>}
     </article>
   );
 }
 
-/** "✨ Suggest an answer": one call, a draft only this host sees, with Copy. Never posted. */
-export function SuggestAnswer({ slug, clusterId, onAnswered }: {
+/** The draft answer under a question or cluster, host team only: the server's draft (written
+ *  from the AI knowledge when the question arrived, or by "✨ Suggest an answer"), with where
+ *  it came from, Edit, Post answer and Discard. Post is the only way it reaches the audience:
+ *  the server records it as the host's answer on each open question, and onPosted sends the
+ *  room's usual answer packets. Never posted by itself. */
+export function SuggestAnswer({ slug, clusterId, draft, onAnswered, onPosted }: {
   slug: string;
   clusterId: string;
+  /** The server's open draft for this cluster, if any. */
+  draft?: QADraft;
   onAnswered: () => void;
+  onPosted: (questionIds: string[], answer: string) => void;
 }) {
   const { notify } = useToast();
-  const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"suggest" | "post" | "discard" | null>(null);
+  const [mine, setMine] = useState<QADraft | null>(null);
+  const [gone, setGone] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The newer of this host's own suggestion and the server's (a co-host's, or an automatic one).
+  const shown = pickDraft(mine, draft, gone);
+  const text = editing && shown && editing.id === shown.id ? editing.text : (shown?.answer ?? "");
 
   const suggest = async () => {
     if (busy) return;
-    setBusy(true);
+    setBusy("suggest");
     setError(null);
     try {
       const out = await api.suggestQAAnswer(slug, clusterId);
-      setDraft(out.answer);
+      setMine(out.draft);
+      setEditing(null);
     } catch (err) {
       setError(suggestError(err));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  const copy = async () => {
-    if (!draft) return;
+  const post = async () => {
+    if (!shown || busy) return;
+    const problem = answerProblem(text);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setBusy("post");
+    setError(null);
     try {
-      await navigator.clipboard.writeText(draft);
-      notify("Answer copied.", "info");
-    } catch {
-      notify("Couldn't copy. Select the text instead.", "error");
+      const out = await api.postQADraft(slug, shown.id, text.trim());
+      setGone(shown.id);
+      setEditing(null);
+      onPosted(out.questionIds, out.answer);
+      notify(out.questionIds.length > 1 ? `Answer posted to ${out.questionIds.length} questions.` : "Answer posted.", "info");
+    } catch (err) {
+      setError(suggestError(err));
+    } finally {
+      setBusy(null);
     }
   };
 
-  if (draft === null) {
+  const discard = async () => {
+    if (!shown || busy) return;
+    setBusy("discard");
+    setError(null);
+    try {
+      await api.discardQADraft(slug, shown.id);
+    } catch {
+      /* already gone, or the next read shows it again */
+    } finally {
+      setGone(shown.id);
+      setEditing(null);
+      setBusy(null);
+    }
+  };
+
+  if (!shown) {
     return (
       <div className="mt-1">
         <button
           type="button"
           onClick={() => void suggest()}
-          disabled={busy}
+          disabled={busy !== null}
           className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11.5px] font-medium text-brand transition-colors outline-none hover:bg-brand-soft focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-60 md:min-h-7"
         >
           <SparklesIcon className="size-3.5" />
-          {busy ? "Drafting…" : "Suggest an answer"}
+          {busy === "suggest" ? "Drafting…" : "Suggest an answer"}
         </button>
         {error && <p className="px-2 text-[11px] text-live">{error}</p>}
       </div>
     );
   }
 
+  const chips = draftSourceChips(shown);
   return (
     <div className="mt-2 rounded-lg border border-brand-line/60 bg-brand/[0.04] px-2.5 py-2">
       <p className="flex items-center gap-1 text-[10.5px] font-semibold tracking-[0.04em] text-brand uppercase">
         <SparklesIcon className="size-3" />
-        Suggested answer · only you see this
+        {shown.auto ? "Drafted for you" : "Suggested answer"} · only hosts see this
       </p>
-      <p className="mt-1 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-ink wrap-anywhere">{draft}</p>
+      {editing && editing.id === shown.id ? (
+        <>
+          <label className="sr-only" htmlFor={`draft-${shown.id}`}>
+            Edit the answer
+          </label>
+          <textarea
+            id={`draft-${shown.id}`}
+            className="mt-1 w-full resize-y rounded-md border border-line-2 bg-surface px-2 py-1.5 text-[12.5px] leading-relaxed text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            rows={4}
+            maxLength={MAX_ANSWER_CHARS}
+            value={editing.text}
+            onChange={(e) => setEditing({ id: shown.id, text: e.target.value })}
+          />
+          <p className="text-right text-[10.5px] text-ink-3 tabular-nums">
+            {[...editing.text].length}/{MAX_ANSWER_CHARS}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-ink wrap-anywhere">{text}</p>
+      )}
+      {(chips.length > 0 || !shown.grounded) && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {chips.map((c) => (
+            <span key={c} className="rounded-full bg-surface-2 px-2 text-[10.5px] leading-5 text-ink-2">
+              {c}
+            </span>
+          ))}
+          {!shown.grounded && (
+            <span className="rounded-full bg-warn-soft px-2 text-[10.5px] leading-5 text-ink-2">General answer: check it</span>
+          )}
+        </div>
+      )}
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        <DraftAction onClick={() => void copy()}>
-          <CopyIcon className="size-3.5" />
-          Copy
-        </DraftAction>
+        <button
+          type="button"
+          onClick={() => void post()}
+          disabled={busy !== null}
+          className="inline-flex min-h-11 items-center gap-1 rounded-md bg-brand px-2.5 text-[11.5px] font-medium text-on-brand transition-colors outline-none hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-60 md:min-h-7"
+        >
+          <SendIcon className="size-3.5" />
+          {busy === "post" ? "Posting…" : "Post answer"}
+        </button>
+        {editing && editing.id === shown.id ? (
+          <DraftAction onClick={() => setEditing(null)}>Done</DraftAction>
+        ) : (
+          <DraftAction onClick={() => setEditing({ id: shown.id, text: shown.answer })}>Edit</DraftAction>
+        )}
         <DraftAction onClick={onAnswered}>
           <CheckIcon className="size-3.5" />
           Mark answered
         </DraftAction>
-        <DraftAction onClick={() => void suggest()} disabled={busy}>
+        <DraftAction onClick={() => void suggest()} disabled={busy !== null}>
           <SparklesIcon className="size-3.5" />
-          {busy ? "Drafting…" : "Try again"}
+          {busy === "suggest" ? "Drafting…" : "Try again"}
         </DraftAction>
-        <DraftAction onClick={() => setDraft(null)}>Discard</DraftAction>
+        <DraftAction onClick={() => void discard()} disabled={busy !== null}>
+          Discard
+        </DraftAction>
       </div>
       {error && <p className="text-[11px] text-live">{error}</p>}
     </div>
