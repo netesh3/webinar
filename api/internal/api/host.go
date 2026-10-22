@@ -217,6 +217,9 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if msg := panelistCapField(in.PanelistEmails, panelSeats); msg != "" {
 		fields["panelistEmails"] = msg
 	}
+	if msg := s.simuliveRecordingField(r.Context(), user.ID, in, ""); msg != "" {
+		fields["simuliveRecordingId"] = msg
+	}
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
 		return types.Webinar{}, false
@@ -301,6 +304,25 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	return wb, true
 }
 
+/* simuliveRecordingField refuses a simulive whose recording is not one of hostID's own
+ * ready recordings (HostReadyRecordings: theirs, ready, with bytes, a whole session rather
+ * than one take). Without it any recording id — another host's, one still uploading, one
+ * that failed — would be saved and then played to an audience. An edit that keeps the
+ * recording the simulive already plays is not asked again ("keep"), so a save that only
+ * changes the title is never refused over the recording. Empty means fine. */
+func (s *Server) simuliveRecordingField(ctx context.Context, hostID string, in types.WebinarInput, keep string) string {
+	if in.Kind != types.KindSimulive || in.SimuliveRecordingID == "" {
+		return ""
+	}
+	if keep != "" && in.SimuliveRecordingID == keep {
+		return ""
+	}
+	if !s.ownsReadyRecording(ctx, hostID, in.SimuliveRecordingID) {
+		return "That recording isn't one of your ready recordings. Pick another."
+	}
+	return ""
+}
+
 func (s *Server) handleHostRecordingLibrary(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r.Context())
 	list, err := s.store.HostReadyRecordings(r.Context(), user.ID)
@@ -327,9 +349,14 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	ceiling := s.attendeeCeiling("")
 	stageCap := types.PlanStageCap("")
 	var prevKind types.WebinarKind
+	var prevOwner, prevRecording string
 	if prev, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
 		prevLead = prev.StartsAt
 		prevKind = prev.Kind
+		prevOwner = prev.Host.ID
+		if prev.Kind == types.KindSimulive {
+			prevRecording = prev.SimuliveRecordingID
+		}
 		ceiling = s.ceilingForHost(r.Context(), prev.Host.ID)
 		stageCap = s.stageCapForHost(r.Context(), prev.Host.ID)
 		if prev.Kind == types.KindMeeting {
@@ -350,6 +377,13 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := panelistCapField(in.PanelistEmails, stageCap); msg != "" {
 		fields["panelistEmails"] = msg
+	}
+	// The OWNER's recordings, whoever is editing: a co-host cannot point the host's
+	// simulive at a recording of their own.
+	if prevOwner != "" {
+		if msg := s.simuliveRecordingField(r.Context(), prevOwner, in, prevRecording); msg != "" {
+			fields["simuliveRecordingId"] = msg
+		}
 	}
 	if len(fields) > 0 {
 		httpx.Fields(w, fields)
@@ -455,10 +489,10 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 			httpx.Fields(w, fields)
 			return
 		}
-		in.Kind = types.KindRecurring
+		in.Kind, in.SimuliveRecordingID = types.KindRecurring, ""
 		wb, err = s.store.UpdateSeriesFollowing(r.Context(), slug, in, rule, s.cfg.DefaultMaxMeetingMin)
 	case hasPrev && prev.SeriesID != "":
-		in.Kind = types.KindRecurring
+		in.Kind, in.SimuliveRecordingID = types.KindRecurring, ""
 		wb, err = s.store.UpdateWebinar(r.Context(), slug, in)
 		if err == nil {
 			if markErr := s.store.MarkSeriesException(r.Context(), slug); markErr != nil {
@@ -915,7 +949,14 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	if zoom.IsVenue(in.Venue) && in.Kind == types.KindSimulive {
 		fields["venue"] = "A simulive session stays in this app."
 	}
-	if in.Kind == types.KindSimulive && strings.TrimSpace(in.SimuliveRecordingID) == "" {
+	/* The recording belongs to a simulive and nothing else. Anything other than a simulive
+	 * drops it, so a session switched to live (or folded into a series) cannot keep a stale
+	 * recording id that the sweeper, the join path or the replay would later act on. */
+	in.SimuliveRecordingID = strings.TrimSpace(in.SimuliveRecordingID)
+	if in.Kind != types.KindSimulive {
+		in.SimuliveRecordingID = ""
+	}
+	if in.Kind == types.KindSimulive && in.SimuliveRecordingID == "" {
 		fields["simuliveRecordingId"] = "Pick a recording to play as the live session."
 	}
 	// Never recorded again: see refuseSimuliveRecording.

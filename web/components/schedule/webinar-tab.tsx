@@ -26,6 +26,7 @@ import { RegistrationSection } from "./registration";
 import { WhereSection } from "./where";
 import { RoomSection } from "./room";
 import { RecurrenceFields } from "./recurrence-fields";
+import { SimuliveSourceSection } from "./simulive-source";
 import { SurveySection } from "./survey-section";
 import { formatDuration } from "./summary";
 
@@ -127,6 +128,15 @@ export function WebinarTab({
           onImageFromMedia={onImageFromMedia}
           onImageRemove={onImageRemove}
         />
+        {form.kind === "simulive" && (
+          <SimuliveSourceSection
+            form={form}
+            set={set}
+            fields={fields}
+            editing={editing}
+            slug={webinar?.id}
+          />
+        )}
         <WhenSection
           form={form}
           set={set}
@@ -213,6 +223,21 @@ function WhenSection({
             set("time", time);
           }}
         />
+        {form.kind === "simulive" ? (
+          /* A simulive runs as long as its recording: the length follows the recording
+           * picked above and is not a choice of its own. */
+          <div>
+            <span className="label">Duration</span>
+            <p
+              className="field flex items-center text-ink-2"
+              aria-readonly="true"
+              title="Set by the recording"
+            >
+              {formatDuration(form.durationMin)}{" "}
+              <span className="ml-1 text-[11.5px] text-ink-3">· the recording&apos;s length</span>
+            </p>
+          </div>
+        ) : (
         <Select
           label="Duration"
           value={String(form.durationMin)}
@@ -229,6 +254,7 @@ function WhenSection({
             </option>
           ))}
         </Select>
+        )}
 
         {/* Every IANA zone the browser knows. A four-city list is wrong for most
             of the world and stale the next time a country changes its rules. */}

@@ -160,7 +160,7 @@ func (s *Server) ownsReadyRecording(ctx context.Context, hostID, recordingID str
 	}
 	list, err := s.store.HostReadyRecordings(ctx, hostID)
 	if err != nil {
-		s.log.Warn("copy webinar: recordings", "host", hostID, "error", err)
+		s.log.Warn("simulive: host recordings", "host", hostID, "error", err)
 		return false
 	}
 	for _, rec := range list {

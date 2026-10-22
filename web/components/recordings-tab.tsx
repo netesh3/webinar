@@ -23,11 +23,12 @@ import {
   TrashIcon,
   YouTubeIcon,
 } from "./icons";
-import { Badge, Button, Card, Empty } from "./ui";
+import { Badge, Button, ButtonLink, Card, Empty } from "./ui";
 import { VideoPlayer, type VideoPlayerHandle } from "./video-player";
 import { RecordingChapters } from "./recording-chapters";
 import { playableRecordingParts, recordingSources } from "@/lib/recording-parts";
 import { chapterSeekTimes } from "@/lib/recap";
+import { simuliveEligible, simuliveScheduleHref } from "@/lib/simulive-create";
 
 /* Recordings of one webinar.
  *
@@ -51,6 +52,12 @@ export function RecordingsTab({
 }) {
   const { notify } = useToast();
   const cfg = useAppConfig();
+  const { account } = useSession();
+  /* "Replay as Simulive" is the owner's: the server schedules it from the host's own ready
+   * recordings only (host.go simuliveRecordingField), so a panelist or co-host looking at
+   * someone else's session is not offered a button that would be refused. A meeting's
+   * recording qualifies too — the simulive made from it is a webinar. */
+  const canSimulive = Boolean(account?.canHost && account.id === w.host.id);
   const days = recordingRetentionDays(rows[0], cfg.recordingsRetentionDays);
   const [playing, setPlaying] = useState<Recording | null>(null);
   const [sharing, setSharing] = useState<Recording | null>(null);
@@ -205,6 +212,9 @@ export function RecordingsTab({
               onPlay={() => setPlaying(rec)}
               onShare={() => setSharing(rec)}
               onDelete={() => setConfirmDelete(rec)}
+              simuliveHref={
+                canSimulive && simuliveEligible(rec) ? simuliveScheduleHref(rec) : null
+              }
             />
           ))}
         </div>
@@ -401,7 +411,7 @@ function ShareRecordingModal({
  * The media fragment is a second in rather than zero: the opening frame of a
  * composited room is usually a black canvas the encoder emitted before the
  * first participant painted. */
-function RecordingThumb({
+export function RecordingThumb({
   src,
   durationMs,
   parts,
@@ -463,6 +473,7 @@ function RecordingCard({
   onPlay,
   onShare,
   onDelete,
+  simuliveHref,
 }: {
   recording: Recording;
   slug: string;
@@ -471,6 +482,9 @@ function RecordingCard({
   onPlay: () => void;
   onShare: () => void;
   onDelete: () => void;
+  /** "Replay as Simulive": the schedule form for this recording, or null when it is not
+   *  offered (not ready yet, or not this account's to schedule). */
+  simuliveHref: string | null;
 }) {
   // Rendered on the client only: a locale-formatted timestamp differs between the
   // server render and the browser, and React calls that a hydration error.
@@ -646,6 +660,18 @@ function RecordingCard({
             </>
           )}
         </div>
+        {ready && simuliveHref && !busy && (
+          <ButtonLink
+            href={simuliveHref}
+            variant="secondary"
+            size="sm"
+            className="mt-2 w-full"
+            title="Schedule this recording to play as a live session"
+          >
+            <PlayIcon className="size-3.5" />
+            Replay as Simulive
+          </ButtonLink>
+        )}
       </div>
     </Card>
   );
