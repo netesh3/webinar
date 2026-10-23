@@ -342,6 +342,18 @@ function errorText(err: unknown): string {
   return parts.join(" | ");
 }
 
+/* Whether LiveKit's own BackgroundProcessor may stand in for ours. Not on WebKit: it uploads
+ * the camera frame to WebGL and reads its WebGL canvas back as a VideoFrame, the two hand-offs
+ * that send an iPhone presenter upside down (lib/frame-orientation.ts), and it has no upright
+ * copy. A camera with no background is better than one the audience sees rotated.
+ *
+ * Asked of the segmenter module, which is always loaded by the time ours has failed, so this
+ * file keeps its imports type-only (lib/backgrounds.test.mts loads it with Node directly). */
+function betaFallbackAllowed(): boolean {
+  if (typeof navigator === "undefined" || !segmenterModule) return false;
+  return !segmenterModule.needsUprightCopy({ ua: navigator.userAgent });
+}
+
 /** Emscripten Module start-up drained mid-create — Chrome/Mac SoftSegmenter often. */
 function isEffectInterrupted(err: unknown): boolean {
   const text = errorText(err).toLowerCase();
@@ -990,7 +1002,8 @@ export async function openCamera<T>(
       if (
         usedEngine === "enhanced" &&
         choice.mode !== "none" &&
-        isEffectInterrupted(err)
+        isEffectInterrupted(err) &&
+        betaFallbackAllowed()
       ) {
         try {
           console.warn("[background] Enhanced interrupted on open; trying Beta");
@@ -1172,7 +1185,13 @@ export function useVirtualBackground(
      * Preference is left on Enhanced; only the running processor switches for this session. */
     let fallingBackToBeta = false;
     const fallBackToBeta = async (reason: unknown): Promise<boolean> => {
-      if (fallingBackToBeta || cancelled || engine !== "enhanced" || choice.mode === "none") {
+      if (
+        fallingBackToBeta ||
+        cancelled ||
+        engine !== "enhanced" ||
+        choice.mode === "none" ||
+        !betaFallbackAllowed()
+      ) {
         return false;
       }
       fallingBackToBeta = true;
