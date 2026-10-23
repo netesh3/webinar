@@ -46,3 +46,16 @@ export class AwayClock {
 export function jumpToLiveOnReturn(o: { latencySec: number | null; behindSec: number }): boolean {
   return o.latencySec != null && Number.isFinite(o.latencySec) && o.latencySec > o.behindSec;
 }
+
+/** What to tell a presenter whose camera, microphone or screen share livekit turned off when
+ *  the page went to the background (it stops local tracks on `freeze` and pagehide), once they
+ *  are reconnected. Null when nothing was on. */
+export function pageLeaveNotice(was: { mic: boolean; camera: boolean; share: boolean }): string | null {
+  const parts = [was.camera && "camera", was.mic && "microphone", was.share && "screen share"].filter(
+    (p): p is string => typeof p === "string",
+  );
+  if (parts.length === 0) return null;
+  const what = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  const many = parts.length > 1;
+  return `Your ${what} ${many ? "were" : "was"} turned off while this page was in the background. Turn ${many ? "them" : "it"} back on when you're ready.`;
+}

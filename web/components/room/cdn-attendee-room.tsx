@@ -288,11 +288,11 @@ export function CdnAttendeeRoom({
     let retry: ReturnType<typeof setTimeout> | undefined;
     let settle: ReturnType<typeof setTimeout> | undefined;
     let stopWaiting: (() => void) | undefined;
-    /* True while room.connect() is in flight: a failed connect emits Disconnected itself before
-     * it rejects, and the catch below — not onDisconnected — owns that failure. Without this
-     * a first join that failed started the ladder behind the "Couldn't connect" screen, and
-     * every failed retry spent two attempts. Same as the live room. */
-    let connecting = false;
+    /* This instance's own connect() has succeeded: only then is a Disconnected about a
+     * connection it owns (see disconnectVerdict). A failed connect emits Disconnected before it
+     * rejects and the catch owns it; a previous instance's cleanup disconnect lands here too.
+     * Same as the live room. */
+    let established = false;
 
     const reach = (): Reach => ({
       hidden: document.visibilityState === "hidden",
@@ -309,7 +309,7 @@ export function CdnAttendeeRoom({
     const waitForReturn = () => {
       if (stopWaiting) return;
       const wake = (trigger: "visible" | "online") => {
-        if (cancelled) return;
+        if (cancelled || leaving.current) return;
         if (trigger === "visible" && document.visibilityState !== "visible") return;
         if (navigator.onLine === false) return;
         stopWaiting?.();
@@ -345,7 +345,7 @@ export function CdnAttendeeRoom({
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
       // See disconnectVerdict (lib/disconnect-reason.ts). "left": Leave already called onLeave.
-      const verdict = disconnectVerdict({ reason, connecting, leaving: leaving.current });
+      const verdict = disconnectVerdict({ reason, established, leaving: leaving.current });
       if (verdict === "ignore" || verdict === "left") return;
       lost(verdict);
     };
@@ -366,16 +366,13 @@ export function CdnAttendeeRoom({
           }
           if (fresh) ({ url, token } = fresh);
         }
-        connecting = true;
-        try {
-          await connect(url, token, {
-            peerConnectionTimeout: 15_000,
-            websocketTimeout: 15_000,
-            autoSubscribe: false,
-          });
-        } finally {
-          connecting = false;
-        }
+        if (leaving.current) return;
+        await connect(url, token, {
+          peerConnectionTimeout: 15_000,
+          websocketTimeout: 15_000,
+          autoSubscribe: false,
+        });
+        established = true;
         if (cancelled) return;
         connectedOnce.current = true;
         setRecovering(null);

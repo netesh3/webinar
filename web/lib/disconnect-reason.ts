@@ -33,10 +33,15 @@ export type DisconnectVerdict = "ignore" | "left" | LostReason;
 /**
  * One decision for both rooms, from what this page knows rather than from the reason alone:
  *
- *   connecting  room.connect() is in flight. A failed connect emits Disconnected before its
- *               promise rejects, and the caller's catch owns that failure — handling it here
- *               too spent two attempts per failure and, on a first join, started the ladder
- *               behind the failure screen.
+ *   established  this effect instance's own connect() has succeeded. Until it has, the event
+ *               is not about a connection this instance owns: a failed connect emits
+ *               Disconnected before its promise rejects (the caller's catch owns that), and
+ *               the previous instance's cleanup disconnect lands here too, as
+ *               CLIENT_INITIATED, while the new instance is still fetching a credential — a
+ *               stage reconnect read that as a network drop and looped into "Connection
+ *               lost". useSequentialRoomConnectDisconnect finishes each disconnect, event
+ *               included, before it starts the next connect, so that one always arrives
+ *               before `established` is set.
  *   leaving     the page asked to leave (Leave was pressed). The only disconnect that is the
  *               person leaving: livekit also says CLIENT_INITIATED for its own disconnects
  *               (Chrome freezing a background tab, pagehide), and nothing at all when its
@@ -45,11 +50,11 @@ export type DisconnectVerdict = "ignore" | "left" | LostReason;
  */
 export function disconnectVerdict(o: {
   reason?: DisconnectReason;
-  connecting: boolean;
+  established: boolean;
   leaving: boolean;
   over?: boolean;
 }): DisconnectVerdict {
-  if (o.connecting) return "ignore";
+  if (!o.established) return "ignore";
   if (o.leaving) return "left";
   if (o.over) return "ended";
   return classifyDisconnect(o.reason) ?? "lost";

@@ -1,6 +1,6 @@
 /* Tests for lib/background-return.ts. Run with `make test-web`. */
 
-import { AWAY_MIN_MS, AwayClock, jumpToLiveOnReturn } from "./background-return.ts";
+import { AWAY_MIN_MS, AwayClock, jumpToLiveOnReturn, pageLeaveNotice } from "./background-return.ts";
 
 let failures = 0;
 let checks = 0;
@@ -41,6 +41,28 @@ ok(!jumpToLiveOnReturn({ latencySec: 4, behindSec: 10 }), "a normal live delay i
 ok(!jumpToLiveOnReturn({ latencySec: 10, behindSec: 10 }), "exactly at the threshold is left alone");
 ok(!jumpToLiveOnReturn({ latencySec: null, behindSec: 10 }), "unknown latency is left alone");
 ok(!jumpToLiveOnReturn({ latencySec: Number.NaN, behindSec: 10 }), "NaN latency is left alone");
+
+{
+  const none = { mic: false, camera: false, share: false };
+  ok(pageLeaveNotice(none) === null, "nothing was on: no notice");
+  ok(
+    pageLeaveNotice({ ...none, mic: true }) ===
+      "Your microphone was turned off while this page was in the background. Turn it back on when you're ready.",
+    "one thing: singular",
+    String(pageLeaveNotice({ ...none, mic: true })),
+  );
+  ok(
+    pageLeaveNotice({ ...none, mic: true, camera: true }) ===
+      "Your camera and microphone were turned off while this page was in the background. Turn them back on when you're ready.",
+    "two things: plural, joined with and",
+    String(pageLeaveNotice({ ...none, mic: true, camera: true })),
+  );
+  ok(
+    pageLeaveNotice({ mic: true, camera: true, share: true })?.startsWith("Your camera, microphone and screen share were turned off") === true,
+    "three things: a list",
+    String(pageLeaveNotice({ mic: true, camera: true, share: true })),
+  );
+}
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);
 process.exit(failures === 0 ? 0 : 1);

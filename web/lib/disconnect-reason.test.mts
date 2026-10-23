@@ -14,12 +14,17 @@ function eq<T>(actual: T, expected: T, what: string): void {
   console.log(`  FAIL  ${what}\n        got ${String(actual)}, want ${String(expected)}`);
 }
 
-const idle = { connecting: false, leaving: false, over: false };
+const idle = { established: true, leaving: false, over: false };
 
-// A connect in flight: the caller's catch owns it, whatever the reason.
+// Not this instance's connection (yet): a failed connect, or the previous instance's cleanup.
 for (const reason of [DisconnectReason.UNKNOWN_REASON, DisconnectReason.JOIN_FAILURE, DisconnectReason.USER_REJECTED, undefined]) {
-  eq(disconnectVerdict({ ...idle, connecting: true, reason }), "ignore", `a failed connect (${String(reason)}) is left to the catch`);
+  eq(disconnectVerdict({ ...idle, established: false, reason }), "ignore", `a failed connect (${String(reason)}) is left to the catch`);
 }
+eq(
+  disconnectVerdict({ ...idle, established: false, reason: DisconnectReason.CLIENT_INITIATED }),
+  "ignore",
+  "the previous effect's cleanup disconnect (a stage reconnect) is not a network drop",
+);
 
 // Leave pressed: leaving, even though livekit says CLIENT_INITIATED like everything else.
 eq(disconnectVerdict({ ...idle, leaving: true, reason: DisconnectReason.CLIENT_INITIATED }), "left", "Leave is leaving");
