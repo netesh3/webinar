@@ -1,0 +1,45 @@
+# Grafana Alloy: this box's metrics and container logs to Grafana Cloud (alloy/config.alloy).
+# Opt-in: redeploy.sh adds this file only when /opt/livekit/.env has all of GRAFANA_CLOUD_PROM_URL,
+# GRAFANA_CLOUD_PROM_USER, GRAFANA_CLOUD_LOKI_URL, GRAFANA_CLOUD_LOKI_USER and GRAFANA_CLOUD_TOKEN
+# (see README.md, "Grafana Cloud"). Without them nothing here runs.
+#
+# Scrapes LiveKit (127.0.0.1:7801) and MediaMTX (127.0.0.1:9998), the host (embedded
+# node_exporter, through read-only /proc, /sys and /) and the containers (embedded cAdvisor),
+# and tails every container's log through the docker socket. Its own UI listens on loopback
+# only. Low priority and capped, like the other side services: video always wins.
+services:
+  alloy:
+    image: grafana/alloy:v1.21.2
+    network_mode: host
+    pid: host
+    # The host's cgroup tree (cgroup v2), which cAdvisor reads for per-container CPU/memory.
+    cgroup: host
+    restart: unless-stopped
+    cpus: 0.5
+    cpu_shares: 256
+    mem_limit: 512m
+    oom_score_adj: 800
+    # Written by redeploy.sh from .env (GRAFANA_CLOUD_*, ALLOY_BOX), mode 600.
+    env_file: alloy.env
+    command:
+      - run
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+      # Docker socket for the log tailer and cAdvisor. Note :ro only stops the file being
+      # replaced, not API writes; Alloy only reads (container list, logs, stats).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Host metrics (prometheus.exporter.unix) and container stats (cAdvisor).
+      - /proc:/host/proc:ro
+      - /sys:/sys:ro
+      - /:/host/root:ro,rslave
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    stop_grace_period: 10s
+
+volumes:
+  alloy_data:

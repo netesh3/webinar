@@ -11,6 +11,11 @@
 #   DO_SSH_PRIVATE_KEY  — a deploy key whose public half is in the box's
 #                         /root/.ssh/authorized_keys (not anybody's personal key)
 #   GRAFANA_ADMIN_PASSWORD — optional, as for Hetzner
+#   GRAFANA_CLOUD_TOKEN — optional: Grafana Cloud access policy token for Alloy (metrics + logs)
+#
+# Repository variables (optional, with GRAFANA_CLOUD_TOKEN; all five or Alloy stays off):
+#   GRAFANA_CLOUD_PROM_URL, GRAFANA_CLOUD_PROM_USER, GRAFANA_CLOUD_LOKI_URL, GRAFANA_CLOUD_LOKI_USER
+#   (deploy/livekit-hetzner/README.md, "Grafana Cloud")
 #
 # Until both SSH secrets are set the job SKIPS with a notice rather than failing, so a merge to
 # main is not red while the box is being set up. Box settings (CAPTIONS_*, HLS_PART_DURATION, …)
@@ -175,6 +180,38 @@ jobs:
             -e "ssh -F ${SSH_CONFIG}" \
             deploy/captions/ \
             livekit-do:/opt/livekit/captions/
+
+      # Grafana Cloud for Alloy (docker-compose.alloy.yml). Written into the box's .env, which is
+      # on the sfu-data volume, so every later droplet has them at boot without this workflow.
+      # Only when all five are set; otherwise .env is left as it is (Alloy stays off, or keeps
+      # whatever was set by hand). Values go over stdin, never on a command line.
+      - name: Grafana Cloud settings (Alloy)
+        if: env.SKIP != 'true'
+        env:
+          GRAFANA_CLOUD_PROM_URL: ${{ vars.GRAFANA_CLOUD_PROM_URL }}
+          GRAFANA_CLOUD_PROM_USER: ${{ vars.GRAFANA_CLOUD_PROM_USER }}
+          GRAFANA_CLOUD_LOKI_URL: ${{ vars.GRAFANA_CLOUD_LOKI_URL }}
+          GRAFANA_CLOUD_LOKI_USER: ${{ vars.GRAFANA_CLOUD_LOKI_USER }}
+          GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
+        run: |
+          keys="GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USER GRAFANA_CLOUD_TOKEN"
+          for k in $keys; do
+            if [ -z "${!k}" ]; then
+              echo "::notice::${k} not set: leaving the box's Grafana Cloud settings as they are (see deploy/livekit-hetzner/README.md, Grafana Cloud)."
+              exit 0
+            fi
+            case "${!k}" in *$'\n'*) echo "::error::${k} has a newline"; exit 1 ;; esac
+          done
+          for k in $keys; do printf '%s=%s\n' "$k" "${!k}"; done | ssh -F "${SSH_CONFIG}" livekit-do '
+            set -eu
+            cd /opt/livekit
+            new="$(cat)"
+            tmp="$(mktemp)"
+            grep -vE "^GRAFANA_CLOUD_(PROM_URL|PROM_USER|LOKI_URL|LOKI_USER|TOKEN)=" .env >"$tmp" || :
+            printf "%s\n" "$new" >>"$tmp"
+            chmod --reference=.env "$tmp" 2>/dev/null || chmod 600 "$tmp"
+            mv "$tmp" .env'
+          echo "Grafana Cloud settings written to /opt/livekit/.env"
 
       - name: Regenerate config and restart compose
         if: env.SKIP != 'true'

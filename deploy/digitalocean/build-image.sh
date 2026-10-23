@@ -49,10 +49,10 @@ rsync -a --delete --exclude 'tests' --exclude '__pycache__' "${src}/deploy/capti
 log "images"
 cd "$stack"
 # Placeholders only so compose can read the files; nothing is started here.
-touch captions.env mixrec.env livekit.yaml egress.yaml mediamtx.yml redis.conf
+touch captions.env mixrec.env alloy.env livekit.yaml egress.yaml mediamtx.yml redis.conf
 export DOMAIN=image.invalid ACME_EMAIL=image@invalid GRAFANA_ADMIN_PASSWORD=image TURN_TLS_DOMAIN=turn.image.invalid
 files=(-f docker-compose.yml -f docker-compose.egress.yml -f docker-compose.captions.yml
-  -f docker-compose.mixrec.yml -f docker-compose.turn443.yml)
+  -f docker-compose.mixrec.yml -f docker-compose.turn443.yml -f docker-compose.alloy.yml)
 docker compose --profile local-egress "${files[@]}" pull --ignore-buildable
 # The stock Caddy too (the turn443 file replaces it with the layer4 build, so the pull above skips it).
 docker pull caddy:2-alpine
