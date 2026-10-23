@@ -43,6 +43,8 @@ const (
 	AIFeatureQAHarvest = "qa_harvest"
 	// Embeddings for the AI knowledge's vector search (text-embedding-3-small).
 	AIFeatureEmbed = "embed"
+	// Spam detection on live chat and Q&A: the batched pass over what the rules found suspicious.
+	AIFeatureChatSpam = "chat_spam"
 )
 
 // AIFeatureUsage is one AI feature's calls this month.

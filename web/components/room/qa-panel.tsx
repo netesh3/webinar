@@ -14,12 +14,16 @@ import { RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
 import { ClusterCard, QALimitNote, SuggestAnswer, TopQuestionsStrip, useQAClusters } from "./qa-assist";
 import type { Question } from "@/lib/realtime";
+import { waitingCount } from "@/lib/spam";
+import { FlaggedFilter, FlaggedList } from "./spam-alerts";
 
 const MAX_CHARS = 600;
 
 export function QAPanel() {
-  const { slug, realtime, controls, isHost, permissions, me, status } = useRoomUI();
+  const { slug, realtime, controls, isHost, permissions, me, status, spam } = useRoomUI();
   const { notify } = useToast();
+  // The host team's "Flagged" filter: possible spam, with one-click actions (spam-alerts.tsx).
+  const [showFlagged, setShowFlagged] = useState(false);
   const [draft, setDraft] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   const [sending, setSending] = useState(false);
@@ -94,6 +98,18 @@ export function QAPanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {spam && (
+        <FlaggedFilter
+          flagged={showFlagged}
+          count={waitingCount(spam.data?.flags ?? [], "question")}
+          onChange={setShowFlagged}
+        />
+      )}
+      {spam && showFlagged ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <FlaggedList kind="question" />
+        </div>
+      ) : (
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {off && (
           <div className="mb-3">
@@ -215,6 +231,7 @@ export function QAPanel() {
           </div>
         )}
       </div>
+      )}
 
       {!off && (
         <div className="shrink-0 border-t border-line p-2.5">

@@ -535,6 +535,8 @@ func (s *Server) handleGetRecap(w http.ResponseWriter, r *http.Request) {
 		} else if wbErr == nil && wb.Status == types.StatusEnded && !wb.Controls.AIEnabled {
 			out.Reason = types.RecapReasonAISessionOff
 		}
+		// Spam is counted by the free rules too, so a session without a recap still says it.
+		out.SpamFlagged, out.SpamRemoved = s.spamCounts(r.Context(), slug)
 		httpx.JSON(w, http.StatusOK, out)
 		return
 	}
@@ -554,6 +556,7 @@ func (s *Server) handleGetRecap(w http.ResponseWriter, r *http.Request) {
 	}
 	out := recapResponse(row)
 	out.AIPausedMin = s.aiPausedMin(r.Context(), slug)
+	out.SpamFlagged, out.SpamRemoved = s.spamCounts(r.Context(), slug)
 	httpx.JSON(w, http.StatusOK, out)
 }
 
@@ -583,6 +586,7 @@ func (s *Server) handleGenerateRecapNow(w http.ResponseWriter, r *http.Request) 
 	}
 	out := recapResponse(row)
 	out.AIPausedMin = s.aiPausedMin(r.Context(), slug)
+	out.SpamFlagged, out.SpamRemoved = s.spamCounts(r.Context(), slug)
 	httpx.JSON(w, http.StatusOK, out)
 }
 

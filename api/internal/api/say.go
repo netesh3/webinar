@@ -195,6 +195,24 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	/* Spam detection (spam.go). A host's "Mute chat" on an attendee refuses their chat and
+	 * questions here; what an attendee sends is scored by the free rules after it has been
+	 * recorded and delivered. One indexed read, for these two kinds from the audience only. */
+	var spamState store.SpamSenderState
+	spamOn := false
+	if from.Role == types.RoleAttendee && (packet.Kind == types.MsgChat || packet.Kind == types.MsgQuestion) {
+		st, err := s.store.SpamSender(r.Context(), slug, from.Identity)
+		switch {
+		case err != nil:
+			s.log.Warn("say: spam state", "slug", slug, "error", err)
+		case st.Muted:
+			httpx.Error(w, http.StatusForbidden, "muted", "The host has muted you in chat.")
+			return
+		default:
+			spamState, spamOn = st, true
+		}
+	}
+
 	room := lk.RoomName(slug)
 
 	/* Chat is written down before it is sent.
@@ -237,6 +255,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 			// sender type it again into a chat that already has it.
 			s.log.Warn("say: chat delivery failed",
 				"slug", slug, "message", msg.ID, "error", err)
+		}
+		if spamOn {
+			s.spamCheck(r.Context(), wb, from, "chat", msg.ID, msg.Message, spamState)
 		}
 		httpx.JSON(w, http.StatusOK, types.SendMessageResponse{
 			Destination: msg.Destination,
@@ -307,6 +328,9 @@ func (s *Server) handleSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordRealtime(slug, from, packet)
+	if spamOn && packet.Kind == types.MsgQuestion {
+		s.spamCheck(r.Context(), wb, from, "question", packet.ID, packet.Text, spamState)
+	}
 
 	httpx.JSON(w, http.StatusOK, types.SendMessageResponse{
 		Destination:    packet.Destination,

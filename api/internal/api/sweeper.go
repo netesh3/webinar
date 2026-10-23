@@ -174,10 +174,16 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
  */
 func (s *Server) RunTick(ctx context.Context) bool {
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		s.runMaintenance(ctx)
+	}()
+	// Spam detection's batched AI pass (spam.go), for live rooms with messages waiting:
+	// a lane of its own for the same reason as the recaps.
+	go func() {
+		defer wg.Done()
+		s.runSpamLane(ctx)
 	}()
 	// The AI recaps (recap.go): a lane of their own, because one is a model call that can
 	// take most of a minute, and neither a reminder nor a retention sweep should wait on it.

@@ -193,6 +193,9 @@ type Server struct {
 	// qaSessions is the Q&A assistant's per-session pass state (qa_assist.go), slug to
 	// *qaSession. The zero value is ready.
 	qaSessions sync.Map
+	// spamSessions is spam detection's per-session state (spam.go): the rules' recent history
+	// and the AI pass's in-flight flag, slug to *spamSession. The zero value is ready.
+	spamSessions sync.Map
 
 	// push sends Web Push (push.go); nil when the VAPID variables are unset. pushEndpointOK
 	// is which subscription endpoints are accepted (push.ValidEndpoint; tests widen it).
@@ -859,6 +862,11 @@ func (s *Server) Routes() http.Handler {
 					// host posts one, as the host's answer. See qa_drafts.go.
 					r.Post("/qa/drafts/{id}/post", s.handleQAPostDraft)
 					r.Delete("/qa/drafts/{id}", s.handleQADiscardDraft)
+					// Spam detection on the live chat and Q&A: the Flagged filter, its
+					// settings, and the one-click actions. Host team only. See spam.go.
+					r.Get("/spam", s.handleSpamFlags)
+					r.Patch("/spam/settings", s.handlePatchSpamSettings)
+					r.Post("/spam/{kind}/{id}", s.handleSpamAction)
 					// Which of the host's AI knowledge documents this session uses.
 					r.Get("/knowledge", s.handleSessionKnowledge)
 					r.Patch("/knowledge/past-answers", s.handlePatchSessionPastAnswers)

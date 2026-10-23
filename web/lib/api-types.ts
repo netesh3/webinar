@@ -76,6 +76,10 @@ export const AIFeatureQAHarvest = "qa_harvest";
  */
 export const AIFeatureEmbed = "embed";
 /**
+ * Spam detection on live chat and Q&A: the batched pass over what the rules found suspicious.
+ */
+export const AIFeatureChatSpam = "chat_spam";
+/**
  * AIFeatureUsage is one AI feature's calls this month.
  */
 export interface AIFeatureUsage {
@@ -2725,6 +2729,14 @@ export interface SessionRecapResponse {
    * 	 * said, asked or chatted then is not in the recap, and the Results page says so.
    */
   aiPausedMin?: number /* int */;
+  /**
+   *  SpamFlagged is how many chat messages and questions were flagged as spam during the
+   * 	 * session (api/internal/api/spam.go); SpamRemoved how many of those were taken out of the
+   * 	 * room (deleted, hidden, auto-hidden, or their sender removed or muted). For the Results
+   * 	 * page; 0 when none.
+   */
+  spamFlagged?: number /* int */;
+  spamRemoved?: number /* int */;
 }
 
 //////////
@@ -3029,6 +3041,90 @@ export interface WebinarMessagesRequest {
 export interface WebinarSlotsResponse {
   webinarId: string;
   slots: MessageSlot[];
+}
+
+//////////
+// source: spam.go
+
+/**
+ * SpamFlag is one flagged chat message or question, as the host team's Flagged filter shows it.
+ */
+export interface SpamFlag {
+  /**
+   * Kind is "chat" or "question"; ID is the message's or question's own id.
+   */
+  kind: string;
+  id: string;
+  identity: string;
+  name: string;
+  text: string;
+  /**
+   * Category is promo, scam, abuse, off_topic or other.
+   */
+  category: string;
+  confidence: number /* float64 */;
+  /**
+   * Source is "rules" or "ai"; Reasons are the rules that matched (link, phone, whatsapp,
+   * scam_words, dm_me, repeat, copy_paste, flood, caps, emoji).
+   */
+  source: string;
+  reasons: string[];
+  /**
+   * Status is flagged (waiting for the host team), auto_hidden, or what a host did: deleted,
+   * hidden, removed, muted, not_spam.
+   */
+  status: string;
+  at: string;
+}
+/**
+ * SpamSettings is one session's spam settings.
+ */
+export interface SpamSettings {
+  /**
+   * AllowLinks off (the default) counts a link from an attendee as a spam signal.
+   */
+  allowLinks: boolean;
+  /**
+   * AutoHide hides spam flagged at 0.9 or more without waiting for the host. Off by default.
+   */
+  autoHide: boolean;
+}
+/**
+ * SpamSettingsPatch is PATCH /api/host/webinars/{slug}/spam/settings; a missing field is unchanged.
+ */
+export interface SpamSettingsPatch {
+  allowLinks?: boolean;
+  autoHide?: boolean;
+}
+/**
+ * SpamFlagsResponse is GET /api/host/webinars/{slug}/spam.
+ */
+export interface SpamFlagsResponse {
+  /**
+   * AI is whether the batched AI pass may run for this session (sessionAIAllowed); the rules
+   * run either way.
+   */
+  ai: boolean;
+  /**
+   * Limited is set while the AI pass is paused at an AI cap.
+   */
+  limited: boolean;
+  settings: SpamSettings;
+  /**
+   * Flags, newest first: waiting ones and ones already acted on.
+   */
+  flags: SpamFlag[];
+  /**
+   * Muted is who a host has muted in chat.
+   */
+  muted: string[];
+}
+/**
+ * SpamActionRequest is POST /api/host/webinars/{slug}/spam/{kind}/{id}: one host action on a
+ * flagged item. Action is delete, hide, remove, mute, unmute or not_spam.
+ */
+export interface SpamActionRequest {
+  action: string;
 }
 
 //////////

@@ -343,6 +343,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The live Q&A assistant: clusters folded into the open list with live votes, the
 	# "N people asked this" line, and the Top questions strip.
 	cd web && node --experimental-strip-types --no-warnings lib/qa-clusters.test.mts
+	# Spam detection's host view: the Flagged filter's list, the alert, the one-click actions
+	# and the Results line.
+	cd web && node --experimental-strip-types --no-warnings lib/spam.test.mts
 	# The AI knowledge: which uploads are sent, the library meter, a draft's source chips,
 	# and what an edited answer may be before it is posted.
 	cd web && node --experimental-strip-types --no-warnings lib/knowledge.test.mts
