@@ -33,19 +33,22 @@ export type DisconnectVerdict = "ignore" | "left" | LostReason;
 /**
  * One decision for both rooms, from what this page knows rather than from the reason alone:
  *
+ *   leaving     the page asked to leave (Leave was pressed). Checked first: Leave pressed while
+ *               a connect is in flight must end as leaving whatever that connect does. It is
+ *               the only disconnect that is the person leaving — livekit also says
+ *               CLIENT_INITIATED for its own disconnects (pagehide, beforeunload), and nothing
+ *               at all when its reconnect gives up after a network loss. Those are the network.
  *   established  this effect instance's own connect() has succeeded. Until it has, the event
  *               is not about a connection this instance owns: a failed connect emits
  *               Disconnected before its promise rejects (the caller's catch owns that), and
- *               the previous instance's cleanup disconnect lands here too, as
+ *               the previous instance's cleanup disconnect usually lands here too, as
  *               CLIENT_INITIATED, while the new instance is still fetching a credential — a
  *               stage reconnect read that as a network drop and looped into "Connection
- *               lost". useSequentialRoomConnectDisconnect finishes each disconnect, event
- *               included, before it starts the next connect, so that one always arrives
- *               before `established` is set.
- *   leaving     the page asked to leave (Leave was pressed). The only disconnect that is the
- *               person leaving: livekit also says CLIENT_INITIATED for its own disconnects
- *               (Chrome freezing a background tab, pagehide), and nothing at all when its
- *               reconnect gives up after a network loss. Both of those are the network.
+ *               lost". Not always: useSequentialRoomConnectDisconnect runs queued operations
+ *               one at a time but newest first (it pops), so when both are queued before it
+ *               runs, the new connect goes first and the old disconnect then reads as "lost".
+ *               That costs one extra reconnect, not a loop: the retry finds the room already
+ *               down, and its own cleanup disconnect is a no-op.
  *   over        the session has ended (or is being ended): the closing is the point.
  */
 export function disconnectVerdict(o: {
@@ -54,8 +57,8 @@ export function disconnectVerdict(o: {
   leaving: boolean;
   over?: boolean;
 }): DisconnectVerdict {
-  if (!o.established) return "ignore";
   if (o.leaving) return "left";
+  if (!o.established) return "ignore";
   if (o.over) return "ended";
   return classifyDisconnect(o.reason) ?? "lost";
 }

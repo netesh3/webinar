@@ -373,7 +373,12 @@ export function CdnAttendeeRoom({
           autoSubscribe: false,
         });
         established = true;
-        if (cancelled) return;
+        if (cancelled) {
+          // Unmounted by a Leave while this connect was still queued: close it, or the viewer
+          // stays in the room until the page unloads.
+          if (leaving.current) void room.disconnect();
+          return;
+        }
         connectedOnce.current = true;
         setRecovering(null);
         setConnected(true);

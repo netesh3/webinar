@@ -1052,13 +1052,25 @@ function ConnectedRoom({
    * LiveKit has just let go of without stopping. */
   const captured = useRef(new Set<LocalTrack>());
 
-  /* What a presenter was sending when the page went to the background in a way livekit
-   * disconnects for — `freeze` (Chrome on a hidden tab) or pagehide — read before livekit's
-   * own listener stops the tracks: this one is registered first, at mount, and in the capture
-   * phase. Taken by the next successful connect, which tells them (see the connect effect). */
+  /* What a presenter was sending when the page hit a lifecycle event livekit may disconnect
+   * and stop local tracks for — pagehide and beforeunload certainly (a cancelled navigation, a
+   * download link, a bfcache restore all survive it), and Chrome's `freeze` possibly (livekit
+   * listens for it on window without capture; whether it ever reaches that listener is not
+   * something this code can know). So this is only what *was* on: the next successful connect
+   * compares it with what is on now and tells the presenter about whatever did not come back
+   * (see the connect effect). A capture-phase listener on window hears all three, and the
+   * reads happen before livekit's asynchronous disconnect gets to stopping anything. Forgotten
+   * as soon as it is known nothing was lost: livekit resumed by itself, or the page came back
+   * into view still connected. */
   const leftWithMedia = useRef<{ mic: boolean; camera: boolean; share: boolean } | null>(null);
   useEffect(() => {
     if (!join.canPublish) return;
+    const forget = () => {
+      leftWithMedia.current = null;
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && room.state === ConnectionState.Connected) forget();
+    };
     const onPageLeave = () => {
       if (room.state !== ConnectionState.Connected) return;
       const lp = room.localParticipant;
@@ -1069,17 +1081,38 @@ function ConnectedRoom({
       };
       if (was.mic || was.camera || was.share) leftWithMedia.current = was;
     };
-    window.addEventListener("freeze", onPageLeave, true);
-    window.addEventListener("pagehide", onPageLeave, true);
+    const events = ["freeze", "pagehide", "beforeunload"] as const;
+    for (const e of events) window.addEventListener(e, onPageLeave, true);
+    document.addEventListener("visibilitychange", onVisible);
+    room.on(RoomEvent.Reconnected, forget);
     return () => {
-      window.removeEventListener("freeze", onPageLeave, true);
-      window.removeEventListener("pagehide", onPageLeave, true);
+      for (const e of events) window.removeEventListener(e, onPageLeave, true);
+      document.removeEventListener("visibilitychange", onVisible);
+      room.off(RoomEvent.Reconnected, forget);
     };
   }, [room, join.canPublish]);
   const notifyRef = useRef(notify);
   useEffect(() => {
     notifyRef.current = notify;
   }, [notify]);
+
+  /* The end of a Leave, exactly once, from wherever it is reached: onDisconnected for a room
+   * that was up; leave() itself for one already down (waiting, between retries), which emits
+   * nothing on disconnect(); and the connect effect when Leave was pressed while a connect was
+   * in flight and that connect then failed, which emits nothing for the queued disconnect
+   * either — that used to leave "Reconnecting… (n of 5)" on screen with nothing retrying. */
+  const leaveDone = useRef(false);
+  const completeLeave = useCallback(() => {
+    if (leaveDone.current) return;
+    leaveDone.current = true;
+    setRecovering(null);
+    stopLocalCapture(room, captured.current);
+    onLeaveRef.current();
+  }, [room]);
+  const completeLeaveRef = useRef(completeLeave);
+  useEffect(() => {
+    completeLeaveRef.current = completeLeave;
+  }, [completeLeave]);
   // Camera and microphone go off with the session, not when the SFU gets round to closing.
   useEffect(() => {
     if (status === "ended") stopLocalCapture(room, captured.current);
@@ -1283,10 +1316,7 @@ function ConnectedRoom({
       if (!exitReason) {
         // Pressing Leave is as terminal for this browser's devices as being
         // thrown out is; only a retryable drop keeps them open.
-        if (leaving.current) {
-          stopLocalCapture(room, captured.current);
-          onLeaveRef.current();
-        }
+        completeLeaveRef.current();
         return;
       }
       /* Only "lost" is worth retrying, and the distinction matters. Being removed by the
@@ -1333,10 +1363,18 @@ function ConnectedRoom({
           return;
         }
         const credential = fresh ?? join;
-        if (leaving.current) return;
+        if (leaving.current) {
+          completeLeaveRef.current();
+          return;
+        }
         await connect(credential.url, credential.token, CONNECT_OPTIONS);
         established = true;
-        if (cancelled) return;
+        if (cancelled) {
+          // Unmounted by a Leave while this connect was still queued: nothing else will ever
+          // close it, and the person would stay in the room until the page unloads.
+          if (leaving.current) void room.disconnect();
+          return;
+        }
         setRecovering(null);
         const resumed = resuming.current;
         if (resumed) {
@@ -1358,10 +1396,19 @@ function ConnectedRoom({
          * (`freeze`, pagehide), and nothing republishes them: the presenter is back, sending
          * nothing. Said plainly rather than turned back on for them — whether the camera and
          * microphone go live again is theirs to decide. See leftWithMedia. */
-        const left = leftWithMedia.current;
+        const before = leftWithMedia.current;
         leftWithMedia.current = null;
-        const notice = left ? pageLeaveNotice(left) : null;
-        if (notice) notifyRef.current(notice, "info");
+        if (before) {
+          // Only what was on then and is off now: a track restorePublications brought back,
+          // or one livekit never stopped, is not news.
+          const lp = room.localParticipant;
+          const notice = pageLeaveNotice({
+            mic: before.mic && !lp.isMicrophoneEnabled,
+            camera: before.camera && !lp.isCameraEnabled,
+            share: before.share && !lp.isScreenShareEnabled,
+          });
+          if (notice) notifyRef.current(notice, "info");
+        }
         // Forgiven only after it has held. See STABLE_MS.
         settle = setTimeout(() => {
           attempts.current = 0;
@@ -1371,6 +1418,11 @@ function ConnectedRoom({
         setConnectedEpoch(epochRef.current);
       } catch (err) {
         if (cancelled) return;
+        // Leave pressed while this connect was in flight: it failed, and they are gone.
+        if (leaving.current) {
+          completeLeaveRef.current();
+          return;
+        }
         /* A connect that never landed is the same fault as one that dropped, and used to be
          * treated as final. It is retried on the same schedule: the common reason for the
          * first attempt failing is that the network was not ready yet, which is exactly what
@@ -1724,12 +1776,11 @@ function ConnectedRoom({
      * or the button did nothing. The connect effect checks `leaving` too, so a later wake or
      * retry does not bring them back. */
     if (room.state === ConnectionState.Disconnected) {
-      stopLocalCapture(room, captured.current);
-      onLeaveRef.current();
+      completeLeave();
       return;
     }
     void disconnect();
-  }, [disconnect, room]);
+  }, [disconnect, room, completeLeave]);
 
   // The server's view of the room, for the host only. It is the one list that
   // includes hidden attendees, so it is both the only honest headcount and the only

@@ -29,6 +29,11 @@ eq(
 // Leave pressed: leaving, even though livekit says CLIENT_INITIATED like everything else.
 eq(disconnectVerdict({ ...idle, leaving: true, reason: DisconnectReason.CLIENT_INITIATED }), "left", "Leave is leaving");
 eq(disconnectVerdict({ ...idle, leaving: true, over: true }), "left", "Leave wins over a session that is ending");
+eq(
+  disconnectVerdict({ ...idle, leaving: true, established: false, reason: DisconnectReason.JOIN_FAILURE }),
+  "left",
+  "Leave pressed while a connect is in flight is leaving, whatever that connect does",
+);
 
 // livekit's own disconnects that are not the person leaving.
 eq(disconnectVerdict({ ...idle, reason: undefined }), "lost", "livekit giving up its reconnect (no reason) is retried");
