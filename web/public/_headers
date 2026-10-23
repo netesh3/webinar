@@ -56,3 +56,22 @@
   Permissions-Policy: identity-credentials-get=(self "https://accounts.google.com")
   Strict-Transport-Security: max-age=31536000
   X-Content-Type-Options: nosniff
+
+# The service worker (public/sw.js). Never cached by the browser's HTTP cache, so a new
+# version reaches everyone on their next navigation (browsers cap a worker's HTTP cache at a
+# day anyway; this makes it immediate). Served from the root, so its scope is the whole site
+# without Service-Worker-Allowed; the header is set so registering with scope "/" keeps
+# working if the file ever moves under a sub-path.
+/sw.js
+  Content-Type: application/javascript; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+  Service-Worker-Allowed: /
+
+# The offline page the worker precaches. Revalidated, so an edit is picked up on install.
+/offline.html
+  Cache-Control: no-cache
+
+# The installed app's icons (scripts/pwa-icons.mjs). Unversioned paths, so a week and no
+# `immutable` — the same reasoning as /backgrounds above.
+/icons/*
+  Cache-Control: public,max-age=604800

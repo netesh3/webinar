@@ -214,6 +214,11 @@ func (s *Server) runRealtime(ctx context.Context) bool {
 	mailCtx, mailCancel := context.WithTimeout(ctx, mailFlushBudget)
 	s.flushOutbox(mailCtx)
 	mailCancel()
+	// Web Push: the 15-minute reminders coming due, then everything queued (push.go).
+	s.sweepPushReminders(ctx)
+	pushCtx, pushCancel := context.WithTimeout(ctx, pushFlushBudget)
+	s.flushPush(pushCtx)
+	pushCancel()
 	// The CRM's drips, bots and WhatsApp outbox. See Engage.Tick.
 	s.engage.Tick(ctx)
 	return true
@@ -250,6 +255,7 @@ func (s *Server) runMaintenance(ctx context.Context) {
 	s.leasedJob(ctx, "image-backfill", retentionEvery, s.backfillImages)
 	s.leasedJob(ctx, "email-retention", emailRetentionEvery, s.sweepHostEmails)
 	s.leasedJob(ctx, "notification-retention", notificationRetentionEvery, s.sweepNotificationContent)
+	s.leasedJob(ctx, "push-retention", pushRetentionEvery, s.sweepPushMessages)
 	s.leasedJob(ctx, "token-retention", tokenRetentionEvery, s.sweepExpiredTokens)
 	s.leasedJob(ctx, "chat-image-retention", sessionRetentionEvery, s.sweepChatImages)
 	s.leasedJob(ctx, "caption-retention", sessionRetentionEvery, s.sweepCaptions)

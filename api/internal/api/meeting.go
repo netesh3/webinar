@@ -241,6 +241,8 @@ func (s *Server) handleMeetingKnock(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("meeting knock", "meeting", slug)
 	s.announceLobby(r.Context(), wb)
+	// And the host's phone, when the host is not in the room to see the lobby (push.go).
+	s.pushLobbyKnock(r.Context(), wb, name)
 	httpx.JSON(w, http.StatusOK, types.MeetingKnockResponse{JoinKey: reg.JoinKey, State: types.LobbyWaiting})
 }
 

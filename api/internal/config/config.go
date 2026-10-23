@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/push"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -82,6 +83,15 @@ type Config struct {
 	 * deploy/cloud-scheduler-tick.sh). Empty means the endpoint does not exist, which is
 	 * right for an always-on process whose own ticker is enough. At least 32 characters. */
 	TickSecret string
+
+	/* VAPID identity for Web Push (api/internal/push). All three set turns push on: the
+	 * browser opt-ins, GET /api/push/public-key and the notifications the tick sends. All
+	 * three empty is off, and the UI offers nothing push-shaped; a partial set is refused at
+	 * boot. Generate the pair with `npx web-push generate-vapid-keys`. VAPIDSubject is a
+	 * mailto: or https: contact the push services can reach. */
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
 
 	/* CaptionsSecret switches on server-side live captions (deploy/captions): the shared
 	 * secret the caption agent sends in X-Captions-Secret to POST /api/internal/captions,
@@ -483,6 +493,9 @@ func Load() (Config, error) {
 		DefaultMaxMeetingMin: envInt("DEFAULT_MAX_MEETING_MIN", 180),
 		EmptyRoomCloseMin:    envInt("EMPTY_ROOM_CLOSE_MIN", 10),
 		TickSecret:           strings.TrimSpace(env("TICK_SECRET", "")),
+		VAPIDPublicKey:       strings.TrimSpace(env("VAPID_PUBLIC_KEY", "")),
+		VAPIDPrivateKey:      strings.TrimSpace(env("VAPID_PRIVATE_KEY", "")),
+		VAPIDSubject:         strings.TrimSpace(env("VAPID_SUBJECT", "")),
 		CaptionsSecret:       strings.TrimSpace(env("CAPTIONS_SECRET", "")),
 		CaptionsAgentName:    strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
 		MixRecSecret:         strings.TrimSpace(env("MIXREC_SECRET", "")),
@@ -843,6 +856,7 @@ func (c Config) validate() error {
 	// an empty secret or a duplicate id is not a production-only mistake.
 	errs = append(errs, validateLiveKitProjects(c.LiveKitProjects, c.IsDev()))
 	errs = append(errs, validateAIProviders(c.AIProviders, c.IsDev()))
+	errs = append(errs, c.Push().Validate())
 	if c.AIMonthlyUSD < 0 {
 		errs = append(errs, errors.New("AI_MONTHLY_USD must be a number of US dollars, >= 0"))
 	}
@@ -851,6 +865,11 @@ func (c Config) validate() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+// Push is the Web Push identity; Enabled() is false when the VAPID variables are unset.
+func (c Config) Push() push.Config {
+	return push.Config{PublicKey: c.VAPIDPublicKey, PrivateKey: c.VAPIDPrivateKey, Subject: c.VAPIDSubject}
 }
 
 // listenAddr prefers ADDR; if unset, honors Cloud Run's PORT (a bare number).

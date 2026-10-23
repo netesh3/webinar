@@ -424,7 +424,17 @@ func (s *Server) sweepRecordingExpiryReminders(ctx context.Context) {
 		if ctx.Err() != nil {
 			break
 		}
-		ok, err := s.store.QueueExpiryReminder(ctx, batch, s.expiryReminderMessages)
+		// The push beside the email is for what was actually queued (the fresh part of batch).
+		var told []store.ExpiringRecording
+		var subject string
+		ok, err := s.store.QueueExpiryReminder(ctx, batch, func(fresh []store.ExpiringRecording) []store.Notification {
+			msgs := s.expiryReminderMessages(fresh)
+			told, subject = fresh, msgs[0].Subject
+			return msgs
+		})
+		if ok && err == nil {
+			s.pushRecordingExpiring(ctx, told, subject)
+		}
 		if err != nil {
 			s.log.Error("recording reminders: queue failed", "host", batch[0].HostID, "error", err)
 			continue
