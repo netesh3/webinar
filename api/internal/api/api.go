@@ -599,6 +599,9 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/costs", s.handleAdminCosts)
 			r.Get("/costs/hosts/{id}", s.handleAdminCostHost)
+			r.Get("/costs/ignore", s.handleCostIgnoreList)
+			r.Post("/costs/ignore", s.handleCostIgnoreAdd)
+			r.Delete("/costs/ignore/{id}", s.handleCostIgnoreDelete)
 
 			r.Get("/sales", s.handleAdminSalesInbox)
 			r.Get("/sales/{id}", s.handleAdminSalesConversation)

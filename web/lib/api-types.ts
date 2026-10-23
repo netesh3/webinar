@@ -830,6 +830,10 @@ export interface AdminCostHost {
   email: string;
   byProvider: { [key: string]: AdminCostUsage};
   extras: AdminCostHostExtras;
+  /**
+   * IgnoredBy is the id of the first ignore-list rule this host matches; empty for none.
+   */
+  ignoredBy: string;
 }
 /**
  * AdminCostPlatform is everybody's usage in the range, for the shared costs: the transfer
@@ -850,6 +854,69 @@ export interface AdminCostPlatform {
    * UnattributedRecordingGBDays is storage of deleted recordings whose host is unknown.
    */
   unattributedRecordingGbDays: number /* float64 */;
+  /**
+   *  IgnoredSessionHours is the session-hours of hosts on the ignore list (every provider's,
+   * 	 * whatever the provider filter): taken out of SessionHours when the platform share is
+   * 	 * spread over real hosts only.
+   */
+  ignoredSessionHours: number /* float64 */;
+}
+/**
+ * CostIgnoreEmail is one exact email address (case-insensitive).
+ */
+export const CostIgnoreEmail = "email";
+/**
+ * CostIgnorePattern is an email pattern, * matching any run: *@test.dev, *+test@*.
+ */
+export const CostIgnorePattern = "pattern";
+/**
+ * CostIgnoreHost is one host by account id, whatever their email becomes.
+ */
+export const CostIgnoreHost = "host";
+/**
+ *  CostIgnoreRule is one entry on the Cost by host report's ignore list: test and staff
+ *  * accounts whose usage is not a customer's.
+ */
+export interface CostIgnoreRule {
+  id: string;
+  kind: string;
+  value: string;
+  /**
+   * Label is what to show: the host's email for a host rule, else the value.
+   */
+  label: string;
+  note: string;
+  createdBy: string;
+  createdAt: string;
+}
+/**
+ * CostIgnoreRuleInput is POST /api/admin/costs/ignore.
+ */
+export interface CostIgnoreRuleInput {
+  kind: string;
+  value: string;
+  note: string;
+}
+/**
+ *  CostIgnoreSuggestion is a rule the list could take: a common test-address pattern some
+ *  * accounts match, a host with a test-looking address, or an admin's own account.
+ */
+export interface CostIgnoreSuggestion {
+  kind: string;
+  value: string;
+  label: string;
+  reason: string;
+  /**
+   * Matches is how many accounts the rule would catch.
+   */
+  matches: number /* int */;
+}
+/**
+ * CostIgnoreList is GET /api/admin/costs/ignore.
+ */
+export interface CostIgnoreList {
+  rules: CostIgnoreRule[];
+  suggestions: CostIgnoreSuggestion[];
 }
 /**
  * AdminCostsResponse is GET /api/admin/costs.

@@ -17,6 +17,8 @@
  *   - Platform (Supabase, Workers, the API host, the boxes' idle time, AI and storage with
  *     no host): either spread by each host's share of session-hours, or left as one
  *     "unallocated" figure.
+ *   - Ignore list (test and staff accounts, api/internal/api/cost_ignore.go): hidden, those
+ *     hosts leave the totals and the share is spread over the other hosts' session-hours.
  *
  * Pure: no React, no DOM, so it runs under node tests. */
 
@@ -283,6 +285,8 @@ export function platformCost(
   rangeStart: string,
   rangeEnd: string,
   i: CostInputs,
+  /** The session-hours the cost is spread over: everyone's, or only real hosts'. */
+  shareHours: number = platform.sessionHours,
 ): PlatformCost {
   const months = hoursBetween(rangeStart, rangeEnd) / HOURS_PER_MONTH;
   const lines: HostCostLine[] = [];
@@ -313,7 +317,7 @@ export function platformCost(
     (nn(platform.unattributedRecordingGbDays) * store.perGbMonth) / DAYS_PER_MONTH,
     `${fmt(platform.unattributedRecordingGbDays)} GB-days`);
   const usd = lines.reduce((t, l) => t + l.usd, 0);
-  return { lines, usd, perSessionHourUsd: nn(platform.sessionHours) > 0 ? usd / platform.sessionHours : 0 };
+  return { lines, usd, perSessionHourUsd: nn(shareHours) > 0 ? usd / shareHours : 0 };
 }
 
 export type PricedHost = {
@@ -330,21 +334,38 @@ export type CostContext = {
   platform: PlatformCost;
   /** Spread the platform cost over hosts by session-hours; off leaves it unallocated. */
   allocatePlatform: boolean;
+  /** Apply the ignore list: ignored hosts leave the totals and the platform share's
+   *  denominator, so real hosts carry it all. Off prices everyone as before. */
+  hideIgnored: boolean;
 };
 
+/* Ignored hosts, hidden: their own costs leave the report, and the platform share is spread
+ * over the remaining session-hours (platform.sessionHours less ignoredSessionHours), so a
+ * test account's hours do not dilute what real hosts are shown to cost. Their usage still
+ * fills the transfer pools and the boxes' busy hours: it happened. */
 export function costContext(
   platform: AdminCostPlatform,
   rangeStart: string,
   rangeEnd: string,
   inputs: CostInputs,
   allocatePlatform: boolean,
+  hideIgnored = false,
 ): CostContext {
+  const shareHours = hideIgnored
+    ? Math.max(0, nn(platform.sessionHours) - nn(platform.ignoredSessionHours))
+    : nn(platform.sessionHours);
   return {
     inputs,
     pools: poolRates(platform, rangeStart, rangeEnd, inputs),
-    platform: platformCost(platform, rangeStart, rangeEnd, inputs),
+    platform: platformCost(platform, rangeStart, rangeEnd, inputs, shareHours),
     allocatePlatform,
+    hideIgnored,
   };
+}
+
+/** The context one host is priced in: an ignored host, hidden, takes no platform share. */
+export function hostContext(ctx: CostContext, host: AdminCostHost): CostContext {
+  return ctx.hideIgnored && host.ignoredBy ? { ...ctx, allocatePlatform: false } : ctx;
 }
 
 function totals(lines: HostCostLine[]) {
@@ -376,7 +397,8 @@ function shareLine(hours: number, ctx: CostContext): HostCostLine[] {
   }];
 }
 
-export function priceHost(host: AdminCostHost, ctx: CostContext): PricedHost {
+export function priceHost(host: AdminCostHost, outer: CostContext): PricedHost {
+  const ctx = hostContext(outer, host);
   const session: HostCostLine[] = [];
   let sessionHours = 0;
   for (const [p, u] of Object.entries(host.byProvider ?? {})) {
@@ -395,6 +417,30 @@ export function priceSession(s: AdminCostSession, ctx: CostContext) {
 /** Hosts priced and sorted, most expensive first. */
 export function priceHosts(hosts: AdminCostHost[], ctx: CostContext): PricedHost[] {
   return hosts.map((h) => priceHost(h, ctx)).sort((a, b) => b.totalUsd - a.totalUsd || a.host.email.localeCompare(b.host.email));
+}
+
+export type PricedReport = {
+  /** Hosts not on the ignore list. */
+  counted: PricedHost[];
+  /** Hosts on it, priced without a platform share when hidden. */
+  ignored: PricedHost[];
+  /** What the report's total is: counted hosts, plus the ignored when they are not hidden. */
+  totalUsd: number;
+  ignoredUsd: number;
+};
+
+/** Every host priced, split by the ignore list. */
+export function priceReport(hosts: AdminCostHost[], ctx: CostContext): PricedReport {
+  const counted = priceHosts(hosts.filter((h) => !h.ignoredBy), ctx);
+  const ignored = priceHosts(hosts.filter((h) => h.ignoredBy), ctx);
+  const sum = (p: PricedHost[]) => p.reduce((t, x) => t + x.totalUsd, 0);
+  const ignoredUsd = sum(ignored);
+  return { counted, ignored, ignoredUsd, totalUsd: sum(counted) + (ctx.hideIgnored ? 0 : ignoredUsd) };
+}
+
+/** The hosts the table and the CSV show: the ignored ones only when not hidden. */
+export function visibleHosts(r: PricedReport, hideIgnored: boolean): PricedHost[] {
+  return hideIgnored ? r.counted : [...r.counted, ...r.ignored];
 }
 
 // ---------------------------------------------------------------- ranges and export
@@ -427,7 +473,9 @@ export function toCsv(rows: (string | number)[][]): string {
 
 /** The host table as CSV, in dollars and rupees. */
 export function hostsCsv(priced: PricedHost[], inrPerUsd: number): string {
-  const head = ["Host", "Email", "Session hours", "Total USD", "Total INR", ...COST_COLUMNS.map((c) => `${COLUMN_LABELS[c]} USD`)];
+  const head = [
+    "Host", "Email", "Session hours", "Total USD", "Total INR", ...COST_COLUMNS.map((c) => `${COLUMN_LABELS[c]} USD`), "Ignored",
+  ];
   return toCsv([
     head,
     ...priced.map((p) => [
@@ -437,6 +485,7 @@ export function hostsCsv(priced: PricedHost[], inrPerUsd: number): string {
       p.totalUsd,
       p.totalUsd * inrPerUsd,
       ...COST_COLUMNS.map((c) => p.columns[c]),
+      p.host.ignoredBy ? "yes" : "",
     ]),
   ]);
 }

@@ -3,15 +3,18 @@ import type { AdminCostHost, AdminCostPlatform, AdminCostUsage } from "./api-typ
 import { DEFAULT_INPUTS, edgeGbPerViewerHour, withDefaults } from "./cost-calculator.ts";
 import {
   costContext,
+  hostContext,
   hostsCsv,
   platformCost,
   poolRates,
   presetRange,
   priceHost,
   priceHosts,
+  priceReport,
   priceUsage,
   toCsv,
   usageGb,
+  visibleHosts,
 } from "./host-costs.ts";
 
 const near = (a: number, b: number, tol = 1e-6) =>
@@ -26,7 +29,7 @@ const zero: AdminCostUsage = {
 };
 const usage = (u: Partial<AdminCostUsage>): AdminCostUsage => ({ ...zero, ...u });
 const host = (email: string, byProvider: Record<string, AdminCostUsage>, extras: Partial<AdminCostHost["extras"]> = {}): AdminCostHost => ({
-  hostId: email, name: email, email, byProvider,
+  hostId: email, name: email, email, byProvider, ignoredBy: "",
   extras: { recordingGbDays: 0, mediaGbDays: 0, knowledgeGbDays: 0, recordingGb: 0, mediaGb: 0, knowledgeGb: 0, ai: [], emails: [], whatsapp: [], ...extras },
 });
 const line = (lines: { key: string; usd: number }[], key: string) => lines.find((l) => l.key === key)?.usd ?? 0;
@@ -54,7 +57,7 @@ const i = withDefaults(DEFAULT_INPUTS);
     firstSessionAt: { do: "2026-08-01T00:00:00Z" },
     sessionHours: 100,
     unattributedAiUsd: 0,
-    unattributedRecordingGbDays: 0,
+    unattributedRecordingGbDays: 0, ignoredSessionHours: 0,
   };
   const pools = poolRates(platform, START, END, i);
   near(pools.do.usedGb, 15000);
@@ -77,7 +80,7 @@ const i = withDefaults(DEFAULT_INPUTS);
 
 // ---- Line totals on one provider.
 {
-  const pools = poolRates({ byProvider: {}, firstSessionAt: {}, sessionHours: 0, unattributedAiUsd: 0, unattributedRecordingGbDays: 0 }, START, END, i);
+  const pools = poolRates({ byProvider: {}, firstSessionAt: {}, sessionHours: 0, unattributedAiUsd: 0, unattributedRecordingGbDays: 0, ignoredSessionHours: 0 }, START, END, i);
   const u = usage({ boxShareHours: 2, liveHours: 3, edgeLiveHours: 3, edgeExtraHours: 1, webrtcViewerHours: 10, compositeRecHours: 2, captionLiveHours: 1 });
   // GCP: per-session SFU by shared hours, a worker for every Edge hour, composite workers.
   const g = priceUsage(u, "gcp", i, pools);
@@ -103,7 +106,7 @@ const i = withDefaults(DEFAULT_INPUTS);
     firstSessionAt: { do: "2026-09-16T05:00:00Z" }, // half the range
     sessionHours: 40,
     unattributedAiUsd: 1,
-    unattributedRecordingGbDays: 0,
+    unattributedRecordingGbDays: 0, ignoredSessionHours: 0,
   };
   const pc = platformCost(platform, START, END, i);
   near(line(pc.lines, "supabase"), i.supabaseUsd);
@@ -132,6 +135,58 @@ const i = withDefaults(DEFAULT_INPUTS);
   const csv = hostsCsv(sorted, 100).split("\n");
   assert.match(csv[0], /^Host,Email,Session hours,Total USD,Total INR/);
   assert.ok(csv[1].startsWith("a@x,a@x,30.0000,"));
+}
+
+// ---- The ignore list: hidden hosts leave the totals and the share's denominator.
+{
+  // 40 session-hours: a real host's 30 and a test account's 10.
+  const platform: AdminCostPlatform = {
+    byProvider: { do: usage({ boxShareHours: 40 }) },
+    firstSessionAt: { do: START },
+    sessionHours: 40,
+    unattributedAiUsd: 2,
+    unattributedRecordingGbDays: 0,
+    ignoredSessionHours: 10,
+  };
+  const real = host("real@customer.in", { do: usage({ sessionHours: 30, boxShareHours: 30, liveHours: 30 }) });
+  const test = { ...host("qa@test.dev", { do: usage({ sessionHours: 10, boxShareHours: 10, liveHours: 10 }) }), ignoredBy: "rule-1" };
+  const fixed = platformCost(platform, START, END, i).usd;
+
+  // Hidden: the real host carries the whole platform cost; the test account none of it.
+  const hidden = costContext(platform, START, END, i, true, true);
+  near(hidden.platform.perSessionHourUsd, fixed / 30);
+  near(hidden.platform.usd, fixed);
+  const rh = priceReport([real, test], hidden);
+  assert.deepEqual(rh.counted.map((p) => p.host.email), ["real@customer.in"]);
+  assert.deepEqual(rh.ignored.map((p) => p.host.email), ["qa@test.dev"]);
+  near(rh.counted[0].columns.platform, fixed);
+  assert.equal(rh.ignored[0].columns.platform, 0);
+  assert.ok(rh.ignoredUsd > 0);
+  near(rh.totalUsd, rh.counted[0].totalUsd);
+  assert.equal(hostContext(hidden, test).allocatePlatform, false);
+  assert.equal(hostContext(hidden, real).allocatePlatform, true);
+  assert.deepEqual(visibleHosts(rh, true).map((p) => p.host.email), ["real@customer.in"]);
+
+  // Shown: everybody priced as before, shared by all 40 hours; the total takes both in.
+  const shown = costContext(platform, START, END, i, true, false);
+  near(shown.platform.perSessionHourUsd, fixed / 40);
+  const rs = priceReport([real, test], shown);
+  near(rs.counted[0].columns.platform, (30 / 40) * fixed);
+  near(rs.ignored[0].columns.platform, (10 / 40) * fixed);
+  near(rs.totalUsd, rs.counted[0].totalUsd + rs.ignored[0].totalUsd);
+  assert.equal(visibleHosts(rs, false).length, 2);
+
+  // Everyone ignored: nothing to spread over, no division by zero.
+  near(costContext({ ...platform, ignoredSessionHours: 40 }, START, END, i, true, true).platform.perSessionHourUsd, 0);
+
+  // The CSV says which rows are ignored, and holds only what is visible.
+  const hiddenCsv = hostsCsv(visibleHosts(rh, true), 100).trim().split("\n");
+  assert.match(hiddenCsv[0], /,Ignored$/);
+  assert.equal(hiddenCsv.length, 2);
+  assert.ok(hiddenCsv[1].endsWith(","));
+  const shownCsv = hostsCsv(visibleHosts(rs, false), 100).trim().split("\n");
+  assert.equal(shownCsv.length, 3);
+  assert.ok(shownCsv[2].startsWith("qa@test.dev,") && shownCsv[2].endsWith(",yes"));
 }
 
 // ---- Ranges and CSV quoting.

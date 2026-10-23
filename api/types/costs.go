@@ -105,6 +105,8 @@ type AdminCostHost struct {
 	Email      string                    `json:"email"`
 	ByProvider map[string]AdminCostUsage `json:"byProvider"`
 	Extras     AdminCostHostExtras       `json:"extras"`
+	// IgnoredBy is the id of the first ignore-list rule this host matches; empty for none.
+	IgnoredBy string `json:"ignoredBy"`
 }
 
 // AdminCostPlatform is everybody's usage in the range, for the shared costs: the transfer
@@ -118,6 +120,57 @@ type AdminCostPlatform struct {
 	UnattributedAIUSD float64 `json:"unattributedAiUsd"`
 	// UnattributedRecordingGBDays is storage of deleted recordings whose host is unknown.
 	UnattributedRecordingGBDays float64 `json:"unattributedRecordingGbDays"`
+	/* IgnoredSessionHours is the session-hours of hosts on the ignore list (every provider's,
+	 * whatever the provider filter): taken out of SessionHours when the platform share is
+	 * spread over real hosts only. */
+	IgnoredSessionHours float64 `json:"ignoredSessionHours"`
+}
+
+// Cost ignore-list rule kinds.
+const (
+	// CostIgnoreEmail is one exact email address (case-insensitive).
+	CostIgnoreEmail = "email"
+	// CostIgnorePattern is an email pattern, * matching any run: *@test.dev, *+test@*.
+	CostIgnorePattern = "pattern"
+	// CostIgnoreHost is one host by account id, whatever their email becomes.
+	CostIgnoreHost = "host"
+)
+
+/* CostIgnoreRule is one entry on the Cost by host report's ignore list: test and staff
+ * accounts whose usage is not a customer's. */
+type CostIgnoreRule struct {
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+	// Label is what to show: the host's email for a host rule, else the value.
+	Label     string `json:"label"`
+	Note      string `json:"note"`
+	CreatedBy string `json:"createdBy"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// CostIgnoreRuleInput is POST /api/admin/costs/ignore.
+type CostIgnoreRuleInput struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+	Note  string `json:"note"`
+}
+
+/* CostIgnoreSuggestion is a rule the list could take: a common test-address pattern some
+ * accounts match, a host with a test-looking address, or an admin's own account. */
+type CostIgnoreSuggestion struct {
+	Kind   string `json:"kind"`
+	Value  string `json:"value"`
+	Label  string `json:"label"`
+	Reason string `json:"reason"`
+	// Matches is how many accounts the rule would catch.
+	Matches int `json:"matches"`
+}
+
+// CostIgnoreList is GET /api/admin/costs/ignore.
+type CostIgnoreList struct {
+	Rules       []CostIgnoreRule       `json:"rules"`
+	Suggestions []CostIgnoreSuggestion `json:"suggestions"`
 }
 
 // AdminCostsResponse is GET /api/admin/costs.
