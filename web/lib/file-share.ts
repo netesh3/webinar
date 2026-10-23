@@ -3,6 +3,7 @@
 import { RoomEvent, Track, type Room } from "livekit-client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sharePublishOptions } from "./media";
+import { noteShareMode } from "./share-mode";
 
 /* Sharing a recorded video into a live session.
  *
@@ -338,6 +339,10 @@ export function useFileShare(room: Room | null): FileShareApi {
          *
          * Nothing about simulcast or the layer ladder is restated here either: the "video"
          * mode's layers come with the options (shareLayers / shareTop in network.ts). */
+        /* Remembered as video before it goes out: on the keep-resolution VP9 layout the hint
+         * is "motion" in both modes, and the network ladder would otherwise read an un-noted
+         * share as sharp and cap the clip at 15 fps (share-mode.ts, liveShareMode). */
+        noteShareMode(videoTrack, "video");
         await room.localParticipant.publishTrack(videoTrack, {
           ...sharePublishOptions("video"),
           source: Track.Source.ScreenShare,

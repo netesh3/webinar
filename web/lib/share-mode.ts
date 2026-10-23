@@ -8,7 +8,10 @@
  *          at most 15 fps. This is what Zoom and Meet do for content share.
  *   video  a clip, a demo with motion, anything played into the share. Smoothness
  *          matters more than the last pixel of text, so the opposite trade:
- *          contentHint "motion" + "maintain-framerate", up to 30 fps.
+ *          contentHint "motion", up to 30 fps. With SHARE_KEEP_RESOLUTION (the default)
+ *          it still holds resolution — "maintain-resolution" in both modes, so a weak
+ *          network costs frames, never pixels; only the old simulcast layout used
+ *          "maintain-framerate" here.
  *
  * Why "detail" rather than "text": both ask the encoder to hold resolution, but
  * "text" is specifically for text-only content and lets encoders spend less on
@@ -43,9 +46,14 @@ export function shareContentHint(mode: ShareMode): "detail" | "motion" {
   return mode === "video" ? "motion" : "detail";
 }
 
+/* The single layout (SHARE_KEEP_RESOLUTION, below) holds resolution in BOTH modes: a played
+ * clip under pressure loses frames, never pixels. Only the old simulcast layout still trades
+ * by mode. */
 export function shareDegradation(
   mode: ShareMode,
+  layout: ShareLayout = "simulcast",
 ): "maintain-resolution" | "maintain-framerate" {
+  if (layout === "single") return "maintain-resolution";
   return mode === "video" ? "maintain-framerate" : "maintain-resolution";
 }
 
@@ -124,19 +132,26 @@ export function shareCaptureResolution(
  * motion for screenshare with SVC codecs"). Resolution is still held: that is the
  * degradationPreference's job, and it is "maintain-resolution". H264 keeps "detail".
  *
- * Video mode (a played clip, file shares) is unchanged: 720p + 1080p simulcast, motion,
- * maintain-framerate. A share published sharp that later switches to video keeps its single
- * encoding and changes hint, degradation, fps and bitrate on it.
+ * EVERY share is laid out this way — sharp and video mode, desktop and file shares, in webinars
+ * and meetings alike (all of them publish through sharePublishOptions in media.ts). Video mode
+ * (a played clip, a file share) is the same single full-resolution encoding, also
+ * maintain-resolution, with a higher ceiling: 30 fps and more bitrate (SHARE_SINGLE_BITRATES in
+ * network.ts). On VP9 its L1T3 temporal layers are 30 / 15 / 7.5 fps, so a weak viewer gets
+ * fewer frames of the same 1080p. A share that switches mode mid-share keeps its encoding and
+ * changes fps and bitrate on it; the degradation preference stays maintain-resolution.
+ * The network ladder (shareLadder) only ever lowers fps and bitrate on it, never resolution.
  *
- * NEXT_PUBLIC_SHARE_KEEP_RESOLUTION=0 at build time puts sharp shares back on simulcast. */
+ * NEXT_PUBLIC_SHARE_KEEP_RESOLUTION=0 at build time puts every share back on the old
+ * 720p + 1080p simulcast (and video mode back on maintain-framerate). */
 export const SHARE_KEEP_RESOLUTION: boolean =
   (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_SHARE_KEEP_RESOLUTION) !== "0";
 
 /** "single": one full-resolution encoding. "simulcast": the 720p floor plus the capture. */
 export type ShareLayout = "single" | "simulcast";
 
-export function shareLayout(mode: ShareMode, keepResolution: boolean = SHARE_KEEP_RESOLUTION): ShareLayout {
-  return keepResolution && mode === "sharp" ? "single" : "simulcast";
+/** The same for every mode: the switch alone decides. */
+export function shareLayout(keepResolution: boolean = SHARE_KEEP_RESOLUTION): ShareLayout {
+  return keepResolution ? "single" : "simulcast";
 }
 
 /** The layout a live share was published with, read off its sender: one encoding is single. */
@@ -163,9 +178,11 @@ export function shareEncoderHint(
 /* Which mode a live share is in.
  *
  * contentHint used to say, but a VP9 L1T3 share is "motion" in both modes. So the mode is
- * remembered per track when it is applied (applyShareMode), and a track nobody has applied a
- * mode to yet is read off its hint — except a single-layout VP9 one, which only sharp
- * publishes. Keyed by the MediaStreamTrack, which survives a republish. */
+ * remembered per track when it is applied (applyShareMode, and file-share.ts at publish), and
+ * a track nobody has noted a mode for yet is read off its hint — except a single-layout VP9
+ * one, whose hint says nothing: a desktop share starts sharp, so that is the answer (a file
+ * share, always video, is noted before it is published). Keyed by the MediaStreamTrack, which
+ * survives a republish. */
 const liveModes = new WeakMap<object, ShareMode>();
 
 export function noteShareMode(track: object | undefined, mode: ShareMode): void {
