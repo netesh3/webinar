@@ -1845,6 +1845,40 @@ html[data-theme="dark"] .legal {
   gap: 0.4rem;
 }
 
+.legal-body ol {
+  margin: 0.65rem 0 0;
+  padding-left: 1.4rem;
+  list-style: decimal;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.legal-body code {
+  font-family: var(--font-mono, ui-monospace), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86em;
+  overflow-wrap: anywhere;
+}
+
+.legal-body table {
+  width: 100%;
+  margin: 0.65rem 0 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.legal-body th,
+.legal-body td {
+  padding: 0.45rem 0.6rem 0.45rem 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+
+.legal-body th {
+  font-weight: 650;
+  color: var(--home-ink);
+}
+
 .legal-body a {
   color: var(--home-accent);
   text-decoration: underline;
