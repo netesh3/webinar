@@ -72,12 +72,22 @@ export function shareDegradation(
  * encoding with contentHint forced to "motion" — the opposite of sharp. Firefox was not
  * measured. Phones encode VP9 in software and rarely share. Those keep H264, unchanged.
  * A subscriber that cannot decode VP9 gets the H264 backup publication. */
-export type ShareCodec = "vp9" | "h264";
+export type ShareCodec = "vp9" | "h264" | "av1";
 
-export function shareCodec(ua: string): ShareCodec {
+/* `av1` is the AV1 gate's answer for a share (lib/codec-policy.ts av1Now("share")): a capable
+ * desktop Chromium shares in AV1 instead of VP9, published exactly like the VP9 share (one L1T3
+ * encoding, or rid L1T1 simulcast with the switch off) at ~30% less bitrate. Safari and every
+ * iOS browser never get av1 = true, and are H264 here regardless. */
+export function shareCodec(ua: string, av1 = false): ShareCodec {
   const chromium = /\b(Chrome|Chromium)\/\d+/.test(ua);
   const mobile = /android|iphone|ipad|ipod|mobile|crios|edgios/i.test(ua);
-  return chromium && !mobile ? "vp9" : "h264";
+  if (!chromium || mobile) return "h264";
+  return av1 ? "av1" : "vp9";
+}
+
+/** VP9 and AV1 are published the same way (SVC temporal layers / rid L1T*); H264 is not. */
+export function isSvcShareCodec(codec: ShareCodec): boolean {
+  return codec === "vp9" || codec === "av1";
 }
 
 /** Which mode a live share is in, read back off its track's contentHint. */
@@ -161,7 +171,7 @@ export function shareLayoutOfEncodings(count: number | undefined): ShareLayout {
 
 /** VP9's scalabilityMode for a layout; H264 takes none. */
 export function shareScalabilityMode(codec: ShareCodec, layout: ShareLayout): "L1T3" | "L1T1" | undefined {
-  if (codec !== "vp9") return undefined;
+  if (!isSvcShareCodec(codec)) return undefined;
   return layout === "single" ? "L1T3" : "L1T1";
 }
 
@@ -171,7 +181,8 @@ export function shareEncoderHint(
   codec: ShareCodec,
   layout: ShareLayout,
 ): "detail" | "motion" {
-  if (codec === "vp9" && layout === "single") return "motion";
+  // AV1 L1T3 too: livekit-client forces "motion" on every SVC-codec screen share.
+  if (isSvcShareCodec(codec) && layout === "single") return "motion";
   return shareContentHint(mode);
 }
 

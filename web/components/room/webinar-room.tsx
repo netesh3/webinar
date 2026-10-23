@@ -69,7 +69,8 @@ import {
 } from "@/lib/realtime";
 import { countSince } from "@/lib/room-history";
 import { useRoomHistory } from "@/lib/room-history-sync";
-import { prioritiseAudio, useNetworkHealth } from "@/lib/network";
+import { applyCameraCodec, prioritiseAudio, useNetworkHealth } from "@/lib/network";
+import { probeAv1 } from "@/lib/codec-policy";
 import { formatElapsed } from "@/lib/format";
 import { afterWebinarEnd } from "@/lib/host-results";
 import { Alert, Spinner } from "../controls";
@@ -536,6 +537,21 @@ function RoomSession({
   // tear down the connection, so the options are captured at mount and changed
   // later through the Room's own device-switching API instead.
   const [room] = useState(() => new Room(roomOptions(prefs, join.canPublish)));
+
+  /* AV1 for this camera, if the device can afford it (lib/codec-policy.ts). roomOptions ran
+   * before the probe could answer, so the answer is applied to the Room's publish defaults
+   * when it arrives — during the pre-join screen, ahead of the first camera publish. */
+  useEffect(() => {
+    if (!join.canPublish) return;
+    let live = true;
+    void probeAv1("camera").then((verdict) => {
+      if (!live) return;
+      if (verdict.av1) applyCameraCodec(room, "av1");
+    });
+    return () => {
+      live = false;
+    };
+  }, [room, join.canPublish]);
 
   /* Coming back after a refresh: the mic and camera as this tab (or, for a reopened link,
    * this browser) last had them — lib/rejoin.ts. Read once, at mount. A host-enforced mute

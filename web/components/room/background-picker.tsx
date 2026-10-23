@@ -2,8 +2,15 @@
 
 import { Track, type LocalVideoTrack } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
+  effectsPausedForCpu,
+  setEffectsPausedForCpu,
+  setEffectsWanted,
+  useEffectsPausedForCpu,
+} from "@/lib/cpu-relief";
+import {
+  NO_BACKGROUND,
   retryBackground,
   useAutoLowLight,
   useBackgroundsSupported,
@@ -52,9 +59,30 @@ export function VirtualBackground() {
   const track = useCameraTrack();
   useAutoLowLight(prefs.lowLightAuto);
 
+  /* The CPU ladder (lib/network.ts ADAPT.cpu, "effects" rung) may pause the background when
+   * the encoder runs out of CPU: "none" is applied in place of the stored choice, which is left
+   * alone so it comes back on its own when the ladder recovers. The low-light lift stays — it
+   * costs no segmentation. */
+  const pausedForCpu = useEffectsPausedForCpu();
+  const wanted = prefs.background.mode !== "none";
+  useEffect(() => {
+    setEffectsWanted(wanted);
+  }, [wanted]);
+  useEffect(() => {
+    if (pausedForCpu) notify("Background effects paused to keep your video smooth", "info");
+  }, [pausedForCpu, notify]);
+  /* Choosing a background again while paused is an explicit ask: it wins over the ladder. */
+  const choiceKey = JSON.stringify(prefs.background);
+  const firstChoice = useRef(choiceKey);
+  useEffect(() => {
+    if (choiceKey === firstChoice.current) return;
+    firstChoice.current = choiceKey;
+    if (effectsPausedForCpu()) setEffectsPausedForCpu(false);
+  }, [choiceKey]);
+
   const { error } = useVirtualBackground(
     track,
-    prefs.background,
+    pausedForCpu ? NO_BACKGROUND : prefs.background,
     prefs.lowLight,
     prefs.backgroundEngine,
   );

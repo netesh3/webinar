@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SHARE_KEEP_RESOLUTION,
   SHARE_MODE_FPS,
+  isSvcShareCodec,
   liveShareMode,
   shareDegradation,
   shareEncoderHint,
@@ -23,6 +24,17 @@ import {
   type ShareLayout,
   type ShareMode,
 } from "./share-mode.ts";
+import {
+  cpuLimitedShare,
+  governorStep,
+  initialGovernor,
+  logAdapt,
+  type GovernorConfig,
+  type GovernorState,
+  type Signals,
+} from "./adapt-governor.ts";
+import { effectsPausedForCpu, effectsWanted, setEffectsPausedForCpu } from "./cpu-relief.ts";
+import { demoteAv1 } from "./codec-policy.ts";
 
 /* Watching the connection, and doing something about it.
  *
@@ -91,20 +103,128 @@ export type PublishTier = "full" | "reduced" | "minimal";
 
 const TIERS: PublishTier[] = ["full", "reduced", "minimal"];
 
-/** How long a bad patch has to last before quality drops. Two samples: one is a
- *  hiccup, and reacting to a hiccup is how the picture ends up pumping. */
-const DEGRADE_AFTER_SAMPLES = 2;
-/** How long it has to be clear before quality climbs. Six samples — twelve seconds —
- *  because the step up is itself a bandwidth increase, and doing it eagerly recreates
- *  the congestion that caused the step down. */
-const RECOVER_AFTER_SAMPLES = 6;
-const SAMPLE_MS = 2000;
-
-/* What counts as trouble.
+/* ==========================================================================================
+ * ADAPT — every threshold that moves a publisher's quality, in one table.
  *
- * Two percent loss is roughly where video starts to visibly break up.
- */
-const BAD_LOSS_PERCENT = 2;
+ * Three ladders, each run by the same governor (lib/adapt-governor.ts: hold, clean window,
+ * hysteresis, cool-down, one step per sample, oscillation hold):
+ *
+ *   camera  full → reduced → minimal (LADDER): drops simulcast layers.
+ *   share   full → reduced → minimal (shareLadder): drops fps and bitrate, never resolution.
+ *   cpu     none → fps → effects → codec → layer (CPU_STEPS): the device, not the network.
+ *
+ * Signals, per 2 s sample (all from getStats on the publisher's own senders):
+ *   loss        % of outbound video packets the SFU reports lost, over this window.
+ *   rttExcess   ms of round trip ABOVE this route's 1-minute floor — queueing, not distance
+ *               (see the RTT note below; an absolute RTT never steps anything).
+ *   jitter      ms, the SFU's interarrival jitter for our packets (remote-inbound-rtp).
+ *   headroom    (availableOutgoingBitrate − what the current rungs send) / what they send.
+ *               Step-UP gate only. Never a step-down signal: on India→EU the browser's estimate
+ *               reads a few Mbps on a 100 Mbps line and stepped healthy presenters down (see
+ *               the bandwidth note below). Judged against the CURRENT rung, so a stepped-down
+ *               sender — app-limited, estimate pinned near its own rate — is not locked out.
+ *   cpu         share of the window the encoder spent qualityLimitationReason "cpu", 0..1,
+ *               from qualityLimitationDurations (worst sender).
+ *
+ * Down triggers fire after `forMs` continuously at or above `atLeast`; a `severe` one also
+ * ignores the cool-down and the oscillation hold. Up needs every `up` condition for `cleanMs`.
+ * The two sets are far apart on purpose (hysteresis): a link sitting on one number holds still.
+ *
+ *              down (any, held)                          up (all, for cleanMs)
+ *   camera     loss ≥ 2% 4s | ≥ 10% 2s (severe)          loss ≤ 0.5%, rttExcess ≤ 80 ms,
+ *              rttExcess ≥ 200 ms 4s | jitter ≥ 100 ms 6s jitter ≤ 30 ms, headroom ≥ 30%  — 20 s
+ *   share      loss ≥ 5% 4s | ≥ 15% 2s (severe)          loss ≤ 1%, rttExcess ≤ 80 ms,
+ *              rttExcess ≥ 400 ms 4s | jitter ≥ 150 ms 6s jitter ≤ 50 ms, headroom ≥ 30%  — 20 s
+ *   cpu        cpu ≥ 50% 6s | ≥ 90% 4s (severe)          cpu ≤ 5%                           — 30 s
+ *   all        cool-down 10 s after any move; 3 moves in 2 min → no step-up for 2 min.
+ *
+ * "RTT < 250 ms" as a clean condition is deliberately expressed as rttExcess ≤ 80 ms instead:
+ * the EU SFU's floor from India is 200–250 ms, so an absolute 250 would make recovery a coin
+ * toss on distance alone — the one-way ratchet described at RTT_EXCESS_BAD_MS.
+ * ========================================================================================== */
+export const ADAPT = {
+  sampleMs: 2000,
+  camera: {
+    maxLevel: 2,
+    down: [
+      // Two percent is roughly where camera video visibly breaks up.
+      { signal: "loss", atLeast: 2, forMs: 4000 },
+      { signal: "loss", atLeast: 10, forMs: 2000, severe: true },
+      { signal: "rttExcess", atLeast: 200, forMs: 4000 },
+      // RTP jitter this high is a queue flapping, even when the mean RTT looks fine.
+      { signal: "jitter", atLeast: 100, forMs: 6000 },
+    ],
+    up: [
+      { signal: "loss", atMost: 0.5 },
+      { signal: "rttExcess", atMost: 80 },
+      { signal: "jitter", atMost: 30 },
+      { signal: "headroom", atLeast: 0.3 },
+    ],
+    // The step up is itself a bandwidth increase; doing it eagerly recreates the congestion.
+    cleanMs: 20_000,
+    cooldownMs: 10_000,
+    oscillation: { changes: 3, windowMs: 120_000, holdMs: 120_000 },
+  },
+  share: {
+    maxLevel: 2,
+    // A higher bar than the camera: long-haul jitter must not cost slides frames.
+    down: [
+      { signal: "loss", atLeast: 5, forMs: 4000 },
+      { signal: "loss", atLeast: 15, forMs: 2000, severe: true },
+      { signal: "rttExcess", atLeast: 400, forMs: 4000 },
+      { signal: "jitter", atLeast: 150, forMs: 6000 },
+    ],
+    up: [
+      { signal: "loss", atMost: 1 },
+      { signal: "rttExcess", atMost: 80 },
+      { signal: "jitter", atMost: 50 },
+      { signal: "headroom", atLeast: 0.3 },
+    ],
+    cleanMs: 20_000,
+    cooldownMs: 10_000,
+    oscillation: { changes: 3, windowMs: 120_000, holdMs: 120_000 },
+  },
+  cpu: {
+    maxLevel: 4,
+    down: [
+      // Half of each window CPU-limited, held 6 s: the encoder is not keeping up.
+      { signal: "cpu", atLeast: 0.5, forMs: 6000 },
+      { signal: "cpu", atLeast: 0.9, forMs: 4000, severe: true },
+    ],
+    up: [{ signal: "cpu", atMost: 0.05 }],
+    // Slower than the network: every CPU rung back up re-adds work that was just too much.
+    cleanMs: 30_000,
+    cooldownMs: 10_000,
+    oscillation: { changes: 3, windowMs: 120_000, holdMs: 120_000 },
+    /* Frame-rate caps per CPU level (index = level), per track kind. Cameras cut fps first
+     * and only drop a layer at "layer"; shares keep resolution at every level. */
+    cameraFps: [30, 20, 20, 20, 15],
+    shareFps: { sharp: [15, 10, 10, 10, 8], video: [30, 20, 20, 20, 15] } as Record<ShareMode, number[]>,
+  },
+} as const satisfies {
+  sampleMs: number;
+  camera: GovernorConfig;
+  share: GovernorConfig;
+  cpu: GovernorConfig & { cameraFps: readonly number[]; shareFps: Record<ShareMode, readonly number[]> };
+};
+
+/* The CPU ladder's rungs, in the order they are taken (index = level). A rung with nothing to
+ * do on this device — no effect on, no AV1 track — is skipped in the same move, so it costs no
+ * interval:
+ *   fps      camera top layer 30 → 20 fps, share 15 → 10 (sharp) / 30 → 20 (video)
+ *   effects  pause blur / virtual background (cpu-relief.ts), with a toast
+ *   codec    AV1 → VP8 camera, republished once; sticky for the tab (codec-policy demoteAv1).
+ *            A live share is not republished (that would cut every viewer's slides and
+ *            re-run the share lock); later shares go out VP9.
+ *   layer    camera held off its 1080p rung; camera 15 fps; share 8 (sharp) / 15 (video) fps */
+export const CPU_STEPS = ["none", "fps", "effects", "codec", "layer"] as const;
+export type CpuStep = (typeof CPU_STEPS)[number];
+
+const SAMPLE_MS = ADAPT.sampleMs;
+
+/* What counts as trouble for a single sample (judge / describeQuality): the lowest camera
+ * loss trigger in ADAPT. */
+const BAD_LOSS_PERCENT = ADAPT.camera.down[0].atLeast;
 
 /* Round trip is judged by how far it is ABOVE this route's own floor, never by an absolute
  * number. This is the correction to a real bug, and the bug is worth writing down because the
@@ -140,10 +260,10 @@ const BAD_LOSS_PERCENT = 2;
  * Excess thresholds are deliberately loose for this topology: long-haul jitter of ~100–150 ms
  * on a 200–250 ms floor must not count as congestion.
  */
-const RTT_EXCESS_BAD_MS = 200;
+const RTT_EXCESS_BAD_MS = ADAPT.camera.down[2].atLeast; // 200 ms
 /** And what counts as drained. Asymmetric like every other pair here, so a connection sitting
  *  on one number does not thrash. */
-const RTT_EXCESS_GOOD_MS = 80;
+const RTT_EXCESS_GOOD_MS = ADAPT.camera.up[1].atMost; // 80 ms
 /** Absolute RTT that is still a healthy seat here. EU SFU + India clients land ~200–250 ms;
  *  the UI must treat that as good, not as LiveKit's middling/poor grade. */
 const RTT_OK_MS = 300;
@@ -228,7 +348,7 @@ export function floorFrom(window: readonly number[]): number {
  * see what the browser claimed — it must never feed judge / judgeShare. */
 /* And what counts as recovered. Lower than the trouble thresholds on purpose: a single
  * band would have the state flapping around one number. */
-const GOOD_LOSS_PERCENT = 0.5;
+const GOOD_LOSS_PERCENT = ADAPT.camera.up[0].atMost; // 0.5%
 
 const IDLE: NetworkHealth = {
   quality: ConnectionQuality.Unknown,
@@ -320,6 +440,56 @@ export function cameraCapturePreset(): VideoPreset {
   return canCaptureCamera1080() ? CAMERA_TOP : CAMERA_720;
 }
 
+/* AV1: the same picture for ~30% fewer bits.
+ *
+ * Every AV1 rung is the codec it replaces times AV1_SAVING — VP8 for cameras, VP9 for shares
+ * (lib/codec-policy.ts says who gets AV1 at all). Without this AV1 would just be a sharper
+ * picture at the same uplink cost, and the uplink is what is short. libaom realtime at these
+ * resolutions measures roughly 30–40% under VP8 and 20–30% under VP9 for equal quality; 0.7 is
+ * the conservative end for cameras and slightly generous for shares, where VP9 sharp at 1080p
+ * already had a wide margin (48.6 dB on a still slide at 1.5 Mbps, share-mode.ts).
+ *
+ *   camera (AV1)  180p 140  360p 448  1080p 2240 (720p 1400)   full 2828 kbps (VP8 4040, -30%)
+ *   share sharp   single 1080p@15  1750                          (VP9 2500, -30%)
+ *   share video   single 1080p@30  2800                          (VP9 4000, -30%)
+ */
+export const AV1_SAVING = 0.7;
+
+/** The camera codecs: VP8 everywhere, AV1 where codec-policy.ts allows it. */
+export type CameraCodec = "vp8" | "av1";
+
+export function cameraCodecOfTrack(codec: string | undefined): CameraCodec {
+  return codec?.toLowerCase() === "av1" ? "av1" : "vp8";
+}
+
+/* How a camera is published, per codec — spread into publishDefaults (media.ts roomOptions)
+ * and re-applied to a live room when the AV1 probe resolves or the CPU ladder demotes it.
+ *
+ * AV1 goes out as rid SIMULCAST with L1T3 on every encoding (livekit-client isSVCSimulcast;
+ * the SFU takes it from 1.13.7, we run 1.13.10), not L3T3_KEY SVC. Same three encodings as
+ * VP8, so LADDER's positional rungs, the 180p thumbnail layer qualityFor budgets, and the
+ * no-cliff property all hold unchanged; KEY-mode SVC only shares bits on keyframes, so it is
+ * no cheaper than simulcast on the wire. The temporal layers (T3) give the SFU fps steps per
+ * viewer through the AV1 dependency descriptor. If the server version is unknown livekit-client
+ * falls back to one L1T3 encoding, and applyCameraLadder handles that shape too.
+ *
+ * The published layer bitrates stay VP8's: livekit-client builds the VP8 BACKUP's simulcast
+ * from the same videoSimulcastLayers, so they must be VP8's numbers. The AV1 primary's are set
+ * right after publish on its own sender (applyCameraLadder, cameraLadder("av1")). */
+export function cameraPublishDefaults(
+  codec: CameraCodec,
+  top: VideoPreset = cameraCapturePreset(),
+): {
+  videoCodec: CameraCodec;
+  scalabilityMode: "L1T3" | undefined;
+  backupCodec: false | { codec: "vp8"; encoding: VideoPreset["encoding"] };
+} {
+  if (codec === "av1") {
+    return { videoCodec: "av1", scalabilityMode: "L1T3", backupCodec: { codec: "vp8", encoding: top.encoding } };
+  }
+  return { videoCodec: "vp8", scalabilityMode: undefined, backupCodec: false };
+}
+
 /* Exported for one test, which pins the property that matters and cannot be read off the
  * page: that no two adjacent layers are so far apart that a subscriber falls through the gap
  * between them. See network.test.mts. */
@@ -348,6 +518,50 @@ export const LADDER: Record<
     { maxBitrate: 0, scaleDown: 1 },
   ],
 };
+
+/** The camera ladder for a codec: LADDER for VP8, every rung × AV1_SAVING for AV1. */
+export function cameraLadder(codec: CameraCodec = "vp8"): typeof LADDER {
+  if (codec === "vp8") return LADDER;
+  const scale = (rungs: (typeof LADDER)[PublishTier]) =>
+    rungs.map((r) => ({ ...r, maxBitrate: Math.round(r.maxBitrate * AV1_SAVING) }));
+  return { full: scale(LADDER.full), reduced: scale(LADDER.reduced), minimal: scale(LADDER.minimal) };
+}
+
+/* What each rung's encodings should be on the live camera sender: bitrate, active, fps.
+ *
+ * Pure so the shapes can be tested: three encodings (180/360/1080, the published simulcast),
+ * two (a capture under 960 px gets [low, original]), or one (AV1 fallen back to a single L1T3
+ * encoding, see cameraPublishDefaults). One encoding cannot drop a layer, so it takes the
+ * rung's TOTAL as its cap; libwebrtc's rate allocator then spends it on that one stream.
+ * `fpsCap` is the CPU ladder's (ADAPT.cpu.cameraFps); a layer never goes above its own fps. */
+export function cameraEncodingPlan(
+  tier: PublishTier,
+  codec: CameraCodec,
+  encodings: number,
+  topBitrate: number,
+  fpsCap = 30,
+): { active: boolean; maxBitrate?: number; maxFramerate: number }[] {
+  const scale = codec === "av1" ? AV1_SAVING : 1;
+  const top = Math.round(topBitrate * scale);
+  const wanted = cameraLadder(codec)[tier];
+  const fpsOf = (i: number, last: boolean) =>
+    Math.min(fpsCap, last ? CAMERA_TOP.encoding.maxFramerate ?? 30 : CAMERA_LAYERS[i]?.encoding.maxFramerate ?? 30);
+  if (encodings === 1) {
+    const total = wanted.reduce((s, r, i) => s + (i === wanted.length - 1 ? Math.min(r.maxBitrate, top) : r.maxBitrate), 0);
+    return [{ active: true, maxBitrate: total, maxFramerate: fpsOf(0, true) }];
+  }
+  return Array.from({ length: encodings }, (_, i) => {
+    const last = i === encodings - 1;
+    // Positional, as published: LADDER's rungs are [180, 360, top].
+    const rung = wanted[i] ?? wanted[wanted.length - 1];
+    if (rung.maxBitrate <= 0) return { active: false, maxFramerate: fpsOf(i, last) };
+    return {
+      active: true,
+      maxBitrate: last ? Math.min(rung.maxBitrate, top) : rung.maxBitrate,
+      maxFramerate: fpsOf(i, last),
+    };
+  });
+}
 
 /* The same three tiers, for a SCREEN SHARE — and a different policy from the camera.
  *
@@ -444,11 +658,20 @@ export const SHARE_BITRATES: Record<ShareCodec, Record<ShareMode, { floor: numbe
     // A played clip is motion at 30 fps, which does need the bits: video mode keeps H264's.
     video: { floor: SHARE_720_BITRATE, top: SHARE_1080_BITRATE },
   },
+  // VP9 × AV1_SAVING: 490 / 1750 kbps sharp, 1050 / 2800 video.
+  av1: {
+    sharp: { floor: Math.round(700_000 * AV1_SAVING), top: Math.round(2_500_000 * AV1_SAVING) },
+    video: {
+      floor: Math.round(SHARE_720_BITRATE * AV1_SAVING),
+      top: Math.round(SHARE_1080_BITRATE * AV1_SAVING),
+    },
+  },
 };
 
 /** Which share codec a published track is in: track.codec, set by livekit-client at publish. */
 export function shareCodecOfTrack(codec: string | undefined): ShareCodec {
-  return codec?.toLowerCase() === "vp9" ? "vp9" : "h264";
+  const c = codec?.toLowerCase();
+  return c === "vp9" ? "vp9" : c === "av1" ? "av1" : "h264";
 }
 
 /* Two encodings.
@@ -487,6 +710,8 @@ export function shareLayers(
 export const SHARE_SINGLE_BITRATES: Record<ShareCodec, Record<ShareMode, number>> = {
   vp9: { sharp: 2_500_000, video: 4_000_000 },
   h264: { sharp: SHARE_1080_BITRATE, video: 5_000_000 },
+  // VP9 × AV1_SAVING: 1.75 / 2.8 Mbps.
+  av1: { sharp: Math.round(2_500_000 * AV1_SAVING), video: Math.round(4_000_000 * AV1_SAVING) },
 };
 
 export function shareTop(
@@ -507,6 +732,8 @@ export type ShareEncodingPlan = {
   simulcast?: boolean;
   scalabilityMode?: "L1T3" | "L1T1";
   backupCodec: "h264" | "vp8";
+  /** The backup codec's own top encoding (livekit-client otherwise picks a stock preset). */
+  backupEncoding: VideoPreset["encoding"];
   degradationPreference: "maintain-resolution" | "maintain-framerate";
   /** What the encoder is told: VP9 L1T3 has to be "motion" (share-mode.ts). */
   encoderHint: "detail" | "motion";
@@ -528,9 +755,12 @@ export function shareEncodingPlan(
      * encodings rather than SVC (isSVCSimulcast); the SFU (>= 1.13.7) takes it.
      * VP9 single: simulcast off + L1T3 is one SVC encoding, temporal layers only.
      * H264 single: simulcast off is one encoding at the capture's size (computeVideoEncodings). */
-    simulcast: layout === "single" ? false : codec === "vp9" ? true : undefined,
+    simulcast: layout === "single" ? false : isSvcShareCodec(codec) ? true : undefined,
     scalabilityMode: shareScalabilityMode(codec, layout),
-    backupCodec: codec === "vp9" ? "h264" : "vp8",
+    // AV1 is published exactly like VP9 (rid L1T* or one L1T3), with the same H264 backup for
+    // Safari / iOS / anything that cannot decode it — at H264's own share bitrate.
+    backupCodec: isSvcShareCodec(codec) ? "h264" : "vp8",
+    backupEncoding: shareTop(mode, isSvcShareCodec(codec) ? "h264" : codec, layout).encoding,
     // maintain-resolution in both modes on the single layout (share-mode.ts).
     degradationPreference: shareDegradation(mode, layout),
     encoderHint: shareEncoderHint(mode, codec, layout),
@@ -685,9 +915,9 @@ export function judge(sample: {
  * or extreme queueing steps the share down — never the browser bitrate estimate. Recovery
  * is willing once those clear. Camera still uses the stricter loss/queueing thresholds.
  */
-const SHARE_BAD_LOSS_PERCENT = 5;
-const SHARE_RTT_EXCESS_BAD_MS = 400;
-const SHARE_GOOD_LOSS_PERCENT = 1;
+const SHARE_BAD_LOSS_PERCENT = ADAPT.share.down[0].atLeast; // 5%
+const SHARE_RTT_EXCESS_BAD_MS = ADAPT.share.down[2].atLeast; // 400 ms
+const SHARE_GOOD_LOSS_PERCENT = ADAPT.share.up[0].atMost; // 1%
 
 /**
  * judgeShare: step the share ladder only on severe damage, not on camera-shaped RTT noise
@@ -792,12 +1022,148 @@ async function setPriority(sender: RTCRtpSender | undefined, priority: RTCPriori
   }
 }
 
+/* Which CPU rungs would do anything on this device right now. A rung that would not is skipped
+ * in the same move, so an idle rung never costs an interval (CPU_STEPS). */
+export function cpuStepApplies(
+  step: CpuStep,
+  ctx: { camera: boolean; share: boolean; effects: boolean; cameraAv1: boolean },
+): boolean {
+  switch (step) {
+    case "none":
+      return true;
+    case "fps":
+    case "layer":
+      return ctx.camera || ctx.share;
+    case "effects":
+      return ctx.camera && ctx.effects;
+    case "codec":
+      return ctx.camera && ctx.cameraAv1;
+  }
+}
+
+/* Releasing a rung that holds nothing (effects not paused; the codec, which is sticky) is also
+ * skipped on the way back up. */
+export function cpuReleaseIsNoop(step: CpuStep, ctx: { effectsPaused: boolean }): boolean {
+  if (step === "codec") return true;
+  if (step === "effects") return !ctx.effectsPaused;
+  return false;
+}
+
+/** Where a CPU move lands once rungs with nothing to do are skipped. null: nothing to do at all. */
+export function cpuLanding(
+  from: number,
+  to: number,
+  applies: (step: CpuStep) => boolean,
+  releaseNoop: (step: CpuStep) => boolean,
+): number | null {
+  const max = CPU_STEPS.length - 1;
+  if (to > from) {
+    let at = to;
+    while (at < max && !applies(CPU_STEPS[at])) at++;
+    return applies(CPU_STEPS[at]) ? at : null;
+  }
+  let at = to;
+  while (at > 0 && releaseNoop(CPU_STEPS[at])) at--;
+  return at;
+}
+
+/** The current rungs' total, bits/s, for the headroom signal. */
+function sendingBits(
+  cameraTier: PublishTier | null,
+  cameraCodec: CameraCodec,
+  shareTier: PublishTier | null,
+  share: { codec: ShareCodec; mode: ShareMode; layout: ShareLayout } | null,
+): number {
+  let bits = AUDIO_KBPS * 1000;
+  if (cameraTier) {
+    const top = cameraCapturePreset().encoding.maxBitrate;
+    bits += cameraEncodingPlan(cameraTier, cameraCodec, 3, top).reduce((s, e) => s + (e.active ? e.maxBitrate ?? 0 : 0), 0);
+  }
+  if (shareTier && share) {
+    bits += shareLadder(share.codec, share.mode, share.layout)[shareTier].reduce((s, r) => s + r.maxBitrate, 0);
+  }
+  return bits;
+}
+
+/** Headroom over what is being sent; undefined when the browser gives no estimate. */
+export function headroomOf(availableOutgoingKbps: number, sendingBitsPerSec: number): number | undefined {
+  if (!(availableOutgoingKbps > 0) || !(sendingBitsPerSec > 0)) return undefined;
+  return (availableOutgoingKbps * 1000 - sendingBitsPerSec) / sendingBitsPerSec;
+}
+
+/* Sets each encoding to its plan, and calls setParameters only if something differs — so it is
+ * cheap to run every sample. `touchActive` false leaves `active` alone except to switch a layer
+ * OFF: dynacast pauses layers nobody watches, and a routine re-apply must not wake them. */
+async function applyEncodings(
+  sender: RTCRtpSender | undefined,
+  plan: (encodings: number) => { active: boolean; maxBitrate?: number; maxFramerate?: number }[],
+  touchActive: boolean,
+): Promise<void> {
+  if (!sender) return;
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings?.length) return;
+    const wanted = plan(params.encodings.length);
+    let changed = false;
+    params.encodings.forEach((encoding, i) => {
+      const p = wanted[i];
+      if (!p) return;
+      if ((touchActive || !p.active) && encoding.active !== p.active) {
+        encoding.active = p.active;
+        changed = true;
+      }
+      // An encoding off (by this rung, or by dynacast) keeps whatever it was paused with.
+      if (!p.active || encoding.active === false) return;
+      if (p.maxBitrate !== undefined && encoding.maxBitrate !== p.maxBitrate) {
+        encoding.maxBitrate = p.maxBitrate;
+        changed = true;
+      }
+      if (p.maxFramerate !== undefined && encoding.maxFramerate !== p.maxFramerate) {
+        encoding.maxFramerate = p.maxFramerate;
+        changed = true;
+      }
+    });
+    if (changed) await sender.setParameters(params);
+  } catch {
+    // A browser that refuses leaves the encodings where they were; the next sample retries.
+  }
+}
+
+/** Points the room's camera publish defaults at a codec (the AV1 probe's answer, or a demotion). */
+export function applyCameraCodec(room: Room, codec: CameraCodec): void {
+  Object.assign(room.options.publishDefaults ?? {}, cameraPublishDefaults(codec));
+}
+
+/* The CPU ladder's "codec" rung: AV1 camera → VP8, once.
+ *
+ * There is no way to change a live sender's codec without renegotiating, so the camera is
+ * unpublished (track kept running, processor and all) and published again as VP8. Viewers see
+ * the camera blink for about a second — once per session, because the demotion is sticky
+ * (codec-policy.ts demoteAv1) and every later camera publish uses VP8 too. */
+async function downgradeCameraFromAv1(room: Room): Promise<boolean> {
+  demoteAv1();
+  applyCameraCodec(room, "vp8");
+  const lp = room.localParticipant;
+  const track = lp.getTrackPublication(Track.Source.Camera)?.videoTrack as LocalVideoTrack | undefined;
+  if (!track || cameraCodecOfTrack(track.codec) !== "av1") return false;
+  try {
+    await lp.unpublishTrack(track, false);
+    await lp.publishTrack(track, { source: Track.Source.Camera, ...cameraPublishDefaults("vp8") });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Samples the connection and holds the publish ladder where it belongs.
+ * Samples the connection and holds the publish ladders where they belong.
  *
  * Returns what it sees, so the UI can show it. The stepping happens as a side effect
  * because it has to happen whether or not anything is rendering an indicator — a
  * presenter with the settings dialog closed is exactly who needs it.
+ *
+ * Three governors (ADAPT): the camera's and the share's network ladders, and the device's
+ * CPU ladder. Every move is logged with its reason (logAdapt → telemetry "adapt_decision").
  */
 export function useNetworkHealth(
   room: Room | null,
@@ -805,15 +1171,10 @@ export function useNetworkHealth(
 ): NetworkHealth {
   const [health, setHealth] = useState<NetworkHealth>(IDLE);
 
-  // The decision state, in refs: it changes every two seconds and nothing renders from
-  // it directly.
-  const badSamples = useRef(0);
-  const goodSamples = useRef(0);
-  const tier = useRef<PublishTier>("full");
-  // Share has its own counters and tier — same uplink, much higher bar to blur slides.
-  const shareBadSamples = useRef(0);
-  const shareGoodSamples = useRef(0);
-  const shareTier = useRef<PublishTier>("full");
+  // The decision state, in refs: it changes every two seconds and nothing renders from it.
+  const cameraGov = useRef<GovernorState>(initialGovernor(ADAPT.camera));
+  const shareGov = useRef<GovernorState>(initialGovernor(ADAPT.share));
+  const cpuGov = useRef<GovernorState>(initialGovernor(ADAPT.cpu));
   // Cumulative counters, so loss is measured over the window rather than for all time.
   const previous = useRef({ packets: 0, lost: 0 });
   /* jitterBufferDelay is cumulative seconds and jitterBufferEmittedCount cumulative
@@ -829,136 +1190,99 @@ export function useNetworkHealth(
    * buffer's worth of numbers rather than a running minimum, so the floor can RISE when
    * somebody's route genuinely changes — see RTT_WINDOW_SAMPLES. */
   const rttWindow = useRef<number[]>([]);
+  // qualityLimitationDurations at the last sample, per outbound-rtp id (cpuLimitedShare).
+  const cpuWindow = useRef(new Map<string, { cpu: number; total: number }>());
 
-  /* Two ladders, two apply paths.
-   *
-   * Camera drops layers (and historically ignored scaleDown in the table — bitrate/active
-   * only). Share also sets maxFramerate so minimal can hold 720p pixels while cutting fps,
-   * and never raises scaleResolutionDownBy (that would violate the desktop floor).
-   */
-  const applyCameraLadder = useCallback(
-    async (next: PublishTier, track: LocalVideoTrack) => {
-      const sender = track.sender;
-      if (!sender) return;
-      try {
-        const params = sender.getParameters();
-        if (!params.encodings?.length) return;
-        const wanted = LADDER[next];
-        // A 720p device's top layer is CAMERA_720, not the 1080p the table assumes.
-        const top = cameraCapturePreset().encoding.maxBitrate;
-        params.encodings.forEach((encoding, i) => {
-          const rung = wanted[i] ?? wanted[wanted.length - 1];
-          encoding.active = rung.maxBitrate > 0;
-          if (rung.maxBitrate > 0) {
-            encoding.maxBitrate =
-              i === params.encodings!.length - 1 ? Math.min(rung.maxBitrate, top) : rung.maxBitrate;
-          }
-        });
-        await sender.setParameters(params);
-      } catch {
-        // A browser that refuses leaves the tier where it was; the next sample retries.
-      }
-    },
-    [],
-  );
+  const tierOf = (gov: GovernorState): PublishTier => TIERS[gov.level];
 
-  const applyShareLadder = useCallback(
-    async (next: PublishTier, track: LocalVideoTrack) => {
-      const sender = track.sender;
-      if (!sender) return;
-      try {
-        const params = sender.getParameters();
-        if (!params.encodings?.length) return;
-        // The published codec's rungs: VP9 and H264 shares spend differently (SHARE_BITRATES).
-        const codec = shareCodecOfTrack(track.codec);
-        // One encoding = the keep-resolution layout (share-mode.ts): one rung, never scaled.
-        const layout = shareLayoutOfEncodings(params.encodings.length);
-        // Read back off the track, so a mid-share mode switch is honoured here too.
-        const mode = liveShareMode(track.mediaStreamTrack, layout === "single" && codec === "vp9");
-        const wanted = shareLadder(codec, mode, layout)[next];
-        const layers = shareLayers(mode, codec, layout);
-        const top = shareTop(mode, codec, layout);
-        /* Neither layer may keep a congestion-era scaleResolutionDownBy that left text soft:
-         * the low layer is the 720p floor, and the top layer IS the capture (scale 1). */
-        const sourceH =
-          track.mediaStreamTrack?.getSettings?.().height ||
-          SHARE_TOP.height;
-        params.encodings.forEach((encoding, i) => {
-          const rung = wanted[i] ?? wanted[wanted.length - 1];
-          encoding.active = rung.maxBitrate > 0;
-          if (rung.maxBitrate > 0) {
-            const isTop = i >= layers.length;
-            encoding.maxBitrate = rung.maxBitrate;
-            if (rung.maxFramerate != null) {
-              encoding.maxFramerate = rung.maxFramerate;
-            } else {
-              // The mode's fps: restores a fps-capped rung, and follows a mode switch.
-              const layer = isTop ? top : layers[i];
-              encoding.maxFramerate = layer.encoding.maxFramerate;
-            }
-            const targetH = isTop ? sourceH : layers[i].height;
-            const designed = Math.max(1, sourceH / targetH);
-            const current = encoding.scaleResolutionDownBy ?? designed;
-            // Clamp upscales-of-downscale only — never soft-blur past the designed rung.
-            if (current > designed + 0.05) {
-              encoding.scaleResolutionDownBy = designed;
-            }
-          }
-        });
-        await sender.setParameters(params);
-      } catch {
-        // Same as camera: leave tier recorded; retry next sample.
-      }
-    },
-    [],
-  );
+  /* The camera's encodings: tier, codec (AV1 rungs are AV1_SAVING of VP8's), the CPU ladder's
+   * fps cap. The VP8 backup sender of an AV1 camera gets the same rung in VP8 numbers. */
+  const applyCamera = useCallback(async (track: LocalVideoTrack, touchActive: boolean) => {
+    const tier = TIERS[cameraGov.current.level];
+    const fps = ADAPT.cpu.cameraFps[cpuGov.current.level] ?? 30;
+    // A 720p device's top layer is CAMERA_720, not the 1080p the table assumes.
+    const top = cameraCapturePreset().encoding.maxBitrate ?? CAMERA_1080_BITRATE;
+    await applyEncodings(
+      track.sender,
+      (n) => cameraEncodingPlan(tier, cameraCodecOfTrack(track.codec), n, top, fps),
+      touchActive,
+    );
+    for (const [codec, sc] of track.simulcastCodecs) {
+      if (codec === track.codec) continue;
+      await applyEncodings(sc.sender, (n) => cameraEncodingPlan(tier, cameraCodecOfTrack(codec), n, top, fps), touchActive);
+    }
+  }, []);
 
-  /* applyCamera / applyShare write their own tier refs. Camera first when both move: if the
-   * share's setParameters throws, the camera has already freed uplink for audio.
-   */
-  const applyCameraTier = useCallback(
-    async (next: PublishTier, camera?: LocalVideoTrack) => {
-      if (camera) await applyCameraLadder(next, camera);
-      tier.current = next;
-    },
-    [applyCameraLadder],
-  );
-
-  const applyShareTier = useCallback(
-    async (next: PublishTier, share?: LocalVideoTrack) => {
-      if (share) await applyShareLadder(next, share);
-      shareTier.current = next;
-    },
-    [applyShareLadder],
-  );
-
-  const reassertTiers = useCallback(
-    async (camera?: LocalVideoTrack, share?: LocalVideoTrack) => {
-      if (camera && tier.current !== "full") {
-        await applyCameraTier(tier.current, camera);
-      }
-      // Always, not only below full: the fps follows the share's mode, which can change
-      // mid-share, and the scale clamp needs the capture size, known only after publish.
-      if (share) {
-        await applyShareTier(shareTier.current, share);
-      }
-    },
-    [applyCameraTier, applyShareTier],
-  );
+  /* The share's: per codec, mode and layout (shareLadder), the CPU ladder's fps cap, and never
+   * a congestion-era scaleResolutionDownBy that left text soft. */
+  const applyShare = useCallback(async (track: LocalVideoTrack, touchActive: boolean) => {
+    const sender = track.sender;
+    if (!sender) return;
+    const tier = TIERS[shareGov.current.level];
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings?.length) return;
+      // The published codec's rungs: VP9 / AV1 and H264 shares spend differently (SHARE_BITRATES).
+      const codec = shareCodecOfTrack(track.codec);
+      // One encoding = the keep-resolution layout (share-mode.ts): one rung, never scaled.
+      const layout = shareLayoutOfEncodings(params.encodings.length);
+      // Read back off the track, so a mid-share mode switch is honoured here too.
+      const mode = liveShareMode(track.mediaStreamTrack, layout === "single" && isSvcShareCodec(codec));
+      const wanted = shareLadder(codec, mode, layout)[tier];
+      const layers = shareLayers(mode, codec, layout);
+      const top = shareTop(mode, codec, layout);
+      const cpuFps = ADAPT.cpu.shareFps[mode][cpuGov.current.level] ?? SHARE_MODE_FPS[mode];
+      const sourceH = track.mediaStreamTrack?.getSettings?.().height || SHARE_TOP.height;
+      let changed = false;
+      const set = <K extends keyof RTCRtpEncodingParameters>(e: RTCRtpEncodingParameters, k: K, v: RTCRtpEncodingParameters[K]) => {
+        if (e[k] !== v) {
+          e[k] = v;
+          changed = true;
+        }
+      };
+      params.encodings.forEach((encoding, i) => {
+        const rung = wanted[i] ?? wanted[wanted.length - 1];
+        const active = rung.maxBitrate > 0;
+        if (touchActive || !active) set(encoding, "active", active);
+        if (!active || encoding.active === false) return;
+        const isTop = i >= layers.length;
+        set(encoding, "maxBitrate", rung.maxBitrate);
+        // The rung's fps if it has one, else the mode's (restores a capped rung, follows a
+        // mode switch) — and never above the CPU ladder's cap.
+        const layerFps = (isTop ? top : layers[i]).encoding.maxFramerate ?? SHARE_MODE_FPS[mode];
+        set(encoding, "maxFramerate", Math.min(rung.maxFramerate ?? layerFps, cpuFps));
+        const targetH = isTop ? sourceH : layers[i].height;
+        const designed = Math.max(1, sourceH / targetH);
+        const current = encoding.scaleResolutionDownBy ?? designed;
+        // Clamp upscales-of-downscale only — never soft-blur past the designed rung.
+        if (current > designed + 0.05) set(encoding, "scaleResolutionDownBy", designed);
+      });
+      if (changed) await sender.setParameters(params);
+    } catch {
+      // Leave the tier recorded; the next sample retries.
+    }
+  }, []);
 
   useEffect(() => {
     if (!room) return;
 
     let cancelled = false;
+    let downgrading = false;
+
+    const tracks = () => {
+      const local = room.localParticipant;
+      return {
+        camera: local?.getTrackPublication(Track.Source.Camera)?.videoTrack as LocalVideoTrack | undefined,
+        share: local?.getTrackPublication(Track.Source.ScreenShare)?.videoTrack as LocalVideoTrack | undefined,
+      };
+    };
+
+    const log = (ladder: string, from: string, to: string, direction: "down" | "up", reason: string, signals: Signals) =>
+      logAdapt({ ladder, from, to, direction, reason, signals });
 
     const sample = async () => {
       const local = room.localParticipant;
-      const camera = local?.getTrackPublication(Track.Source.Camera)
-        ?.videoTrack as LocalVideoTrack | undefined;
-      /* The share is sampled on the same schedule, but judged and stepped separately —
-       * see judgeShare. */
-      const share = local?.getTrackPublication(Track.Source.ScreenShare)
-        ?.videoTrack as LocalVideoTrack | undefined;
+      const { camera, share } = tracks();
       if (publishing) void prioritiseShare(camera, share);
 
       // A subscriber has no outbound video to measure, so the inbound side is read
@@ -967,8 +1291,10 @@ export function useNetworkHealth(
       let lossPercent = 0;
       let rttMs = 0;
       let jitterMs = 0;
+      let jitterKnown = false;
       let playoutMs = 0;
       let availableOutgoingKbps = 0;
+      const outbound: Record<string, unknown>[] = [];
 
       try {
         /* Read regardless of role. A host watches the panel too, and the playout delay
@@ -986,6 +1312,7 @@ export function useNetworkHealth(
         stats.forEach((report) => {
           if (report.type === "outbound-rtp" && report.kind === "video") {
             packets += (report as { packetsSent?: number }).packetsSent ?? 0;
+            outbound.push(report as Record<string, unknown>);
           }
           if (report.type === "remote-inbound-rtp") {
             const r = report as {
@@ -996,7 +1323,10 @@ export function useNetworkHealth(
             lost += r.packetsLost ?? 0;
             if (r.roundTripTime)
               rttMs = Math.max(rttMs, r.roundTripTime * 1000);
-            if (r.jitter) jitterMs = Math.max(jitterMs, r.jitter * 1000);
+            if (typeof r.jitter === "number") {
+              jitterKnown = true;
+              jitterMs = Math.max(jitterMs, r.jitter * 1000);
+            }
           }
           if (report.type === "inbound-rtp" && report.kind === "video") {
             const r = report as {
@@ -1026,6 +1356,14 @@ export function useNetworkHealth(
           }
         });
 
+        // The share's encoder is a separate CPU consumer; its limitation counts too.
+        if (camera?.sender && share?.sender) {
+          const shareStats = await share.sender.getStats();
+          shareStats.forEach((report) => {
+            if (report.type === "outbound-rtp" && report.kind === "video") outbound.push(report as Record<string, unknown>);
+          });
+        }
+
         // Loss over THIS window. Cumulative counters would average a bad patch away
         // over an hour and the step-down would never fire.
         const deltaPackets = packets - previous.current.packets;
@@ -1053,96 +1391,106 @@ export function useNetworkHealth(
           rttWindow.current.shift();
       }
       const rttFloorMs = floorFrom(rttWindow.current);
+      const now = Date.now();
 
-      const sampleBase = {
-        lossPercent,
-        rttMs,
-        rttFloorMs,
-        availableOutgoingKbps,
+      const shareInfo = share
+        ? (() => {
+            const codec = shareCodecOfTrack(share.codec);
+            const layout = shareLayoutOfEncodings(share.sender?.getParameters().encodings?.length);
+            const mode = liveShareMode(share.mediaStreamTrack, layout === "single" && isSvcShareCodec(codec));
+            return { codec, layout, mode };
+          })()
+        : null;
+      const signals: Signals = {
+        loss: target ? lossPercent : undefined,
+        // Only once both numbers exist: until then latency has no vote (see judge).
+        rttExcess: rttMs > 0 && rttFloorMs > 0 ? rttMs - rttFloorMs : undefined,
+        jitter: jitterKnown ? jitterMs : undefined,
+        headroom: headroomOf(
+          availableOutgoingKbps,
+          sendingBits(
+            camera ? tierOf(cameraGov.current) : null,
+            cameraCodecOfTrack(camera?.codec),
+            share ? tierOf(shareGov.current) : null,
+            shareInfo,
+          ),
+        ),
+        cpu: cpuLimitedShare(outbound, cpuWindow.current),
       };
 
-      /* Camera and share share the same loss/queueing sample but different bars —
-       * see judge vs judgeShare. Bitrate estimate is sampled for the readout only. */
-      const cameraVerdict = judge({
-        tier: tier.current,
-        ...sampleBase,
-        sharing: Boolean(share),
-      });
-
-      if (cameraVerdict.bad) {
-        goodSamples.current = 0;
-        badSamples.current += 1;
-      } else if (cameraVerdict.good) {
-        badSamples.current = 0;
-        goodSamples.current += 1;
+      /* CPU first: its "layer" rung sets the camera's floor, and its fps caps are read by both
+       * apply paths below. */
+      if (publishing && (camera || share)) {
+        const before = cpuGov.current.level;
+        const { state, decision } = governorStep(ADAPT.cpu, cpuGov.current, signals, now);
+        cpuGov.current = state;
+        if (decision) {
+          const ctx = {
+            camera: Boolean(camera),
+            share: Boolean(share),
+            effects: effectsWanted(),
+            cameraAv1: cameraCodecOfTrack(camera?.codec) === "av1",
+          };
+          const landing = cpuLanding(
+            before,
+            decision.to,
+            (s) => cpuStepApplies(s, ctx),
+            (s) => cpuReleaseIsNoop(s, { effectsPaused: effectsPausedForCpu() }),
+          );
+          if (landing === null) {
+            // Nothing left to take off this device: stay, and let the hold timers restart.
+            cpuGov.current = { ...state, level: before };
+          } else {
+            cpuGov.current = { ...state, level: landing };
+            const engaged = (s: CpuStep) => CPU_STEPS.indexOf(s) <= landing;
+            if (!engaged("effects") && effectsPausedForCpu()) setEffectsPausedForCpu(false);
+            if (engaged("effects") && landing > before && ctx.effects && !effectsPausedForCpu()) {
+              setEffectsPausedForCpu(true);
+            }
+            log("cpu", CPU_STEPS[before], CPU_STEPS[landing], decision.direction, decision.reason, signals);
+            // AV1 off for every later publish too; a live AV1 share is not republished.
+            if (engaged("codec") && landing > before && (ctx.cameraAv1 || shareInfo?.codec === "av1")) {
+              demoteAv1();
+              if (ctx.cameraAv1 && !downgrading) {
+                downgrading = true;
+                void downgradeCameraFromAv1(room).then((done) => {
+                  downgrading = false;
+                  log("codec", "av1", done ? "vp8" : "av1", "down", done ? "cpu: camera republished as VP8" : "cpu: camera republish failed", signals);
+                });
+              }
+            }
+          }
+        }
       }
 
       if (publishing && camera) {
-        const at = TIERS.indexOf(tier.current);
         /* While screen-sharing, keep the camera off the top rung: next to a share it is a
-         * thumbnail. Cap at `reduced` (180+360) until the share ends. A device that should
-         * not encode 1080 is not capped here any more: its top layer is 720p already
-         * (cameraCapturePreset), which is what it used to send as the mid rung. */
-        const cameraBest = share ? 1 : 0;
-        if (at < cameraBest) {
-          badSamples.current = 0;
-          goodSamples.current = 0;
-          await applyCameraTier(TIERS[cameraBest], camera);
-        } else if (
-          badSamples.current >= DEGRADE_AFTER_SAMPLES &&
-          at < TIERS.length - 1
-        ) {
-          badSamples.current = 0;
-          await applyCameraTier(TIERS[at + 1], camera);
-        } else if (
-          goodSamples.current >= RECOVER_AFTER_SAMPLES &&
-          at > cameraBest
-        ) {
-          goodSamples.current = 0;
-          await applyCameraTier(TIERS[at - 1], camera);
-        }
+         * thumbnail. And on the CPU ladder's "layer" rung, the same. */
+        const floor = share || cpuGov.current.level >= CPU_STEPS.indexOf("layer") ? 1 : 0;
+        const before = tierOf(cameraGov.current);
+        const { state, decision } = governorStep(ADAPT.camera, cameraGov.current, signals, now, floor);
+        cameraGov.current = state;
+        if (decision) log("camera", before, tierOf(state), decision.direction, decision.reason, signals);
+        await applyCamera(camera, Boolean(decision));
       }
 
       if (share) {
-        const shareVerdict = judgeShare({
-          tier: shareTier.current,
-          ...sampleBase,
-        });
-        if (shareVerdict.bad) {
-          shareGoodSamples.current = 0;
-          shareBadSamples.current += 1;
-        } else if (shareVerdict.good) {
-          shareBadSamples.current = 0;
-          shareGoodSamples.current += 1;
-        }
-
         if (publishing) {
-          const at = TIERS.indexOf(shareTier.current);
-          if (
-            shareBadSamples.current >= DEGRADE_AFTER_SAMPLES &&
-            at < TIERS.length - 1
-          ) {
-            shareBadSamples.current = 0;
-            await applyShareTier(TIERS[at + 1], share);
-          } else if (
-            shareGoodSamples.current >= RECOVER_AFTER_SAMPLES &&
-            at > 0
-          ) {
-            shareGoodSamples.current = 0;
-            await applyShareTier(TIERS[at - 1], share);
-          }
+          const before = tierOf(shareGov.current);
+          const { state, decision } = governorStep(ADAPT.share, shareGov.current, signals, now);
+          shareGov.current = state;
+          if (decision) log("share", before, tierOf(state), decision.direction, decision.reason, signals);
+          await applyShare(share, Boolean(decision));
         }
       } else {
-        // Next share starts clean rather than inheriting a previous session's floor.
-        shareTier.current = "full";
-        shareBadSamples.current = 0;
-        shareGoodSamples.current = 0;
+        // Next share starts clean rather than inheriting a previous share's rung.
+        shareGov.current = initialGovernor(ADAPT.share);
       }
 
       if (cancelled) return;
       const publishedTier = share
-        ? worseTier(tier.current, shareTier.current)
-        : tier.current;
+        ? worseTier(tierOf(cameraGov.current), tierOf(shareGov.current))
+        : tierOf(cameraGov.current);
       setHealth({
         quality: local?.connectionQuality ?? ConnectionQuality.Unknown,
         lossPercent: Math.round(lossPercent * 10) / 10,
@@ -1168,17 +1516,17 @@ export function useNetworkHealth(
       }));
     room.on(RoomEvent.ConnectionQualityChanged, onQuality);
 
-    // A reconnect renegotiates, which resets the senders. The ladder has to be
-    // reasserted or a publisher silently returns to full after every blip.
+    /* A reconnect renegotiates, which resets the senders, and a newly published track starts
+     * at the publish defaults (VP8 bitrates on an AV1 camera, no CPU fps cap). Both are
+     * re-asserted at once rather than at the next sample. */
+    const reassert = () => {
+      if (!publishing) return;
+      const { camera, share } = tracks();
+      if (camera) void applyCamera(camera, true);
+      if (share) void applyShare(share, true);
+    };
     const onReconnected = () => {
-      const local = room.localParticipant;
-      const camera = local?.getTrackPublication(Track.Source.Camera)
-        ?.videoTrack as LocalVideoTrack | undefined;
-      const share = local?.getTrackPublication(Track.Source.ScreenShare)
-        ?.videoTrack as LocalVideoTrack | undefined;
-      if (publishing && (camera || share)) {
-        void reassertTiers(camera, share);
-      }
+      reassert();
       void prioritiseAudio(room);
       /* And forget the old route's floor.
        *
@@ -1190,32 +1538,16 @@ export function useNetworkHealth(
       rttWindow.current = [];
     };
     room.on(RoomEvent.Reconnected, onReconnected);
-
-    /* A newly published track starts at the publish defaults, not at the current tier.
-     *
-     * So a presenter already stepped down who then starts sharing would publish that share
-     * at full 1080p on a connection that may still be fine for share (judgeShare) — or, if
-     * shareTier was somehow not full, reassert. Camera reassert closes the same window.
-     */
-    const onLocalPublished = () => {
-      if (!publishing) return;
-      const local = room.localParticipant;
-      const camera = local?.getTrackPublication(Track.Source.Camera)
-        ?.videoTrack as LocalVideoTrack | undefined;
-      const share = local?.getTrackPublication(Track.Source.ScreenShare)
-        ?.videoTrack as LocalVideoTrack | undefined;
-      if (camera || share) void reassertTiers(camera, share);
-    };
-    room.on(RoomEvent.LocalTrackPublished, onLocalPublished);
+    room.on(RoomEvent.LocalTrackPublished, reassert);
 
     return () => {
       cancelled = true;
       clearInterval(timer);
       room.off(RoomEvent.ConnectionQualityChanged, onQuality);
       room.off(RoomEvent.Reconnected, onReconnected);
-      room.off(RoomEvent.LocalTrackPublished, onLocalPublished);
+      room.off(RoomEvent.LocalTrackPublished, reassert);
     };
-  }, [room, publishing, applyCameraTier, applyShareTier, reassertTiers]);
+  }, [room, publishing, applyCamera, applyShare]);
 
   return health;
 }

@@ -118,6 +118,12 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/network.test.mts
 	# Screen-share encoding: mode, codec, per-codec layer bitrates and the share ladder.
 	cd web && node --experimental-strip-types --no-warnings lib/share-mode.test.mts
+	# Who publishes AV1: Safari and iPhone/iPad never, whatever they report; the rest only
+	# with an AV1 encoder that MediaCapabilities calls smooth and the cores to run it.
+	cd web && node --experimental-strip-types --no-warnings lib/codec-policy.test.mts
+	# The adaptation rules against synthetic stat streams: holds, clean windows, hysteresis,
+	# cool-down, the oscillation hold, the CPU ladder's order, and AV1's cheaper rungs.
+	cd web && node --experimental-strip-types --no-warnings lib/adapt-governor.test.mts
 	# And the reconnection ladder, which cannot be tested in a browser at all: a real
 	# media-path failure is not injectable, so this is the only check it gets.
 	cd web && node --experimental-strip-types --no-warnings lib/recovery.test.mts
