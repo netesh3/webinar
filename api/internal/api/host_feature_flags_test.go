@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"slices"
 	"testing"
@@ -254,5 +255,36 @@ func TestAdminSetsSeveralFeaturesAtOnce(t *testing.T) {
 	res, _ = h.do(http.MethodPut, path, types.FeatureGrants{Grants: []types.FeatureGrant{{Feature: types.FeatureZoom, Enabled: true}}})
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("host bulk-granting itself: %d, want 403", res.StatusCode)
+	}
+}
+
+/* AV1 video (beta): off for every account until an admin turns it on, and then the whole room
+ * is told (JoinResponse.AV1); the browser gates AV1 publishing and the receive filter on it. */
+func TestAV1BetaSwitchReachesTheRoom(t *testing.T) {
+	f, ok := types.FeatureByKey(types.FeatureAV1)
+	if !ok || f.Group != types.FeatureGroupDelivery || f.Label != "AV1 video (beta)" {
+		t.Fatalf("catalogue entry = %+v, %v", f, ok)
+	}
+	h := newHarness(t)
+	host := h.signup("AV1 Host", "av1-host@test.dev", true)
+	wb := h.liveWebinar("AV1 switch", nil)
+	hostJoin := func() types.JoinResponse {
+		t.Helper()
+		res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/join", nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("host join: %d %s", res.StatusCode, raw)
+		}
+		var j types.JoinResponse
+		if err := json.Unmarshal(raw, &j); err != nil {
+			t.Fatal(err)
+		}
+		return j
+	}
+	if hostJoin().AV1 {
+		t.Fatal("AV1 is on for a new account; the beta switch must default off")
+	}
+	forceFeature(t, h, host.ID, types.FeatureAV1, true)
+	if !hostJoin().AV1 {
+		t.Fatal("AV1 switch on, but the join response says off")
 	}
 }

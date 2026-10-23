@@ -28,7 +28,8 @@ import {
 import { isAndroid, lockScreenState, type LockScreenState } from "./lock-screen-audio";
 import { deviceSummary } from "./device";
 import { shareCodecOfTrack, summariseOutbound } from "./network";
-import { liveShareMode, shareLayoutOfEncodings } from "./share-mode";
+import { isSvcShareCodec, liveShareMode, shareLayoutOfEncodings } from "./share-mode";
+import { setAdaptSink } from "./adapt-governor";
 
 /* A temporary telemetry path for one performance-test window — see
  * api/internal/api/telemetry.go for the backend half and why it logs the
@@ -177,6 +178,10 @@ async function sampleLocalTrack(track: LocalTrack): Promise<void> {
     // best-served viewer can get", and `layers` shows a 1080p layer switched off.
     Object.assign(payload, summariseOutbound(outbound));
   }
+  // Which codec the camera went out in (AV1 or VP8, lib/codec-policy.ts).
+  if (track.source === Track.Source.Camera && track.kind === Track.Kind.Video) {
+    payload.codec = (track as LocalVideoTrack).codec;
+  }
   if (track.source === Track.Source.ScreenShare && track.kind === Track.Kind.Video) {
     /* For the keep-resolution share (share-mode.ts): with codec, layout and mode next to
      * frameHeight / framesPerSecond / qualityLimitationReason, a sample shows whether a
@@ -186,7 +191,7 @@ async function sampleLocalTrack(track: LocalTrack): Promise<void> {
     const layout = shareLayoutOfEncodings(outbound.length);
     payload.codec = video.codec;
     payload.shareLayout = layout;
-    payload.shareMode = liveShareMode(video.mediaStreamTrack, layout === "single" && codec === "vp9");
+    payload.shareMode = liveShareMode(video.mediaStreamTrack, layout === "single" && isSvcShareCodec(codec));
   }
   push("quality_sample", payload);
 }
@@ -763,8 +768,11 @@ export function useTelemetry(room: Room | null, ctx: Ctx): void {
     const stopAudioWatch = startAudioWatch(room);
     const onBeforeUnload = () => flush(true);
     window.addEventListener("beforeunload", onBeforeUnload);
+    // Every quality decision network.ts makes, and the AV1 gate's answer, with its reason.
+    setAdaptSink((event, payload) => push(event, payload));
 
     return () => {
+      setAdaptSink(null);
       room.off(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
       room.off(RoomEvent.Reconnecting, onReconnecting);
       room.off(RoomEvent.Reconnected, onReconnected);

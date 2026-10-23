@@ -36,12 +36,15 @@ import {
   SHARE_LAYERS,
   SHARE_TOP,
   cameraCapturePreset,
+  cameraPublishDefaults,
   shareCodecOfTrack,
   shareEncodingPlan,
   shareLayers,
   shareTop,
 } from "./network";
 import { currentIsMobile } from "./device";
+import { av1Now, primeAv1Probes, setAv1Session } from "./codec-policy";
+import { primeReceivePolicy } from "./receive-codecs";
 
 export { canCaptureCamera1080, cameraCapturePreset } from "./network";
 
@@ -100,12 +103,12 @@ export const CAPTURE = CAMERA_TOP;
  * speaker tile; 720p on devices that capture 720). The 180p rung is back and the 720p one is
  * gone, for big rooms: see the camera ladder in network.ts.
  *
- * Not SVC. VP9 and AV1 would give better quality per bit and let the SFU drop temporal
- * layers more finely, but decode cost lands on the SUBSCRIBER — and in an audience of five
- * hundred there are always low-end Android phones and locked-down laptops that
- * software-decode VP9 at a crawl or not at all. VP8 simulcast wastes some upstream bandwidth
- * on the one publisher to guarantee the five hundred can watch, which is the right way round
- * for a webinar. H264 is reserved for screen share (Chrome's getDisplayMedia path).
+ * VP8 by default; AV1 where the publisher's device can afford it (lib/codec-policy.ts),
+ * as rid simulcast on the same three layers at ~30% less bitrate (cameraPublishDefaults in
+ * network.ts), with a VP8 backup the SFU switches any subscriber to that cannot decode AV1 —
+ * Safari, iOS, older Android. The recorder template (the edge mix) and weak subscribers (≤ 4
+ * cores, phones without hardware AV1 decode) leave AV1 out of their receive codecs and get that
+ * backup too (lib/receive-codecs.ts), so AV1 is decoded only where it is cheap.
  */
 export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
 
@@ -199,7 +202,8 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
  * below SHARE_FLOOR_DESKTOP.
  */
 export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
-  const codec = shareCodec(typeof navigator === "undefined" ? "" : navigator.userAgent);
+  // AV1 where the gate allows it (codec-policy.ts); never on Safari / iOS; VP9 / H264 otherwise.
+  const codec = shareCodec(typeof navigator === "undefined" ? "" : navigator.userAgent, av1Now("share").av1);
   // Layout, codec, scalability, degradation and bitrates: shareEncodingPlan (network.ts). Every
   // share is ONE full-resolution encoding (VP9 L1T3 / H264 single) that drops frames, not
   // pixels, in both modes. See SHARE_KEEP_RESOLUTION.
@@ -208,7 +212,7 @@ export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
     audioPreset: AudioPresets.musicStereo,
     dtx: false,
     videoCodec: plan.videoCodec,
-    backupCodec: { codec: plan.backupCodec },
+    backupCodec: { codec: plan.backupCodec, encoding: plan.backupEncoding },
     ...(plan.simulcast === undefined ? {} : { simulcast: plan.simulcast }),
     ...(plan.scalabilityMode ? { scalabilityMode: plan.scalabilityMode } : {}),
     degradationPreference: plan.degradationPreference,
@@ -380,9 +384,18 @@ const PHONE_PIXEL_DENSITY = 1.5;
 export function roomOptions(
   prefs: MediaPreferences,
   canPublish: boolean,
+  /** The session host's "AV1 video (beta)" switch (JoinResponse.av1). Off: no AV1 at all. */
+  av1 = false,
 ): RoomOptions {
   const capture = cameraCapturePreset();
   const phone = currentIsMobile();
+  // Everything AV1 is behind the beta switch: publishing (av1Now) and the receive filter.
+  setAv1Session(av1);
+  // Answered while the pre-join screen is up; the room applies it to the publish defaults when
+  // it arrives (the AV1 effect in webinar-room.tsx), before or after the first camera publish.
+  if (canPublish && av1) primeAv1Probes();
+  // And whether this device should receive AV1 at all, before the Room negotiates anything.
+  void primeReceivePolicy("participant", av1);
   return {
     /* Measured in DEVICE pixels, not CSS pixels.
      *
@@ -458,7 +471,8 @@ export function roomOptions(
 
       screenShareSimulcastLayers: SHARE_LAYERS,
 
-      videoCodec: "vp8",
+      // VP8, or AV1 + VP8 backup where codec-policy.ts allows (cameraPublishDefaults).
+      ...cameraPublishDefaults(canPublish && av1Now("camera").av1 ? "av1" : "vp8", capture),
 
       /* Audio is the thing that must not break.
        *

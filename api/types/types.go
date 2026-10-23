@@ -1380,6 +1380,14 @@ const (
 	 * in every tier (migrations/0142). Off: turning server captions on is refused 403
 	 * feature_off and the room falls back to on-device captions in the browser. */
 	FeatureCaptions = "captions"
+	/* FeatureAV1 is AV1 video in this host's sessions (beta): capable presenters' cameras and
+	 * screen shares publish AV1 with a VP8 / H264 backup (web/lib/codec-policy.ts), and weak
+	 * subscribers leave AV1 out of what they receive (web/lib/receive-codecs.ts).
+	 *
+	 * Off — the default for every account, because absent means off — means every session
+	 * publishes VP8 / VP9 / H264 exactly as before. The host's switch decides for everyone in
+	 * their session; see JoinResponse.AV1. */
+	FeatureAV1 = "av1"
 )
 
 // Feature groups: the admin screen's headings (Feature.Group).
@@ -1515,6 +1523,12 @@ var Features = []Feature{
 		Key:         FeatureCaptions,
 		Label:       "Server captions",
 		Description: "Live captions from the server's caption agent (Hindi, English, Hinglish) when the host turns captions on. On by default. Off falls back to captions on each speaker's device.",
+		Group:       FeatureGroupDelivery,
+	},
+	{
+		Key:         FeatureAV1,
+		Label:       "AV1 video (beta)",
+		Description: "In this host's sessions, presenters on capable computers send cameras and screen shares in AV1 (about 30% less upload for the same picture), with a VP8 / H264 copy for Safari, iPhone and weaker devices. Never on Safari or iPhone/iPad. Off means VP8 / VP9 / H264 as before.",
 		Group:       FeatureGroupDelivery,
 	},
 	// Integrations.
@@ -3858,6 +3872,12 @@ type JoinResponse struct {
 	 * not asked: they only ever watch a board somebody on the stage opened, so
 	 * an attendee's join skips the lookup and this stays false for them. */
 	Whiteboard bool `json:"whiteboard"`
+	/* AV1 is whether this session uses AV1 video (the host's FeatureAV1, beta).
+	 *
+	 * Sent to everyone in the room, not only the stage, so the whole room behaves the same:
+	 * publishers may send AV1 (if their device passes the browser's own gate) and weak
+	 * subscribers exclude it on receive. False: no AV1 publishing and no receive-side change. */
+	AV1 bool `json:"av1"`
 	/* JoinKey is the caller's own registration key, echoed back.
 	 *
 	 * For the guest door it is the point of the response: a guest has no account and no
