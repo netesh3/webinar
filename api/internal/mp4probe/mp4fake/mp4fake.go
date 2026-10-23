@@ -22,7 +22,7 @@ type Spec struct {
 func box(typ string, parts ...[]byte) []byte {
 	body := bytes.Join(parts, nil)
 	out := make([]byte, 8, 8+len(body))
-	binary.BigEndian.PutUint32(out, uint32(8+len(body)))
+	binary.BigEndian.PutUint32(out, clampU32(int64(8+len(body))))
 	copy(out[4:], typ)
 	return append(out, body...)
 }
@@ -44,7 +44,7 @@ func header(ms int64, extra int) []byte {
 	b := append([]byte{0, 0, 0, 0}, u32(0)...) // version/flags, creation
 	b = append(b, u32(0)...)                   // modification
 	b = append(b, u32(1000)...)                // timescale
-	b = append(b, u32(uint32(ms))...)          // duration
+	b = append(b, u32(clampU32(ms))...)        // duration
 	return append(b, make([]byte, extra)...)
 }
 
@@ -90,4 +90,15 @@ func Build(s Spec) []byte {
 		return bytes.Join([][]byte{ftyp, mdat, moov}, nil)
 	}
 	return bytes.Join([][]byte{ftyp, moov, mdat}, nil)
+}
+
+// clampU32 keeps a test duration inside the 32-bit field.
+func clampU32(v int64) uint32 {
+	switch {
+	case v < 0:
+		return 0
+	case v > 0xFFFFFFFF:
+		return 0xFFFFFFFF
+	}
+	return uint32(v)
 }

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 )
 
 // Info is what the probe found.
@@ -99,7 +100,11 @@ func Probe(r io.ReadSeeker, size int64) (Info, error) {
 			if _, err := io.ReadFull(r, hdr[8:16]); err != nil {
 				return Info{}, ErrNotMP4
 			}
-			boxSize = int64(binary.BigEndian.Uint64(hdr[8:16]))
+			large := binary.BigEndian.Uint64(hdr[8:16])
+			if large > math.MaxInt64 {
+				return Info{}, ErrNotMP4
+			}
+			boxSize = int64(large)
 			headerLen = 16
 		case 0:
 			boxSize = size - pos
@@ -332,5 +337,14 @@ func scaled(d uint64, timescale uint32) int64 {
 		return 0
 	}
 	// Whole seconds and the remainder apart, so a long file in a fine timescale cannot overflow.
-	return int64(d/uint64(timescale))*1000 + int64(d%uint64(timescale)*1000/uint64(timescale))
+	// A duration past ~292 million years is not a real file: clamp rather than wrap.
+	secs := d / uint64(timescale)
+	if secs > math.MaxInt64/1000-1 {
+		return math.MaxInt64
+	}
+	frac := d % uint64(timescale) * 1000 / uint64(timescale)
+	if frac > 999 { // cannot happen (remainder < timescale); stated for the overflow check
+		frac = 999
+	}
+	return int64(secs)*1000 + int64(frac)
 }
