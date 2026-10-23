@@ -68,8 +68,8 @@ export const LOST_AFTER_MS = 12_000;
  *  any card is drawn. A resume asks for a fresh credential, reconnects and republishes, which
  *  is usually 1–3 s; this leaves room for a slow phone network on top. */
 export const RESUME_QUIET_MS = 8_000;
-/** Hidden at least this long counts as having been away. A glance at a notification does not. */
-export const AWAY_MIN_MS = 2_000;
+// Hidden at least this long counts as having been away: one rule for every part of the page.
+export { AWAY_MIN_MS } from "./background-return.ts";
 
 export type ConnectionToastTiming = {
   showAfterMs: number;

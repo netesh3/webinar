@@ -19,7 +19,16 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { API_BASE, api } from "@/lib/api";
+import { API_BASE, ApiError, api } from "@/lib/api";
+import { classifyDisconnect } from "@/lib/disconnect-reason";
+import {
+  planRecovery,
+  RECOVERY_IDLE_RETRY_MS,
+  type LostReason,
+  type Reach,
+  type Recovery,
+} from "@/lib/recovery";
+import { useReturnQuiet } from "@/lib/use-return-quiet";
 import type { JoinResponse } from "@/lib/api-types";
 import { useMediaPreferences } from "@/lib/media";
 import {
@@ -93,6 +102,13 @@ function resolveBroadcastUrl(path: string): string {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** How long a reconnected data connection must hold before its attempts are forgiven. The
+ *  live room's rule (webinar-room.tsx STABLE_MS). */
+const STABLE_MS = 30_000;
+
+/** How long a reconnect waits for a new credential before going ahead with the one it has. */
+const CREDENTIAL_BUDGET_MS = 4_000;
+
 export function CdnAttendeeRoom({
   join,
   slug,
@@ -132,6 +148,14 @@ export function CdnAttendeeRoom({
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<string | null>(null);
   const [, setConnected] = useState(false);
+  /* The data connection's own reconnect: chat, Q&A, polls and presence ride on it; the video
+   * is HLS and plays on regardless. Bumping `attempt` re-runs the connect effect, as in the
+   * live room (webinar-room.tsx), and `recovering` is the attempt in flight, for the badge. */
+  const [attempt, setAttempt] = useState(0);
+  const [recovering, setRecovering] = useState<number | null>(null);
+  const attempts = useRef(0);
+  const connectedOnce = useRef(false);
+  const returnQuiet = useReturnQuiet();
 
   const onLeaveRef = useRef(onLeave);
   useEffect(() => {
@@ -238,40 +262,138 @@ export function CdnAttendeeRoom({
 
   const { connect, disconnect } = useSequentialRoomConnectDisconnect(room);
 
+  /* A new credential for a reconnect, or "ended" when the server says the session is over,
+   * or null to go ahead with the one already held. The same rules as the live room's
+   * freshCredential: a token held for hours may have expired, and a reconnect with it would
+   * fail identically on every attempt. Bounded, so a slow API does not hold the attempt up. */
+  const freshJoin = useCallback(async () => {
+    const mint = (async () => {
+      try {
+        const fresh = presenter ? await api.hostJoin(slug) : await api.join(slug, joinKey);
+        return { url: fresh.url, token: fresh.token };
+      } catch (e) {
+        if (e instanceof ApiError && (e.code === "ended" || e.code === "not_joinable")) return "ended" as const;
+        return null;
+      }
+    })();
+    const budget = new Promise<null>((resolve) => setTimeout(() => resolve(null), CREDENTIAL_BUDGET_MS));
+    return Promise.race([mint, budget]);
+  }, [presenter, slug, joinKey]);
+
   useEffect(() => {
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    let stopWaiting: (() => void) | undefined;
+
+    const reach = (): Reach => ({
+      hidden: document.visibilityState === "hidden",
+      online: navigator.onLine !== false,
+    });
+    const schedule = (plan: Extract<Recovery, { action: "retry" }>) => {
+      attempts.current = plan.attempt;
+      setRecovering(plan.attempt);
+      retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
+    };
+    /* Out of attempts while hidden or offline: wait, and start again from the first rung when
+     * the page is looked at, the network returns, or every RECOVERY_IDLE_RETRY_MS. See "wait"
+     * in lib/recovery.ts — the same as the live room. */
+    const waitForReturn = () => {
+      if (stopWaiting) return;
+      const wake = (trigger: "visible" | "online" | "idle") => {
+        if (cancelled) return;
+        if (trigger === "visible" && document.visibilityState !== "visible") return;
+        if (navigator.onLine === false) return;
+        stopWaiting?.();
+        attempts.current = 0;
+        const plan = planRecovery("lost", 0);
+        if (plan.action === "retry") schedule(plan);
+      };
+      const onVisible = () => wake("visible");
+      const onOnline = () => wake("online");
+      const idle = setInterval(() => wake("idle"), RECOVERY_IDLE_RETRY_MS);
+      document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("online", onOnline);
+      stopWaiting = () => {
+        clearInterval(idle);
+        document.removeEventListener("visibilitychange", onVisible);
+        window.removeEventListener("online", onOnline);
+        stopWaiting = undefined;
+      };
+    };
+    /* The connection is gone and was not left on purpose. It used to go straight to the end
+     * screen — "The webinar has ended… the host closed the session", and the survey — on any
+     * drop at all, so a phone locked for a few minutes during a simulive ended the webinar
+     * for that viewer. Only a decision somebody made (ended, removed, the same key in another
+     * tab) ends it now; the network is retried. */
+    const lost = (why: LostReason) => {
+      const plan = planRecovery(why, attempts.current, reach());
+      if (plan.action === "retry") return schedule(plan);
+      if (plan.action === "wait") return waitForReturn();
+      setRecovering(null);
+      // A network that stayed unusable is not the webinar ending: say what happened.
+      if (why === "lost") setFailure("We lost the connection to the webinar. Check your internet, then rejoin.");
+      else setExit(why);
+    };
 
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
       if (reason === DisconnectReason.CLIENT_INITIATED) {
         onLeaveRef.current();
-      } else {
-        setExit("disconnected");
+        return;
       }
+      lost(classifyDisconnect(reason) ?? "lost");
     };
 
     room.on(RoomEvent.Disconnected, onDisconnected);
 
-    void connect(join.url, join.token, {
-      peerConnectionTimeout: 15_000,
-      websocketTimeout: 15_000,
-      autoSubscribe: false,
-    })
-      .then(() => {
-        if (!cancelled) setConnected(true);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setFailure(err instanceof Error ? err.message : "Could not connect to data channel.");
+    (async () => {
+      try {
+        let url = join.url;
+        let token = join.token;
+        if (attempts.current > 0) {
+          const fresh = await freshJoin();
+          if (cancelled) return;
+          if (fresh === "ended") {
+            setRecovering(null);
+            setExit("ended");
+            return;
+          }
+          if (fresh) ({ url, token } = fresh);
         }
-      });
+        await connect(url, token, {
+          peerConnectionTimeout: 15_000,
+          websocketTimeout: 15_000,
+          autoSubscribe: false,
+        });
+        if (cancelled) return;
+        connectedOnce.current = true;
+        setRecovering(null);
+        setConnected(true);
+        // Forgiven only once it has held, so a connection that flaps does not retry for ever.
+        settle = setTimeout(() => {
+          attempts.current = 0;
+        }, STABLE_MS);
+      } catch (err: unknown) {
+        if (cancelled) return;
+        // A first join that never landed is still the "Couldn't connect" screen, as before.
+        if (!connectedOnce.current) {
+          setFailure(err instanceof Error ? err.message : "Could not connect to data channel.");
+          return;
+        }
+        lost("lost");
+      }
+    })();
 
     return () => {
       cancelled = true;
+      clearTimeout(retry);
+      clearTimeout(settle);
+      stopWaiting?.();
       room.off(RoomEvent.Disconnected, onDisconnected);
       void disconnect();
     };
-  }, [room, connect, disconnect, join.url, join.token]);
+  }, [room, connect, disconnect, join.url, join.token, attempt, freshJoin]);
 
   // Tools & layout
   /* A viewer of the recording has no roster; the host team in a simulive does — the same
@@ -594,6 +716,11 @@ export function CdnAttendeeRoom({
                             : undefined
                         }
                       />
+                      )}
+                      {recovering !== null && !returnQuiet && (
+                        <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full bg-black/60 px-3 py-1 text-[11.5px] text-white/80">
+                          Reconnecting chat…
+                        </div>
                       )}
                     </div>
 

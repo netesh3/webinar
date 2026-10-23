@@ -133,6 +133,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the reconnection ladder, which cannot be tested in a browser at all: a real
 	# media-path failure is not injectable, so this is the only check it gets.
 	cd web && node --experimental-strip-types --no-warnings lib/recovery.test.mts
+	# Coming back from a locked phone or another app (lib/background-return.ts).
+	cd web && node --experimental-strip-types --no-warnings lib/background-return.test.mts
 	# And what that ladder puts back once it reconnects, for the same reason plus a worse
 	# one: getting it wrong in the generous direction republishes somebody's screen.
 	cd web && node --experimental-strip-types --no-warnings lib/republish.test.mts

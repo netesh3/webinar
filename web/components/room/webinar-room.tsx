@@ -85,6 +85,7 @@ import {
   RECOVERY_IDLE_RETRY_MS,
   type Reach,
 } from "@/lib/recovery";
+import { classifyDisconnect } from "@/lib/disconnect-reason";
 import { usePresenceFallback } from "@/lib/presence";
 import { ActiveSpeakerProvider } from "./active-speaker";
 import { AIToggle } from "./ai-toggle";
@@ -2389,29 +2390,6 @@ function stopLocalCapture(room: Room, published: Set<LocalTrack>) {
 /** Maps LiveKit's disconnect reason onto something worth telling a person.
  *
  *  Returns null when they disconnected themselves, which needs no explanation. */
-function classifyDisconnect(reason?: DisconnectReason): ExitReason | null {
-  switch (reason) {
-    case DisconnectReason.ROOM_DELETED:
-    case DisconnectReason.ROOM_CLOSED:
-    case DisconnectReason.SERVER_SHUTDOWN:
-      return "ended";
-    case DisconnectReason.PARTICIPANT_REMOVED:
-      return "removed";
-    // The same join key opened in a second tab. Saying so beats the two tabs
-    // silently fighting over one identity.
-    case DisconnectReason.DUPLICATE_IDENTITY:
-      return "duplicate";
-    case DisconnectReason.SIGNAL_CLOSE:
-    case DisconnectReason.STATE_MISMATCH:
-      return "lost";
-    case DisconnectReason.CLIENT_INITIATED:
-    case undefined:
-      return null;
-    default:
-      return "lost";
-  }
-}
-
 /** The host's way out of a session that ended without them pressing End here. */
 function HostResultsRedirect({ href }: { href: string }) {
   const router = useRouter();
