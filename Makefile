@@ -197,6 +197,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And an attendee whose video connection is down: the stage invite their presence poll
 	# replays shows once, and is cleared when it has gone.
 	cd web && node --experimental-strip-types --no-warnings lib/presence-step.test.mts
+	# And which delivery the schedule form and the instant button offer: edge only on a
+	# GCP or DO video server, the Standard / Edge choice on Hetzner with the switch.
+	cd web && node --experimental-strip-types --no-warnings lib/delivery-policy.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/instant-delivery.test.mts
 	# And a meeting's room: no raise hand or stream tools, a guest entering muted with the
 	# camera on unless a refresh saved otherwise, and the lobby's packet, queue and wording.
 	cd web && node --experimental-strip-types --no-warnings lib/meeting-room.test.mts

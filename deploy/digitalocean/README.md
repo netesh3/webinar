@@ -1,7 +1,8 @@
 # DigitalOcean (Bangalore) — test video server
 
 A third LiveKit SFU, in DigitalOcean's Bangalore region, running alongside Hetzner (`default`)
-and Mumbai GCP (`india`) so meetings and edge webinars can be tried on DigitalOcean before
+and Mumbai GCP (`india`) so meetings and edge webinars (the only webinar delivery here, see
+below) can be tried on DigitalOcean before
 anything moves. Why DigitalOcean: meetings make SFU egress the main cost, and droplets include
 pooled transfer (then ~$0.01/GiB) where GCP charges ~$0.12/GB. Nothing else has moved: the API
 is still on Cloud Run, the database on Supabase, recordings on R2, the edge CDN on Bunny.
@@ -99,6 +100,22 @@ workflow does this; here it is a manual `rsync`), then `redeploy.sh`. It is capp
 that already carries the SFU and an edge composite the live `small` model (~1.5–2 cores for 1–2
 speakers) is the first thing to load-test; `CAPTIONS_MODEL=base` halves it. Memory: up to 4 GB
 (`CAPTIONS_MEMORY`) of the 8. Sizing in `deploy/captions/README.md`.
+
+## Webinars here are always edge
+
+Every webinar (one-off, instant or a recurring series) on this box is **edge**: the stage on
+WebRTC, the audience on LL-HLS through Bunny. The schedule form offers no Standard / WebRTC
+choice for it, the API stores edge whatever a save sends, and the `edge_delivery` account switch
+is not needed (it still gates edge on Hetzner). The same holds for the Mumbai GCP project. The
+provider comes from the project's `"provider": "do"` (or the id/label: `do-blr` reads as DO). A
+webinar not opened yet is judged by where it will go: the host's assigned project (Admin →
+Accounts → Video server) when it is taking rooms, else the first enabled one. At boot the API
+moves draft and scheduled webinars headed here onto edge; live and ended ones, meetings,
+simulive and Zoom are left alone. Meetings stay on WebRTC. See `docs/edge-delivery.md`.
+
+Capacity: each concurrent webinar runs one composite mix on this c-4 (~1–1.5 cores), so two or
+three at once beside the SFU is the comfortable ceiling. The audience is ~2.5 s behind the stage
+(LL-HLS), which shows in Q&A and "raise your hand" timing.
 
 ## Cloud recording of edge webinars (optional, off)
 

@@ -122,17 +122,96 @@ func (s *Server) forgetDelivery(slug string) { s.deliveryCache.Delete(slug) }
 
 // --------------------------------------------------------- saving the choice
 
+/* Edge is the only webinar delivery on GCP and DigitalOcean video servers.
+ *
+ * Those boxes carry the stage on WebRTC and the audience on LL-HLS through the CDN; a WebRTC
+ * audience there is the egress bill the move was made to avoid (docs/edge-delivery.md, "Where
+ * edge is the standard"). So a webinar that is, or will be, on one of them is saved as edge
+ * whatever the form sent, and the edge_delivery switch is implied there. Hetzner keeps the
+ * choice behind the switch, exactly as before. Meetings and simulive sessions are never edge. */
+
+// edgeOnlyProvider is whether a video-server provider runs every webinar on edge.
+func edgeOnlyProvider(provider string) bool { return provider == "gcp" || provider == "do" }
+
+/* deliveryProject is where a webinar's room is, or will be when it is first opened: the pin
+ * when there is one, else what firstChoice would pick for this host now. Empty when no
+ * project is taking new rooms.
+ *
+ * Before the pin it is a forecast: an admin who reassigns the host before the first join
+ * moves the room. That is fine either way round, because edge works on every provider and
+ * the audience path checks again at join (edgeAllowed). */
+func (s *Server) deliveryProject(ctx context.Context, hostID, pinned string) string {
+	if pinned != "" {
+		return pinned
+	}
+	candidates := s.sfu.Candidates()
+	if len(candidates) == 0 {
+		return ""
+	}
+	return s.firstChoice(ctx, types.Webinar{Host: types.Person{ID: hostID}}, candidates)
+}
+
+/* edgeOnlyProject reports whether a webinar room on this project must be edge: a GCP or DO
+ * server, or no project known at all (edge is the default going forward). Never without a
+ * live origin to push the mix to: forcing edge there would be a webinar nobody can watch. */
+func (s *Server) edgeOnlyProject(project string) bool {
+	if s.cfg.BroadcastRTMPBase == "" {
+		return false
+	}
+	return project == "" || edgeOnlyProvider(s.costProviderOf(project))
+}
+
+// edgeOnlyFor is edgeOnlyProject for a host's webinar pinned to pinned ("" for a new one).
+func (s *Server) edgeOnlyFor(ctx context.Context, hostID, pinned string) bool {
+	return s.edgeOnlyProject(s.deliveryProject(ctx, hostID, pinned))
+}
+
+/* edgeAllowed is whether this host may run an edge audience on this project: implied on
+ * GCP and DO, the edge_delivery switch elsewhere. */
+func (s *Server) edgeAllowed(ctx context.Context, hostID, project string) bool {
+	if project != "" && edgeOnlyProvider(s.costProviderOf(project)) {
+		return true
+	}
+	return s.hostFeature(ctx, hostID, types.FeatureEdgeDelivery)
+}
+
+/* edgeFits is whether a session of this shape can be edge at all: a webinar, one-off or a
+ * recurring series, that runs in this app. Meetings, simulive and Zoom have their own
+ * audience paths. */
+func edgeFits(in types.WebinarInput) bool {
+	return in.Kind != types.KindMeeting && in.Kind != types.KindSimulive &&
+		(in.Venue == "" || in.Venue == "app")
+}
+
+/* deliveryTarget is what resolveDelivery needs to know about the webinar being saved beyond
+ * the input: its saved delivery ("" on a create), its pin, and whether it is live or over. */
+type deliveryTarget struct {
+	prev   string
+	pinned string
+	// locked is a session that is live or ended: it is never switched to edge under its
+	// audience by a save, and keeps the old rules.
+	locked bool
+}
+
 /* resolveDelivery validates the delivery a save asks for and returns what to store.
  *
- * "" keeps what is saved (or standard on a create), so a client that never heard of the field
- * changes nothing. Edge needs the host's switch, a live webinar in this app (not Zoom, not
- * simulive, not a recurring series — each of those has its own audience path), and a live
- * origin to push to; anything else is a field error rather than a silent downgrade, because a
- * host testing edge has to know they are not getting it. */
-func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.WebinarInput, prev string) (string, map[string]string) {
+ * On a GCP or DO server (edgeOnlyFor) a webinar in this app is edge, whatever was asked for.
+ * Elsewhere "" keeps what is saved (or standard on a create), so a client that never heard
+ * of the field changes nothing. Edge there needs the host's switch, a webinar in this app (not
+ * Zoom, not simulive), and a live origin to push to; anything else is a field error rather
+ * than a silent downgrade, because a host testing edge has to know they are not getting it.
+ *
+ * A recurring series may be edge: every occurrence is its own webinar row with its own slug,
+ * so its own mix, MediaMTX path and event stream, started and stopped by its own Start and
+ * End. The handler writes the series' delivery to every occurrence (saveSeriesDelivery). */
+func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.WebinarInput, t deliveryTarget) (string, map[string]string) {
 	// A meeting is always standard: everyone is on the video server, whatever was asked for.
 	if in.Kind == types.KindMeeting {
 		return types.DeliveryStandard, nil
+	}
+	prev := t.prev
+	if edgeFits(in) && !t.locked && s.edgeOnlyFor(ctx, hostID, t.pinned) {
+		return types.DeliveryEdge, nil
 	}
 	want := strings.TrimSpace(in.Delivery)
 	explicit := want != ""
@@ -149,27 +228,24 @@ func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.We
 	default:
 		return "", map[string]string{"delivery": "Choose standard or edge delivery."}
 	}
-	if !s.hostFeature(ctx, hostID, types.FeatureEdgeDelivery) {
+	// A save that did not ask for edge but inherits it, and no longer fits (moved to Zoom,
+	// made simulive), quietly becomes standard: refusing an edit over a field the host
+	// never touched would be worse than the downgrade.
+	if !explicit && !edgeFits(in) {
+		return types.DeliveryStandard, nil
+	}
+	if !s.edgeAllowed(ctx, hostID, t.pinned) {
 		if prev == types.DeliveryEdge {
 			// Saved while the switch was on. Leave it; join checks the switch again.
 			return prev, nil
 		}
 		return "", map[string]string{"delivery": featureLabel(types.FeatureEdgeDelivery) + " isn't switched on for this account."}
 	}
-	// A save that did not ask for edge but inherits it, and no longer fits (moved to Zoom,
-	// made recurring), quietly becomes standard: refusing an edit over a field the host
-	// never touched would be worse than the downgrade.
-	if !explicit && ((in.Venue != "" && in.Venue != "app") || in.Kind == types.KindSimulive ||
-		in.Kind == types.KindRecurring || seriesRequested(in)) {
-		return types.DeliveryStandard, nil
-	}
 	switch {
 	case in.Venue != "" && in.Venue != "app":
 		return "", map[string]string{"delivery": "Edge delivery is for webinars that run in this app."}
 	case in.Kind == types.KindSimulive:
 		return "", map[string]string{"delivery": "A simulive session already plays a recording to everyone."}
-	case in.Kind == types.KindRecurring || seriesRequested(in):
-		return "", map[string]string{"delivery": "Edge delivery is for single webinars for now, not a recurring series."}
 	case s.cfg.BroadcastRTMPBase == "":
 		return "", map[string]string{"delivery": "Edge delivery needs the live origin (BROADCAST_RTMP_BASE), which this server doesn't have."}
 	}
@@ -184,6 +260,51 @@ func (s *Server) saveDelivery(ctx context.Context, slug, delivery string) error 
 	return s.store.SetWebinarDelivery(ctx, slug, delivery)
 }
 
+/* saveSeriesDeliveryFrom writes the delivery to a series' occurrences from index `from` on
+ * (0 for all) that have not run yet. A live or ended occurrence keeps its own. */
+func (s *Server) saveSeriesDeliveryFrom(ctx context.Context, seriesID, delivery string, from int) error {
+	if delivery == "" || seriesID == "" {
+		return nil
+	}
+	slugs, err := s.store.SetSeriesDelivery(ctx, seriesID, delivery, from)
+	for _, slug := range slugs {
+		s.forgetDelivery(slug)
+	}
+	return err
+}
+
+/* BackfillEdgeDelivery moves every webinar that has not run yet and will run on a GCP or DO
+ * server onto edge, at boot: the rule resolveDelivery applies to every save, applied once to
+ * what was saved before it existed. Live and ended sessions, meetings, simulive and Zoom are
+ * left alone. Idempotent, and a failure only logs: a boot must not fail over it. */
+func (s *Server) BackfillEdgeDelivery(ctx context.Context) {
+	if s.cfg.BroadcastRTMPBase == "" {
+		return
+	}
+	var edgeProjects []string
+	for _, id := range s.sfu.IDs() {
+		if edgeOnlyProvider(s.costProviderOf(id)) {
+			edgeProjects = append(edgeProjects, id)
+		}
+	}
+	// An unpinned webinar goes to its host's assigned project when that is taking rooms,
+	// else to the first candidate (firstChoice).
+	// No candidate at all leaves an unpinned webinar's target empty, which is edge
+	// (edgeOnlyProject).
+	slugs, err := s.store.BackfillEdgeDelivery(ctx, edgeProjects, s.sfu.Candidates())
+	if err != nil {
+		s.log.Warn("edge: backfill of future webinars failed", "error", err)
+		return
+	}
+	for _, slug := range slugs {
+		s.forgetDelivery(slug)
+	}
+	if len(slugs) > 0 {
+		s.log.Info("edge: moved future webinars on GCP/DO video servers to edge delivery",
+			"count", len(slugs), "projects", edgeProjects)
+	}
+}
+
 // ------------------------------------------------------------ join and tokens
 
 /* edgeAudience reports whether this join should get the edge audience response: an edge
@@ -193,10 +314,11 @@ func (s *Server) edgeAudience(ctx context.Context, wb types.Webinar, onStage boo
 	if onStage || wb.Delivery != types.DeliveryEdge || wb.Kind == types.KindSimulive || isMeeting(wb) {
 		return "", false
 	}
-	if s.cfg.SessionSecret == "" || !s.hostFeature(ctx, wb.Host.ID, types.FeatureEdgeDelivery) {
+	project := s.pinnedProject(ctx, wb)
+	if s.cfg.SessionSecret == "" || !s.edgeAllowed(ctx, wb.Host.ID, project) {
 		return "", false
 	}
-	u := s.cfg.EdgePlaybackURLFor(s.pinnedProject(ctx, wb), wb.ID)
+	u := s.cfg.EdgePlaybackURLFor(project, wb.ID)
 	return u, u != ""
 }
 
@@ -468,6 +590,25 @@ func (s *Server) handleEdgeLeave(w http.ResponseWriter, r *http.Request) {
 		s.log.Warn("edge leave: close visit", "slug", slug, "error", err)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+/* handleDeliveryPolicy tells the schedule form what delivery to offer (types.DeliveryPolicy):
+ * for a new webinar, from where the host's next room would be placed; with ?slug= for one of
+ * the caller's own webinars, from its pin. A slug the caller does not own is ignored rather
+ * than refused, so the answer never says anything about somebody else's webinar. */
+func (s *Server) handleDeliveryPolicy(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	hostID, pinned := user.ID, ""
+	if slug := strings.TrimSpace(r.URL.Query().Get("slug")); slug != "" {
+		if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && (wb.Host.ID == user.ID || user.IsAdmin) {
+			hostID, pinned = wb.Host.ID, wb.SFUProject
+		}
+	}
+	out := types.DeliveryPolicy{EdgeOnly: s.edgeOnlyFor(r.Context(), hostID, pinned)}
+	if !out.EdgeOnly {
+		out.EdgeChoice = s.hostFeature(r.Context(), hostID, types.FeatureEdgeDelivery)
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 /* handleHostEdgeStatus is the host's view of edge delivery for one webinar: whether it is on,

@@ -25,6 +25,59 @@ func (s *Store) SetWebinarDelivery(ctx context.Context, slug, delivery string) e
 	return nil
 }
 
+/* SetSeriesDelivery writes the delivery to a series' occurrences that have not run yet (draft
+ * or scheduled), from occurrence index `from` on (0 for all), and returns their slugs so the
+ * caller can drop them from its delivery cache. A live or ended occurrence keeps its own. */
+func (s *Store) SetSeriesDelivery(ctx context.Context, seriesID, delivery string, from int) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		UPDATE webinars SET delivery = $2, updated_at = now()
+		 WHERE series_id = $1::uuid AND COALESCE(occurrence_index, 0) >= $3
+		   AND status IN ('draft', 'scheduled') AND delivery <> $2
+		RETURNING slug`, seriesID, delivery, from)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+/* BackfillEdgeDelivery moves webinars that have not run yet onto edge when their room is, or
+ * will be, on one of edgeProjects (the GCP and DO video servers): pinned there, or unpinned
+ * and headed there — the host's assigned project when it is in candidates, else the first
+ * candidate, the same order the first join uses (Server.firstChoice). An unpinned webinar
+ * with no candidate at all is edge too. Only one-off and recurring webinars in this app, in
+ * draft or scheduled: live and ended sessions, meetings, simulive and Zoom are untouched.
+ * Returns the slugs it changed. */
+func (s *Store) BackfillEdgeDelivery(ctx context.Context, edgeProjects, candidates []string) ([]string, error) {
+	if edgeProjects == nil {
+		edgeProjects = []string{}
+	}
+	if candidates == nil {
+		candidates = []string{}
+	}
+	rows, err := s.pool.Query(ctx, `
+		WITH target AS (
+			SELECT w.id,
+			       CASE WHEN w.sfu_project <> '' THEN w.sfu_project
+			            WHEN u.sfu_project = ANY($2::text[]) THEN u.sfu_project
+			            ELSE COALESCE(($2::text[])[1], '')
+			       END AS project
+			  FROM webinars w
+			  LEFT JOIN users u ON u.id = w.host_id
+			 WHERE w.delivery <> 'edge'
+			   AND w.status IN ('draft', 'scheduled')
+			   AND w.kind IN ('live', 'recurring')
+			   AND w.venue = 'app'
+		)
+		UPDATE webinars w SET delivery = 'edge', updated_at = now()
+		  FROM target t
+		 WHERE w.id = t.id AND (t.project = '' OR t.project = ANY($1::text[]))
+		RETURNING w.slug`, edgeProjects, candidates)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
 // WebinarDelivery is the delivery mode alone, for hot paths that must not load a whole webinar.
 func (s *Store) WebinarDelivery(ctx context.Context, slug string) (string, error) {
 	var d string

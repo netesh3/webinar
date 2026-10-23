@@ -308,7 +308,7 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
 		return types.Webinar{}, false
 	}
-	delivery, deliveryFields := s.resolveDelivery(r.Context(), user.ID, in, "")
+	delivery, deliveryFields := s.resolveDelivery(r.Context(), user.ID, in, deliveryTarget{})
 	if len(deliveryFields) > 0 {
 		httpx.Fields(w, deliveryFields)
 		return types.Webinar{}, false
@@ -356,7 +356,14 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 		return types.Webinar{}, false
 	}
 	if delivery != types.DeliveryStandard {
-		if err := s.saveDelivery(r.Context(), wb.ID, delivery); err != nil {
+		var err error
+		if wb.SeriesID != "" {
+			// Every occurrence of a new series, not only the first.
+			err = s.saveSeriesDeliveryFrom(r.Context(), wb.SeriesID, delivery, 0)
+		} else {
+			err = s.saveDelivery(r.Context(), wb.ID, delivery)
+		}
+		if err != nil {
 			s.fail(w, r, "create webinar: delivery", err)
 			return types.Webinar{}, false
 		}
@@ -536,10 +543,14 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if hasPrev && check.Kind == "" {
 		check.Kind = prev.Kind
 	}
-	if hasPrev && prev.SeriesID != "" && check.Delivery == "" {
-		check.Delivery = types.DeliveryStandard
+	if hasPrev && check.Venue == "" {
+		check.Venue = prev.Venue
 	}
-	delivery, deliveryFields := s.resolveDelivery(r.Context(), hostID, check, prev.Delivery)
+	delivery, deliveryFields := s.resolveDelivery(r.Context(), hostID, check, deliveryTarget{
+		prev:   prev.Delivery,
+		pinned: prev.SFUProject,
+		locked: prev.Status == types.StatusLive || prev.Status == types.StatusEnded,
+	})
 	if len(deliveryFields) > 0 {
 		httpx.Fields(w, deliveryFields)
 		return
@@ -616,7 +627,18 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "update webinar: zoom save", err)
 		return
 	}
-	if delivery != prev.Delivery {
+	/* A save that writes several occurrences (this and following, or a one-off becoming a
+	 * series) writes the delivery to each of them too, including the ones it just added. */
+	if wb.SeriesID != "" && (in.SeriesScope == "following" || prev.SeriesID == "") {
+		from := wb.OccurrenceIndex
+		if prev.SeriesID == "" {
+			from = 0
+		}
+		if err := s.saveSeriesDeliveryFrom(r.Context(), wb.SeriesID, delivery, from); err != nil {
+			s.fail(w, r, "update webinar: series delivery", err)
+			return
+		}
+	} else if delivery != prev.Delivery {
 		if err := s.saveDelivery(r.Context(), wb.ID, delivery); err != nil {
 			s.fail(w, r, "update webinar: delivery", err)
 			return

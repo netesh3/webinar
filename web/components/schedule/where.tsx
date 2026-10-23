@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { FeatureEdgeDelivery, FeatureZoom } from "@/lib/api-types";
+import { FeatureZoom, type DeliveryPolicy } from "@/lib/api-types";
+import { deliveryOffer, EDGE_ONLY_NOTE } from "@/lib/delivery-policy";
 import { useSession } from "../providers";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
@@ -31,16 +32,17 @@ export function WhereSection({
   form,
   set,
   fields,
+  deliveryPolicy,
 }: {
   form: FormState;
   set: SetForm;
   fields: Record<string, string>;
+  /** GET /api/host/delivery for this webinar, null while it loads. */
+  deliveryPolicy: DeliveryPolicy | null;
 }) {
   const { account, status } = useSession();
   const zoomAllowed =
     status === "signed-in" && (account?.features ?? []).includes(FeatureZoom);
-  const edgeAllowed =
-    status === "signed-in" && (account?.features ?? []).includes(FeatureEdgeDelivery);
   const [zoomConnected, setZoomConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -73,6 +75,10 @@ export function WhereSection({
   const choices =
     zoomAllowed && !appOnly ? CHOICES : CHOICES.filter((c) => c.id === "app");
   const zoomOff = zoomAllowed && zoomConnected !== true;
+  const offer = deliveryOffer(deliveryPolicy, {
+    kind: form.kind,
+    venue: appOnly ? "app" : form.venue,
+  });
 
   return (
     <FormGroup label="Where it runs">
@@ -135,8 +141,15 @@ export function WhereSection({
           <p className="mt-2 text-[12px] font-medium text-live">{fields.venue}</p>
         )}
       </FormSection>
-      {edgeAllowed && !series && form.venue === "app" && form.kind === "live" && (
+      {offer === "choice" && (
         <DeliverySection form={form} set={set} error={fields.delivery} />
+      )}
+      {offer === "edge-only" && (
+        <FormSection title="Delivery" description={EDGE_ONLY_NOTE}>
+          {fields.delivery && (
+            <p id="delivery" className="text-[12px] font-medium text-live">{fields.delivery}</p>
+          )}
+        </FormSection>
       )}
     </FormGroup>
   );
@@ -155,8 +168,9 @@ const DELIVERY = [
   },
 ];
 
-/** Edge delivery (docs/edge-delivery.md): only for hosts with the switch, for a single live
- *  webinar in this app. The stage is the same either way. */
+/** Edge delivery (docs/edge-delivery.md): the choice only for a host with the switch on a
+ *  Hetzner video server, for a webinar or series in this app. On GCP and DigitalOcean every
+ *  webinar is edge and WhereSection shows a note instead. The stage is the same either way. */
 function DeliverySection({
   form,
   set,
