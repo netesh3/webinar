@@ -37,7 +37,7 @@ func (s *Store) replayWindow(ctx context.Context, recordingID string) (string, r
 		stoppedAt  *time.Time
 	)
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.webinar_id::text, r.created_at, r.duration_ms, r.stopped_at
+		SELECT COALESCE(r.webinar_id::text, ''), r.created_at, r.duration_ms, r.stopped_at
 		  FROM recordings r WHERE r.id = $1::uuid`, recordingID,
 	).Scan(&webinarID, &start, &durationMs, &stoppedAt)
 	if noRows(err) {
@@ -62,6 +62,10 @@ func (s *Store) ReplaySource(ctx context.Context, recordingID string) (replay.So
 	webinarID, src, end, err := s.replayWindow(ctx, recordingID)
 	if err != nil {
 		return replay.Source{}, err
+	}
+	// An uploaded video (0153) had no session: nothing to replay but the video.
+	if webinarID == "" {
+		return src, nil
 	}
 	start := src.RecordingStart
 
@@ -148,8 +152,8 @@ func (s *Store) ReplaySource(ctx context.Context, recordingID string) (replay.So
 // ReplayPollSource is ReplaySource's polls alone: what syncing the simulive's copies needs.
 func (s *Store) ReplayPollSource(ctx context.Context, recordingID string) (replay.Source, error) {
 	webinarID, src, end, err := s.replayWindow(ctx, recordingID)
-	if err != nil {
-		return replay.Source{}, err
+	if err != nil || webinarID == "" {
+		return src, err
 	}
 	src.Polls, err = s.replayPolls(ctx, webinarID, src.RecordingStart, end)
 	return src, err

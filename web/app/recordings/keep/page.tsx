@@ -100,8 +100,13 @@ function KeepRecordingInner() {
         {result.status === "kept" ? "" : "This link was used already. "}
         &ldquo;{result.topic}&rdquo; is kept{until ? ` until ${until}` : ""}.
       </p>
-      <ButtonLink href={`/host/${encodeURIComponent(result.webinar)}?tab=recording`} variant="secondary" className="mt-4">
-        Open the recording
+      {/* An uploaded video has no webinar: it is looked after from the Simulive library. */}
+      <ButtonLink
+        href={result.webinar ? `/host/${encodeURIComponent(result.webinar)}?tab=recording` : "/host/new/simulive"}
+        variant="secondary"
+        className="mt-4"
+      >
+        {result.webinar ? "Open the recording" : "Open your videos"}
       </ButtonLink>
     </Message>
   );

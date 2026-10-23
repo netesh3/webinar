@@ -414,6 +414,8 @@ func (s *Server) handleHostRecordingLibrary(w http.ResponseWriter, r *http.Reque
 		s.fail(w, r, "recording library", err)
 		return
 	}
+	// Expiry and "Keep longer" for each: uploaded videos are looked after from this list.
+	s.stampHostRecordings(r.Context(), user.ID, list)
 	httpx.JSON(w, http.StatusOK, list)
 }
 

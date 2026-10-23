@@ -34,7 +34,13 @@ import (
 // replayAvailable reports whether this webinar plays an engagement replay at all.
 func (s *Server) replayAvailable(ctx context.Context, wb types.Webinar) bool {
 	return wb.Kind == types.KindSimulive && wb.SimuliveRecordingID != "" &&
-		s.hostFeature(ctx, wb.Host.ID, types.FeatureReplayEngage)
+		s.hostFeature(ctx, wb.Host.ID, types.FeatureReplayEngage) && !s.simulivePlaysUpload(ctx, wb)
+}
+
+// simulivePlaysUpload says wb plays an uploaded video, which has no session to replay.
+func (s *Server) simulivePlaysUpload(ctx context.Context, wb types.Webinar) bool {
+	f, err := s.store.RecordingFileByID(ctx, wb.SimuliveRecordingID)
+	return err == nil && f.IsUpload()
 }
 
 // replayTimeline builds the timeline for wb. preview is the host's view (keys, hidden items).
@@ -103,6 +109,11 @@ func (s *Server) replayHostWebinar(w http.ResponseWriter, r *http.Request) (type
 	if !s.hostFeature(r.Context(), wb.Host.ID, types.FeatureReplayEngage) {
 		httpx.Error(w, http.StatusForbidden, "feature_off",
 			featureLabel(types.FeatureReplayEngage)+" isn't switched on for this account.")
+		return types.Webinar{}, false
+	}
+	if s.simulivePlaysUpload(r.Context(), wb) {
+		httpx.Error(w, http.StatusConflict, "uploaded_video",
+			"This Simulive plays an uploaded video, so there's no original session whose chat, Q&A or polls could replay.")
 		return types.Webinar{}, false
 	}
 	return wb, true

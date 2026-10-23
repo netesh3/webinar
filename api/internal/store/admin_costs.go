@@ -244,8 +244,9 @@ type CostStorage struct {
 func (s *Store) CostStorageUsage(ctx context.Context, from, to time.Time) ([]CostStorage, error) {
 	rows, err := s.pool.Query(ctx, `
 		WITH held AS (
-		  SELECT w.host_id, 'rec' AS what, r.size_bytes AS bytes, r.created_at AS since, now() AS until, true AS now_held
-		    FROM recordings r JOIN webinars w ON w.id = r.webinar_id
+		  SELECT coalesce(r.owner_id, w.host_id) AS host_id, 'rec' AS what, r.size_bytes AS bytes,
+		         r.created_at AS since, now() AS until, true AS now_held
+		    FROM recordings r LEFT JOIN webinars w ON w.id = r.webinar_id
 		  UNION ALL
 		  SELECT host_id, 'rec', size_bytes, created_at, deleted_at, false FROM recording_deletions
 		  UNION ALL

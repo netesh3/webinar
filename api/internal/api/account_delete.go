@@ -120,4 +120,8 @@ func (s *Server) removeAccountFiles(ctx context.Context, userID, avatarKey strin
 	if err := s.recordings.DeletePrefix(ctx, "wa/"+userID+"/"); err != nil {
 		s.log.Warn("delete account: whatsapp media left behind", "user", userID, "error", err)
 	}
+	// Uploaded videos (video_upload.go): their rows went with the account (owner_id cascade).
+	if err := s.recordings.DeletePrefix(ctx, "uploads/"+userID+"/"); err != nil {
+		s.log.Warn("delete account: uploaded videos left behind", "user", userID, "error", err)
+	}
 }

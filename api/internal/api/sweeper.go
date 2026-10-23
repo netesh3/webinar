@@ -253,6 +253,8 @@ func (s *Server) runMaintenance(ctx context.Context) {
 		s.leasedJob(ctx, "recording-expiry-reminders", expiryReminderEvery, s.sweepRecordingExpiryReminders)
 	}
 	s.leasedJob(ctx, "engagement-retention", retentionEvery, s.sweepEngagementEvents)
+	// Uploads a browser started and never finished (video_upload.go).
+	s.leasedJob(ctx, "video-upload-abort", retentionEvery, s.sweepAbandonedVideoUploads)
 	// Moves pre-0098 cover images and profile photos out of Postgres; see images.go.
 	s.leasedJob(ctx, "image-backfill", retentionEvery, s.backfillImages)
 	s.leasedJob(ctx, "email-retention", emailRetentionEvery, s.sweepHostEmails)
@@ -478,7 +480,16 @@ func (s *Server) sweepExpiredRecordings(ctx context.Context) {
 		return
 	}
 	for _, rec := range expired {
-		keys, err := s.store.DeleteRecording(ctx, rec.Webinar, rec.ID)
+		var keys []string
+		var err error
+		if rec.Webinar == "" {
+			// An uploaded video (0153): no webinar to scope the delete to.
+			var key string
+			key, err = s.store.DeleteUploadedVideo(ctx, "", rec.ID)
+			keys = []string{key}
+		} else {
+			keys, err = s.store.DeleteRecording(ctx, rec.Webinar, rec.ID)
+		}
 		if err != nil {
 			s.log.Error("recording retention: delete row failed",
 				"slug", rec.Webinar, "recording", rec.ID, "error", err)

@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { Recording, Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { formatClock } from "@/lib/format";
+import { daysLeftText, daysUntilExpiry, expiryTone } from "@/lib/recording-retention";
 import { simuliveAllowed } from "@/lib/host-features";
 import { simuliveScheduleHref } from "@/lib/simulive-create";
 import {
@@ -14,15 +15,18 @@ import {
   dismissAutopilot,
   firstPlayablePart,
   isAutopilotDismissed,
+  isUploadedVideo,
   simuliveLibrary,
+  withUploaded,
 } from "@/lib/simulive-discover";
 import { Spinner } from "./controls";
 import { CloseIcon, PlayIcon } from "./icons";
-import { useSession } from "./providers";
+import { useSession, useToast } from "./providers";
 import { RecordingThumb } from "./recordings-tab";
 import { RecordingPreviewModal } from "./recording-preview";
 import { SimuliveInfoButton, useReplayEngage } from "./simulive-info";
-import { Badge, ButtonLink, Card, Empty } from "./ui";
+import { Badge, Button, ButtonLink, Card, Empty } from "./ui";
+import { VideoUploadPanel } from "./video-upload";
 
 /* Making simulive findable (the explainer itself is simulive-info.tsx): the "Simulive" create
  * option and its recording picker (/host/new/simulive), the schedule page's heading, and the
@@ -63,6 +67,8 @@ export function SimulivePicker() {
   const [failed, setFailed] = useState(false);
   // The recording playing in the preview dialog: nothing past the thumbnails loads until then.
   const [previewing, setPreviewing] = useState<Recording | null>(null);
+  // The video just uploaded, pointed out on its card.
+  const [justUploaded, setJustUploaded] = useState<string | null>(null);
   // The account's simulive switch: without it the server refuses the schedule this leads to.
   const allowed = simuliveAllowed(account);
 
@@ -98,8 +104,19 @@ export function SimulivePicker() {
         <SimuliveInfoButton />
       </div>
       <p className="mb-5 text-[13.5px] text-ink-2">
-        Pick a past recording. It plays at the time you choose, like a live webinar.
+        Pick a past recording, or upload a video. It plays at the time you choose, like a live webinar.
       </p>
+      {allowed && (
+        <Card className="mb-5 p-4">
+          <VideoUploadPanel
+            onUploaded={(rec) => {
+              setLibrary((list) => withUploaded(list, rec));
+              setFailed(false);
+              setJustUploaded(rec.id);
+            }}
+          />
+        </Card>
+      )}
 
       {status !== "loading" && !allowed ? (
         <Empty
@@ -118,7 +135,7 @@ export function SimulivePicker() {
       ) : library.length === 0 ? (
         <Empty
           title="No recordings to replay yet"
-          hint="A Simulive plays one of your recordings. Turn on “Record automatically” when you schedule a webinar, or press Record in the room. Once the recording is ready it shows up here."
+          hint="A Simulive plays one of your recordings or a video you upload above. Turn on “Record automatically” when you schedule a webinar, or press Record in the room. Once the recording is ready it shows up here."
           action={<ButtonLink href="/host/new">Schedule a recorded webinar</ButtonLink>}
         />
       ) : (
@@ -136,17 +153,25 @@ export function SimulivePicker() {
                 className="block w-full outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
                 <RecordingThumb
-                  src={api.recordingFileURL(rec.webinar, firstPlayablePart(rec))}
+                  src={api.recordingPlayURL(rec, firstPlayablePart(rec))}
                   durationMs={rec.durationMs}
                   parts={rec.parts?.length ?? 1}
                 />
               </button>
+              {justUploaded === rec.id && (
+                <p className="bg-ok-soft px-3 py-1.5 text-[12px] font-medium text-ok">
+                  Uploaded. Schedule it as a Simulive below.
+                </p>
+              )}
               <Link
                 href={simuliveScheduleHref(rec)}
                 className="group block outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
                 <div className="p-3">
-                  <p className="truncate text-[13.5px] font-semibold text-ink">{rec.topic}</p>
+                  <p className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-[13.5px] font-semibold text-ink">{rec.topic}</span>
+                    {isUploadedVideo(rec) && <Badge tone="brand">Uploaded</Badge>}
+                  </p>
                   <p className="mt-0.5 text-[12px] text-ink-3">
                     {formatClock(rec.durationMs)} ·{" "}
                     {hydrated
@@ -167,12 +192,89 @@ export function SimulivePicker() {
                 <PlayIcon className="size-3" />
                 Preview
               </button>
+              {isUploadedVideo(rec) && (
+                <UploadedVideoActions
+                  rec={rec}
+                  onChanged={(next) =>
+                    setLibrary((list) => (list ?? []).map((r) => (r.id === next.id ? next : r)))
+                  }
+                  onDeleted={() => setLibrary((list) => (list ?? []).filter((r) => r.id !== rec.id))}
+                />
+              )}
             </li>
           ))}
         </ul>
       )}
       <RecordingPreviewModal rec={previewing} onClose={() => setPreviewing(null)} />
     </>
+  );
+}
+
+/** An uploaded video's upkeep on its picker card: when it is deleted, Keep longer, Delete. */
+function UploadedVideoActions({
+  rec,
+  onChanged,
+  onDeleted,
+}: {
+  rec: Recording;
+  onChanged: (rec: Recording) => void;
+  onDeleted: () => void;
+}) {
+  const { notify } = useToast();
+  const hydrated = useHydrated();
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const days = hydrated ? daysUntilExpiry(rec.expiresAt) : null;
+
+  async function keep() {
+    setBusy(true);
+    try {
+      const kept = await api.keepVideo(rec.id);
+      onChanged(kept);
+      notify(
+        kept.expiresAt
+          ? `Kept until ${new Date(kept.expiresAt).toLocaleDateString(undefined, { dateStyle: "medium" })}.`
+          : "Kept longer.",
+        "ok",
+      );
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : "Could not keep that video.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    try {
+      await api.deleteVideo(rec.id);
+      onDeleted();
+      notify("Video deleted.", "ok");
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : "Could not delete that video.", "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2">
+      {days !== null && <Badge tone={expiryTone(days)}>{daysLeftText(days)}</Badge>}
+      <span className="flex-1" />
+      {rec.canExtend && (
+        <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void keep()}>
+          Keep 3 more months
+        </Button>
+      )}
+      {confirming ? (
+        <Button type="button" variant="danger" size="sm" disabled={busy} onClick={() => void remove()}>
+          Delete for good
+        </Button>
+      ) : (
+        <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
+          Delete
+        </Button>
+      )}
+    </div>
   );
 }
 

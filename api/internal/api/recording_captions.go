@@ -288,7 +288,8 @@ func (s *Server) simuliveCaptionSource(ctx context.Context, wb types.Webinar) (s
 		return store.RecordingFile{}, types.Webinar{}, false
 	}
 	f, err := s.store.RecordingFileByID(ctx, wb.SimuliveRecordingID)
-	if err != nil {
+	// An uploaded video has no session, so no captions of one (not transcribed yet).
+	if err != nil || f.IsUpload() {
 		return store.RecordingFile{}, types.Webinar{}, false
 	}
 	if shown, err := s.replayCaptionsShown(ctx, f.Webinar); err != nil || !shown {

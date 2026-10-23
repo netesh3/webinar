@@ -46,6 +46,8 @@ export function SimuliveReplayCard({ webinar: w }: { webinar: Webinar }) {
   const [error, setError] = useState<string | null>(null);
   // The switch is the webinar HOST's (a co-host may be looking), so the server says.
   const [off, setOff] = useState(false);
+  // An uploaded video has no original session, so there is nothing to replay but the video.
+  const [uploaded, setUploaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -79,6 +81,7 @@ export function SimuliveReplayCard({ webinar: w }: { webinar: Webinar }) {
       .catch((e: unknown) => {
         if (cancelled) return;
         if (e instanceof ApiError && e.code === "feature_off") setOff(true);
+        else if (e instanceof ApiError && e.code === "uploaded_video") setUploaded(true);
         else setError(e instanceof ApiError ? e.message : "Could not load the replay.");
       });
     return () => {
@@ -109,6 +112,19 @@ export function SimuliveReplayCard({ webinar: w }: { webinar: Webinar }) {
         <p className="text-[12.5px] text-ink-2">
           Replay the original session&apos;s chat, Q&amp;A, polls, quizzes and reactions at the moment they
           happened in the video. Engagement replay isn&apos;t switched on for this account — ask us to turn it on.
+        </p>
+      </Card>
+    );
+  }
+
+  if (uploaded) {
+    return (
+      <Card className="p-5">
+        <SectionTitle>Engagement replay</SectionTitle>
+        <p className="text-[12.5px] text-ink-2">
+          This Simulive plays a video you uploaded, so there&apos;s no original session whose chat, Q&amp;A or
+          polls could replay. New attendees still chat and ask questions live, and Auto mode, if it&apos;s on,
+          answers from your knowledge.
         </p>
       </Card>
     );

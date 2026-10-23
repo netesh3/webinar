@@ -65,6 +65,26 @@ type PutPresigner interface {
 	PresignedPutURL(ctx context.Context, key, contentType string, expires time.Duration) (string, error)
 }
 
+/* MultipartUploader is an optional capability: a large object a browser uploads straight to
+ * the bucket in parts, each PUT to a presigned URL, so gigabytes never pass through the API
+ * (api/video_upload.go). Only object storage has it. Parts are numbered from 1; every part
+ * but the last must be at least 5 MiB (S3's rule, and R2's). */
+type MultipartUploader interface {
+	CreateMultipart(ctx context.Context, key, contentType string) (uploadID string, err error)
+	PresignUploadPart(ctx context.Context, key, uploadID string, part int32, expires time.Duration) (string, error)
+	// ListUploadedParts is every part the bucket has for the upload, by number.
+	ListUploadedParts(ctx context.Context, key, uploadID string) ([]UploadedPart, error)
+	CompleteMultipart(ctx context.Context, key, uploadID string, parts []UploadedPart) error
+	AbortMultipart(ctx context.Context, key, uploadID string) error
+}
+
+// UploadedPart is one part of a multipart upload as the bucket has it.
+type UploadedPart struct {
+	Number int32
+	ETag   string
+	Size   int64
+}
+
 var (
 	ErrNotFound = errors.New("no such object")
 	ErrBadKey   = errors.New("unsafe storage key")

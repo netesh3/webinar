@@ -140,6 +140,9 @@ import type {
   SimuliveStartRequest,
   ReplayTimeline,
   RecordingStorage,
+  StartVideoUploadRequest,
+  VideoUpload,
+  VideoUploadPartsResponse,
   KeepRecordingLinkRequest,
   KeepRecordingLinkResponse,
   SetUserRecordingStorageRequest,
@@ -1263,6 +1266,25 @@ export const api = {
   /** The expiry email's one-click "Keep 3 more months". */
   keepRecordingLink: (body: KeepRecordingLinkRequest) =>
     post<KeepRecordingLinkResponse>("/api/host/recordings/keep-link", body),
+
+  /* Uploaded videos for Simulive (api video_upload.go): a multipart upload straight to the
+   * bucket, driven by lib/video-uploader.ts, and the video's own routes once it is done. */
+  startVideoUpload: (body: StartVideoUploadRequest) => post<VideoUpload>("/api/host/videos/uploads", body),
+  videoUploadStatus: (id: string) => request<VideoUpload>(`/api/host/videos/uploads/${seg(id)}`, fresh),
+  videoUploadParts: (id: string, parts: number[]) =>
+    post<VideoUploadPartsResponse>(`/api/host/videos/uploads/${seg(id)}/parts`, { parts }),
+  completeVideoUpload: (id: string, title?: string) =>
+    post<Recording>(`/api/host/videos/uploads/${seg(id)}/complete`, title ? { title } : {}),
+  cancelVideoUpload: (id: string) => del<StatusResponse>(`/api/host/videos/uploads/${seg(id)}`),
+  renameVideo: (id: string, title: string) => patch<Recording>(`/api/host/videos/${seg(id)}`, { title }),
+  deleteVideo: (id: string) => del<StatusResponse>(`/api/host/videos/${seg(id)}`),
+  keepVideo: (id: string) => post<Recording>(`/api/host/videos/${seg(id)}/keep`, {}),
+  videoFileURL: (id: string) => `${API_BASE}/api/host/videos/${seg(id)}/file`,
+  /** Where the host plays a recording (or one take of it): an uploaded video has no webinar. */
+  recordingPlayURL: (rec: Pick<Recording, "id" | "webinar" | "source">, partId?: string) =>
+    rec.source === "upload"
+      ? `${API_BASE}/api/host/videos/${seg(rec.id)}/file`
+      : `${API_BASE}/api/host/webinars/${seg(rec.webinar)}/recordings/${seg(partId ?? rec.id)}/file`,
 
   /** The file itself. A plain URL rather than a fetch: the browser streams it,
    *  supports range requests so the video can be scrubbed, and the session cookie

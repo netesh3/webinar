@@ -8214,6 +8214,12 @@ export interface Recording {
    * the shape.
    */
   parts?: RecordingPart[];
+  /**
+   *  Source is "upload" for a video the host uploaded (/api/host/videos, migrations/0153):
+   * 	 * no webinar (Webinar is empty), Topic is its title, no original session to replay
+   * 	 * engagement from. Empty for a recording of a session.
+   */
+  source?: string;
 }
 /**
  *  Recording retention and storage.
@@ -8309,6 +8315,73 @@ export interface KeepRecordingLinkResponse {
   webinar: string;
   topic: string;
   expiresAt?: string;
+}
+/**
+ * MaxVideoUploadBytes is the largest file one upload takes.
+ */
+export const MaxVideoUploadBytes: number /* int64 */ = 4 << 30;
+/**
+ * VideoUploadMinPartBytes is the smallest part size a file is cut into (S3 needs 5 MiB).
+ */
+export const VideoUploadMinPartBytes: number /* int64 */ = 8 << 20;
+/**
+ * VideoUploadMaxTitle bounds an uploaded video's title.
+ */
+export const VideoUploadMaxTitle = 200;
+/**
+ * StartVideoUploadRequest is POST /api/host/videos/uploads: the file about to be sent.
+ */
+export interface StartVideoUploadRequest {
+  filename: string;
+  sizeBytes: number /* int64 */;
+  /**
+   * Mime is the browser's File.type; the container is decided by the probe, not this.
+   */
+  mime: string;
+  title?: string;
+}
+/**
+ *  VideoUpload is one upload in flight: cut the file into PartCount parts of PartSize bytes
+ *  * (the last one shorter), PUT each to a URL from .../parts, then .../complete. UploadedParts
+ *  * is the parts the bucket already has, so an interrupted upload carries on where it stopped.
+ */
+export interface VideoUpload {
+  id: string;
+  filename: string;
+  title: string;
+  sizeBytes: number /* int64 */;
+  partSize: number /* int64 */;
+  partCount: number /* int */;
+  uploadedParts: number /* int */[];
+  createdAt: string;
+}
+/**
+ * VideoUploadPartsRequest asks for upload URLs for these part numbers (1-based, at most 100).
+ */
+export interface VideoUploadPartsRequest {
+  parts: number /* int */[];
+}
+/**
+ * VideoUploadPartURL is where to PUT one part. Valid for an hour.
+ */
+export interface VideoUploadPartURL {
+  part: number /* int */;
+  url: string;
+}
+export interface VideoUploadPartsResponse {
+  urls: VideoUploadPartURL[];
+}
+/**
+ * CompleteVideoUploadRequest finishes an upload; Title, when set, replaces the one it started with.
+ */
+export interface CompleteVideoUploadRequest {
+  title?: string;
+}
+/**
+ * RenameVideoRequest is PATCH /api/host/videos/{id}.
+ */
+export interface RenameVideoRequest {
+  title: string;
 }
 /**
  * RecordingPart is one start/stop take inside a session. The bytes are a
@@ -8671,6 +8744,11 @@ export interface AppConfig {
    */
   cloudRecordingEnabled: boolean;
   recordingMode?: string;
+  /**
+   *  VideoUploadEnabled is whether a host can upload a video for a Simulive: the
+   * 	 * recordings store is object storage the browser can upload to directly.
+   */
+  videoUploadEnabled?: boolean;
   /**
    * RecordingsRetentionDays is how long cloud recordings are kept before
    * automatic deletion. 0 means they are kept until a host deletes them.

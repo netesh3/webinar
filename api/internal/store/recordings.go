@@ -140,7 +140,17 @@ type RecordingFile struct {
 	UploadedToS3    bool
 	UploadPercent   int
 	ParentID        string
+	// Source is RecordingSourceUpload for an uploaded video (no webinar, OwnerID its host);
+	// read by RecordingFileByID only, empty elsewhere.
+	Source  string
+	OwnerID string
 }
+
+// RecordingSourceUpload marks a recording a host uploaded rather than recorded (0153).
+const RecordingSourceUpload = "upload"
+
+// IsUpload says the file is an uploaded video, which has no webinar.
+func (f RecordingFile) IsUpload() bool { return f.Source == RecordingSourceUpload || f.Webinar == "" }
 
 // RecordingFor loads one recording, scoped to the webinar in the URL.
 //
@@ -174,16 +184,18 @@ func (s *Store) RecordingFileByID(ctx context.Context, id string) (RecordingFile
 	var f RecordingFile
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
-		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
+		       r.started_by_name, COALESCE(NULLIF(r.title, ''), w.topic, ''), r.created_at, COALESCE(r.egress_id, ''), COALESCE(w.slug, ''),
 		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
-		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
+		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0),
+		       r.source, COALESCE(r.owner_id::text, '')
 		  FROM recordings r
-		  JOIN webinars w ON w.id = r.webinar_id
-		  LEFT JOIN users u ON u.id = w.host_id
+		  LEFT JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = coalesce(r.owner_id, w.host_id)
 		 WHERE r.id = $1::uuid`, id,
 	).Scan(&f.ID, &f.StorageKey, &f.Mime, &f.Status, &f.SizeBytes, &f.DurationMs,
 		&f.StartedBy, &f.Topic, &f.CreatedAt, &f.EgressID, &f.Webinar,
-		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3, &f.UploadPercent)
+		&f.IsPublic, &f.Passcode, &f.WebinarPasscode, &f.HostName, &f.UploadedToS3, &f.UploadPercent,
+		&f.Source, &f.OwnerID)
 	if noRows(err) {
 		return RecordingFile{}, ErrNotFound
 	}
@@ -470,15 +482,15 @@ func (s *Store) Recordings(ctx context.Context, slug string) ([]types.Recording,
 // HostReadyRecordings lists this host's playable recordings for simulive scheduling.
 func (s *Store) HostReadyRecordings(ctx context.Context, hostID string) ([]types.Recording, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT r.id::text, w.slug, w.topic, r.status, r.mime, r.size_bytes,
+		SELECT r.id::text, COALESCE(w.slug, ''), COALESCE(NULLIF(r.title, ''), w.topic, ''), r.status, r.mime, r.size_bytes,
 		       r.duration_ms, r.started_by_name, r.created_at, r.stopped_at,
 		       COALESCE(r.egress_id, ''), COALESCE(r.is_public, false),
 		       COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0),
-		       COALESCE(r.parent_id::text, '')
+		       COALESCE(r.parent_id::text, ''), r.source
 		  FROM recordings r
-		  JOIN webinars w ON w.id = r.webinar_id
-		 WHERE w.host_id = $1 AND r.status = 'ready' AND r.size_bytes > 0
+		  LEFT JOIN webinars w ON w.id = r.webinar_id
+		 WHERE (w.host_id = $1 OR r.owner_id = $1) AND r.status = 'ready' AND r.size_bytes > 0
 		   AND (r.parent_id IS NULL)
 		 ORDER BY r.created_at DESC
 		 LIMIT 100`, hostID)
@@ -494,16 +506,21 @@ func (s *Store) HostReadyRecordings(ctx context.Context, hostID string) ([]types
 			stoppedAt       *time.Time
 			webinarPasscode string
 			parentID        string
+			source          string
 		)
 		if err := rows.Scan(&rec.ID, &rec.Webinar, &rec.Topic, &rec.Status, &rec.Mime,
 			&rec.SizeBytes, &rec.DurationMs, &rec.StartedBy, &createdAt, &stoppedAt,
 			&rec.EgressID, &rec.IsPublic, &rec.Passcode, &webinarPasscode, &rec.UploadedToS3, &rec.UploadPercent,
-			&parentID); err != nil {
+			&parentID, &source); err != nil {
 			return nil, err
 		}
 		rec.CreatedAt = createdAt.Format(time.RFC3339)
 		if stoppedAt != nil {
 			rec.StoppedAt = stoppedAt.Format(time.RFC3339)
+		}
+		rec.Ext = ExtForMime(rec.Mime)
+		if source == RecordingSourceUpload {
+			rec.Source = RecordingSourceUpload
 		}
 		all = append(all, recordingRow{rec: rec, parentID: parentID})
 	}
@@ -766,12 +783,12 @@ func (s *Store) ExpiredRecordings(ctx context.Context, defaultDays int, limit in
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.storage_key, r.mime, r.status, r.size_bytes, r.duration_ms,
-		       r.started_by_name, w.topic, r.created_at, COALESCE(r.egress_id, ''), w.slug,
+		       r.started_by_name, COALESCE(NULLIF(r.title, ''), w.topic, ''), r.created_at, COALESCE(r.egress_id, ''), COALESCE(w.slug, ''),
 		       COALESCE(r.is_public, false), COALESCE(r.passcode, ''), COALESCE(w.passcode, ''),
 		       COALESCE(u.name, 'Host'), COALESCE(r.uploaded_to_s3, false), COALESCE(r.upload_percent, 0)
 		  FROM recordings r
-		  JOIN webinars w ON w.id = r.webinar_id
-		  LEFT JOIN users u ON u.id = w.host_id
+		  LEFT JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = coalesce(r.owner_id, w.host_id)
 		 WHERE r.parent_id IS NULL
 		   AND recording_expires_at(r.id, $1) < now()
 		   AND NOT EXISTS (

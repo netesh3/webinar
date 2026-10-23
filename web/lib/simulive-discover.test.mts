@@ -10,6 +10,8 @@ import {
   dismissAutopilot,
   firstPlayablePart,
   isAutopilotDismissed,
+  isUploadedVideo,
+  withUploaded,
   simuliveExplainer,
   simuliveLibrary,
   type KeyStore,
@@ -129,3 +131,13 @@ assert.ok(simuliveExplainer(true).every((p) => !p.premium));
 assert.ok(without.some((p) => p.text.includes("never re-recorded")));
 
 console.log("simulive-discover: ok");
+
+// Uploaded videos: told apart by source, and a new one goes first in the picker, once.
+assert.equal(isUploadedVideo({ source: "upload" }), true);
+assert.equal(isUploadedVideo({}), false);
+assert.equal(isUploadedVideo(null), false);
+assert.deepEqual(
+  withUploaded([{ id: "a" }, { id: "b" }], { id: "b" }).map((r) => r.id),
+  ["b", "a"],
+);
+assert.deepEqual(withUploaded(null, { id: "n" }).map((r) => r.id), ["n"]);

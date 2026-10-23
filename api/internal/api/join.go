@@ -858,6 +858,10 @@ func (s *Server) simulivePlaybackURL(ctx context.Context, wb types.Webinar) stri
 	if cdn := strings.TrimRight(s.cfg.RecordingsCDNBaseURL, "/"); cdn != "" {
 		return cdn + "/" + strings.TrimPrefix(f.StorageKey, "/")
 	}
+	if f.IsUpload() {
+		// No webinar to address it by; without a CDN only its host can play it here.
+		return "/api/host/videos/" + f.ID + "/file"
+	}
 	return "/api/webinars/" + f.Webinar + "/recordings/" + f.ID + "/file"
 }
 

@@ -105,7 +105,8 @@ type RecordingOwner struct {
 func (s *Store) RecordingOwnerOf(ctx context.Context, id string, defaultDays int) (RecordingOwner, error) {
 	var o RecordingOwner
 	err := s.pool.QueryRow(ctx, `
-		SELECT root.id::text, coalesce(w.host_id::text, ''), w.slug, w.topic,
+		SELECT root.id::text, coalesce(root.owner_id::text, w.host_id::text, ''), coalesce(w.slug, ''),
+		       coalesce(nullif(root.title, ''), w.topic, ''),
 		       recording_expires_at(root.id, $2), root.over_quota,
 		       EXISTS (SELECT 1 FROM recordings c WHERE (c.id = root.id OR c.parent_id = root.id)
 		                AND c.status = 'ready' AND c.size_bytes > 0)
@@ -113,7 +114,7 @@ func (s *Store) RecordingOwnerOf(ctx context.Context, id string, defaultDays int
 		                AND c.status = 'recording')
 		  FROM recordings t
 		  JOIN recordings root ON root.id = coalesce(t.parent_id, t.id)
-		  JOIN webinars w ON w.id = root.webinar_id
+		  LEFT JOIN webinars w ON w.id = root.webinar_id
 		 WHERE t.id = $1::uuid`, id, defaultDays,
 	).Scan(&o.SessionID, &o.HostID, &o.Webinar, &o.Topic, &o.ExpiresAt, &o.OverQuota, &o.Ready)
 	if noRows(err) {
@@ -253,13 +254,14 @@ func (s *Store) DueExpiryReminders(ctx context.Context, defaultDays, limit int) 
 	}
 	rows, err := s.pool.Query(ctx, `
 		WITH roots AS (
-		  SELECT r.id, r.created_at, w.slug, w.topic, u.id AS host_id, u.name, u.email,
+		  SELECT r.id, r.created_at, coalesce(w.slug, '') AS slug,
+		         coalesce(nullif(r.title, ''), w.topic, '') AS topic, u.id AS host_id, u.name, u.email,
 		         recording_expires_at(r.id, $1) AS expires_at,
 		         (SELECT coalesce(sum(c.size_bytes), 0) FROM recordings c
 		           WHERE (c.id = r.id OR c.parent_id = r.id) AND c.status = 'ready')::bigint AS size
 		    FROM recordings r
-		    JOIN webinars w ON w.id = r.webinar_id
-		    JOIN users u ON u.id = w.host_id
+		    LEFT JOIN webinars w ON w.id = r.webinar_id
+		    JOIN users u ON u.id = coalesce(r.owner_id, w.host_id)
 		   WHERE r.parent_id IS NULL AND NOT r.reminders_off
 		     AND EXISTS (SELECT 1 FROM recordings c WHERE (c.id = r.id OR c.parent_id = r.id)
 		                  AND c.status = 'ready' AND c.size_bytes > 0)
