@@ -26,6 +26,7 @@ import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
 import { isMeetingKind } from "@/lib/meeting-create";
+import { daysLeftText, daysUntilExpiry, expiryTone } from "@/lib/recording-retention";
 
 /* Rows, and the two things a host can do to one from the list — start it, or
  * delete it.
@@ -649,17 +650,28 @@ function CompletedCard({
 /** "Recording · 42 min", or "2 recordings · 1 hr 5 min", linking to the session's
  *  Recording tab. Above the card's stretched title link so it keeps its own click. */
 function RecordingBadge({ slug, recording }: { slug: string; recording: HostRecordingSummary }) {
+  const now = useNow();
   const minutes = recording.durationMs > 0 ? Math.max(1, Math.round(recording.durationMs / 60_000)) : 0;
   const noun = recording.count > 1 ? `${recording.count} recordings` : "Recording";
   const label = minutes > 0 ? `${noun} · ${formatDuration(minutes)}` : noun;
+  // The soonest deletion, after hydration (it depends on the clock).
+  const days = now !== null ? daysUntilExpiry(recording.expiresAt, now) : null;
+  const tone = expiryTone(days);
   return (
     <Link
       href={`/host/${slug}?tab=recording`}
-      title="Open the recording"
+      title={
+        recording.expiresAt && days !== null
+          ? `Open the recording. Deleted on ${new Date(recording.expiresAt).toLocaleDateString(undefined, { dateStyle: "medium" })} unless you keep it longer.`
+          : "Open the recording"
+      }
       className="relative z-10 inline-flex items-center gap-1 rounded-full border border-brand-line bg-brand-soft px-2.5 py-0.5 text-[11.5px] font-medium whitespace-nowrap text-brand outline-none hover:border-brand focus-visible:ring-2 focus-visible:ring-brand/40"
     >
       <PlayIcon className="size-3 shrink-0" aria-hidden />
       {label}
+      {days !== null && (
+        <span className={tone === "warn" ? "text-warn" : "text-brand/70"}>· {daysLeftText(days)}</span>
+      )}
     </Link>
   );
 }

@@ -128,6 +128,7 @@ func (s *Server) handleHostWebinars(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "host webinars", err)
 		return
 	}
+	s.stampRecordingSummaryExpiry(r.Context(), page.Recordings)
 	httpx.JSON(w, http.StatusOK, page)
 }
 

@@ -394,7 +394,9 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		                  WHERE r.user_id = u.id ORDER BY r.created_at DESC LIMIT 1), ''),
 		       u.media_quota_bytes,
 		       coalesce((SELECT sum(m.bytes) FROM crm_media_files m WHERE m.host_id = u.id), 0)::bigint,
-		       u.stage_cap, u.meeting_cap
+		       u.stage_cap, u.meeting_cap,
+		       u.recording_quota_bytes, plan_recording_quota_bytes(u.id), recording_quota_bytes(u.id),
+		       recording_used_bytes(u.id), u.recording_retention_days
 		  FROM users u
 		 WHERE (lower(u.email) LIKE $1 OR lower(u.name) LIKE $1)
 		   AND ($3 = '' OR u.account_kind = $3)
@@ -417,7 +419,9 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 			&u.Features, &u.EmailVerified, &u.Plan, &forcedOn, &forcedOff,
 			&u.TrialFlag, &u.TrialExemption,
 			&u.AccountKind, &u.SFUProject, &u.RegistrationCount, &u.LastWebinarTopic,
-			&u.MediaQuotaBytes, &u.MediaUsedBytes, &u.StageCap, &u.MeetingCap); err != nil {
+			&u.MediaQuotaBytes, &u.MediaUsedBytes, &u.StageCap, &u.MeetingCap,
+			&u.RecordingQuotaBytes, &u.PlanRecordingLimitBytes, &u.RecordingLimitBytes,
+			&u.RecordingUsedBytes, &u.RecordingRetentionDays); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)

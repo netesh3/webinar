@@ -209,6 +209,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the notification bell: a dismissed or cleared row leaves the list and the badge
 	# once, and a swipe or the Delete key on a focused row is what dismisses it.
 	cd web && node --experimental-strip-types --no-warnings lib/notifications.test.mts
+	# And a recording's days left and the storage meter: "6.2 of 10 GB", warn from 90%.
+	cd web && node --experimental-strip-types --no-warnings lib/recording-retention.test.mts
 	# And which delivery the schedule form and the instant button offer: edge only on a
 	# GCP or DO video server, the Standard / Edge choice on Hetzner with the switch.
 	cd web && node --experimental-strip-types --no-warnings lib/delivery-policy.test.mts
