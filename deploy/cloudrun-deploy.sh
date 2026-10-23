@@ -82,7 +82,8 @@ require() {
   fi
 }
 
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${IMAGE_NAME}:$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo latest)"
+GIT_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo latest)"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${IMAGE_NAME}:${GIT_SHA}"
 
 echo "project=$PROJECT region=$REGION image=$IMAGE"
 
@@ -259,6 +260,18 @@ done
 [[ -n "${WELCOME_EMAIL:-}" ]] && ENV_VARS+=("WELCOME_EMAIL=${WELCOME_EMAIL}")
 [[ -n "${CONTACT_EMAIL:-}" ]] && ENV_VARS+=("CONTACT_EMAIL=${CONTACT_EMAIL}")
 [[ -n "${CONTACT_PHONE:-}" ]] && ENV_VARS+=("CONTACT_PHONE=${CONTACT_PHONE}")
+# OpenTelemetry to Grafana Cloud (api/internal/observe). Nothing is passed, so telemetry
+# stays off, until OTEL_EXPORTER_OTLP_ENDPOINT is set. OTEL_EXPORTER_OTLP_HEADERS carries
+# the Grafana credential and is a secret. The resource attributes default to this deploy's
+# commit, so a trace says which build served it.
+if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
+  ENV_VARS+=("OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}")
+  [[ -n "${OTEL_EXPORTER_OTLP_HEADERS:-}" ]] && ENV_VARS+=("OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS}")
+  ENV_VARS+=("OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-webcast-api}")
+  ENV_VARS+=("OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=prod,deployment.environment.name=prod,service.version=${GIT_SHA}}")
+  ENV_VARS+=("OTEL_TRACES_SAMPLER=${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}")
+  ENV_VARS+=("OTEL_TRACES_SAMPLER_ARG=${OTEL_TRACES_SAMPLER_ARG:-0.2}")
+fi
 
 # Write YAML for --env-vars-file so values may contain commas (e.g. CORS_ORIGINS
 # with multiple origins). Comma-joined --set-env-vars breaks on those values.

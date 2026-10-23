@@ -24,6 +24,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/notify"
+	"github.com/netkumar/webcast/api/internal/observe"
 	"github.com/netkumar/webcast/api/internal/push"
 	"github.com/netkumar/webcast/api/internal/realtime"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -313,6 +314,9 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
 
+	// First, so the trace span is named by route for every request; a no-op with
+	// telemetry off. See observe.RouteTag.
+	r.Use(observe.RouteTag)
 	r.Use(middleware.RequestID)
 	r.Use(httpx.Recoverer(s.log))
 	r.Use(httpx.Logger(s.log))
