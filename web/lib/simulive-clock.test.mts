@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import {
   playerControls,
+  videoInNativeFullscreen,
   simuliveCorrection,
   SIMULIVE_BLOCKED_KEYS,
   type ClockReading,
@@ -58,22 +59,47 @@ assert.deepEqual(simuliveCorrection(at({ sharedSec: 4000, positionSec: 10 })), {
 
 // Controls: a recording replay keeps everything; a simulive and a live stage only sound,
 // captions, fullscreen and the Live badge.
-const vod = playerControls("vod", true);
+const vod = playerControls("vod");
 assert.ok(vod.playPause && vod.seekBar && vod.time && vod.playbackRate && vod.skip && vod.fullscreen);
 assert.equal(vod.liveBadge, false);
 for (const kind of ["simulive", "live"] as const) {
-  const c = playerControls(kind, true);
+  const c = playerControls(kind);
   assert.deepEqual(
     [c.playPause, c.seekBar, c.time, c.playbackRate, c.skip],
     [false, false, false, false, false],
     kind,
   );
+  // A simulive keeps its fullscreen button on an iPhone too: pseudo-fullscreen, never the
+  // native player (lib/fullscreen.ts).
   assert.ok(c.volume && c.captions && c.fullscreen && c.liveBadge, kind);
 }
-// iPhone (no element fullscreen): a simulive hides the button rather than open the native
-// player with its scrubber; a live stage keeps it (nowhere to seek on a live stream).
-assert.equal(playerControls("simulive", false).fullscreen, false);
-assert.equal(playerControls("live", false).fullscreen, true);
+
+// The native fullscreen player (scrubber and all) is the <video> as the fullscreen element
+// (Android Chrome's rotate-to-fullscreen) or the iOS player; our container is not.
+const video = { tag: "video" };
+const container = { tag: "div" };
+assert.equal(videoInNativeFullscreen({ fullscreenElement: video, video }), true);
+assert.equal(
+  videoInNativeFullscreen({ fullscreenElement: null, video, webkitDisplayingFullscreen: true }),
+  true,
+);
+assert.equal(videoInNativeFullscreen({ fullscreenElement: container, video }), false);
+assert.equal(
+  videoInNativeFullscreen({ fullscreenElement: null, video, webkitDisplayingFullscreen: false }),
+  false,
+);
+assert.equal(videoInNativeFullscreen({ fullscreenElement: null, video: null }), false);
+
+// A scrub in the native player, mid-drag ("seeking"): put straight back on the clock.
+assert.deepEqual(simuliveCorrection(at({ positionSec: 1500, sharedSec: 600 })), {
+  seekTo: 600,
+  resume: false,
+});
+// Our own snap-back lands within the tolerance: it does not chase itself.
+assert.deepEqual(simuliveCorrection(at({ positionSec: 600, sharedSec: 600.4 })), {
+  seekTo: null,
+  resume: false,
+});
 
 for (const key of ["ArrowLeft", "ArrowRight", " ", "k", "MediaTrackNext"]) {
   assert.ok(SIMULIVE_BLOCKED_KEYS.has(key), key);
