@@ -193,6 +193,9 @@ type Server struct {
 	// qaSessions is the Q&A assistant's per-session pass state (qa_assist.go), slug to
 	// *qaSession. The zero value is ready.
 	qaSessions sync.Map
+	// spamSessions is spam detection's per-session state (spam.go): the rules' recent history
+	// and the AI pass's in-flight flag, slug to *spamSession. The zero value is ready.
+	spamSessions sync.Map
 
 	// push sends Web Push (push.go); nil when the VAPID variables are unset. pushEndpointOK
 	// is which subscription endpoints are accepted (push.ValidEndpoint; tests widen it).
