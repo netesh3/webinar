@@ -25,7 +25,7 @@ import { HostSurveyPill, HostSurveyProvider } from "./host-survey";
 import { MeetingInfo } from "./meeting-info";
 import { RaisedHandsProvider, useRaisedHandsController, useRaisedHandsPanel } from "./raised-hands-panel";
 import { SidePanel } from "./side-panel";
-import { LayoutModeSwitch, ViewsMenu } from "./views-menu";
+import { ViewsMenu } from "./views-menu";
 import { ToolDragProvider } from "./tool-drag";
 import { ToolWindows } from "./tool-windows";
 import { useAvailableTools } from "./tools";
@@ -275,7 +275,6 @@ function PreviewHeader() {
         </p>
       </div>
       <div className="pointer-events-auto flex shrink-0 items-center gap-1">
-        <LayoutModeSwitch />
         <ViewsMenu />
       </div>
     </header>

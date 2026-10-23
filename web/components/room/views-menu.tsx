@@ -2,52 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useCompact } from "@/lib/compact";
-import { LAYOUT_LABEL, LAYOUT_MODES } from "@/lib/layout";
-import { GridIcon } from "../icons";
+import { LAYOUT_LABEL } from "@/lib/layout";
+import { ChevronDownIcon } from "../icons";
 import { useRoomUI } from "./context";
-import { LayoutMenu } from "./layout-menu";
+import { LAYOUT_ICON, LayoutMenu } from "./layout-menu";
 
-/* Views, from the room header.
+/* Views, from the room header: ONE button showing the current view's icon,
+ * with Speaker / Grid / Spotlight (and the rest of the view options) in its
+ * dropdown. There used to be a segmented Speaker | Grid | Spotlight switch
+ * beside a separate grid-icon menu — two controls for the same thing.
  *
- * The same LayoutMenu the footer and More sheet already use — different chrome
- * only. Two menus with different options is how a host would change "hide
- * non-video" in one place and not see it in the other.
+ * The same LayoutMenu the More sheet uses — different chrome only. Two menus
+ * with different options is how a host would change "hide non-video" in one
+ * place and not see it in the other. Nothing to arrange on a CDN stage (a
+ * single video element), so the caller leaves it out there.
  */
-
-/** Speaker / Grid / Spotlight, in the room header rather than over the video. */
-export function LayoutModeSwitch() {
-  const { stage, cdnStage } = useRoomUI();
-  if (cdnStage) return null;
-  return (
-    <div
-      role="group"
-      aria-label="Layout"
-      className="flex items-center gap-0.5 rounded-lg bg-white/10 p-0.5"
-    >
-      {LAYOUT_MODES.map((option) => {
-        const active = stage.mode === option;
-        return (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={active}
-            onClick={() => stage.setMode(option)}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
-              active ? "bg-white/25 text-white" : "text-white/70 hover:text-white"
-            }`}
-          >
-            {LAYOUT_LABEL[option]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export function ViewsMenu() {
+  const { stage } = useRoomUI();
   const compact = useCompact();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const Icon = LAYOUT_ICON[stage.mode];
+  const name = `View: ${LAYOUT_LABEL[stage.mode]}`;
 
   useEffect(() => {
     if (!open) return;
@@ -71,12 +47,18 @@ export function ViewsMenu() {
         type="button"
         data-views-button
         onClick={() => setOpen((v) => !v)}
-        aria-label="Views"
+        aria-label={name}
+        title={name}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="grid size-11 place-items-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:size-8"
+        className={`inline-flex h-11 shrink-0 items-center justify-center gap-1 rounded-lg px-2.5 text-white/85 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:h-8 sm:px-2 ${
+          open ? "bg-white/20 text-white" : "bg-white/10 hover:bg-white/20 hover:text-white"
+        }`}
       >
-        <GridIcon className="size-4" />
+        <Icon className="size-4" />
+        <ChevronDownIcon
+          className={`size-3 text-white/60 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && (
         <LayoutMenu

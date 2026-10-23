@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { isHomeTool, isPanelTool, isPinnable, moreOrder, type ToolId } from "@/lib/tools";
+import { isHomeTool, isPanelTool, isPinnable, moreGroups, moreOrder, type ToolId } from "@/lib/tools";
 import { closesMoreOn, moreTargetOf } from "@/lib/bar-popover";
 import { LAYOUT_LABEL } from "@/lib/layout";
 import { useCompact, usePhoneBarMetrics } from "@/lib/compact";
@@ -43,7 +43,9 @@ import { tool } from "./tools";
  * a pin there lands nowhere visible.
  *
  * Below `md` it is a bottom sheet instead of a card off the button — the same
- * `compact` boundary FloatingWindow uses (lib/compact.ts).
+ * `compact` boundary FloatingWindow uses (lib/compact.ts). There the bar keeps
+ * only Chat and Reactions, so the sheet holds nearly everything: it is split
+ * into labelled sections (lib/tools.ts MORE_GROUPS) with bigger cells.
  */
 
 /** Everything the menu needs to show and run a tool whose state lives in the
@@ -98,6 +100,7 @@ export function MoreGrid({
   onAdd,
   onReset,
   landed,
+  recordSlot,
   onClose,
 }: {
   /** Movable tools not on the toolbar right now. */
@@ -129,6 +132,9 @@ export function MoreGrid({
   onReset?: () => void;
   /** A tool that just arrived back here, for the landing animation. */
   landed?: ToolId | null;
+  /** Record, on a compact bar where it has no room beside Share. Renders
+   *  nothing for anyone who may not record, so its row hides itself. */
+  recordSlot?: React.ReactNode;
   onClose: () => void;
 }) {
   const { tools, unread, mentions, realtime, stage } = useRoomUI();
@@ -291,6 +297,117 @@ export function MoreGrid({
           ? "Tap + to add a tool. Tap − on the toolbar to move one back."
           : null;
 
+  const renderEntry = (key: string) => {
+    if (key === "raised-hands" && raisedHandsAction) {
+      const handsWaiting = raisedHandsAction.count;
+      const handsName =
+        handsWaiting != null && handsWaiting > 0
+          ? `Raised hands, ${handsWaiting}`
+          : "Raised hands";
+      return (
+        <MoreCell
+          key="raised-hands"
+          cellId="raised-hands"
+          icon={<HandIcon className="size-5" />}
+          label="Raised hands"
+          title={handsName}
+          ariaLabel={handsName}
+          badge={
+            handsWaiting != null && handsWaiting > 0 ? String(handsWaiting) : null
+          }
+          expanded={raisedHandsAction.active}
+          onClick={() => {
+            if (editing) return;
+            raisedHandsAction.onClick();
+            onClose();
+          }}
+        />
+      );
+    }
+    if (key === "share" && shareAction) {
+      return (
+        <MoreCell
+          key="share"
+          icon={shareAction.icon}
+          label={shareAction.label}
+          title={shareAction.label}
+          busy={shareAction.busy}
+          dimmed={shareAction.dimmed || editing}
+          onWord={shareAction.active ? "Sharing" : undefined}
+          onClick={() => {
+            if (editing) return;
+            shareAction.onClick();
+            onClose();
+          }}
+        />
+      );
+    }
+    const id = key as ToolId;
+    const t = tool(id);
+    const Icon = t.icon;
+    const action = toolActions[id];
+    const canMove = movable.has(id) && isPinnable(id);
+    const on =
+      id === "hand" ? realtime.myHandRaised : (action?.active ?? false);
+    const expanded =
+      id === "reactions"
+        ? showReactions
+        : id === "layout"
+          ? showLayout
+          : id === "invite"
+            ? showInvite
+            : undefined;
+    const name =
+      id === "layout"
+        ? `Layout · ${LAYOUT_LABEL[stage.mode]}`
+        : (t.menuLabel ?? t.label);
+    const badge = badgeText(unread[id], id === "chat" ? mentions : 0);
+    const addTitle =
+      bumpTarget && !isHomeTool(id)
+        ? `Add ${name} to the toolbar (${tool(bumpTarget).label} moves back to More to make room)`
+        : `Add ${name} to the toolbar`;
+
+    return (
+      <MoreCell
+        key={id}
+        id={id}
+        icon={<Icon className="size-5" />}
+        label={name}
+        title={
+          editing
+            ? canMove
+              ? addTitle
+              : `${name} always stays in More on this screen`
+            : canMove
+              ? `${action?.title ?? t.title} — drag onto the toolbar to keep it handy`
+              : (action?.title ?? t.title)
+        }
+        ariaLabel={editing && canMove ? addTitle : undefined}
+        pressed={ON_WORD[id] ? on : undefined}
+        expanded={expanded}
+        onWord={on ? ON_WORD[id] : undefined}
+        badge={editing ? null : badge}
+        mention={id === "chat" && mentions > 0}
+        busy={action?.busy ?? false}
+        dimmed={editing && !canMove}
+        movable={canMove}
+        editing={editing}
+        lifted={drag.drag?.tool === id}
+        landed={landed === id}
+        dragProps={
+          canMove && !editing ? drag.bind(id, "grid", () => tapTool(id)) : undefined
+        }
+        onClick={() => {
+          if (editing) {
+            if (canMove) onAdd(id);
+            return;
+          }
+          tapTool(id);
+        }}
+      />
+    );
+  };
+
   return (
     <>
       {/* Phone-only scrim. On desktop the card floats off the button with
@@ -370,7 +487,29 @@ export function MoreGrid({
           )}
         </div>
 
-        {entries.length === 0 ? (
+        {entries.length > 0 && compact ? (
+          <div className="space-y-2.5">
+            {moreGroups(entries).map((group) => (
+              <section key={group.id}>
+                <h3
+                  id={`more-group-${group.id}`}
+                  className="px-1 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 uppercase"
+                >
+                  {group.label}
+                </h3>
+                <div
+                  role="group"
+                  aria-labelledby={`more-group-${group.id}`}
+                  className={`grid grid-cols-4 gap-1 rounded-lg ${
+                    inviting || dropping ? "bg-brand/5" : ""
+                  }`}
+                >
+                  {group.keys.map((key) => renderEntry(key))}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : entries.length === 0 ? (
           <p className="px-1.5 py-4 text-center text-[12px] text-ink-3">
             Everything is on your toolbar. Drag a tool back here to tuck it away.
           </p>
@@ -382,116 +521,13 @@ export function MoreGrid({
               inviting || dropping ? "bg-brand/5" : ""
             }`}
           >
-            {entries.map((key) => {
-              if (key === "raised-hands" && raisedHandsAction) {
-                const handsWaiting = raisedHandsAction.count;
-                const handsName =
-                  handsWaiting != null && handsWaiting > 0
-                    ? `Raised hands, ${handsWaiting}`
-                    : "Raised hands";
-                return (
-                  <MoreCell
-                    key="raised-hands"
-                    cellId="raised-hands"
-                    icon={<HandIcon className="size-5" />}
-                    label="Raised hands"
-                    title={handsName}
-                    ariaLabel={handsName}
-                    badge={
-                      handsWaiting != null && handsWaiting > 0 ? String(handsWaiting) : null
-                    }
-                    expanded={raisedHandsAction.active}
-                    onClick={() => {
-                      if (editing) return;
-                      raisedHandsAction.onClick();
-                      onClose();
-                    }}
-                  />
-                );
-              }
-              if (key === "share" && shareAction) {
-                return (
-                  <MoreCell
-                    key="share"
-                    icon={shareAction.icon}
-                    label={shareAction.label}
-                    title={shareAction.label}
-                    busy={shareAction.busy}
-                    dimmed={shareAction.dimmed || editing}
-                    onWord={shareAction.active ? "Sharing" : undefined}
-                    onClick={() => {
-                      if (editing) return;
-                      shareAction.onClick();
-                      onClose();
-                    }}
-                  />
-                );
-              }
-              const id = key as ToolId;
-              const t = tool(id);
-              const Icon = t.icon;
-              const action = toolActions[id];
-              const canMove = movable.has(id) && isPinnable(id);
-              const on =
-                id === "hand" ? realtime.myHandRaised : (action?.active ?? false);
-              const expanded =
-                id === "reactions"
-                  ? showReactions
-                  : id === "layout"
-                    ? showLayout
-                    : id === "invite"
-                      ? showInvite
-                      : undefined;
-              const name =
-                id === "layout"
-                  ? `Layout · ${LAYOUT_LABEL[stage.mode]}`
-                  : (t.menuLabel ?? t.label);
-              const badge = badgeText(unread[id], id === "chat" ? mentions : 0);
-              const addTitle =
-                bumpTarget && !isHomeTool(id)
-                  ? `Add ${name} to the toolbar (${tool(bumpTarget).label} moves back to More to make room)`
-                  : `Add ${name} to the toolbar`;
+            {entries.map((key) => renderEntry(key))}
+          </div>
+        )}
 
-              return (
-                <MoreCell
-                  key={id}
-                  id={id}
-                  icon={<Icon className="size-5" />}
-                  label={name}
-                  title={
-                    editing
-                      ? canMove
-                        ? addTitle
-                        : `${name} always stays in More on this screen`
-                      : canMove
-                        ? `${action?.title ?? t.title} — drag onto the toolbar to keep it handy`
-                        : (action?.title ?? t.title)
-                  }
-                  ariaLabel={editing && canMove ? addTitle : undefined}
-                  pressed={ON_WORD[id] ? on : undefined}
-                  expanded={expanded}
-                  onWord={on ? ON_WORD[id] : undefined}
-                  badge={editing ? null : badge}
-                  mention={id === "chat" && mentions > 0}
-                  busy={action?.busy ?? false}
-                  dimmed={editing && !canMove}
-                  movable={canMove}
-                  editing={editing}
-                  lifted={drag.drag?.tool === id}
-                  landed={landed === id}
-                  dragProps={
-                    canMove && !editing ? drag.bind(id, "grid", () => tapTool(id)) : undefined
-                  }
-                  onClick={() => {
-                    if (editing) {
-                      if (canMove) onAdd(id);
-                      return;
-                    }
-                    tapTool(id);
-                  }}
-                />
-              );
-            })}
+        {recordSlot && !editing && (
+          <div className="mt-2 flex items-center justify-center rounded-lg bg-stage-bar py-1.5 empty:hidden">
+            {recordSlot}
           </div>
         )}
 
@@ -637,7 +673,7 @@ function MoreCell({
         disabled={busy}
         {...dragProps}
         onClick={dragProps ? dragProps.onClick : onClick}
-        className={`relative flex h-[64px] w-full flex-col items-center justify-center gap-1 rounded-lg px-0.5 outline-none transition-[background-color,color,transform,opacity] duration-150 focus-visible:ring-2 focus-visible:ring-brand/60 disabled:opacity-50 ${
+        className={`relative flex h-[64px] w-full flex-col max-md:h-[76px] max-md:gap-1.5 items-center justify-center gap-1 rounded-lg px-0.5 outline-none transition-[background-color,color,transform,opacity] duration-150 focus-visible:ring-2 focus-visible:ring-brand/60 disabled:opacity-50 ${
           dimmed
             ? "cursor-default text-ink-3 opacity-45"
             : editing
@@ -658,7 +694,7 @@ function MoreCell({
         >
           {icon}
         </span>
-        <span className="line-clamp-2 text-center text-[10.5px] leading-tight font-medium">
+        <span className="line-clamp-2 text-center text-[10.5px] leading-tight font-medium max-md:text-[11.5px]">
           {label}
         </span>
 
@@ -714,10 +750,13 @@ export function MoreButton({
   open,
   count,
   mentions = 0,
+  live = false,
   onToggle,
 }: {
   open: boolean;
   count: number;
+  /** A live stream (YouTube, …) whose button is inside More. */
+  live?: boolean;
   /** A mention waiting inside the grid makes this "@" too, or unpinning Chat would
    *  hide the one arrival worth opening it for. */
   mentions?: number;
@@ -729,7 +768,15 @@ export function MoreButton({
     <button
       type="button"
       data-more-button
-      aria-label="More tools"
+      aria-label={
+        [
+          "More tools",
+          live ? "a live stream is on" : null,
+          text ? `${text} waiting` : null,
+        ]
+          .filter(Boolean)
+          .join(", ")
+      }
       aria-expanded={open}
       aria-haspopup="dialog"
       title="More tools"
@@ -758,6 +805,12 @@ export function MoreButton({
         />
         <span className="hidden text-[9.5px] leading-none font-medium sm:block">More</span>
       </span>
+      {live && !text && (
+        <span
+          aria-hidden
+          className="absolute top-1 right-1.5 size-2 rounded-full bg-live ring-2 ring-stage-bar"
+        />
+      )}
       {text && (
         <span className="absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
           {text}

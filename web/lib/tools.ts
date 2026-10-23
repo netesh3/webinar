@@ -111,58 +111,28 @@ export const CENTER_BAR_TOOLS: readonly ToolId[] = [
   "settings",
 ];
 
-/** On a phone the standing bar (host and panelist — see
- *  CENTER_BAR_COMPACT_ATTENDEE below for attendees) only has room for the two
- *  things that are dead if they arrive a tap late: the two-way conversation
- *  (Chat), and asking to speak (Raise hand) — the one engagement action with
- *  someone on the other end actively waiting on it. Everything else
- *  (Reactions, Polls, Participants, Settings) moves into More, which is
- *  already a bottom sheet on a phone — see more-grid.tsx — so nothing here
- *  becomes harder to reach, it is one tap deeper instead of fighting
- *  mic+camera for the same strip of screen.
- *
- *  Tried keeping five things visible first (this list plus Reactions and
- *  Polls) at MediaToggle's ORIGINAL mobile size (min-w-10 main + w-11
- *  chevron) — the arithmetic didn't work even with correct padding: six
- *  buttons want ~260px and a phone with mic+camera showing left ~119px. Two
- *  fit with room to spare there; five needed the centre strip to scroll.
- *  media-toggle.tsx's mobile sizing has since shrunk so an attendee row can
- *  hold Chat, Q&A, Raise hand and Reactions — see
- *  CENTER_BAR_COMPACT_ATTENDEE. On the narrowest promoted phone that row
- *  still sheds into More (fitAttendeeCompactBar) rather than scrolling.
- *  This host/panelist bar was never the one that needed the room, so it
- *  stays as-is. */
-const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "qa", "hand"];
+/** On a phone-shaped bar (below `md`, every role) only the two things that
+ *  are dead if they arrive a tap late stay on the strip: the conversation
+ *  (Chat) and Reactions. Everything else — Q&A, Polls, Participants, Raise
+ *  hand, Settings, and the tools around the strip (Share, Record, YouTube,
+ *  pins) — lives in More, which is a grouped bottom sheet there (more-grid.tsx).
+ *  See barPlacement for the whole decision. */
+const CENTER_BAR_COMPACT: readonly ToolId[] = ["chat", "reactions"];
 
-/** Attendee-only (control-bar.tsx passes `attendee` as true only for a
- *  genuine attendee — not host, not a scheduled panelist). Reactions sits
- *  with Chat, Q&A and Raise hand. On a phone that cannot fit the whole row
- *  — a promoted attendee, mic and camera both showing, on a narrow width —
- *  fitAttendeeCompactBar sheds Reactions first and Q&A second into More.
- *  Neither is dropped: morePanelTools lists whatever left the strip.
- *  Hosts and panelists stay on CENTER_BAR_COMPACT. */
-const CENTER_BAR_COMPACT_ATTENDEE: readonly ToolId[] = [
-  "chat",
-  "qa",
-  "hand",
-  "reactions",
-];
+/** Shed in this order when the phone row is short a slot. Chat stays until
+ *  even that cannot fit. */
+const COMPACT_SHED: readonly ToolId[] = ["reactions"];
 
-/** Shed in this order when a phone attendee row is short a slot. Chat and
- *  Raise hand stay until even those two cannot fit. */
-const COMPACT_ATTENDEE_SHED: readonly ToolId[] = ["reactions", "qa"];
-
-/** `slots` is how many of `tools` fit. Extra tools leave from
- *  COMPACT_ATTENDEE_SHED, and the survivors keep CENTER_BAR_COMPACT_ATTENDEE's
- *  order. */
-export function fitAttendeeCompactBar(
+/** `slots` is how many of `tools` fit. Extra tools leave from COMPACT_SHED,
+ *  and the survivors keep their order. */
+export function fitCompactBar(
   tools: readonly ToolId[],
   slots: number,
 ): ToolId[] {
   if (slots >= tools.length) return [...tools];
   const shed = new Set<ToolId>();
   let over = tools.length - Math.max(0, slots);
-  for (const id of COMPACT_ATTENDEE_SHED) {
+  for (const id of COMPACT_SHED) {
     if (over <= 0) break;
     if (tools.includes(id)) {
       shed.add(id);
@@ -173,68 +143,129 @@ export function fitAttendeeCompactBar(
   return over > 0 ? kept.slice(0, Math.max(0, slots)) : kept;
 }
 
-/** `tucked` is the home tools (HOME_BAR_TOOLS) the person has moved into More
- *  — see tuckedTools. They leave the standing strip rather than showing twice.
+/** `tucked` is the home tools (HOME_BAR_TOOLS) in More — see tuckedTools.
+ *  They leave the standing strip rather than showing twice.
  *
- *  `slots`, only for a compact attendee, is how many engagement buttons the
- *  phone row can hold (lib/compact.ts mobileEngagementFit). Omit it and the
- *  full attendee strip is returned — desktop never passes it. */
+ *  `slots`, only on a compact bar, is how many engagement buttons the phone
+ *  row can hold (lib/compact.ts mobileEngagementFit). Omit it and the whole
+ *  compact strip is returned — desktop never passes it. */
 export function centerBarTools(
   available: readonly ToolId[],
   compact: boolean,
-  attendee = false,
   tucked: readonly ToolId[] = [],
   slots?: number,
 ): ToolId[] {
-  const want = compact
-    ? attendee
-      ? CENTER_BAR_COMPACT_ATTENDEE
-      : CENTER_BAR_COMPACT
-    : CENTER_BAR_TOOLS;
+  const want = compact ? CENTER_BAR_COMPACT : CENTER_BAR_TOOLS;
   const visible = want.filter((id) => available.includes(id) && !tucked.includes(id));
-  if (compact && attendee && slots !== undefined) {
-    return fitAttendeeCompactBar(visible, slots);
-  }
+  if (compact && slots !== undefined) return fitCompactBar(visible, slots);
   return visible;
 }
 
-/** Engagement tools that did not fit the compact bar, for More's extra row.
+/** Standing-strip tools that did not fit the compact bar, for More.
  *  A tucked home tool is already in the grid proper, so it is left out here.
  *  Pass the same `slots` centerBarTools got, or a tool shed for space would
  *  be on neither surface. */
 export function morePanelTools(
   available: readonly ToolId[],
   compact: boolean,
-  attendee = false,
   tucked: readonly ToolId[] = [],
   slots?: number,
 ): ToolId[] | undefined {
   if (!compact) return undefined;
-  const onBar = new Set(centerBarTools(available, true, attendee, tucked, slots));
+  const onBar = new Set(centerBarTools(available, true, tucked, slots));
   const rest = CENTER_BAR_TOOLS.filter(
     (id) => available.includes(id) && !onBar.has(id) && !tucked.includes(id),
   );
   return rest.length > 0 ? rest : undefined;
 }
 
-/** Screen share on the strip, or in More.
+/** Screen share on the strip, or in More: in More on any compact bar. */
+export function shareButtonOnBar(input: { compact: boolean }): boolean {
+  return !input.compact;
+}
+
+/** Which controls the bar draws inline and which live in More.
  *
- *  A promoted attendee on a phone (below `sm`, mic and/or camera already on
- *  the left) always keeps Share in More, even when the scaled row would
- *  have a gap. The strip gains those live toggles instead, and Share must
- *  not climb back out of More just because the icons shrank. Hosts,
- *  panelists and tablet keep the previous rule: off a compact bar only
- *  when the camera toggle is already showing. */
-export function shareButtonOnBar(input: {
+ *  desktop / tablet  the standing strip (Chat, Q&A, Polls, Participants, Hand,
+ *                    Reactions), Share, Record and the person's pins. YouTube
+ *                    and Settings are home tools that start in More (tucked by
+ *                    default) and come back only when somebody drags them out.
+ *  phone (< md)      Chat and Reactions only, for every role. Mic / camera and
+ *                    Leave sit outside the strip and are not decided here.
+ *                    Everything else is in More; YouTube and Settings are
+ *                    treated as tucked whatever the saved layout says, and the
+ *                    bar has no pin slots ("no space").
+ *
+ *  Pure, so the room and the tests read the same answer. */
+export type BarPlacement = {
+  /** Standing tools drawn on the strip, in order. */
+  strip: ToolId[];
+  /** Standing tools in More (compact only). */
+  panel: ToolId[] | undefined;
+  /** Home tools in More. */
+  tucked: ToolId[];
+  youtubeInline: boolean;
+  shareInline: boolean;
+  recordInline: boolean;
+  /** Whether customisable pin slots exist on this bar at all. */
+  pinSlots: boolean;
+};
+
+export function barPlacement(input: {
+  available: readonly ToolId[];
   compact: boolean;
-  /** Below Tailwind `sm` — the phone scaler's range, not every compact width. */
-  phone: boolean;
-  attendee: boolean;
-  mediaToggles: number;
-  cameraToggleShown: boolean;
-}): boolean {
-  if (input.phone && input.attendee && input.mediaToggles > 0) return false;
-  return !input.compact || !input.cameraToggleShown;
+  /** Home tools the saved layout has in More (tuckedTools). */
+  tucked: readonly ToolId[];
+  /** Phone row capacity from mobileEngagementFit, when known. */
+  slots?: number;
+}): BarPlacement {
+  const { available, compact } = input;
+  const slots = compact ? input.slots : undefined;
+  const tucked = compact ? [...HOME_BAR_TOOLS] : [...input.tucked];
+  return {
+    strip: centerBarTools(available, compact, tucked, slots),
+    panel: morePanelTools(available, compact, tucked, slots),
+    tucked,
+    youtubeInline: !compact && available.includes("youtube") && !tucked.includes("youtube"),
+    shareInline: shareButtonOnBar({ compact }),
+    recordInline: !compact,
+    pinSlots: !compact,
+  };
+}
+
+/** The layout More reads on a compact bar: every home tool counted as in More,
+ *  so one that was put back on a wide screen still has somewhere to be. */
+export function withHomeToolsTucked(layout: ToolLayout): ToolLayout {
+  const missing = HOME_BAR_TOOLS.filter((id) => !layout.overflow.includes(id));
+  return missing.length === 0 ? layout : { ...layout, overflow: [...layout.overflow, ...missing] };
+}
+
+/** The phone sheet's sections, in order. Keys are More entries (ToolIds, plus
+ *  "share", "record" and "raised-hands", which are not tools). */
+export const MORE_GROUPS: readonly { id: string; label: string; keys: readonly string[] }[] = [
+  { id: "engage", label: "Engage", keys: ["chat", "qa", "polls", "reactions", "hand", "raised-hands"] },
+  { id: "people", label: "People", keys: ["participants", "invite"] },
+  {
+    id: "present",
+    label: "Present",
+    keys: ["share", "sharefile", "record", "captions", "whiteboard", "layout"],
+  },
+  { id: "stream", label: "Live stream", keys: ["youtube", "linkedin", "instagram", "facebook"] },
+  { id: "manage", label: "Manage", keys: ["host", "settings"] },
+];
+
+/** Splits More's entries into MORE_GROUPS, dropping empty sections. Keeps the
+ *  entries' own order inside a section; anything unknown lands in the last. */
+export function moreGroups(
+  entries: readonly string[],
+): { id: string; label: string; keys: string[] }[] {
+  const known = new Set(MORE_GROUPS.flatMap((g) => g.keys));
+  const last = MORE_GROUPS.length - 1;
+  return MORE_GROUPS.map((g, i) => ({
+    id: g.id,
+    label: g.label,
+    keys: entries.filter((k) => g.keys.includes(k) || (i === last && !known.has(k))),
+  })).filter((g) => g.keys.length > 0);
 }
 
 /** Whether a panel tool is actually in front of the person: its docked tab is open, or it
@@ -447,7 +478,8 @@ export const RECENT_LIMIT = 6;
 function emptyLayout(): ToolLayout {
   return {
     pinned: [...DEFAULT_PINNED],
-    overflow: TOOL_IDS.filter(isPinSlotTool),
+    // YouTube and Settings start tucked into More (HOME_BAR_TOOLS).
+    overflow: TOOL_IDS.filter((id) => isPinSlotTool(id) || isHomeTool(id)),
     recent: [],
     windows: {},
     nextZ: 1,
@@ -1082,7 +1114,7 @@ export function isCustomised(layout: ToolLayout): boolean {
   return (
     layout.pinned.length > 0 ||
     layout.recent.length > 0 ||
-    tuckedTools(layout).length > 0
+    tuckedTools(layout).length < HOME_BAR_TOOLS.length
   );
 }
 
@@ -1130,8 +1162,11 @@ export function describeChange(
  * is read once as a legacy record with every home tool taken out of it (they
  * land on the bar, where they have always been) and everything else — pins,
  * More, recents — kept. No pins are lost to the bump. */
-const STORAGE_KEY = "webcast.toolbar.v7";
-const LEGACY_STORAGE_KEY = "webcast.toolbar.v6";
+const STORAGE_KEY = "webcast.toolbar.v8";
+/* v8: YouTube and Settings start in More. A v7 (or v6) record cannot say
+ * whether a home tool on the bar was chosen or just the old default, so both
+ * are read once with the home tools tucked; pins, More and recents are kept. */
+const LEGACY_STORAGE_KEYS = ["webcast.toolbar.v7", "webcast.toolbar.v6"];
 
 /** Only the customisation is persisted, never the windows.
  *
@@ -1140,8 +1175,8 @@ const LEGACY_STORAGE_KEY = "webcast.toolbar.v6";
  *  against a different viewport is wrong more often than it is right. */
 type Persisted = { pinned: ToolId[]; overflow: ToolId[]; recent: ToolId[] };
 
-/** A stored record, as a layout. `legacy` is a v6 record, which places every
- *  home tool on the bar. Exported for the migration tests; anything it cannot
+/** A stored record, as a layout. `legacy` is a v7 or v6 record, which tucks
+ *  every home tool into More (the v8 default). Exported for the migration tests; anything it cannot
  *  read falls back to the default layout. */
 export function parseStoredToolbar(
   raw: string | null,
@@ -1161,9 +1196,11 @@ export function parseStoredToolbar(
       pinned: nextPinned,
       overflow: clean(overflow).filter(
         (id) =>
-          !nextPinned.includes(id) &&
-          !isBarExcluded(id) &&
-          !(legacy && isHomeTool(id)),
+          !nextPinned.includes(id) && !isBarExcluded(id),
+      ).concat(
+        legacy
+          ? HOME_BAR_TOOLS.filter((id) => !clean(overflow).includes(id))
+          : [],
       ),
       // Opening Settings used to be recorded here, which alone made Reset
       // show on a toolbar nobody had touched.
@@ -1183,7 +1220,11 @@ function load(): ToolLayout {
   try {
     const current = window.localStorage.getItem(STORAGE_KEY);
     if (current) return parseStoredToolbar(current);
-    return parseStoredToolbar(window.localStorage.getItem(LEGACY_STORAGE_KEY), true);
+    for (const key of LEGACY_STORAGE_KEYS) {
+      const legacy = window.localStorage.getItem(key);
+      if (legacy) return parseStoredToolbar(legacy, true);
+    }
+    return emptyLayout();
   } catch {
     return emptyLayout();
   }
