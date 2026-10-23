@@ -88,6 +88,7 @@ import {
 } from "@/lib/recovery";
 import { disconnectVerdict } from "@/lib/disconnect-reason";
 import { pageLeaveNotice } from "@/lib/background-return";
+import { useVolumeBoostEngine } from "@/lib/volume-boost";
 import { usePresenceFallback } from "@/lib/presence";
 import { ActiveSpeakerProvider } from "./active-speaker";
 import { AIToggle } from "./ai-toggle";
@@ -2039,6 +2040,14 @@ function ConnectedRoom({
     initialImageUrl,
     !shownExit && !failure,
   );
+  /* The attendee volume boost (lib/volume-boost.ts), set from Settings. Undefined — the
+   * renderer exactly as before — until somebody turns it above 100%. Never for anyone with a
+   * microphone, and never while the lock-screen experiment owns the volume. */
+  const boostVolume = useVolumeBoostEngine(room, {
+    publisher: permissions.canPublish || permissions.canSpeak,
+    lockScreen: lockScreenVolume !== undefined,
+    speakerId: prefs.audioOutput,
+  });
   const endView = afterWebinarEnd({
     role: liveRole,
     ended: shownExit === "ended",
@@ -2177,7 +2186,7 @@ function ConnectedRoom({
 
           {/* Renders every subscribed audio track. Without this you get video and
               silence, which is a genuinely confusing bug to chase. */}
-          <RoomAudioRenderer volume={lockScreenVolume} />
+          <RoomAudioRenderer volume={lockScreenVolume ?? boostVolume} />
           {/* AutoStartAudio (below) clears the browser's autoplay block silently
               on the first ordinary interaction, for the common case. But which
               gesture that ends up being — and how long it takes for a track to
