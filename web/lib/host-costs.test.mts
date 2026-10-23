@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { AdminCostHost, AdminCostPlatform, AdminCostUsage } from "./api-types.ts";
-import { DEFAULT_INPUTS, edgeGbPerViewerHour, withDefaults } from "./cost-calculator.ts";
+import { DEFAULT_FEATURES, DEFAULT_INPUTS, edgeGbPerViewerHour, sfuAdjust, withDefaults } from "./cost-calculator.ts";
 import {
   costContext,
   hostContext,
@@ -36,7 +36,9 @@ const line = (lines: { key: string; usd: number }[], key: string) => lines.find(
 
 const START = "2026-09-01T00:00:00Z";
 const END = "2026-10-01T10:00:00Z"; // 730 hours: one calculator month
-const i = withDefaults(DEFAULT_INPUTS);
+// Camera-only traffic (no screen share, TURN or AV1) for the pool arithmetic below; those
+// have their own test at the end.
+const i = withDefaults({ ...DEFAULT_INPUTS, sharePercent: 0, features: { ...DEFAULT_FEATURES, turn: false, av1: false } });
 
 // ---- Usage to GB.
 {
@@ -197,6 +199,26 @@ const i = withDefaults(DEFAULT_INPUTS);
   assert.deepEqual(presetRange("last-month", new Date(2026, 0, 5)), { from: "2025-12-01", to: "2025-12-31" });
   assert.deepEqual(presetRange("all", now), { from: "", to: "" });
   assert.equal(toCsv([["a,b", 'say "hi"', 1]]), '"a,b","say ""hi""",1.0000\n');
+}
+
+// ---- Screen share, TURN and AV1 at the calculator's defaults, the same function it uses.
+{
+  const d = withDefaults(DEFAULT_INPUTS);
+  const u = usage({ meetingParticipantHours: 100, webrtcViewerHours: 10, stagePairHours: 2 });
+  const g = usageGb(u, d);
+  const m = sfuAdjust(d, { camGb: 100 * 0.6, shareReceiverHours: 100, publisherHours: 100 });
+  const w = sfuAdjust(d, { camGb: 10 * 1.5 * 0.45 + 2 * 1.3 * 0.45, shareReceiverHours: 10, publisherHours: 0 });
+  near(g.share, m.shareGb + w.shareGb);
+  near(g.turn, m.turnGb + w.turnGb);
+  near(g.av1, m.av1Gb + w.av1Gb);
+  assert.ok(g.av1 < 0 && g.share > 0 && g.turn > 0);
+  near(g.pooled, g.webrtc + g.stage + g.meeting + g.share + g.turn + g.av1);
+  // On GCP every GB bills: share and TURN cost, AV1 saves.
+  const pools = poolRates({ byProvider: {}, firstSessionAt: {}, sessionHours: 0, unattributedAiUsd: 0, unattributedRecordingGbDays: 0, ignoredSessionHours: 0 }, START, END, d);
+  const lines = priceUsage(u, "gcp", d, pools);
+  near(line(lines, "share"), g.share * 0.12);
+  near(line(lines, "turn"), g.turn * 0.12);
+  near(line(lines, "av1"), g.av1 * 0.12);
 }
 
 console.log("host-costs: ok");
