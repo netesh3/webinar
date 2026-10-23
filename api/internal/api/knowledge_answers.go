@@ -290,7 +290,7 @@ func (s *Server) harvestAloud(ctx context.Context, wb types.Webinar, hs store.Ha
 		settle(aloudFailed, true)
 		return false
 	}
-	answers, err := aiwrite.ParseQAHarvest(reply.Text, len(open))
+	answers, err := aiwrite.ParseQAHarvest(reply.Text, len(open), lines)
 	if err != nil {
 		settle(aloudFailed, false)
 		return false

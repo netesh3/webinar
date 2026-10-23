@@ -91,5 +91,11 @@ assert.equal(pickDraft(d("mine", "2026-10-22T10:00:05Z"), d("server", "2026-10-2
 assert.equal(pickDraft(d("mine", "2026-10-22T09:00:00Z"), d("server", "2026-10-22T10:00:00Z"), null)?.id, "server");
 assert.equal(pickDraft(d("mine", "2026-10-22T10:00:05Z"), d("server", "2026-10-22T10:00:00Z"), "mine")?.id, "server");
 assert.equal(pickDraft(null, d("server", "2026-10-22T10:00:00Z"), "server"), null);
+// A general answer from before the assistant stopped writing them is not shown.
+assert.equal(pickDraft(null, { ...d("old", "2026-10-22T10:00:00Z"), grounded: false }, null), null);
+assert.equal(
+  pickDraft({ ...d("old", "2026-10-22T10:00:09Z"), grounded: false }, d("server", "2026-10-22T10:00:00Z"), null)?.id,
+  "server",
+);
 
 console.log("qa-clusters: ok");

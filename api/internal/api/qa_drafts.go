@@ -24,18 +24,20 @@ import (
  *
  *   suggest   "✨ Suggest an answer" on a cluster: one call, with the session's best knowledge
  *             chunks for the question and the last few minutes of transcript.
- *   auto      after a grouping pass, the new clusters the knowledge has hits for are drafted
- *             unasked, all in ONE call (qaAutoDraft), at most qaAutoDraftBatch a pass and
- *             qaAutoDraftCap a session. No hits, no draft: a general answer is not worth a
- *             call nobody asked for.
+ *   auto      after a grouping pass, the new clusters the knowledge has close enough hits for
+ *             are drafted unasked, all in ONE call (qaAutoDraft), at most qaAutoDraftBatch a
+ *             pass and qaAutoDraftCap a session. No close hits, no call and no draft.
  *   post      a host (after editing, if they like) posts the draft: it becomes the host's
  *             answer on each of the cluster's open questions through the ordinary answer path
  *             (UpdateSessionQuestion and the room's qmod packet, what "Send answer" does).
  *   discard   the draft goes; an automatic one is not written again for that question.
  *
- * A draft the knowledge did not cover is marked grounded:false and, when the session has
- * knowledge, opens with "Not in your knowledge — general answer:". Its sources are the titles
- * of the documents its excerpts came from, mapped here from the labels the model cited. */
+ * Confident or nothing (aiwrite.DraftPolicy, qa_policy.go): no call when retrieval found
+ * nothing close enough, and no draft unless the reply is grounded, confident, cites a source it
+ * was given and has no number that is not in what it cited. A question the knowledge does not
+ * answer gets no draft text at all (a suggestion says noConfidentAnswer; the panel shows "No
+ * confident answer in your knowledge") and stays open. A draft's sources are the titles of the
+ * documents its excerpts came from, mapped here from the labels the model cited. */
 
 var (
 	// qaAutoDraftCap is the most automatic drafts one session gets. A var for tests.
@@ -48,6 +50,14 @@ const (
 	// qaAutoDraftTimeout bounds the automatic-draft call.
 	qaAutoDraftTimeout = 25 * time.Second
 )
+
+/* logQADecision is the assistant's decision on one question, for tuning the thresholds in
+ * aiwrite/qa_policy.go: which path, what it decided, the model's confidence (0 with no call)
+ * and the retrieval evidence. No question or answer text, nobody's name. */
+func (s *Server) logQADecision(path, slug string, v aiwrite.Verdict, confidence float64, e aiwrite.Evidence) {
+	s.log.Info("qa answer decision", "path", path, "slug", slug, "decision", string(v),
+		"confidence", confidence, "top_similarity", e.TopSimilarity, "top_coverage", e.TopCoverage)
+}
 
 func newQADraftID() string {
 	var b [10]byte
@@ -189,28 +199,33 @@ func (s *Server) qaAutoDraft(ctx context.Context, wb types.Webinar, created []st
 	vecs := s.queryVectors(ctx, wb.Host.ID, queries)
 
 	var (
-		pool    excerptPool
-		items   []aiwrite.QADraftItem
-		targets []string
+		pool     excerptPool
+		items    []aiwrite.QADraftItem
+		targets  []string
+		evidence []aiwrite.Evidence
 	)
 	for i, cd := range cands {
 		if len(items) == room {
 			break
 		}
 		c, asked := cd.c, cd.asked
-		hits, err := s.retrieveWith(ctx, slug, cd.query, vecs[i], autoDraftTopChunks, autoDraftTokenBudget)
+		found, err := s.retrieveWith(ctx, slug, cd.query, vecs[i], autoDraftTopChunks, autoDraftTokenBudget)
 		if err != nil {
 			return 0, err
 		}
-		if len(hits) == 0 {
+		// Nothing close enough in the knowledge: no draft, and no call for it.
+		ev := found.evidence(append([]string{c.Canonical}, asked...)...)
+		if !aiwrite.DraftPolicy.Retrieved(ev) {
+			s.logQADecision("auto_draft", slug, aiwrite.VerdictNoEvidence, 0, ev)
 			continue
 		}
 		it := aiwrite.QADraftItem{Question: c.Canonical, Asked: asked}
-		for _, h := range hits {
+		for _, h := range found.hits {
 			it.Excerpts = append(it.Excerpts, pool.add(h))
 		}
 		items = append(items, it)
 		targets = append(targets, c.ID)
+		evidence = append(evidence, ev)
 	}
 	if len(items) == 0 {
 		return 0, nil
@@ -237,15 +252,18 @@ func (s *Server) qaAutoDraft(ctx context.Context, wb types.Webinar, created []st
 		return 0, err
 	}
 	saved := 0
+	excerpts := pool.excerpts()
 	for i, cid := range targets {
 		a, ok := answers[i]
-		if !ok {
+		verdict := aiwrite.VerdictEmpty
+		if ok {
+			verdict = aiwrite.DraftPolicy.Decide(a, excerpts, "")
+		}
+		s.logQADecision("auto_draft", slug, verdict, a.Confidence, evidence[i])
+		if verdict != aiwrite.VerdictAnswered {
 			continue
 		}
-		text := aiwrite.FinishQAAnswer(a, true)
-		if text == "" {
-			continue
-		}
+		text := aiwrite.FinishQAAnswer(a)
 		if err := s.store.SaveQADraft(ctx, slug, store.QADraft{
 			ID: newQADraftID(), ClusterKey: cid, Answer: text, Grounded: a.Grounded,
 			Sources: pool.titles(a.Sources), Auto: true,
@@ -319,15 +337,19 @@ func (s *Server) handleQASuggest(w http.ResponseWriter, r *http.Request) {
 	if in.HasKnowledge, err = s.sessionKnowledge(r.Context(), wb); err != nil {
 		s.log.Warn("qa suggest: knowledge", "slug", slug, "error", err)
 	}
+	var ev aiwrite.Evidence
 	if in.HasKnowledge {
-		hits, err := s.retrieveKnowledge(r.Context(), wb, in.Question+" "+strings.Join(in.Asked, " "), knowledgeTopChunks, knowledgeTokenBudget)
+		found, err := s.retrieveKnowledge(r.Context(), wb, in.Question+" "+strings.Join(in.Asked, " "), knowledgeTopChunks, knowledgeTokenBudget)
 		if err != nil {
 			s.log.Warn("qa suggest: retrieve", "slug", slug, "error", err)
 		}
-		for _, h := range hits {
-			pool.add(h)
+		// Excerpts too far from the question are noise, not grounds: the model is not given them.
+		if ev = found.evidence(append([]string{in.Question}, in.Asked...)...); aiwrite.DraftPolicy.Retrieved(ev) {
+			for _, h := range found.hits {
+				pool.add(h)
+			}
+			in.Knowledge = pool.excerpts()
 		}
-		in.Knowledge = pool.excerpts()
 	}
 
 	lines, err := s.store.RecapCaptions(r.Context(), slug, time.Now().Add(-qaAnswerTranscript), 400)
@@ -340,6 +362,16 @@ func (s *Server) handleQASuggest(w http.ResponseWriter, r *http.Request) {
 			name = "Speaker"
 		}
 		in.Recent = append(in.Recent, name+": "+l.Text)
+	}
+
+	// Nothing to answer from (no knowledge close enough, no transcript): no call at all.
+	noAnswer := func(v aiwrite.Verdict, confidence float64) {
+		s.logQADecision("suggest", slug, v, confidence, ev)
+		httpx.JSON(w, http.StatusOK, types.QASuggestResponse{NoConfidentAnswer: true})
+	}
+	if len(in.Knowledge) == 0 && len(in.Recent) == 0 {
+		noAnswer(aiwrite.VerdictNoEvidence, 0)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 19*time.Second)
@@ -366,12 +398,12 @@ func (s *Server) handleQASuggest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parsed := aiwrite.ParseQAAnswer(reply.Text, len(pool.hits), len(in.Recent) > 0)
-	answer := aiwrite.FinishQAAnswer(parsed, in.HasKnowledge)
-	if answer == "" {
-		httpx.Error(w, http.StatusServiceUnavailable, "ai_unavailable",
-			"Suggested answers aren't available right now. Try again in a minute.")
+	if v := aiwrite.DraftPolicy.Decide(parsed, in.Knowledge, strings.Join(in.Recent, "\n")); v != aiwrite.VerdictAnswered {
+		noAnswer(v, parsed.Confidence)
 		return
 	}
+	s.logQADecision("suggest", slug, aiwrite.VerdictAnswered, parsed.Confidence, ev)
+	answer := aiwrite.FinishQAAnswer(parsed)
 	d := store.QADraft{
 		ID: newQADraftID(), ClusterKey: id, Answer: answer, Grounded: parsed.Grounded,
 		Sources: pool.titles(parsed.Sources), CreatedAt: time.Now(),
@@ -382,7 +414,7 @@ func (s *Server) handleQASuggest(w http.ResponseWriter, r *http.Request) {
 	}
 	// The other hosts' panels show it too.
 	s.announceQAClusters(context.WithoutCancel(r.Context()), wb)
-	httpx.JSON(w, http.StatusOK, types.QASuggestResponse{Answer: answer, Draft: *draftView(d)})
+	httpx.JSON(w, http.StatusOK, types.QASuggestResponse{Answer: answer, Draft: draftView(d)})
 }
 
 /* handleQAPostDraft is POST /api/host/webinars/{slug}/qa/drafts/{id}/post: the draft, as the

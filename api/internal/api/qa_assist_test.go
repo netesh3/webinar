@@ -252,6 +252,8 @@ func TestQAAssistPausesAtTheCap(t *testing.T) {
 	if !out.Enabled || !out.Limited || len(out.Clusters) != 3 {
 		t.Fatalf("at the cap: %+v", out)
 	}
+	// Something to answer from (what the host said), so a suggestion would make a call.
+	h.caption(wb.ID, "user_"+host.ID, "The fee is 499 rupees.")
 	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/qa/clusters/q_q-a-000003/suggest", nil)
 	if res.StatusCode != http.StatusTooManyRequests || errorCode(t, raw) != "ai_limit" || !strings.Contains(string(raw), "answer by hand") {
 		t.Fatalf("suggest at the cap: %d %s", res.StatusCode, raw)
@@ -275,7 +277,7 @@ func TestQAAssistSuggestIsPrivateAndHostOnly(t *testing.T) {
 	cluster := h.qaClusters(wb.ID).Clusters[0]
 	h.caption(wb.ID, "user_"+host.ID, "The full course is 499 rupees, and early birds get 20 percent off.")
 
-	model.setReply(`{"answer":"**Course** ki fee 499 rupees hai.\n- Early birds ko 20 percent off milta hai.","grounded":true,"sources":[]}`)
+	model.setReply(`{"answer":"**Course** ki fee 499 rupees hai.\n- Early birds ko 20 percent off milta hai.","grounded":true,"confidence":0.9,"sources":["t1"],"missing":""}`)
 	before := len(h.rooms.sent)
 	path := "/api/host/webinars/" + wb.ID + "/qa/clusters/" + cluster.ID + "/suggest"
 	res, raw := h.do(http.MethodPost, path, nil)
@@ -293,7 +295,7 @@ func TestQAAssistSuggestIsPrivateAndHostOnly(t *testing.T) {
 			t.Errorf("suggest prompt missing %q: %s", want, p)
 		}
 	}
-	// From the transcript, with no knowledge: grounded, no sources, no "Not in your knowledge".
+	// From the transcript (t1), with no knowledge: grounded, and no document sources.
 	if !out.Draft.Grounded || len(out.Draft.Sources) != 0 || out.Draft.Auto || out.Draft.Answer != out.Answer {
 		t.Fatalf("draft = %+v", out.Draft)
 	}

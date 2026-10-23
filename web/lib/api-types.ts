@@ -178,8 +178,8 @@ export interface QADraft {
   answer: string;
   /**
    * Grounded is true when the answer comes from the host's AI knowledge (or what was said in
-   * the session). False is a general answer, and the answer then starts "Not in your
-   * knowledge — general answer:" when the session has knowledge to draw on.
+   * the session). Every new draft is grounded: the assistant writes no general answers. False
+   * is only an older draft from before that, which the panel does not show.
    */
   grounded: boolean;
   /**
@@ -266,13 +266,18 @@ export interface QAClustersResponse {
 }
 /**
  *  QASuggestResponse is POST /api/host/webinars/{slug}/qa/clusters/{id}/suggest: a draft for
- *  * the host team, grounded in the session's AI knowledge where it covers the question. Kept as
+ *  * the host team, grounded in the session's AI knowledge (or what the host just said). Kept as
  *  * the cluster's draft (replacing an earlier one) until posted or discarded; never posted by
  *  * itself. Answer is Draft.Answer.
+ *  *
+ *  * NoConfidentAnswer (with no Draft and no Answer) is the assistant declining: the knowledge
+ *  * does not clearly answer the question, or not confidently enough. Nothing is saved, and the
+ *  * question stays open for the host.
  */
 export interface QASuggestResponse {
   answer: string;
-  draft: QADraft;
+  draft?: QADraft;
+  noConfidentAnswer?: boolean;
 }
 /**
  * The library's limits. Separate from the media quota: no file is stored, only its text.

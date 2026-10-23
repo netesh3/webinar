@@ -125,8 +125,8 @@ func TestQAAutoAnswersGroundedQuestionsAsTheAssistant(t *testing.T) {
 	f := newAutoFixture(t, true)
 	h, g := f.h, f.guests
 	f.model.bySchema = map[string]string{"qa_auto": `{"answers":[
-		{"question":"n1","answer":"The Money Basics course fee is 499 rupees, paid once.","grounded":true,"sources":["k1"]},
-		{"question":"n2","answer":"Probably yes, ask the coach.","grounded":false,"sources":[]}]}`}
+		{"question":"n1","answer":"The Money Basics course fee is 499 rupees, paid once.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""},
+		{"question":"n2","answer":"Probably yes, ask the coach.","grounded":false,"confidence":0,"sources":[],"missing":""}]}`}
 
 	// Three questions arrive together; the certificate one has nothing in the knowledge.
 	if ms := f.ask(g[0], "q-fee-0001", "What is the fee? Mail me at ravi.k@example.com"); ms <= 0 {
@@ -222,9 +222,40 @@ func TestQAAutoAnswersGroundedQuestionsAsTheAssistant(t *testing.T) {
 	}
 }
 
+/* Auto mode posts without review, so its bar is higher than a draft's: a confidence that would
+ * make a draft (0.8) is not enough, a number the excerpt does not have is never posted, and
+ * retrieval a draft would accept (two of five words) is not enough to make a call at all. */
+func TestQAAutoIsStricterThanADraft(t *testing.T) {
+	f := newAutoFixture(t, true)
+	g := f.guests
+	f.model.bySchema = map[string]string{"qa_auto": `{"answers":[
+		{"question":"n1","answer":"The course fee is 499 rupees.","grounded":true,"confidence":0.8,"sources":["k1"],"missing":""},
+		{"question":"n2","answer":"Yes, and the recording is shared within 12 hours.","grounded":true,"confidence":0.97,"sources":["k1"],"missing":""}]}`}
+	f.ask(g[0], "q-st-00001", "What is the course fee?")
+	f.ask(g[1], "q-st-00002", "Is every live class recorded?")
+	f.ask(g[2], "q-st-00003", "Course fee for the weekend evening batch?")
+	if n := f.tick(g[0]); n != 0 {
+		t.Fatalf("answered = %d, want 0", n)
+	}
+	if f.model.callsFor("qa_auto") != 1 {
+		t.Fatalf("calls = %d", f.model.callCount())
+	}
+	if p := f.model.userPrompt(0); strings.Contains(p, "weekend") || strings.Contains(p, "n3:") {
+		t.Fatalf("weak retrieval reached the model: %s", p)
+	}
+	for _, id := range []string{"q-st-00001", "q-st-00002", "q-st-00003"} {
+		if q := f.question(id); q.Answered || q.Answer != "" {
+			t.Fatalf("%s should stay open: %+v", id, q)
+		}
+	}
+	if mods := f.qmods(); len(mods) != 0 {
+		t.Fatalf("qmod packets = %+v", mods)
+	}
+}
+
 func TestQAAutoHostEditMakesItTheHostTeams(t *testing.T) {
 	f := newAutoFixture(t, true)
-	f.model.bySchema = map[string]string{"qa_auto": `{"answers":[{"question":"n1","answer":"It is 499 rupees.","grounded":true,"sources":["k1"]}]}`}
+	f.model.bySchema = map[string]string{"qa_auto": `{"answers":[{"question":"n1","answer":"It is 499 rupees.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""}]}`}
 	f.ask(f.guests[0], "q-fee-0002", "What is the course fee?")
 	f.tick(f.guests[0])
 	if q := f.question("q-fee-0002"); q.AnswerBy != assistant {
@@ -243,7 +274,7 @@ func TestQAAutoHostEditMakesItTheHostTeams(t *testing.T) {
 func TestQAAutoOffByDefaultAndGated(t *testing.T) {
 	f := newAutoFixture(t, false)
 	h, g := f.h, f.guests
-	f.model.bySchema = map[string]string{"qa_auto": `{"answers":[{"question":"n1","answer":"499 rupees.","grounded":true,"sources":["k1"]}]}`}
+	f.model.bySchema = map[string]string{"qa_auto": `{"answers":[{"question":"n1","answer":"499 rupees.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""}]}`}
 
 	// Off by default.
 	if ms := f.ask(g[0], "q-off-0001", "What is the fee?"); ms != 0 {
@@ -336,10 +367,10 @@ func TestQAAutoCapsPerSessionAndPerAsker(t *testing.T) {
 	t.Cleanup(api.SetQAAuto(time.Millisecond, 4))
 	g := f.guests
 	all := `{"answers":[` +
-		`{"question":"n1","answer":"499 rupees.","grounded":true,"sources":["k1"]},` +
-		`{"question":"n2","answer":"499 rupees.","grounded":true,"sources":["k1"]},` +
-		`{"question":"n3","answer":"499 rupees.","grounded":true,"sources":["k1"]},` +
-		`{"question":"n4","answer":"499 rupees.","grounded":true,"sources":["k1"]}]}`
+		`{"question":"n1","answer":"499 rupees.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""},` +
+		`{"question":"n2","answer":"499 rupees.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""},` +
+		`{"question":"n3","answer":"499 rupees.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""},` +
+		`{"question":"n4","answer":"499 rupees.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""}]}`
 	f.model.bySchema = map[string]string{"qa_auto": all}
 
 	// One asker, four questions: three answered, the fourth left for the host.

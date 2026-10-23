@@ -131,13 +131,14 @@ export function draftFor(clusterId: string, clusters: readonly QACluster[]): QAD
 
 /** The draft a card shows: the newer of this host's own suggestion and the server's (a
  *  co-host's, or one written when the question arrived), leaving out the one this host just
- *  posted or discarded until the next read drops it. */
+ *  posted or discarded until the next read drops it. Only a grounded draft: the assistant no
+ *  longer writes general answers, and one left over from before is not shown. */
 export function pickDraft(
   mine: QADraft | null | undefined,
   server: QADraft | null | undefined,
   gone: string | null,
 ): QADraft | null {
-  const live = [mine, server].filter((d): d is QADraft => !!d && d.id !== gone);
+  const live = [mine, server].filter((d): d is QADraft => !!d && d.id !== gone && d.grounded);
   if (live.length === 0) return null;
   return live.reduce((a, b) => (Date.parse(b.createdAt) > Date.parse(a.createdAt) ? b : a));
 }

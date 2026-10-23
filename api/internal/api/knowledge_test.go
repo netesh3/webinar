@@ -296,7 +296,7 @@ func TestQADraftGroundedPostedOnlyOnPost(t *testing.T) {
 	}
 
 	// Grounded: the FAQ chunk is in the prompt as k1, and the draft cites it by title.
-	model.bySchema = map[string]string{"qa_answer": `{"answer":"Course ki fee 499 rupees hai, ek baar. EMI sirf 3,000 se upar ke card payments par.","grounded":true,"sources":["k1","k9"]}`}
+	model.bySchema = map[string]string{"qa_answer": `{"answer":"Course ki fee 499 rupees hai, ek baar. EMI sirf 3,000 se upar ke card payments par.","grounded":true,"confidence":0.9,"sources":["k1","k9"],"missing":""}`}
 	path := "/api/host/webinars/" + wb.ID + "/qa/clusters/" + cluster.ID + "/suggest"
 	res, raw := h.do(http.MethodPost, path, nil)
 	if res.StatusCode != http.StatusOK {
@@ -315,17 +315,47 @@ func TestQADraftGroundedPostedOnlyOnPost(t *testing.T) {
 		t.Fatalf("the draft is not on the cluster: %+v", d)
 	}
 
-	// Not covered: marked so, and said so.
-	model.bySchema = map[string]string{"qa_answer": `{"answer":"Not in your knowledge — general answer: Most courses share recordings; check with the host.","grounded":false,"sources":["k1"]}`}
-	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/qa/clusters/q_q-rec-0001/suggest", nil)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("suggest 2: %d %s", res.StatusCode, raw)
+	// Not answered by the knowledge, not confident, or a number the excerpt does not have: no
+	// draft text at all, nothing saved, and the question stays open. Never a general answer.
+	recPath := "/api/host/webinars/" + wb.ID + "/qa/clusters/q_q-rec-0001/suggest"
+	for name, reply := range map[string]string{
+		"ungrounded":     `{"answer":"Most courses share recordings; check with the host.","grounded":false,"confidence":0.4,"sources":["k1"],"missing":"recording policy"}`,
+		"low confidence": `{"answer":"Every live class is recorded.","grounded":true,"confidence":0.6,"sources":["k1"],"missing":""}`,
+		"invented hours": `{"answer":"The recording is shared within 48 hours.","grounded":true,"confidence":0.95,"sources":["k1"],"missing":""}`,
+	} {
+		model.bySchema = map[string]string{"qa_answer": reply}
+		calls := model.callCount()
+		res, raw = h.do(http.MethodPost, recPath, nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s: %d %s", name, res.StatusCode, raw)
+		}
+		var none types.QASuggestResponse
+		h.decode(raw, &none)
+		if !none.NoConfidentAnswer || none.Draft != nil || none.Answer != "" || model.callCount() != calls+1 {
+			t.Fatalf("%s: %s", name, raw)
+		}
+		for _, c := range h.qaClusters(wb.ID).Clusters {
+			if c.Draft != nil && c.ID != cluster.ID {
+				t.Fatalf("%s: a draft was saved: %+v", name, c.Draft)
+			}
+		}
 	}
+	// Nothing in the knowledge close enough, and no transcript: no call at all.
+	h.ask(wb.ID, g[1], "q-cert-001", "Certificate milega?")
+	calls := model.callCount()
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/qa/clusters/q_q-cert-001/suggest", nil)
+	var noHit types.QASuggestResponse
+	h.decode(raw, &noHit)
+	if res.StatusCode != http.StatusOK || !noHit.NoConfidentAnswer || model.callCount() != calls {
+		t.Fatalf("no hit: %d %s, calls %d → %d", res.StatusCode, raw, calls, model.callCount())
+	}
+	// Covered: a draft, for the discard below.
+	model.bySchema = map[string]string{"qa_answer": `{"answer":"Every live class is recorded and shared within 24 hours.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""}`}
+	res, raw = h.do(http.MethodPost, recPath, nil)
 	var general types.QASuggestResponse
 	h.decode(raw, &general)
-	if general.Draft.Grounded || len(general.Draft.Sources) != 0 ||
-		general.Answer != "Not in your knowledge — general answer: Most courses share recordings; check with the host." {
-		t.Fatalf("general draft = %+v", general.Draft)
+	if res.StatusCode != http.StatusOK || general.Draft == nil || !general.Draft.Grounded {
+		t.Fatalf("recording draft: %d %s", res.StatusCode, raw)
 	}
 
 	// Before Post, the audience sees no answer, and cannot reach the drafts.
@@ -429,7 +459,7 @@ func TestQAAutoDraftsBatchedCappedAndOnlyWithHits(t *testing.T) {
 	h.addKnowledge("Refund policy", refundPolicy)
 	model.bySchema = map[string]string{
 		"qa_clusters": `{"groups":[{"existing":"","canonical":"","questions":["n1"]},{"existing":"","canonical":"","questions":["n2"]},{"existing":"","canonical":"","questions":["n3"]}]}`,
-		"qa_drafts":   `{"answers":[{"question":"n1","answer":"The fee is 499 rupees, paid once.","grounded":true,"sources":["k1"]},{"question":"n2","answer":"A full refund is given within 7 days.","grounded":true,"sources":["k2","k7"]},{"question":"n2","answer":"dup","grounded":false,"sources":[]}]}`,
+		"qa_drafts":   `{"answers":[{"question":"n1","answer":"The fee is 499 rupees, paid once.","grounded":true,"confidence":0.9,"sources":["k1"],"missing":""},{"question":"n2","answer":"A full refund is given within 7 days.","grounded":true,"confidence":0.9,"sources":["k2","k7"],"missing":""},{"question":"n2","answer":"dup","grounded":false,"confidence":0,"sources":[],"missing":""}]}`,
 	}
 
 	// Three questions make one pass: one grouping call and ONE drafting call, for the two that

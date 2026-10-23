@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import {
   answerProblem,
+  addPrefill,
   draftSourceChips,
+  knowledgeAddHref,
+  NO_CONFIDENT_ANSWER,
   filterPastAnswers,
   folderTag,
   libraryFull,
@@ -52,7 +55,7 @@ assert.equal(libraryFull(49, 1000, limits), false);
 assert.equal(libraryFull(50, 1000, limits), true);
 assert.equal(libraryFull(1, 250_000, limits), true);
 
-// Draft chips: the documents it came from; nothing for a general answer.
+// Draft chips: the documents it came from; nothing for an old ungrounded draft.
 assert.deepEqual(
   draftSourceChips({ grounded: true, sources: ["Course FAQ", "Refunds"] }),
   ["From: Course FAQ", "From: Refunds"],
@@ -133,5 +136,16 @@ assert.equal(filterPastAnswers(entries, "").length, 2);
 assert.deepEqual(filterPastAnswers(entries, "FEE 499"), [entries[0]]);
 assert.deepEqual(filterPastAnswers(entries, "ghante"), [entries[1]]);
 assert.deepEqual(filterPastAnswers(entries, "refund"), []);
+
+// The panel declines rather than guessing, with a way to add what was missing.
+assert.equal(NO_CONFIDENT_ANSWER, "No confident answer in your knowledge");
+assert.equal(knowledgeAddHref("  Certificate milega? "), "/host/knowledge?add=Certificate%20milega%3F");
+assert.equal(knowledgeAddHref("  "), "/host/knowledge");
+assert.deepEqual(addPrefill("?add=Certificate%20milega%3F"), { title: "Certificate milega?", text: "Q: Certificate milega?\nA: " });
+assert.equal(addPrefill(""), null);
+assert.equal(addPrefill("?add=%20%20"), null);
+assert.equal([...(addPrefill("?add=" + "x".repeat(300))?.title ?? "")].length, 120);
+// The link and the prefill agree.
+assert.equal(addPrefill(knowledgeAddHref("Do we get a certificate?").split("?")[1] ?? "")?.title, "Do we get a certificate?");
 
 console.log("knowledge: ok");
