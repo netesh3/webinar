@@ -798,6 +798,8 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/transcript.txt", s.handleTranscript)
 					// The AI recap, written automatically after the session. See recap.go.
 					r.Get("/recap", s.handleGetRecap)
+					// "Generate recap now": stop waiting for the transcript (pending only).
+					r.Post("/recap/generate", s.handleGenerateRecapNow)
 					// Hot leads and the follow-up writer. See leads.go and followups.go.
 					r.Get("/leads", s.handleGetLeads)
 					r.Get("/followups", s.handleGetFollowups)

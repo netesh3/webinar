@@ -32,8 +32,11 @@ const (
 	RecapReasonAILimit       = "ai_limit"
 	RecapReasonAIUnavailable = "ai_unavailable"
 	RecapReasonEmpty         = "empty"
-	RecapReasonFailed        = "failed"
-	RecapReasonNotEnded      = "not_ended"
+	// RecapReasonTranscriptUnavailable is a session with server captions whose after-session
+	// transcript never came, with no live caption line, question, poll or chat to write from.
+	RecapReasonTranscriptUnavailable = "transcript_unavailable"
+	RecapReasonFailed                = "failed"
+	RecapReasonNotEnded              = "not_ended"
 )
 
 // Who an action item is for.
@@ -93,7 +96,8 @@ type SessionRecap struct {
 }
 
 /* SessionRecapResponse is GET /api/host/webinars/{slug}/recap. The recap is written
- * automatically after the session; there is no way to ask for another. Status is none,
+ * automatically after the session; there is no way to ask for another (POST …/recap/generate
+ * only ends a pending recap's wait for the transcript, and also answers this). Status is none,
  * pending, ready, skipped or failed; Reason says why it is not ready. */
 type SessionRecapResponse struct {
 	Status      string        `json:"status"`

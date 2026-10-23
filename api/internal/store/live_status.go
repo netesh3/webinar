@@ -14,6 +14,8 @@ import (
  *   "doors-open"    a scheduled simulive whose host opened the doors (people are waiting in it).
  *   "starting-soon" scheduled to start within the next few minutes, or started a few minutes
  *                   ago without the host pressing Start yet (the audience is arriving).
+ *   "finalizing"    (FinalizingSessions only) ended, with the after-session transcript still
+ *                   being made on the box: blocks a box deploy, never an API or Web one.
  *
  * Project is the video server the room is (or will be) on: the webinar's pin, else its host's
  * assigned project, else defaultProject, the same order the first join uses. A Zoom-venue
@@ -55,9 +57,45 @@ func (s *Store) LiveSessions(ctx context.Context, defaultProject string) ([]Live
 	if err != nil {
 		return nil, err
 	}
+	return collectLiveSessions(rows)
+}
+
+func collectLiveSessions(rows pgx.Rows) ([]LiveSession, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (LiveSession, error) {
 		var l LiveSession
 		err := row.Scan(&l.Slug, &l.Kind, &l.State, &l.Project, &l.StartsAt, &l.StartedAt)
 		return l, err
 	})
+}
+
+// finalizingFor is how long after its end a session can still count as finalizing: the recap's
+// transcript wait (recapTranscriptWait, 30 min) with a little to spare.
+const finalizingFor = 35 * time.Minute
+
+/* FinalizingSessions lists the sessions whose post-session work a video-server deploy would
+ * cut off (state "finalizing"): ended less than finalizingFor ago, with the AI recap still
+ * waiting for the after-session transcript the box's caption agent is making (none stored
+ * since the end, wait_until not yet passed). Project is resolved as in LiveSessions, so a box
+ * deploy waits only for its own box's sessions. */
+func (s *Store) FinalizingSessions(ctx context.Context, defaultProject string) ([]LiveSession, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT w.slug, w.kind, 'finalizing',
+		       CASE WHEN coalesce(w.venue, 'app') LIKE 'zoom%' THEN 'zoom'
+		            ELSE coalesce(NULLIF(w.sfu_project, ''), NULLIF(u.sfu_project, ''), $1) END,
+		       w.starts_at, w.started_at
+		  FROM session_recaps r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = w.host_id
+		 WHERE r.status = 'pending'
+		   AND r.wait_until > now()
+		   AND w.status = 'ended'
+		   AND w.ended_at > now() - make_interval(secs => $2)
+		   AND NOT EXISTS (SELECT 1 FROM session_transcripts t
+		                    WHERE t.webinar_id = w.id AND t.created_at >= w.ended_at)
+		 ORDER BY w.ended_at, w.slug`,
+		defaultProject, finalizingFor.Seconds())
+	if err != nil {
+		return nil, err
+	}
+	return collectLiveSessions(rows)
 }

@@ -19,8 +19,13 @@ type liveStatus struct {
 		Project   string     `json:"project"`
 		StartedAt *time.Time `json:"startedAt"`
 	} `json:"live"`
-	Count     int            `json:"count"`
-	ByProject map[string]int `json:"byProject"`
+	Count      int            `json:"count"`
+	ByProject  map[string]int `json:"byProject"`
+	Finalizing []struct {
+		Slug    string `json:"slug"`
+		State   string `json:"state"`
+		Project string `json:"project"`
+	} `json:"finalizing"`
 }
 
 func getLiveStatus(t *testing.T, h *harness, secret string) (int, liveStatus) {
@@ -152,5 +157,63 @@ func TestLiveStatusListsWhatADeployWouldInterrupt(t *testing.T) {
 		if (l.State == "live") != (l.StartedAt != nil) {
 			t.Errorf("%s (%s): startedAt %v", l.Slug, l.State, l.StartedAt)
 		}
+	}
+}
+
+/* Post-session work a box deploy would cut off: a session that ended minutes ago whose recap
+ * still waits for the after-session transcript the box is making. Listed under finalizing (for
+ * the box's scope), never in live or count, so API and Web deploys are not held by it. */
+func TestLiveStatusListsFinalizingSessions(t *testing.T) {
+	h := newHarness(t, withTickSecret)
+	h.login("neeraj@acme.dev")
+	ctx := context.Background()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := h.store.Pool().Exec(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ended := func(topic string) string {
+		t.Helper()
+		wb := h.newWebinar(topic, nil)
+		h.goLive(wb.ID)
+		exec(`UPDATE webinars SET sfu_project = 'do-blr' WHERE slug = $1`, wb.ID)
+		if _, err := h.store.SetStatus(ctx, wb.ID, types.StatusEnded); err != nil {
+			t.Fatal(err)
+		}
+		exec(`UPDATE webinars SET ended_at = now() - interval '5 minutes' WHERE slug = $1`, wb.ID)
+		if _, err := h.store.ScheduleRecap(ctx, wb.ID, 0, 30*time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		return wb.ID
+	}
+
+	waiting := ended("Transcript on its way")
+	arrived := ended("Transcript arrived")
+	if err := h.store.SaveSessionTranscript(ctx, arrived, "large-v3-turbo", nil); err != nil {
+		t.Fatal(err)
+	}
+	old := ended("Ended long ago")
+	exec(`UPDATE webinars SET ended_at = now() - interval '40 minutes' WHERE slug = $1`, old)
+	done := ended("Recap written")
+	exec(`UPDATE session_recaps r SET status = 'skipped' FROM webinars w WHERE w.id = r.webinar_id AND w.slug = $1`, done)
+	expired := ended("Wait over")
+	exec(`UPDATE session_recaps r SET wait_until = now() - interval '1 minute' FROM webinars w WHERE w.id = r.webinar_id AND w.slug = $1`, expired)
+
+	code, got := getLiveStatus(t, h, testTickSecret)
+	if code != http.StatusOK {
+		t.Fatalf("live-status = %d", code)
+	}
+	if len(got.Finalizing) != 1 || got.Finalizing[0].Slug != waiting ||
+		got.Finalizing[0].State != "finalizing" || got.Finalizing[0].Project != "do-blr" {
+		t.Fatalf("finalizing = %+v, want only %s on do-blr", got.Finalizing, waiting)
+	}
+	for _, l := range got.Live {
+		if l.Slug == waiting {
+			t.Errorf("a finalizing session is listed as live: %+v", l)
+		}
+	}
+	if got.Count != len(got.Live) {
+		t.Errorf("count = %d with %d live", got.Count, len(got.Live))
 	}
 }

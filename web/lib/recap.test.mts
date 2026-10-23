@@ -9,6 +9,7 @@ import {
   chapterAt,
   chapterSeekTimes,
   formatChapterTime,
+  recapCanGenerateNow,
   recapEmptyState,
   recapSourceLabel,
 } from "./recap.ts";
@@ -143,6 +144,13 @@ for (const reason of ["not_ended", "waiting_transcript", "ai_off", "ai_session_o
     assert.equal("canGenerate" in st, false);
   }
 }
+
+assert.match(recapEmptyState({ status: "skipped", reason: "transcript_unavailable" })!.title, /No transcript/);
+// "Generate recap now" is offered only while the recap waits for the transcript.
+assert.equal(recapCanGenerateNow({ status: "pending", reason: "waiting_transcript" }), true);
+assert.equal(recapCanGenerateNow({ status: "pending", reason: "processing" }), false);
+assert.equal(recapCanGenerateNow({ status: "ready", recap: { summary: "s" } as never }), false);
+assert.equal(recapCanGenerateNow({ status: "skipped", reason: "empty" }), false);
 
 assert.match(recapSourceLabel("engagement_only"), /Q&A/);
 assert.equal(recapSourceLabel(undefined), "");

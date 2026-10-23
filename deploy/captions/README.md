@@ -53,7 +53,11 @@ host turns captions on ─▶ API ── agent dispatch ──▶ LiveKit ──
    re-transcribed with `CAPTIONS_FINAL_MODEL` and posted to `POST /api/internal/transcripts`
    (table `session_transcripts`, segments `{identity, name, start, end, text}` in Unix ms),
    then deleted. This runs on a thread in the agent's main process, only when no room is being
-   captioned on that box and the host CPU guard is NORMAL. It will feed the AI recap.
+   captioned on that box and the host CPU guard is NORMAL. It feeds the AI recap, which waits
+   for it (up to 30 min): a room where nobody spoke still gets an empty transcript posted, so
+   the recap is not held. The spool is a volume, so a container replaced mid-pass (a deploy)
+   resumes every pending room on start (`Finalizer.resume`); box deploys also wait for
+   sessions in this state ("finalizing" in `/api/internal/live-status`).
 
 All three internal endpoints check `X-Captions-Secret` against the API's `CAPTIONS_SECRET`
 (constant-time) and do not exist when it is unset.

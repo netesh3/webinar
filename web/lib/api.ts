@@ -1331,6 +1331,13 @@ export const api = {
       signal,
     }),
 
+  /** "Generate recap now": a recap waiting for the full transcript is written at once from
+   *  what there is. 409 when it is not waiting (already written, skipped or failed). */
+  generateRecapNow: (slug: string) =>
+    request<SessionRecapResponse>(`/api/host/webinars/${seg(slug)}/recap/generate`, {
+      method: "POST",
+    }),
+
   /** Hot leads: everybody, ranked by what they did (counted, not AI), with an AI reason
    *  beside the top ones once the session has ended. aiStatus says why there are none. */
   sessionLeads: (slug: string, signal?: AbortSignal) =>
