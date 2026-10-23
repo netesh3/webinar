@@ -699,6 +699,79 @@ export interface VerifyBillingPaymentResponse {
 }
 
 //////////
+// source: clips.go
+
+/**
+ *  FeatureClips is the switch: suggested highlights on a session's recording, and the clips
+ *  * made from them. Needs FeatureAI (the picks count against the monthly AI caps) and
+ *  * FeatureCloudRecording (there is no recording without it). Off for every account until an
+ *  * admin turns it on for a host (Admin -> Accounts), because absent means off.
+ */
+export const FeatureClips = "clips";
+/**
+ * AIFeatureHighlights is the ai_usage feature name for picking a recording's highlights.
+ */
+export const AIFeatureHighlights = "highlights";
+/**
+ * Bounds on a highlight's length, in seconds.
+ */
+export const HighlightMinSec = 20;
+/**
+ * Bounds on a highlight's length, in seconds.
+ */
+export const HighlightMaxSec = 90;
+/**
+ *  HighlightSignals is what the audience did during a highlight (and the few seconds after,
+ *  * when reactions land), counted, never written by a model.
+ */
+export interface HighlightSignals {
+  reactions: number /* int */;
+  chat: number /* int */;
+  questions: number /* int */;
+  polls: number /* int */;
+}
+/**
+ *  Highlight is one suggested moment. StartSec and EndSec are on the recording's player
+ *  * timeline (its takes end to end, as the player plays them), PartID the take it lies in,
+ *  * and PartStartSec its start inside that take's own file. Score is 0–100: how the moment
+ *  * ranks, from the AI's pick and the engagement around it.
+ */
+export interface Highlight {
+  id: string;
+  title: string;
+  why: string;
+  startSec: number /* float64 */;
+  endSec: number /* float64 */;
+  partId: string;
+  partStartSec: number /* float64 */;
+  score: number /* int */;
+  signals: HighlightSignals;
+  /**
+   * Quote is the first sentence said in it, from the transcript, for the list.
+   */
+  quote?: string;
+}
+/**
+ *  HighlightsResponse is GET /api/host/webinars/{slug}/recordings/{id}/highlights. Status is
+ *  * ready, processing (being picked: look again shortly), or why there are none: not_ended,
+ *  * ai_off, ai_session_off, ai_limit, ai_unavailable, failed, no_transcript, not_ready (the
+ *  * recording is not ready to play yet).
+ */
+export interface HighlightsResponse {
+  status: string;
+  highlights: Highlight[];
+  generatedAt?: string;
+}
+/**
+ * Reasons only highlights have (HighlightsResponse.Status); the rest are the recap's.
+ */
+export const HighlightsNoTranscript = "no_transcript";
+/**
+ * Reasons only highlights have (HighlightsResponse.Status); the rest are the recap's.
+ */
+export const HighlightsNotReady = "not_ready";
+
+//////////
 // source: costs.go
 
 /**

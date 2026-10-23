@@ -849,6 +849,10 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/engagement/attendees/{identity}", s.handleEngagementAttendee)
 				r.Get("/engagement.csv", s.handleEngagementCSV)
 				r.Get("/transcript.txt", s.handleTranscript)
+				// Suggested highlights on a recording, for clips. Host and co-hosts, not the
+				// rest of the stage. See highlights.go.
+				r.Get("/recordings/{id}/highlights", s.handleGetHighlights)
+				r.Post("/recordings/{id}/highlights", s.handleFindHighlights)
 				// The AI recap, written automatically after the session. See recap.go.
 				r.Get("/recap", s.handleGetRecap)
 				// "Generate recap now": stop waiting for the transcript (pending only).

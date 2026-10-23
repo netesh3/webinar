@@ -26,9 +26,11 @@ interface VideoSource {
   captions?: string;
 }
 
-/** What a parent can do to the player: jump to a moment (a chapter) and play from it. */
+/** What a parent can do to the player: jump to a moment (a chapter) and play from it, or
+ *  play one stretch (a highlight) and pause at its end. */
 export interface VideoPlayerHandle {
   seek: (sec: number) => void;
+  playRange: (startSec: number, endSec: number) => void;
 }
 
 interface VideoPlayerProps {
@@ -82,6 +84,9 @@ export function VideoPlayer({
   const partIndexRef = useRef(0);
   const pendingSeekRef = useRef<number | null>(null);
   const playAfterLoadRef = useRef(false);
+  /* A stretch being previewed (playRange): pause at its end. Forgotten once the viewer moves
+   * the playhead outside it, so a seek elsewhere plays on as usual. */
+  const rangeRef = useRef<{ start: number; end: number } | null>(null);
   // The session's own captions on the file now playing, and whether they are shown.
   const captionTrack = useCaptionTrack(playlist[partIndex]?.captions);
   const [ccOn, setCcOn] = useState(true);
@@ -170,7 +175,18 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video || seeking || isDraggingRef.current) return;
     const origin = playlist.length > 1 ? (offsets[partIndexRef.current] ?? 0) : 0;
-    setCurrentTime(origin + video.currentTime);
+    const now = origin + video.currentTime;
+    setCurrentTime(now);
+    const range = rangeRef.current;
+    if (range) {
+      if (now >= range.end) {
+        rangeRef.current = null;
+        video.pause();
+        setPlaying(false);
+      } else if (now < range.start - 1.5) {
+        rangeRef.current = null;
+      }
+    }
 
     if (video.buffered.length > 0) {
       try {
@@ -239,7 +255,17 @@ export function VideoPlayer({
 
   useImperativeHandle(ref, () => ({
     seek: (sec: number) => {
+      rangeRef.current = null;
       seekGlobal(sec);
+      const video = videoRef.current;
+      if (video?.paused) {
+        playAfterLoadRef.current = true;
+        void video.play().catch(() => {});
+      }
+    },
+    playRange: (startSec: number, endSec: number) => {
+      rangeRef.current = { start: startSec, end: endSec };
+      seekGlobal(startSec);
       const video = videoRef.current;
       if (video?.paused) {
         playAfterLoadRef.current = true;

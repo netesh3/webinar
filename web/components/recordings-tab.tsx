@@ -31,7 +31,8 @@ import { VideoPlayer, type VideoPlayerHandle } from "./video-player";
 import { RecordingChapters } from "./recording-chapters";
 import { playableRecordingParts, recordingSources } from "@/lib/recording-parts";
 import { chapterSeekTimes } from "@/lib/recap";
-import { simuliveAllowed } from "@/lib/host-features";
+import { clipsOffered, simuliveAllowed } from "@/lib/host-features";
+import { RecordingHighlights } from "./recording-highlights";
 import { simuliveEligible, simuliveScheduleHref } from "@/lib/simulive-create";
 import { SimuliveInfoButton } from "./simulive-info";
 
@@ -249,6 +250,15 @@ export function RecordingsTab({
             pending={recapPending}
             onSeek={(sec) => player.current?.seek(sec)}
           />
+          {/* Suggested highlights, for clips: the host's switch, after the end. */}
+          {ended && clipsOffered(account) && playing.status === "ready" && (
+            <RecordingHighlights
+              key={playing.id}
+              slug={w.id}
+              recording={playing}
+              onPreview={(start, end) => player.current?.playRange(start, end)}
+            />
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3">
             <p className="text-[12.5px] text-ink-2">
               Recorded by {playing.startedBy || "a presenter"}

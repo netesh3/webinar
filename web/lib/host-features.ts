@@ -1,4 +1,5 @@
 import {
+  FeatureClips,
   FeatureCloudRecording,
   FeatureFollowupSend,
   FeatureInstantWebinar,
@@ -47,4 +48,10 @@ export function instantOffered(account: WithFeatures): boolean {
 /** Sending the AI follow-up drafts from Results (followup_send, which needs ai). */
 export function followupSendOffered(account: WithFeatures): boolean {
   return hasFeature(account, FeatureFollowupSend);
+}
+
+/** Suggested highlights under a recording, for clips (clips, which needs ai and
+ *  cloud_recording). Off by default: an admin's per-host switch. */
+export function clipsOffered(account: WithFeatures): boolean {
+  return hasFeature(account, FeatureClips);
 }
