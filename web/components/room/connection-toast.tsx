@@ -4,6 +4,7 @@ import { ConnectionState, type Room } from "livekit-client";
 import { useConnectionState } from "@livekit/components-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  AWAY_MIN_MS,
   ConnectionToastTracker,
   connectionToastText,
   linkForRoom,
@@ -117,6 +118,25 @@ export function useConnectionToast(
   }, [over]);
   const greet = useCallback(() => {
     if (!overRef.current && tracker.greet(Date.now())) syncRef.current();
+  }, [tracker]);
+
+  // Back from a locked screen or another app: see resumed() in lib/connection-toast.ts.
+  useEffect(() => {
+    let hiddenAt: number | null = document.visibilityState === "hidden" ? Date.now() : null;
+    const onVisibility = () => {
+      const now = Date.now();
+      if (document.visibilityState === "hidden") {
+        hiddenAt ??= now;
+        return;
+      }
+      const away = hiddenAt === null ? 0 : now - hiddenAt;
+      hiddenAt = null;
+      if (away < AWAY_MIN_MS || overRef.current) return;
+      tracker.resumed(now);
+      syncRef.current();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [tracker]);
   return { greet };
 }

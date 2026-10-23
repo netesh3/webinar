@@ -79,7 +79,12 @@ import { LockIcon, SignalIcon, SlidersIcon } from "../icons";
 import { useAppConfig, useToast } from "../providers";
 import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
-import { planRecovery, RECOVERY_BACKOFF_MS } from "@/lib/recovery";
+import {
+  planRecovery,
+  RECOVERY_BACKOFF_MS,
+  RECOVERY_IDLE_RETRY_MS,
+  type Reach,
+} from "@/lib/recovery";
 import { usePresenceFallback } from "@/lib/presence";
 import { ActiveSpeakerProvider } from "./active-speaker";
 import { AIToggle } from "./ai-toggle";
@@ -723,6 +728,11 @@ function ConnectedRoom({
   const [attempt, setAttempt] = useState(0);
   const [recovering, setRecovering] = useState<number | null>(null);
   const attempts = useRef(0);
+  /* Set when the ladder ran out while the page was hidden or offline and the room waited
+   * for it to come back (see "wait" in lib/recovery.ts), until the next connect lands — so
+   * that connect can report how the resume went. A ref: it outlives the connect effect it
+   * started in, because the retry it schedules re-runs that effect. */
+  const resuming = useRef<{ waitedSince: number; wokeAt: number; trigger: string } | null>(null);
 
   // Held in a ref so the connect effect does not re-run — and therefore does not
   // tear down and rebuild the connection — when the parent re-renders and hands
@@ -867,6 +877,14 @@ function ConnectedRoom({
       trackEvent("presence_fallback", { userId: join.identity, roomName: slug }, { state: room.state });
     }
   }, [telemetryEnabled, join.identity, slug, room]);
+  // Read by the connect effect through a ref, so the flag is not one of its dependencies.
+  const reportResume = useRef<(payload: Record<string, unknown>) => void>(() => {});
+  useEffect(() => {
+    reportResume.current = (payload) => {
+      if (!telemetryEnabled) return;
+      trackEvent("background_resume", { userId: join.identity, roomName: slug }, payload);
+    };
+  }, [telemetryEnabled, join.identity, slug]);
   // Read by the connect effect through a ref, so the flag is not one of its dependencies.
   const reportConnectFailure = useRef<(attempt: number, err: unknown) => void>(() => {});
   useEffect(() => {
@@ -1151,6 +1169,47 @@ function ConnectedRoom({
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let settle: ReturnType<typeof setTimeout> | undefined;
+    let stopWaiting: (() => void) | undefined;
+
+    const reach = (): Reach => ({
+      hidden: typeof document !== "undefined" && document.visibilityState === "hidden",
+      online: typeof navigator === "undefined" || navigator.onLine !== false,
+    });
+
+    /* Out of attempts while the page was hidden or offline. Instead of the "Connection lost"
+     * dead end, wait — and start the ladder again from the first rung as soon as the page is
+     * looked at again or the network comes back. A slow retry runs meanwhile too, for a
+     * laptop's background tab whose network came back without an `online` event; a phone
+     * that froze the page runs none of this until it is unfrozen, which is the point of
+     * waking on visibility. The devices stay open, exactly as they do between rungs. */
+    const waitForReturn = () => {
+      if (stopWaiting) return;
+      const waitedSince = Date.now();
+      const wake = (trigger: string) => {
+        if (cancelled) return;
+        if (trigger === "visible" && document.visibilityState !== "visible") return;
+        if (navigator.onLine === false) return;
+        stopWaiting?.();
+        resuming.current = { waitedSince, wokeAt: Date.now(), trigger };
+        attempts.current = 0;
+        const plan = planRecovery("lost", 0);
+        if (plan.action !== "retry") return;
+        attempts.current = plan.attempt;
+        setRecovering(plan.attempt);
+        retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
+      };
+      const onVisible = () => wake("visible");
+      const onOnline = () => wake("online");
+      const idle = setInterval(() => wake("idle"), RECOVERY_IDLE_RETRY_MS);
+      document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("online", onOnline);
+      stopWaiting = () => {
+        clearInterval(idle);
+        document.removeEventListener("visibilitychange", onVisible);
+        window.removeEventListener("online", onOnline);
+        stopWaiting = undefined;
+      };
+    };
 
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
@@ -1168,11 +1227,15 @@ function ConnectedRoom({
        * host, the room being deleted, or the same identity signing in elsewhere are all
        * decisions somebody made — reconnecting would either fail identically or fight the
        * other tab. "lost" is the one that means the network, and the network comes back. */
-      const plan = planRecovery(exitReason, attempts.current);
+      const plan = planRecovery(exitReason, attempts.current, reach());
       if (plan.action === "retry") {
         attempts.current = plan.attempt;
         setRecovering(plan.attempt);
         retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
+        return;
+      }
+      if (plan.action === "wait") {
+        waitForReturn();
         return;
       }
       stopLocalCapture(room, captured.current);
@@ -1207,6 +1270,17 @@ function ConnectedRoom({
         await connect(credential.url, credential.token, CONNECT_OPTIONS);
         if (cancelled) return;
         setRecovering(null);
+        const resumed = resuming.current;
+        if (resumed) {
+          resuming.current = null;
+          const now = Date.now();
+          reportResume.current({
+            trigger: resumed.trigger,
+            waitedMs: resumed.wokeAt - resumed.waitedSince,
+            resumeMs: now - resumed.wokeAt,
+            attempt: attempts.current,
+          });
+        }
         /* Before the settle timer, not after: until this has run the presenter is connected
          * and publishing nothing, and that is not a state to start calling stable. See
          * lib/republish.ts for what a fresh session does not carry over and why. */
@@ -1228,11 +1302,17 @@ function ConnectedRoom({
         // Reported, because a connect that never lands is otherwise invisible: join_attempt
         // without join_success says it happened, not why.
         reportConnectFailure.current(attempts.current, err);
-        const plan = planRecovery("lost", attempts.current);
+        const plan = planRecovery("lost", attempts.current, reach());
         if (plan.action === "retry") {
           attempts.current = plan.attempt;
           setRecovering(plan.attempt);
           retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
+          return;
+        }
+        // Only once this room has connected: a first join that never landed is still the
+        // failure screen, where the person can see what went wrong.
+        if (plan.action === "wait" && epochRef.current > 0) {
+          waitForReturn();
           return;
         }
         setFailure(
@@ -1247,6 +1327,7 @@ function ConnectedRoom({
       cancelled = true;
       clearTimeout(retry);
       clearTimeout(settle);
+      stopWaiting?.();
       room.off(RoomEvent.Disconnected, onDisconnected);
       void disconnect();
     };
