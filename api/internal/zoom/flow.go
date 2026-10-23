@@ -172,6 +172,25 @@ func (f *Flow) leave(ctx context.Context, hostID string, prev Object, pushed int
 	return Saved{Venue: VenueApp}, nil
 }
 
+/* Remove deletes the Zoom meeting or webinar behind a webinar the host deleted
+ * in this app, so it does not linger in their Zoom account. A host who has
+ * disconnected Zoom since has nothing to delete it with; that is not an error.
+ * A meeting Zoom no longer has is already gone (Client.Delete ignores it).
+ */
+func (f *Flow) Remove(ctx context.Context, hostID, venue, zoomID string) error {
+	if zoomID == "" || !IsVenue(venue) {
+		return nil
+	}
+	access, err := f.access(ctx, hostID)
+	if errors.Is(err, ErrNotConnected) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return f.Client.Delete(ctx, access, venue, zoomID)
+}
+
 /* Push adds one registrant and stores their personal join URL.
  * A person with no email is not sent to Zoom.
  *
