@@ -13,6 +13,7 @@ import { ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
 import { EmailNavLink } from "./email/email-nav";
+import { useInstallMenuAction } from "./pwa";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -66,6 +67,7 @@ function homeHrefFor(canHost: boolean): string {
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const install = useInstallMenuAction();
   const { appName } = useAppConfig();
   const { account, status, signOut } = useSession();
   const { registrations } = useRegistrations();
@@ -161,6 +163,9 @@ export function TopNav() {
                   label: "Settings",
                   onSelect: () => router.push("/settings#integrations"),
                 },
+                ...(install.action
+                  ? [{ kind: "action" as const, label: "Install app", onSelect: install.action }]
+                  : []),
                 { kind: "separator" },
                 {
                   kind: "action",
@@ -172,6 +177,7 @@ export function TopNav() {
                 },
               ]}
             />
+            {install.modal}
           </>
         ) : (
           <div className="hidden items-center gap-2 sm:flex">

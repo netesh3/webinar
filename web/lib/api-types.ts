@@ -2331,6 +2331,152 @@ export interface CRMMetricsByKind {
 }
 
 //////////
+// source: push.go
+
+/**
+ * PushKind is why a browser is being woken up. Each is one toggle in Settings → Notifications.
+ */
+export type PushKind = string;
+/**
+ * An attendee's webinar went live (host pressed Go live, or a simulive started).
+ */
+export const PushWebinarLive: PushKind = "webinar_live";
+/**
+ * Fifteen minutes before a webinar an attendee registered for.
+ */
+export const PushWebinarReminder: PushKind = "webinar_reminder";
+/**
+ * The replay of a webinar an attendee registered for was published to registrants.
+ */
+export const PushReplayReady: PushKind = "replay_ready";
+/**
+ * A meeting somebody registered for (or was invited to) started.
+ */
+export const PushMeetingStarted: PushKind = "meeting_started";
+/**
+ * Host and co-hosts: somebody knocked at a meeting's lobby while the host is not in it.
+ */
+export const PushLobbyKnock: PushKind = "lobby_knock";
+/**
+ * Host: the AI recap of a session is ready.
+ */
+export const PushRecapReady: PushKind = "recap_ready";
+/**
+ * Host: recordings are about to be deleted (the 7-day and 1-day reminders).
+ */
+export const PushRecordingExpiring: PushKind = "recording_expiring";
+/**
+ * Host: a registration is waiting for approval.
+ */
+export const PushApprovalRequested: PushKind = "approval_requested";
+/**
+ * "Send test notification" in Settings. Not a preference: it always goes.
+ */
+export const PushTest: PushKind = "test";
+/**
+ * PushPublicKeyResponse is GET /api/push/public-key. Enabled is false, and PublicKey empty,
+ * when the deployment has no VAPID keys: the UI then offers nothing push-shaped.
+ */
+export interface PushPublicKeyResponse {
+  enabled: boolean;
+  publicKey: string;
+}
+/**
+ * PushKeys are a PushSubscription's keys, as PushSubscription.toJSON() gives them.
+ */
+export interface PushKeys {
+  p256dh: string;
+  auth: string;
+}
+/**
+ *  PushSubscribeRequest is POST /api/push/subscribe.
+ *  *
+ *  * Signed in, the browser is the account's. With JoinKey, it is (also) scoped to that
+ *  * registration: a guest who registered without an account is told when THAT webinar starts.
+ *  * One of the two is required.
+ */
+export interface PushSubscribeRequest {
+  endpoint: string;
+  keys: PushKeys;
+  ua?: string;
+  joinKey?: string;
+  /**
+   *  OldEndpoint is set by the service worker's pushsubscriptionchange: the browser's push
+   * 	 * service replaced OldEndpoint with Endpoint. Knowing the old one is the credential (only
+   * 	 * that browser had it), and the account or registrations it was bound to carry over.
+   */
+  oldEndpoint?: string;
+}
+/**
+ *  PushUnsubscribeRequest is DELETE /api/push/subscribe. With JoinKey only that registration's
+ *  * link goes; without, the browser stops hearing from this account (signed in) or at all.
+ */
+export interface PushUnsubscribeRequest {
+  endpoint: string;
+  joinKey?: string;
+}
+/**
+ * PushSubscribeResponse says what the browser is now subscribed as.
+ */
+export interface PushSubscribeResponse {
+  /**
+   * "account" when bound to the signed-in account, "registration" for a guest, "renewed"
+   * when an old endpoint was replaced.
+   */
+  scope: string;
+}
+/**
+ * PushPreference is one toggle. Host is true for the kinds only a host receives, so an
+ * attendee's settings can leave them out.
+ */
+export interface PushPreference {
+  kind: PushKind;
+  enabled: boolean;
+  host: boolean;
+}
+/**
+ * PushPreferencesResponse is GET /api/push/preferences.
+ */
+export interface PushPreferencesResponse {
+  /**
+   * Enabled is whether this deployment sends push at all.
+   */
+  enabled: boolean;
+  preferences: PushPreference[];
+  /**
+   * Devices is how many browsers this account is subscribed on.
+   */
+  devices: number /* int */;
+}
+/**
+ * PushPreferencesUpdate is PUT /api/push/preferences: the kinds to change.
+ */
+export interface PushPreferencesUpdate {
+  preferences: PushPreference[];
+}
+/**
+ * PushTestResponse is POST /api/push/test: how many browsers it was queued for.
+ */
+export interface PushTestResponse {
+  queued: number /* int */;
+}
+/**
+ *  PushPayload is the JSON a push message carries, decrypted by the browser and read by the
+ *  * service worker's `push` handler. URL is a path on this site; the worker opens it, or focuses
+ *  * a tab already on it, when the notification is clicked.
+ */
+export interface PushPayload {
+  kind: PushKind;
+  title: string;
+  body: string;
+  url: string;
+  tag?: string;
+  renotify?: boolean;
+  icon?: string;
+  badge?: string;
+}
+
+//////////
 // source: recap.go
 
 /**

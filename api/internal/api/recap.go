@@ -505,6 +505,7 @@ func (s *Server) emailRecap(ctx context.Context, wb types.Webinar) {
 	}
 	if queued {
 		s.flushMailSoon()
+		s.pushRecapReady(ctx, wb, host.ID)
 	}
 }
 

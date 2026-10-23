@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist, Outfit } from "next/font/google";
 import Script from "next/script";
 import { AppProviders } from "@/components/providers";
@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { siteOrigin } from "@/lib/site-origin";
 import type { AppConfig } from "@/lib/api-types";
 import { SidebarBoot } from "@/components/sidebar-boot";
+import { PwaBoot } from "@/components/pwa";
 import { sidebarBootScript } from "@/lib/sidebar";
 import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
@@ -46,6 +47,13 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     applicationName: name,
+    /* Added to the Home Screen on iPhone and iPad it opens standalone, which is also the
+     * only way iOS (16.4+) delivers Web Push. The icon is app/apple-icon.png. */
+    appleWebApp: {
+      capable: true,
+      title: name,
+      statusBarStyle: "default",
+    },
     // Google Search Console / Auth Platform homepage ownership verification
     verification: {
       google: "xjAAcbLTS2AMiLjfZuvIt8FZ8UUMaxRzlll7U9_3lQE",
@@ -58,6 +66,11 @@ export async function generateMetadata(): Promise<Metadata> {
     },
   };
 }
+
+/** The installed app's title bar, and the mobile browser's: --color-brand. */
+export const viewport: Viewport = {
+  themeColor: "#0b5cff",
+};
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Fetched here so the shell renders with the operator's branding on the first
@@ -111,6 +124,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full flex-col font-sans">
         <SidebarBoot />
+        {/* The service worker (push, offline page) and the install prompt. Asks for nothing. */}
+        <PwaBoot />
         {/* Google Tag Manager (noscript) */}
         <noscript>
           <iframe

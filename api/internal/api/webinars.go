@@ -339,6 +339,7 @@ func (s *Server) alertHostOfPending(ctx context.Context, wb types.Webinar, reg t
 	}); err != nil {
 		s.log.Error("alert host: could not queue", "webinar", wb.ID, "err", err)
 	}
+	s.pushApprovalRequested(ctx, wb, hostID, reg, waiting)
 }
 
 // validateRegistration checks the standard fields plus any required custom

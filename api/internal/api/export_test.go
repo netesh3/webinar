@@ -117,3 +117,13 @@ func SweepExpiredRecordings(s *Server, ctx context.Context) { s.sweepExpiredReco
 func RecordingStartStorage(s *Server, ctx context.Context, hostID, recordingID string) string {
 	return s.recordingStartStorage(ctx, hostID, recordingID)
 }
+
+// SetPushEndpointCheck replaces which subscription endpoints are accepted, so a test can
+// point a browser at its own fake push service.
+func SetPushEndpointCheck(s *Server, f func(string) error) { s.pushEndpointOK = f }
+
+// FlushPush sends every push message that is due, now.
+func FlushPush(s *Server, ctx context.Context) { s.flushPush(ctx) }
+
+// SweepPushReminders queues the 15-minute reminders that are due.
+func SweepPushReminders(s *Server, ctx context.Context) { s.sweepPushReminders(ctx) }

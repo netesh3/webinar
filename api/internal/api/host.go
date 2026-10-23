@@ -1285,6 +1285,10 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "start webinar", err)
 		return
 	}
+	// Going live, not rejoining: tell the registrants who asked (push.go).
+	if existing.Status != types.StatusLive {
+		s.pushWentLive(r.Context(), wb)
+	}
 
 	room := lk.RoomName(slug)
 	sfu, _, _, err := s.ensureRoom(r.Context(), wb, room)

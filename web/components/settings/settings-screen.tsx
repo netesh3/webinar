@@ -10,9 +10,10 @@ import { ApiError, api } from "@/lib/api";
 import { AccountSection } from "./account-section";
 import { AppearanceSection } from "./appearance-section";
 import { IntegrationsSection } from "./integrations-section";
+import { NotificationsSection } from "../pwa";
 import { ProfileSection } from "./profile-section";
 
-const SECTIONS = ["profile", "appearance", "integrations", "account"] as const;
+const SECTIONS = ["profile", "appearance", "notifications", "integrations", "account"] as const;
 type Section = (typeof SECTIONS)[number];
 
 function isSection(value: string): value is Section {
@@ -100,6 +101,7 @@ export function SettingsScreen() {
   const items: { id: Section; label: string; icon: string }[] = [
     { id: "profile", label: "Profile", icon: "person" },
     { id: "appearance", label: "Appearance", icon: "contrast" },
+    { id: "notifications", label: "Notifications", icon: "notifications" },
     { id: "integrations", label: "Integrations", icon: "extension" },
     { id: "account", label: "Account", icon: "manage_accounts" },
   ];
@@ -148,6 +150,7 @@ export function SettingsScreen() {
       <div className="mt-5">
           {section === "profile" && <ProfileSection account={account} />}
           {section === "appearance" && <AppearanceSection />}
+          {section === "notifications" && <NotificationsSection canHost={account.canHost} />}
           {section === "integrations" && (
             <IntegrationsSection
               canHost={account.canHost}

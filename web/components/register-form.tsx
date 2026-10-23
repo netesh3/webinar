@@ -26,6 +26,7 @@ import { usePrimeMediaOnGesture } from "@/lib/media-unlock";
 import { androidChromeIntent, currentInAppBrowser, currentIsAndroid } from "@/lib/device";
 import { CHECKBOX_YES } from "@/lib/registration-questions";
 import { WhatsAppOptInCheckbox } from "@/engage";
+import { PushOptIn } from "./pwa";
 
 /* Registration.
  *
@@ -1497,6 +1498,10 @@ function Confirmed({
           <div className="mb-3">
             <CopyField label="Your join key" value={r.joinKey} />
           </div>
+
+          {/* Asked here, after registering, and only on a press: never on page load. */}
+          {!ended && <PushOptIn joinKey={r.joinKey} meeting={w.kind === "meeting"} />}
+          {!ended && <div className="mb-3" />}
 
           <div className="grid grid-cols-2 gap-2">
             <ButtonLink

@@ -221,6 +221,8 @@ func (s *Server) afterSimuliveStarted(ctx context.Context, slug string) {
 	if err != nil {
 		return
 	}
+	// The registrants who asked to be told (push.go). Before the room, which can fail.
+	s.pushWentLive(ctx, wb)
 	sfu, _, _, err := s.ensureRoom(ctx, wb, lk.RoomName(slug))
 	if err != nil {
 		s.log.Warn("simulive: could not make the room on start", "slug", slug, "error", err)

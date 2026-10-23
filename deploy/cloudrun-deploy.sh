@@ -203,6 +203,11 @@ ENV_VARS=(
 # secret. Unset, an edge recording starts a compositor of its own, as before.
 [[ -n "${MIXREC_SECRET:-}" ]] && ENV_VARS+=("MIXREC_SECRET=${MIXREC_SECRET}")
 [[ -n "${MIXREC_URL:-}" ]] && ENV_VARS+=("MIXREC_URL=${MIXREC_URL}")
+# Web Push (api/internal/push): the VAPID pair and contact. All three or none — the API refuses
+# to boot on a partial set. Unset, no notifications are offered or sent.
+[[ -n "${VAPID_PUBLIC_KEY:-}" ]] && ENV_VARS+=("VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}")
+[[ -n "${VAPID_PRIVATE_KEY:-}" ]] && ENV_VARS+=("VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}")
+[[ -n "${VAPID_SUBJECT:-}" ]] && ENV_VARS+=("VAPID_SUBJECT=${VAPID_SUBJECT}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")

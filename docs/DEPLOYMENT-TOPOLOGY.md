@@ -163,6 +163,23 @@ The 10-minute retry covers a merge that ships the API and a box change together:
 | `CORS_ORIGINS` / `WEB_BASE_URL` | Frontend origins (`https://webinarliv.com` + workers.dev) |
 | `ADMIN_EMAILS` / `ADMIN_PASSWORD` | Bootstrap admin at API boot (≥10 chars); GitHub secrets → Cloud Run env |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | First-party Google sign-in + Connect YouTube (see `deploy/SUPABASE.md`) |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web Push, optional (see below) |
+
+**Web Push:** the installable app (`web/app/manifest.ts`, `web/public/sw.js`) works without
+any configuration; notifications need a VAPID key pair. Generate it once with
+`npx web-push generate-vapid-keys`, and store
+the two values plus a contact (`VAPID_SUBJECT=mailto:support@…`) as the GitHub secrets
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (or in `deploy/cloudrun.env`);
+`cloudrun-deploy.yml` passes them through when set. All three or none — the API refuses to boot
+on a partial or mismatched set. Do not rotate the pair casually: every browser subscribed under
+the old public key stops receiving pushes and has to opt in again. Sending rides the tick (the
+realtime lane's `flushPush`, plus an immediate flush when a session goes live), so it needs the
+same per-minute `/api/internal/tick` caller as reminders. Nothing on the web side needs the keys:
+the browser fetches the public key from `GET /api/push/public-key`.
+
+To check a deployment: Settings → Notifications → turn on "This device" → **Send test
+notification**. On Android/desktop Chrome, Edge or Firefox that is all; on iPhone/iPad (iOS
+16.4+) first Share → **Add to Home Screen** and open the app from there.
 
 **Admin bootstrap:** set `ADMIN_EMAILS` + `ADMIN_PASSWORD` (≥10 chars) as GitHub secrets (or in `deploy/cloudrun.env`) and redeploy so `EnsureAdminAccount` / `PromoteAdmins` run. Production does not ship seeded `webcast-dev` accounts.
 

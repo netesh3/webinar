@@ -147,6 +147,15 @@ func (s *Server) enqueueReplay(ctx context.Context, slug string, rec types.Recor
 		}
 	}
 
+	// The push beside the email, to the same people, at the same time, when the email goes (push.go).
+	regIDs := make([]string, 0, len(people))
+	for _, p := range people {
+		regIDs = append(regIDs, p.RegistrationID)
+	}
+	if sendEmail {
+		s.pushReplayReady(ctx, wb, rec.ID, regIDs, due)
+	}
+
 	// The URL is not logged. It is public, but it is also the thing a passcode is
 	// protecting, and this line is otherwise safe to ship anywhere.
 	s.log.Info("replay queued", "host", hostID, "webinar", slug, "recording", rec.ID,

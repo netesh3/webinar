@@ -24,6 +24,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/notify"
+	"github.com/netkumar/webcast/api/internal/push"
 	"github.com/netkumar/webcast/api/internal/realtime"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
@@ -188,6 +189,11 @@ type Server struct {
 	// qaSessions is the Q&A assistant's per-session pass state (qa_assist.go), slug to
 	// *qaSession. The zero value is ready.
 	qaSessions sync.Map
+
+	// push sends Web Push (push.go); nil when the VAPID variables are unset. pushEndpointOK
+	// is which subscription endpoints are accepted (push.ValidEndpoint; tests widen it).
+	push           *push.Sender
+	pushEndpointOK func(string) error
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -272,6 +278,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		aiWriteLimit: httpx.NewRateLimiter(6, time.Minute),
 	}
 	srv.initEngagement()
+	newPushSender(srv)
 
 	/* Edge delivery's event bus. With a store it fans out across instances through Postgres
 	 * LISTEN/NOTIFY; the LISTEN connection opens only when this instance gets its first edge
@@ -364,6 +371,9 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/sales/chat/contact", s.handleSalesContact)
 		// The price list. Public: the pricing page renders it for a visitor with no session.
 		r.Get("/billing/plans", s.handleBillingPlans)
+		// Web Push: the public key, subscribe/unsubscribe (an account or a registration),
+		// and the signed-in account's preferences and test button. See push.go.
+		s.mountPush(r)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Post("/billing/orders", s.handleCreateBillingOrder)
