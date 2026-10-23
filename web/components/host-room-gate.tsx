@@ -12,6 +12,7 @@ import type { JoinResponse } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { detectArrival, hasRejoinIntent, type Arrival } from "@/lib/rejoin";
 import { trackEvent } from "@/lib/telemetry";
+import { reportEvent } from "@/lib/observability";
 import { serverRetryDelayMs, serverWaitCopy, serverWaitOf, type ServerWait } from "@/lib/video-server";
 
 /** Starts the stage for a host or panelist. Requires the session cookie; the API
@@ -73,6 +74,8 @@ export function HostRoomGate({ slug }: { slug: string }) {
           return;
         }
         setServerWait(null);
+        // Grafana Faro: why a host or panelist could not get in (a code, nothing personal).
+        reportEvent("room_join_refused", { door: "stage", code: e instanceof ApiError ? e.code : "unknown" });
         if (e instanceof ApiError) setError({ code: e.code, message: e.message });
         else setError({ code: "unknown", message: "Could not start the webinar." });
       });

@@ -63,6 +63,9 @@
 #   TELEMETRY_ENABLED — hardcoded below (not a secret): "true" turns on
 #     POST /telemetry for a performance-test window. Flip to "false" and
 #     redeploy when the test is done.
+#   OTEL_EXPORTER_OTLP_HEADERS — optional; "Authorization=Basic <base64 instance:token>" for
+#     Grafana Cloud's OTLP gateway. Used only with the repo variable OTEL_EXPORTER_OTLP_ENDPOINT;
+#     without that variable telemetry is off. See deploy/cloudrun.env.example.
 #   CLOUD_SQL_INSTANCE — only if not using Supabase
 #   GCP_PROJECT / GCP_REGION as repo Variables (defaults in deploy/cloudrun-deploy.sh)
 #   RECORDINGS_ENABLED — unset/false by default; set "true" to turn recording on
@@ -86,6 +89,10 @@
 #     EDGE_ENCODING_WIDTH / EDGE_ENCODING_HEIGHT / EDGE_ENCODING_FPS /
 #     EDGE_VIDEO_BITRATE_KBPS / EDGE_AUDIO_BITRATE_KBPS / EDGE_H264_PROFILE — Edge delivery playback and
 #     egress encoding; each unset keeps its default. See docs/edge-delivery.md.
+#   OTEL_EXPORTER_OTLP_ENDPOINT — Grafana Cloud OTLP gateway, e.g.
+#     https://otlp-gateway-prod-ap-south-1.grafana.net/otlp. Unset = telemetry off.
+#     OTEL_TRACES_SAMPLER / OTEL_TRACES_SAMPLER_ARG / OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME
+#     override the defaults in deploy/cloudrun-deploy.sh.
 #   EMPTY_ROOM_CLOSE_MIN — minutes an empty live room may run past its scheduled
 #     start before the server ends it (default 10; 0 = never).
 #
@@ -238,6 +245,13 @@ jobs:
       WELCOME_EMAIL: ${{ vars.WELCOME_EMAIL }}
       CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
       CONTACT_PHONE: ${{ vars.CONTACT_PHONE }}
+      # OpenTelemetry to Grafana Cloud (api/internal/observe). Off until the endpoint variable is set.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+      OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+      OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME }}
+      OTEL_RESOURCE_ATTRIBUTES: ${{ vars.OTEL_RESOURCE_ATTRIBUTES }}
+      OTEL_TRACES_SAMPLER: ${{ vars.OTEL_TRACES_SAMPLER }}
+      OTEL_TRACES_SAMPLER_ARG: ${{ vars.OTEL_TRACES_SAMPLER_ARG }}
       SEED_DEV: "false"
       # Temporary, for a performance-test window: POST /telemetry (see
       # api/internal/api/telemetry.go). Flip back to "false" and redeploy when

@@ -21,6 +21,13 @@ authInternalUsers:
       - action: publish
       - action: read
       - action: playback
+  # The metrics listener below, for Alloy on this host (docker-compose.alloy.yml) and the local
+  # Prometheus. Loopback only, whatever __PUBLISH_IPS__ holds in remote-egress mode.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: metrics
 
 # No RTSP: it was only the WHEP transcode's own loopback transport.
 rtsp: false
@@ -69,7 +76,10 @@ srt: false
 # a protocol nothing here speaks.
 moq: false
 api: false
-metrics: false
+# Prometheus metrics (paths, readers, bytes) for Alloy and the local Prometheus. Loopback only:
+# 9998 is on neither the ufw allow-list nor the cloud firewall, and Caddy does not proxy it.
+metrics: true
+metricsAddress: 127.0.0.1:9998
 pprof: false
 playback: false
 

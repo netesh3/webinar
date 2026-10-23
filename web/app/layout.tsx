@@ -8,6 +8,7 @@ import { siteOrigin } from "@/lib/site-origin";
 import type { AppConfig } from "@/lib/api-types";
 import { SidebarBoot } from "@/components/sidebar-boot";
 import { PwaBoot } from "@/components/pwa";
+import { FaroBoot } from "@/components/faro-boot";
 import { sidebarBootScript } from "@/lib/sidebar";
 import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
@@ -126,6 +127,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <SidebarBoot />
         {/* The service worker (push, offline page) and the install prompt. Asks for nothing. */}
         <PwaBoot />
+        {/* Grafana Faro (errors, Web Vitals), loaded after the page; off without NEXT_PUBLIC_FARO_URL. */}
+        <FaroBoot />
         {/* Google Tag Manager (noscript) */}
         <noscript>
           <iframe

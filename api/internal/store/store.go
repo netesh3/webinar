@@ -16,6 +16,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/netkumar/webcast/api/internal/observe"
 )
 
 //go:embed migrations/*.sql
@@ -92,6 +94,11 @@ func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
 	cfg.MaxConnLifetime = time.Hour
 	cfg.MaxConnIdleTime = 10 * time.Minute
 	cfg.HealthCheckPeriod = 30 * time.Second
+	// Queries as child spans of the request that made them; nil (no tracer) when
+	// telemetry is off. See observe.QueryTracer for what is and is not recorded.
+	if t := observe.QueryTracer(); t != nil {
+		cfg.ConnConfig.Tracer = t
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

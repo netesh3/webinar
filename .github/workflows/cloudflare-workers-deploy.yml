@@ -21,6 +21,7 @@
 #
 # Build env (plain config, not secrets):
 #   NEXT_PUBLIC_API_BASE="" — same-origin /api via the Worker proxy (web/CLOUDFLARE.md)
+#   NEXT_PUBLIC_FARO_URL — optional repo variable: Grafana Faro collector URL (errors, Web Vitals)
 #   OPEN_NEXT=1
 #
 # The runtime API target stays in web/wrangler.jsonc vars (API_INTERNAL_URL).
@@ -66,6 +67,11 @@ jobs:
       # Virtual backgrounds / low-light (MediaPipe + WebGL). Set to "0" to kill-switch
       # production if the effect path regresses. Unset locally keeps the UI on for `next dev`.
       NEXT_PUBLIC_VIRTUAL_BACKGROUNDS: "1"
+      # Grafana Faro (web/lib/faro-init.ts): the collector URL from Frontend Observability,
+      # public by design. Repo variable NEXT_PUBLIC_FARO_URL; unset, the build has no Faro.
+      NEXT_PUBLIC_FARO_URL: ${{ vars.NEXT_PUBLIC_FARO_URL }}
+      NEXT_PUBLIC_FARO_ENV: production
+      NEXT_PUBLIC_GIT_SHA: ${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v4

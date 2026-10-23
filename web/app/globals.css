@@ -1885,6 +1885,36 @@ html[data-theme="dark"] .legal {
   text-underline-offset: 2px;
 }
 
+.legal-body .legal-shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.9rem;
+  margin: 0.9rem 0 0;
+}
+
+.legal-body .legal-shots figure {
+  margin: 0;
+}
+
+.legal-body .legal-shots a {
+  display: block;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.legal-body .legal-shots img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.legal-body .legal-shots figcaption {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--home-ink-3);
+}
+
 .legal-body a:hover {
   color: var(--home-accent-hover);
 }

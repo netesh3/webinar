@@ -17,6 +17,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/engage"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
+	"github.com/netkumar/webcast/api/internal/observe"
 	"github.com/netkumar/webcast/api/internal/store"
 )
 
@@ -33,12 +34,35 @@ func run() error {
 		return err
 	}
 
-	log := newLogger(cfg)
-	log.Info("starting webcast api", "config", cfg.String())
-
 	// Root context cancelled on SIGINT/SIGTERM so shutdown is orderly.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	/* Telemetry before anything else, so the logger, the database pool and the router can
+	 * all be built instrumented. Off (and free) unless OTEL_EXPORTER_OTLP_ENDPOINT is set;
+	 * see internal/observe.
+	 *
+	 * Never fatal. Telemetry that cannot start is a dashboard going quiet, and refusing to
+	 * boot over it would turn that into an outage. */
+	tel, telErr := observe.Setup(ctx)
+	if telErr != nil {
+		tel = &observe.Telemetry{}
+	}
+	log := newLogger(cfg, tel)
+	if telErr != nil {
+		log.Error("telemetry did not start; continuing without it", "error", telErr)
+	}
+	/* Flushed last, after the HTTP drain, with a deadline of its own: the drain may have
+	 * used the whole grace period, and the final batch is the one describing the shutdown.
+	 * Cloud Run sends SIGKILL ten seconds after SIGTERM; see Telemetry.Shutdown. */
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := tel.Shutdown(flushCtx); err != nil {
+			log.Warn("telemetry did not flush before the deadline", "error", err)
+		}
+	}()
+	log.Info("starting webcast api", "config", cfg.String(), "telemetry", tel.Enabled())
 
 	st, err := store.Open(ctx, cfg.DatabaseURL, log)
 	if err != nil {
@@ -185,7 +209,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           apiServer.Routes(),
+		Handler:           observe.HTTPHandler(apiServer.Routes()),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -222,7 +246,7 @@ func run() error {
 	return nil
 }
 
-func newLogger(cfg config.Config) *slog.Logger {
+func newLogger(cfg config.Config, tel *observe.Telemetry) *slog.Logger {
 	level := slog.LevelInfo
 	if cfg.IsDev() {
 		level = slog.LevelDebug
@@ -234,5 +258,6 @@ func newLogger(cfg config.Config) *slog.Logger {
 		// JSON in production so Loki/CloudWatch can index the fields.
 		h = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	}
-	return slog.New(h)
+	// Unchanged on stdout; with telemetry on, records are also sent over OTLP.
+	return slog.New(observe.LogHandler(tel, h, level))
 }

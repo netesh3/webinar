@@ -326,6 +326,39 @@ if [[ "$MIXREC" != 1 ]]; then
   rm -f mixrec.env
 fi
 
+# Grafana Alloy (docker-compose.alloy.yml, alloy/config.alloy): metrics and container logs to
+# Grafana Cloud. Opt-in: all five GRAFANA_CLOUD_* lines in .env (the deploy workflow writes them
+# from the repo's variables and secret). Any missing: Alloy is not run, and an old one is removed.
+# ALLOY_BOX in .env names this box in Grafana (the `box` label); the hostname when unset.
+ALLOY=0
+ALLOY_KEYS=(GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USER GRAFANA_CLOUD_TOKEN)
+alloy_missing=()
+for k in "${ALLOY_KEYS[@]}"; do
+  [[ -n "$(env_value "$k")" ]] || alloy_missing+=("$k")
+done
+if (( ${#alloy_missing[@]} == ${#ALLOY_KEYS[@]} )); then
+  : # Not configured: nothing to say.
+elif (( ${#alloy_missing[@]} > 0 )); then
+  echo "Grafana Cloud partly configured (missing ${alloy_missing[*]} in .env); Alloy not started" >&2
+elif [[ ! -f docker-compose.alloy.yml || ! -f alloy/config.alloy ]]; then
+  echo "GRAFANA_CLOUD_* set but docker-compose.alloy.yml or alloy/config.alloy is missing; sync deploy files" >&2
+else
+  ALLOY_BOX="$(env_value ALLOY_BOX)"
+  ALLOY_BOX="${ALLOY_BOX:-$(hostname -s)}"
+  umask 077
+  {
+    for k in "${ALLOY_KEYS[@]}"; do echo "${k}=$(env_value "$k")"; done
+    echo "ALLOY_BOX=${ALLOY_BOX}"
+  } >alloy.env
+  umask 022
+  COMPOSE_ARGS+=("-f" "docker-compose.alloy.yml")
+  ALLOY=1
+fi
+if [[ "$ALLOY" != 1 ]]; then
+  docker ps -aq --filter label=com.docker.compose.service=alloy | xargs -r docker rm -f >/dev/null
+  rm -f alloy.env
+fi
+
 TURN443=0
 if [[ "$TURN_TLS_443" == "true" ]]; then
   # Swaps the caddy image (built here from ./caddy-l4) and its Caddyfile; see above.
@@ -377,6 +410,10 @@ fi
 docker compose "${COMPOSE_ARGS[@]}" restart caddy
 if [[ -f docker-compose.egress.yml ]]; then
   docker compose "${COMPOSE_ARGS[@]}" restart mediamtx
+fi
+# alloy/config.alloy is bind-mounted too, and read at start.
+if [[ "$ALLOY" == 1 ]]; then
+  docker compose "${COMPOSE_ARGS[@]}" restart alloy
 fi
 
 # TURN/TLS health: LiveKit's plain TURN listener behind Caddy, then the path through :443
@@ -438,5 +475,8 @@ if [[ "$CAPTIONS" == 1 ]]; then
 fi
 if [[ "$MIXREC" == 1 ]]; then
   echo "Mix recorder: on (https://${DOMAIN}/mixrec/v1/health; docker compose logs mixrec)"
+fi
+if [[ "$ALLOY" == 1 ]]; then
+  echo "Grafana Cloud: Alloy on, box=${ALLOY_BOX} (docker compose logs alloy)"
 fi
 echo "Grafana: https://${DOMAIN}/grafana/ (user: admin, password in ${TARGET}/.env.keys)"
