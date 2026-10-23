@@ -4522,16 +4522,6 @@ export const FeatureFollowupSend = "followup_send";
  */
 export const FeatureCaptions = "captions";
 /**
- *  FeatureAV1 is AV1 video in this host's sessions (beta): capable presenters' cameras and
- * 	 * screen shares publish AV1 with a VP8 / H264 backup (web/lib/codec-policy.ts), and weak
- * 	 * subscribers leave AV1 out of what they receive (web/lib/receive-codecs.ts).
- * 	 *
- * 	 * Off — the default for every account, because absent means off — means every session
- * 	 * publishes VP8 / VP9 / H264 exactly as before. The host's switch decides for everyone in
- * 	 * their session; see JoinResponse.AV1.
- */
-export const FeatureAV1 = "av1";
-/**
  * Feature groups: the admin screen's headings (Feature.Group).
  */
 export const FeatureGroupSessions = "sessions";
@@ -7547,14 +7537,6 @@ export interface JoinResponse {
    * 	 * an attendee's join skips the lookup and this stays false for them.
    */
   whiteboard: boolean;
-  /**
-   *  AV1 is whether this session uses AV1 video (the host's FeatureAV1, beta).
-   * 	 *
-   * 	 * Sent to everyone in the room, not only the stage, so the whole room behaves the same:
-   * 	 * publishers may send AV1 (if their device passes the browser's own gate) and weak
-   * 	 * subscribers exclude it on receive. False: no AV1 publishing and no receive-side change.
-   */
-  av1: boolean;
   /**
    *  JoinKey is the caller's own registration key, echoed back.
    * 	 *

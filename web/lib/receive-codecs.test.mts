@@ -20,25 +20,14 @@ const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebK
 
 const hw = { supported: true, smooth: true, powerEfficient: true };
 const sw = { supported: true, smooth: true, powerEfficient: false };
-const base: ReceiveInputs = { role: "participant", sessionAv1: true, ua: DESKTOP, cores: 10, decoding: sw };
+const base: ReceiveInputs = { role: "participant", ua: DESKTOP, cores: 10, decoding: sw };
 const v = (p: Partial<ReceiveInputs>) => receiveAv1Verdict({ ...base, ...p });
 
-// The recorder never receives AV1, whatever the box reports — and with or without the beta switch.
+// The recorder never receives AV1, whatever the box reports.
 for (const cores of [0, 2, 4, 8, 32]) {
   for (const decoding of [null, sw, hw]) {
-    for (const sessionAv1 of [true, false, undefined]) {
-      check(() =>
-        assert.deepEqual(v({ role: "recorder", ua: HEADLESS, cores, decoding, sessionAv1 }), { excludeAv1: true, reason: "recorder" }),
-      );
-    }
+    check(() => assert.deepEqual(v({ role: "recorder", ua: HEADLESS, cores, decoding }), { excludeAv1: true, reason: "recorder" }));
   }
-}
-
-// Without the host's "AV1 video (beta)" switch participants are left alone, even the weakest:
-// nothing in the room publishes AV1, and no RTCPeerConnection patch is installed.
-for (const p of [{}, { cores: 2 }, { ua: ANDROID, decoding: null }, { decoding: { supported: false, smooth: false, powerEfficient: false } }]) {
-  check(() => assert.deepEqual(v({ ...p, sessionAv1: false }), { excludeAv1: false, reason: "beta-off" }));
-  check(() => assert.deepEqual(v({ ...p, sessionAv1: undefined }), { excludeAv1: false, reason: "beta-off" }));
 }
 
 // Desktops: AV1 unless ≤ 4 cores or decode is not supported / smooth. Software decode is fine.

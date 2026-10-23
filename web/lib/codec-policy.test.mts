@@ -7,7 +7,7 @@
  */
 
 import assert from "node:assert/strict";
-import { av1Now, av1Verdict, isAppleWebKit, setAv1Session, type Av1Inputs } from "./codec-policy.ts";
+import { av1Verdict, isAppleWebKit, type Av1Inputs } from "./codec-policy.ts";
 import { shareCodec, isSvcShareCodec } from "./share-mode.ts";
 
 let checks = 0;
@@ -49,7 +49,6 @@ const capable: Av1Inputs = {
   encoding: { supported: true, smooth: true, powerEfficient: false },
   height: 1080,
   demoted: false,
-  sessionAv1: true,
 };
 const v = (patch: Partial<Av1Inputs>) => av1Verdict({ ...capable, ...patch });
 
@@ -117,20 +116,6 @@ check(() => assert.equal(v({ ua: UA.android, cores: 8, deviceMemoryGb: 8, encodi
 // ---------------------------------------------------------------- switches
 check(() => assert.deepEqual(v({ demoted: true }), { av1: false, reason: "cpu-demoted" }));
 check(() => assert.deepEqual(v({ disabled: true }), { av1: false, reason: "disabled" }));
-// The host's "AV1 video (beta)" switch: off (the default) means no AV1 on the most capable machine.
-for (const ua of [UA.chromeMac, UA.chromeWin, UA.edgeWin]) {
-  check(() => assert.deepEqual(v({ ...maxed, ua, sessionAv1: false }), { av1: false, reason: "beta-off" }));
-  check(() => assert.deepEqual(v({ ...maxed, ua, sessionAv1: undefined }), { av1: false, reason: "beta-off" }));
-}
-
-// The runtime gate: av1Now says no until the room turns the session switch on, whatever the probe.
-setAv1Session(false);
-check(() => assert.deepEqual(av1Now("camera"), { av1: false, reason: "beta-off" }));
-check(() => assert.deepEqual(av1Now("share"), { av1: false, reason: "beta-off" }));
-setAv1Session(true);
-// On, with no probe run (node has no navigator.mediaCapabilities): still no, pending.
-check(() => assert.equal(av1Now("camera").av1, false));
-setAv1Session(false);
 
 // ---------------------------------------------------------------- share codec follows the gate
 check(() => assert.equal(shareCodec(UA.chromeMac, true), "av1"));

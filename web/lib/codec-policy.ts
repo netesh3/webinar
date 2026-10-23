@@ -12,8 +12,6 @@
  *
  * The gate, every condition required:
  *
- *   0. the session host's "AV1 video (beta)" switch is on (types.FeatureAV1, JoinResponse.av1,
- *      set with setAv1Session). Off — the default — means no AV1 anywhere in that room.
  *   1. not Safari, not iPhone/iPad, not Firefox. Safari advertises AV1 on some devices and
  *      does not deliver it (livekit-client: "Safari 17 on iPhone14 reports AV1 capability, but
  *      does not actually support it"); every iOS browser is Safari underneath, whatever its UA
@@ -59,8 +57,6 @@ export type Av1Inputs = {
   demoted: boolean;
   /** NEXT_PUBLIC_AV1=0 at build time. */
   disabled?: boolean;
-  /** The session host's "AV1 video (beta)" switch (JoinResponse.av1). Off: never AV1. */
-  sessionAv1?: boolean;
 };
 
 export type Av1Verdict = { av1: boolean; reason: string };
@@ -87,7 +83,6 @@ export const AV1_MOBILE_MIN_MEMORY_GB = 6;
 
 export function av1Verdict(p: Av1Inputs): Av1Verdict {
   if (p.disabled) return { av1: false, reason: "disabled" };
-  if (!p.sessionAv1) return { av1: false, reason: "beta-off" };
   if (p.demoted) return { av1: false, reason: "cpu-demoted" };
   if (isAppleWebKit(p.ua, p.maxTouchPoints)) return { av1: false, reason: "safari-ios" };
   if (/firefox|fxios/i.test(p.ua)) return { av1: false, reason: "firefox" };
@@ -155,19 +150,9 @@ export function av1Demoted(): boolean {
 const AV1_DISABLED =
   (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_AV1) === "0";
 
-/* The session's beta switch (JoinResponse.av1, the host's "AV1 video (beta)"). Off until the
- * room says otherwise, so nothing publishes AV1 by accident. The probe below measures the
- * DEVICE either way; this gate is applied on top. */
-let sessionAv1 = false;
-
-export function setAv1Session(on: boolean): void {
-  sessionAv1 = on;
-}
-
 /** The verdict if the probe has finished, else "no" — a publish never waits on it. */
 export function av1Now(kind: Av1Kind): Av1Verdict {
   if (AV1_DISABLED) return { av1: false, reason: "disabled" };
-  if (!sessionAv1) return { av1: false, reason: "beta-off" };
   if (readDemoted()) return { av1: false, reason: "cpu-demoted" };
   return verdicts.get(kind) ?? { av1: false, reason: "probe-pending" };
 }
@@ -214,8 +199,6 @@ export function probeAv1(kind: Av1Kind): Promise<Av1Verdict> {
       height: target.height,
       demoted: readDemoted(),
       disabled: AV1_DISABLED,
-      // The device's answer; the session switch is applied by av1Now.
-      sessionAv1: true,
     });
   })().then((v) => {
     logCodecDecision(kind, v.av1, v.reason);
