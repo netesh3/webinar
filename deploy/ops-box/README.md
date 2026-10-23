@@ -49,28 +49,3 @@ and the video server is neither started ahead of a session (a join still starts 
 when idle (it keeps billing). The backup caller below covers that. The Cloud Scheduler job
 (`deploy/cloud-scheduler-tick.sh`) is another fallback if this droplet is ever retired.
 
-## Backup caller
-
-A Cloudflare Worker, `webinarliv-tick` (`deploy/cloudflare/tick-worker/`), makes the same call
-every minute from a cron trigger, so the clock keeps running if this droplet is down. It is a
-separate worker from the web app (no routes, no custom domain). Both callers hitting the same
-minute is fine: the API's lease lets one pass run and the other gets `200 {"status":"busy"}`,
-which the worker counts as success (as is `ran`). Anything else is logged as an error.
-
-| Item | Value |
-|------|-------|
-| Code | `src/index.js` (`scheduled()` → POST `TICK_URL` with `X-Tick-Secret`, 55 s abort) |
-| URL | `TICK_URL` var in `wrangler.toml` (the Cloud Run API) |
-| Secret | Worker secret `TICK_SECRET`, set by CI from the GitHub secret of the same name |
-| Deploy | `.github/workflows/tick-worker-deploy.yml`: push to main under `deploy/cloudflare/tick-worker/**`, or run it by hand. `wrangler deploy`, then `wrangler secret put` from stdin |
-| Logs | Cloudflare dashboard → Workers → `webinarliv-tick` → Logs (observability on), or `npx wrangler tail webinarliv-tick` |
-| Test | `cd deploy/cloudflare/tick-worker && npm test` |
-
-Limits: the free plan allows cron triggers (5 per account; this uses 1) and ~1,440
-invocations a day, well under the daily request cap. The 10 ms CPU limit is CPU time, not wall
-time: waiting on the API's response does not count, and a cron invocation may run for minutes
-of wall time, so the 55 s timeout is the real bound. Cron timing is best-effort (can drift by
-seconds), which is fine for a backup.
-
-To stop it: `npx wrangler delete webinarliv-tick` (or remove the cron in `wrangler.toml` and
-redeploy).
