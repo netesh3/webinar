@@ -1,0 +1,42 @@
+# TURN over TLS on :443, for participants whose network lets out only TCP 443
+# (corporate, hotel, some VPNs). Used instead of ./Caddyfile when TURN_TLS_443=true in .env;
+# needs the Caddy build with the layer4 app (caddy-l4/Dockerfile, docker-compose.turn443.yml).
+#
+# One port, split by the SNI of the TLS ClientHello:
+#   {$TURN_TLS_DOMAIN}  -> Caddy terminates TLS with its own ACME certificate and passes the
+#                          plain TURN stream to LiveKit's TURN listener on 127.0.0.1:5349
+#                          (turn.tls_port with external_tls: true in livekit.yaml).
+#   anything else       -> falls through to Caddy's HTTP server as before (wss:// signalling,
+#                          /live, /mixrec, /grafana), i.e. exactly ./Caddyfile.
+# Connections whose SNI is not the TURN name are not touched; the wrapper only peeks at the
+# ClientHello. HTTP/3 (UDP 443) is unaffected.
+
+{
+	servers :443 {
+		listener_wrappers {
+			layer4 {
+				# acme-tls/1 is the TLS-ALPN-01 challenge for the TURN name itself: let it
+				# reach Caddy's own TLS stack so the certificate can be issued that way too.
+				@turn {
+					tls sni {$TURN_TLS_DOMAIN}
+					not tls alpn acme-tls/1
+				}
+				route @turn {
+					tls
+					proxy 127.0.0.1:5349
+				}
+			}
+			tls
+		}
+	}
+}
+
+# Unchanged sites: wss:// LiveKit, /live, /mixrec, /grafana, live.webinarliv.com.
+import Caddyfile.base
+
+# Only here so Caddy obtains and renews the certificate for the TURN name (HTTP-01 on :80,
+# or TLS-ALPN-01). Nothing is served here in practice: every TLS connection for this name,
+# TURN or not, is taken by the layer4 route above (a browser opening it gets no HTTP answer).
+{$TURN_TLS_DOMAIN} {
+	respond 404
+}

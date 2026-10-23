@@ -1,0 +1,16 @@
+# TURN over TLS on :443 (TURN_TLS_443=true in .env; redeploy.sh adds this file).
+#
+# Caddy is rebuilt with the layer4 app and runs Caddyfile.turn443, which splits :443 by SNI:
+# TURN_TLS_DOMAIN goes to LiveKit's TURN (127.0.0.1:5349, plain TCP, Caddy holds the TLS),
+# everything else to the unchanged ./Caddyfile, mounted next to it as Caddyfile.base.
+# No new ports: 443/tcp is already open, and 5349 stays off the ufw allow-list.
+
+services:
+  caddy:
+    image: webinarliv-caddy-l4:local
+    build: ./caddy-l4
+    environment:
+      TURN_TLS_DOMAIN: ${TURN_TLS_DOMAIN:?set TURN_TLS_DOMAIN}
+    volumes:
+      - ./Caddyfile.turn443:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile.base:ro
