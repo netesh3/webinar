@@ -39,7 +39,9 @@ turn:
   enabled: true
   domain: __TURN_DOMAIN__
   udp_port: 3478
-  # LiveKit embedded TURN; TLS for TURN is optional when UDP/TCP work.
+  # LiveKit embedded TURN. TURN over TLS on :443 (TURN_TLS_443=true in .env) is filled in
+  # here by redeploy.sh: tls_port 5349 behind Caddy's layer4 SNI split (Caddyfile.turn443).
+  #__TURN_TLS__
 
 keys:
   __API_KEY__: __API_SECRET__

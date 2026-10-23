@@ -132,6 +132,52 @@ a URL the API signs, so no bucket credentials live here. Recordings wait as fMP4
 `/opt/livekit/recordings/` until they are uploaded (~0.8 GB an hour of mix). How it works and the
 fallbacks: `deploy/livekit-hetzner/README.md`, "Recording from the mix".
 
+## TURN over TLS on 443 (optional, off)
+
+For participants on networks that let out only TCP 443 (corporate, hotel, some VPNs), where
+WebRTC UDP, TCP 7881 and TURN 3478 are all blocked. Caddy keeps :443 and splits it by the TLS
+SNI (`Caddyfile.turn443`, Caddy rebuilt with the `caddy-l4` plugin): `turn.152.42.156.192.sslip.io`
+is TLS-terminated by Caddy and passed to LiveKit's TURN on `127.0.0.1:5349`; every other name goes
+to the normal Caddy sites. LiveKit then hands every client
+`turns:turn.152.42.156.192.sslip.io:443?transport=tcp`. No new ports, firewall rules or cost:
+443/tcp is already open in `sfu-media` and ufw, and the reserved IP is unchanged. How it works:
+`deploy/livekit-hetzner/README.md`, "TURN over TLS on 443".
+
+To enable (when the box is idle: Caddy and LiveKit restart, which drops live rooms for a few seconds):
+
+```bash
+ssh root@152.42.156.192 'cd /opt/livekit && echo TURN_TLS_443=true >> .env && ./redeploy.sh'
+# First run builds the Caddy image (~2-3 min). It should end with
+#   TURN over TLS: turns:turn.152.42.156.192.sslip.io:443?transport=tcp (certificate verifies)
+```
+
+Check from your laptop:
+
+```bash
+dig +short turn.152.42.156.192.sslip.io                      # 152.42.156.192
+openssl s_client -connect 152.42.156.192:443 -servername turn.152.42.156.192.sslip.io \
+  -verify_hostname turn.152.42.156.192.sslip.io </dev/null 2>&1 | grep -E 'subject=|Verify return'
+#   subject=CN=turn.152.42.156.192.sslip.io, Verify return code: 0 (ok)
+curl -fsS https://152.42.156.192.sslip.io/ ; echo                # LiveKit "OK": the normal site still works
+ssh root@152.42.156.192 "grep -A8 '^turn:' /opt/livekit/livekit.yaml"   # tls_port 5349, external_tls true
+```
+
+Browser test with only TCP 443 open (macOS, pf; blocks UDP and the other TCP ports to the box):
+
+```bash
+printf 'block drop out quick proto udp to 152.42.156.192\nblock drop out quick proto tcp to 152.42.156.192 port != 443\n' \
+  | sudo pfctl -ef -
+```
+
+Join a meeting on this server in Chrome and open `chrome://webrtc-internals`: the connection
+should succeed, and the selected candidate pair's local candidate is `candidateType: relay`
+with `relayProtocol: tls` (the ICE server `turns:turn.152.42.156.192.sslip.io:443`). Without
+`TURN_TLS_443` the same test fails to connect. Restore the firewall afterwards:
+`sudo pfctl -f /etc/pf.conf && sudo pfctl -d`.
+
+To turn it off: delete the `TURN_TLS_443` line from `/opt/livekit/.env` and run `redeploy.sh`
+(back to the stock Caddy image and the previous `livekit.yaml`).
+
 ## When to grow (not needed yet)
 
 Decided 2026-10-22: one c-4 SFU here, the API stays on Cloud Run. Revisit when usage or the

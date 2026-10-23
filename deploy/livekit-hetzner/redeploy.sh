@@ -114,14 +114,41 @@ umask 077
 chmod 644 redis.conf
 umask 022
 
+# TURN over TLS on :443 (TURN_TLS_443=true in .env), for participants whose network lets out
+# only TCP 443. Caddy keeps :443 and splits it by SNI (Caddyfile.turn443, a Caddy build with
+# the layer4 app): ClientHellos for TURN_TLS_DOMAIN (default turn.<DOMAIN>; sslip.io resolves
+# it to the same IP, a real domain needs the DNS record) are TLS-terminated by Caddy and passed
+# as plain TCP to LiveKit's TURN on 127.0.0.1:5349 (external_tls). LiveKit then offers
+# turns:<TURN_TLS_DOMAIN>:443?transport=tcp to every client, and turn.domain is that name for
+# TURN/UDP too. The relay ports are kept inside the WebRTC UDP range ufw already opens, since
+# relay and SFU reach each other on the node IP. Unset: livekit.yaml is as before.
+TURN_TLS_443="$(env_value TURN_TLS_443)"
+TURN_TLS_DOMAIN="$(env_value TURN_TLS_DOMAIN)"
+TURN_TLS_DOMAIN="${TURN_TLS_DOMAIN:-turn.${DOMAIN}}"
+TURN_DOMAIN="$DOMAIN"
+TURN_TLS_BLOCK=""
+if [[ "$TURN_TLS_443" == "true" ]]; then
+  [[ "$TURN_TLS_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "TURN_TLS_DOMAIN is not a hostname: $TURN_TLS_DOMAIN" >&2; exit 1; }
+  if [[ ! -f docker-compose.turn443.yml || ! -f Caddyfile.turn443 || ! -f caddy-l4/Dockerfile ]]; then
+    echo "TURN_TLS_443=true but docker-compose.turn443.yml, Caddyfile.turn443 or caddy-l4/ is missing; sync deploy files" >&2
+    exit 1
+  fi
+  TURN_DOMAIN="$TURN_TLS_DOMAIN"
+  TURN_TLS_BLOCK=$'  tls_port: 5349\n  external_tls: true\n  relay_range_start: 50000\n  relay_range_end: 60000'
+fi
+
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
-sed -e "s/__TURN_DOMAIN__/${DOMAIN}/g" \
+sed -e "s/__TURN_DOMAIN__/${TURN_DOMAIN}/g" \
     -e "s/__API_KEY__/${API_KEY}/g" \
     -e "s/__API_SECRET__/${API_SECRET}/g" \
     -e "s/__REDIS_PASSWORD__/\"${REDIS_PASSWORD_VALUE}\"/g" \
-    livekit.yaml.template >"$tmp"
+    livekit.yaml.template |
+  awk -v block="$TURN_TLS_BLOCK" '
+    /^[[:space:]]*#__TURN_TLS__[[:space:]]*$/ { if (block != "") print block; next }
+    { print }
+  ' >"$tmp"
 
 if [[ -n "${PRESERVE_NODE_IP}" || -n "${PRESERVE_USE_EXTERNAL_IP}" ]]; then
   use_ext="${PRESERVE_USE_EXTERNAL_IP:-false}"
@@ -268,7 +295,19 @@ if [[ "$MIXREC" != 1 ]]; then
   rm -f mixrec.env
 fi
 
+TURN443=0
+if [[ "$TURN_TLS_443" == "true" ]]; then
+  # Swaps the caddy image (built here from ./caddy-l4) and its Caddyfile; see above.
+  COMPOSE_ARGS+=("-f" "docker-compose.turn443.yml")
+  export TURN_TLS_DOMAIN
+  TURN443=1
+fi
+
 BUILD_SERVICES=()
+if [[ "$TURN443" == 1 ]]; then
+  # A few minutes the first time (xcaddy), cached after that.
+  BUILD_SERVICES+=(caddy)
+fi
 if [[ "$CAPTIONS" == 1 && -z "$(env_value CAPTIONS_IMAGE)" ]]; then
   # Built here from ./captions; the first build takes a few minutes, later ones are cached.
   BUILD_SERVICES+=(captions)
@@ -303,6 +342,27 @@ fi
 docker compose "${COMPOSE_ARGS[@]}" restart caddy
 if [[ -f docker-compose.egress.yml ]]; then
   docker compose "${COMPOSE_ARGS[@]}" restart mediamtx
+fi
+
+# TURN/TLS health: LiveKit's plain TURN listener behind Caddy, then the path through :443
+# with the TURN SNI and a certificate that verifies for that name. Warn only: on the first
+# enable the certificate can take a minute, and nothing else on the box depends on this.
+if [[ "$TURN443" == 1 ]]; then
+  turn_ok=0
+  for _ in $(seq 1 12); do
+    if ss -Hltn 'sport = :5349' | grep -q . &&
+      timeout 5 openssl s_client -connect 127.0.0.1:443 -servername "$TURN_TLS_DOMAIN" \
+        -verify_hostname "$TURN_TLS_DOMAIN" -verify_return_error </dev/null >/dev/null 2>&1; then
+      turn_ok=1
+      break
+    fi
+    sleep 5
+  done
+  if [[ "$turn_ok" == 1 ]]; then
+    echo "TURN over TLS: turns:${TURN_TLS_DOMAIN}:443?transport=tcp (certificate verifies)"
+  else
+    echo "TURN over TLS: no verified certificate for ${TURN_TLS_DOMAIN} on :443 yet, or LiveKit not listening on :5349; see docker compose logs caddy livekit" >&2
+  fi
 fi
 
 # The API's background pass, once a minute (TICK_URL and TICK_SECRET in .env).

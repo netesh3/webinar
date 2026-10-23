@@ -109,6 +109,20 @@ jobs:
             caddy:2-alpine \
             caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
 
+      # The TURN-over-TLS variant (TURN_TLS_443=true in the box's .env): the layer4 build of
+      # Caddy, with the base Caddyfile imported, as docker-compose.turn443.yml runs it.
+      - name: Validate Caddyfile.turn443
+        if: env.SKIP != 'true'
+        run: |
+          docker build -q -t caddy-l4:validate deploy/livekit-hetzner/caddy-l4
+          docker run --rm \
+            -v "$PWD/deploy/livekit-hetzner/Caddyfile.turn443:/etc/caddy/Caddyfile:ro" \
+            -v "$PWD/deploy/livekit-hetzner/Caddyfile:/etc/caddy/Caddyfile.base:ro" \
+            -e DOMAIN=validate.example.com \
+            -e TURN_TLS_DOMAIN=turn.validate.example.com \
+            caddy-l4:validate \
+            caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
+
       - name: Sync deploy files (preserve secrets)
         if: env.SKIP != 'true'
         run: |

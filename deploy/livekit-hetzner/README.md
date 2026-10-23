@@ -172,6 +172,27 @@ Until 2026-10-20 this box was also the **WHEP** origin of the CDN Broadcast mode
 UDP 8189, plus an ffmpeg per live mix re-encoding the audio to Opus). That mode was retired;
 `redeploy.sh` closes 8189 on boxes that still had it open.
 
+## TURN over TLS on 443 (optional, off)
+
+For participants whose network lets out only TCP 443. Opt-in per box with `TURN_TLS_443=true`
+in `/opt/livekit/.env`, then `redeploy.sh`; unset, nothing changes (stock Caddy, same
+`livekit.yaml`). Enabled on the DigitalOcean box only when its README says so; steps and the
+browser test are in `deploy/digitalocean/README.md`.
+
+| Piece | What it does |
+|---|---|
+| `caddy-l4/Dockerfile` | Caddy 2.11 + `github.com/mholt/caddy-l4`, built on the box by `redeploy.sh` (first time a few minutes) |
+| `docker-compose.turn443.yml` | Swaps the caddy image for that build and mounts `Caddyfile.turn443` as the Caddyfile, `Caddyfile` beside it as `Caddyfile.base` |
+| `Caddyfile.turn443` | A layer4 listener wrapper on `:443`: TLS ClientHello with SNI `TURN_TLS_DOMAIN` → Caddy terminates TLS → plain TCP to `127.0.0.1:5349`; any other SNI falls through to the unchanged sites (`import Caddyfile.base`). A `TURN_TLS_DOMAIN` site block makes Caddy obtain and renew its certificate (HTTP-01 on :80, or TLS-ALPN-01, which the wrapper lets through) |
+| `livekit.yaml` | `turn.domain: TURN_TLS_DOMAIN`, `tls_port: 5349`, `external_tls: true`, relay ports inside 50000–60000 (already open). LiveKit always advertises TLS TURN as `turns:<turn.domain>:443?transport=tcp` |
+
+`TURN_TLS_DOMAIN` defaults to `turn.<DOMAIN>`: for a `<ip>.sslip.io` domain that resolves to the
+same IP with no DNS work. On a real domain add the record (it must not be behind a proxying CDN)
+or set `TURN_TLS_DOMAIN` in `.env`. 5349 is not in the ufw allow-list, so it is reachable only
+through Caddy. `redeploy.sh` ends with a TURN/TLS health line (LiveKit on :5349 and a certificate
+that verifies for the TURN name through :443; a warning, not a failure). The DO workflow also
+builds the image and runs `caddy validate` on `Caddyfile.turn443`.
+
 ## Stop paying
 
 ```bash
