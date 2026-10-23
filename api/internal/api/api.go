@@ -193,9 +193,6 @@ type Server struct {
 	// qaSessions is the Q&A assistant's per-session pass state (qa_assist.go), slug to
 	// *qaSession. The zero value is ready.
 	qaSessions sync.Map
-	// spamSessions is spam detection's per-session state (spam.go): the rules' recent history
-	// and the AI pass's in-flight flag, slug to *spamSession. The zero value is ready.
-	spamSessions sync.Map
 
 	// push sends Web Push (push.go); nil when the VAPID variables are unset. pushEndpointOK
 	// is which subscription endpoints are accepted (push.ValidEndpoint; tests widen it).
@@ -745,165 +742,173 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/alerts/read-all", s.handleReadAllHostAlerts)
 				r.Post("/alerts/dismiss-all", s.handleDismissAllHostAlerts)
 				r.Delete("/alerts/{id}", s.handleDismissHostAlert)
-				r.Patch("/registrations/{id}", s.handleSetRegistrationState)
+			})
 
-				// Everything below is scoped to one webinar the caller owns.
-				r.Route("/webinars/{slug}", func(r chi.Router) {
-					r.Use(s.requireOwnership)
+			/* Everything below is scoped to one webinar the caller hosts or co-hosts, and sits
+			 * OUTSIDE requireHost on purpose. A co-host is a panelist the host made their equal,
+			 * and a panelist is usually a guest speaker whose account has no hosting capability
+			 * (the same reason /join above is outside it). Behind requireHost, every co-host
+			 * action — the participants list, mute, lobby, polls, Q&A, co-host itself — was a
+			 * 403 not_a_host, so "Make co-host" looked like it did nothing. requireOwnership
+			 * still asks the true owner for the hosting capability, as requireHost did. */
+			r.Patch("/registrations/{id}", s.handleSetRegistrationState)
+			r.Route("/webinars/{slug}", func(r chi.Router) {
+				r.Use(s.requireOwnership)
 
-					r.Get("/", s.handleHostWebinar)
-					r.Patch("/", s.handleUpdateWebinar)
-					r.Patch("/stream", s.handleSetStream)
-					s.mountWebinarStreamDestinations(r)
+				r.Get("/", s.handleHostWebinar)
+				r.Patch("/", s.handleUpdateWebinar)
+				r.Patch("/stream", s.handleSetStream)
+				s.mountWebinarStreamDestinations(r)
 
-					// Deleting the webinar and handing it to someone else stay with the
-					// account actually listed as its host — see requireTrueOwner. Every
-					// other host action in this subtree, a co-host may also take.
-					r.Group(func(r chi.Router) {
-						r.Use(s.requireTrueOwner)
-						r.Delete("/", s.handleDeleteWebinar)
-						r.Post("/transfer-host", s.handleTransferHost)
-						// The copy is a new webinar owned by the caller, so only the host.
-						r.Post("/copy", s.handleCopyWebinar)
-					})
-
-					r.Post("/start", s.handleStartWebinar)
-					// "Try again" when the on-demand video server failed to start (sfu_box.go).
-					r.Post("/server/retry", s.handleRetryVideoServer)
-					r.Post("/end", s.handleEndWebinar)
-					r.Patch("/controls", s.handleUpdateControls)
-					// Server-side captions on or off: dispatches or removes the caption
-					// agent. See server_captions.go.
-					r.Post("/captions/server", s.handleHostServerCaptions)
-
-					// The cover image. Client-compressed and cropped before it gets here —
-					// see web/lib/webinar-image.ts — so this is a plain replace, not an
-					// edit-in-place: uploading again overwrites whatever was there.
-					r.Post("/image", s.handleUploadWebinarImage)
-					r.Post("/image/from-media", s.handleWebinarImageFromMedia)
-					r.Delete("/image", s.handleDeleteWebinarImage)
-
-					// ---- polls and quizzes ----
-					//
-					// The host's view: every question including the drafts, every
-					// tally, and the correct answer to every quiz.
-					// The chat archive. Unfiltered, including the panelists-only lines
-					// the audience never saw, with the stats a report would otherwise
-					// recompute by reading the whole transcript. ?format=csv for a
-					// spreadsheet, JSON for a pipeline.
-					r.Get("/chat", s.handleChatTranscript)
-					r.Get("/chat/stats", s.handleChatStats)
-
-					// A simulive's engagement replay, as the host curates it.
-					r.Get("/replay", s.handleHostReplayPreview)
-					r.Put("/replay/hidden", s.handleSetReplayHidden)
-					// Its Auto mode: the assistant answering new questions. See qa_auto.go.
-					r.Get("/replay/auto", s.handleGetSimuliveAuto)
-					r.Put("/replay/auto", s.handlePutSimuliveAuto)
-					// How a simulive starts: by itself, or by the host (simulive_live.go).
-					r.Put("/simulive-start", s.handleSetSimuliveStart)
-					// The host in the room before it starts: start now, start in N min, delay,
-					// cancel, open the doors early, end (simulive_host.go).
-					r.Post("/simulive/start-now", s.handleSimuliveStartNow)
-					r.Put("/simulive/start-at", s.handleSimuliveStartAt)
-					r.Delete("/simulive/start-at", s.handleSimuliveCancelStart)
-					r.Post("/simulive/open-doors", s.handleSimuliveOpenDoors)
-					r.Post("/simulive/end", s.handleSimuliveEnd)
-
-					r.Get("/polls", s.handleListPolls)
-					r.Post("/polls", s.handleCreatePoll)
-					r.Post("/polls/{id}/open", s.handleOpenPoll)
-					r.Post("/polls/{id}/close", s.handleClosePoll)
-					r.Delete("/polls/{id}", s.handleDeletePoll)
-
-					r.Get("/survey", s.handleGetSurvey)
-					r.Put("/survey", s.handlePutSurvey)
-					r.Delete("/survey", s.handleDeleteSurvey)
-					r.Post("/survey/launch", s.handleLaunchSurvey)
-					r.Post("/survey/close", s.handleCloseSurvey)
-					r.Get("/survey/results", s.handleSurveyResults)
-					r.Get("/survey/answers", s.handleSurveyAnswers)
-
-					r.Get("/registrants", s.handleHostRegistrants)
-					r.Get("/registrants.csv", s.handleExportRegistrants)
-					r.Get("/report", s.handleSessionReport)
-					r.Get("/report.csv", s.handleExportReport)
-					// The attendee list of an ended session; host and co-hosts only. See attendee_export.go.
-					r.Get("/attendees.csv", s.handleAttendeesCSV)
-					r.Get("/engagement", s.handleEngagementSummary)
-					r.Post("/engagement/recompute", s.handleRecomputeEngagement)
-					r.Get("/engagement/attendees", s.handleEngagementAttendees)
-					r.Get("/engagement/attendees/{identity}", s.handleEngagementAttendee)
-					r.Get("/engagement.csv", s.handleEngagementCSV)
-					r.Get("/transcript.txt", s.handleTranscript)
-					// The AI recap, written automatically after the session. See recap.go.
-					r.Get("/recap", s.handleGetRecap)
-					// "Generate recap now": stop waiting for the transcript (pending only).
-					r.Post("/recap/generate", s.handleGenerateRecapNow)
-					// Hot leads and the follow-up writer. See leads.go and followups.go.
-					r.Get("/leads", s.handleGetLeads)
-					r.Get("/followups", s.handleGetFollowups)
-					r.Put("/followups/{group}", s.handlePutFollowup)
-					// Sending them: the review screen, then the host's Send. Host only:
-					// it goes from the host's own number and in their name. See followup_send.go.
-					r.Group(func(r chi.Router) {
-						r.Use(s.requireTrueOwner)
-						r.Post("/followups/plan", s.handleFollowupPlan)
-						r.Post("/followups/send", s.handleFollowupSend)
-					})
-					r.Patch("/questions/{id}", s.handlePatchQuestion)
-					// Auto mode's answer taken back off a question (qa_auto.go).
-					r.Post("/questions/{id}/retract", s.handleRetractAutoAnswer)
-					// The live Q&A assistant: duplicate questions grouped, a Top
-					// questions strip, and a private draft answer. See qa_assist.go.
-					r.Get("/qa/clusters", s.handleQAClusters)
-					r.Post("/qa/clusters/{id}/suggest", s.handleQASuggest)
-					// Draft answers from the AI knowledge: host team only until a
-					// host posts one, as the host's answer. See qa_drafts.go.
-					r.Post("/qa/drafts/{id}/post", s.handleQAPostDraft)
-					r.Delete("/qa/drafts/{id}", s.handleQADiscardDraft)
-					// Spam detection on the live chat and Q&A: the Flagged filter, its
-					// settings, and the one-click actions. Host team only. See spam.go.
-					r.Get("/spam", s.handleSpamFlags)
-					r.Patch("/spam/settings", s.handlePatchSpamSettings)
-					r.Post("/spam/{kind}/{id}", s.handleSpamAction)
-					// Which of the host's AI knowledge documents this session uses.
-					r.Get("/knowledge", s.handleSessionKnowledge)
-					r.Patch("/knowledge/past-answers", s.handlePatchSessionPastAnswers)
-					r.Patch("/knowledge/{docId}", s.handlePatchSessionKnowledge)
-					r.Post("/registrants/approve-all", s.handleApproveAll)
-
-					// A meeting's lobby: who is waiting, and letting them in (meeting.go).
-					r.Get("/lobby", s.handleLobby)
-					r.Post("/lobby/admit-all", s.handleLobbyAdmitAll)
-					r.Post("/lobby/{id}/admit", s.handleLobbyAdmit)
-					r.Post("/lobby/{id}/deny", s.handleLobbyDeny)
-
-					/* The approval queue, and a selective batch decision on it.
-					 *
-					 * GET returns only the rows awaiting a decision; /registrants
-					 * returns everybody in every state and is what the roster tab
-					 * uses. PATCH takes a chosen set of ids and one state for all
-					 * of them, which is the difference between reviewing forty
-					 * strangers and approving all forty. */
-					r.Get("/approvals", s.handlePendingApprovals)
-					r.Patch("/approvals", s.handleApprovals)
-
-					r.Post("/panelists", s.handleAddPanelist)
-					r.Delete("/panelists/{userID}", s.handleRemovePanelist)
-					r.Patch("/panelists/{userID}/co-host", s.handleSetCoHost)
-
-					// ---- in-session moderation ----
-					r.Get("/participants", s.handleParticipants)
-					r.Get("/edge", s.handleHostEdgeStatus)
-					r.Post("/mute-all", s.handleMuteAll)
-					r.Post("/participants/allow-all", s.handleAllowAllToSpeak)
-					r.Post("/participants/stage-all", s.handleBringAllOnStage)
-					r.Post("/participants/revoke-all", s.handleRevokeAllSpeaking)
-					r.Patch("/participants/{identity}/mute", s.handleMuteOne)
-					r.Post("/participants/{identity}/stage", s.handleSetStage)
-					r.Delete("/participants/{identity}", s.handleRemoveParticipant)
+				// Deleting the webinar and handing it to someone else stay with the
+				// account actually listed as its host — see requireTrueOwner. Every
+				// other host action in this subtree, a co-host may also take.
+				r.Group(func(r chi.Router) {
+					r.Use(s.requireTrueOwner)
+					r.Delete("/", s.handleDeleteWebinar)
+					r.Post("/transfer-host", s.handleTransferHost)
+					// The copy is a new webinar owned by the caller, so only the host.
+					r.Post("/copy", s.handleCopyWebinar)
 				})
+
+				r.Post("/start", s.handleStartWebinar)
+				// "Try again" when the on-demand video server failed to start (sfu_box.go).
+				r.Post("/server/retry", s.handleRetryVideoServer)
+				r.Post("/end", s.handleEndWebinar)
+				r.Patch("/controls", s.handleUpdateControls)
+				// Server-side captions on or off: dispatches or removes the caption
+				// agent. See server_captions.go.
+				r.Post("/captions/server", s.handleHostServerCaptions)
+
+				// The cover image. Client-compressed and cropped before it gets here —
+				// see web/lib/webinar-image.ts — so this is a plain replace, not an
+				// edit-in-place: uploading again overwrites whatever was there.
+				r.Post("/image", s.handleUploadWebinarImage)
+				r.Post("/image/from-media", s.handleWebinarImageFromMedia)
+				r.Delete("/image", s.handleDeleteWebinarImage)
+
+				// ---- polls and quizzes ----
+				//
+				// The host's view: every question including the drafts, every
+				// tally, and the correct answer to every quiz.
+				// The chat archive. Unfiltered, including the panelists-only lines
+				// the audience never saw, with the stats a report would otherwise
+				// recompute by reading the whole transcript. ?format=csv for a
+				// spreadsheet, JSON for a pipeline.
+				r.Get("/chat", s.handleChatTranscript)
+				r.Get("/chat/stats", s.handleChatStats)
+
+				// A simulive's engagement replay, as the host curates it.
+				r.Get("/replay", s.handleHostReplayPreview)
+				r.Put("/replay/hidden", s.handleSetReplayHidden)
+				// Its Auto mode: the assistant answering new questions. See qa_auto.go.
+				r.Get("/replay/auto", s.handleGetSimuliveAuto)
+				r.Put("/replay/auto", s.handlePutSimuliveAuto)
+				// How a simulive starts: by itself, or by the host (simulive_live.go).
+				r.Put("/simulive-start", s.handleSetSimuliveStart)
+				// The host in the room before it starts: start now, start in N min, delay,
+				// cancel, open the doors early, end (simulive_host.go).
+				r.Post("/simulive/start-now", s.handleSimuliveStartNow)
+				r.Put("/simulive/start-at", s.handleSimuliveStartAt)
+				r.Delete("/simulive/start-at", s.handleSimuliveCancelStart)
+				r.Post("/simulive/open-doors", s.handleSimuliveOpenDoors)
+				r.Post("/simulive/end", s.handleSimuliveEnd)
+				// End the replay early and carry on live with the audience (simulive_host.go).
+				r.Post("/simulive/go-live", s.handleSimuliveGoLive)
+
+				r.Get("/polls", s.handleListPolls)
+				r.Post("/polls", s.handleCreatePoll)
+				r.Post("/polls/{id}/open", s.handleOpenPoll)
+				r.Post("/polls/{id}/close", s.handleClosePoll)
+				r.Delete("/polls/{id}", s.handleDeletePoll)
+
+				r.Get("/survey", s.handleGetSurvey)
+				r.Put("/survey", s.handlePutSurvey)
+				r.Delete("/survey", s.handleDeleteSurvey)
+				r.Post("/survey/launch", s.handleLaunchSurvey)
+				r.Post("/survey/close", s.handleCloseSurvey)
+				r.Get("/survey/results", s.handleSurveyResults)
+				r.Get("/survey/answers", s.handleSurveyAnswers)
+
+				r.Get("/registrants", s.handleHostRegistrants)
+				r.Get("/registrants.csv", s.handleExportRegistrants)
+				r.Get("/report", s.handleSessionReport)
+				r.Get("/report.csv", s.handleExportReport)
+				// The attendee list of an ended session; host and co-hosts only. See attendee_export.go.
+				r.Get("/attendees.csv", s.handleAttendeesCSV)
+				r.Get("/engagement", s.handleEngagementSummary)
+				r.Post("/engagement/recompute", s.handleRecomputeEngagement)
+				r.Get("/engagement/attendees", s.handleEngagementAttendees)
+				r.Get("/engagement/attendees/{identity}", s.handleEngagementAttendee)
+				r.Get("/engagement.csv", s.handleEngagementCSV)
+				r.Get("/transcript.txt", s.handleTranscript)
+				// The AI recap, written automatically after the session. See recap.go.
+				r.Get("/recap", s.handleGetRecap)
+				// "Generate recap now": stop waiting for the transcript (pending only).
+				r.Post("/recap/generate", s.handleGenerateRecapNow)
+				// Hot leads and the follow-up writer. See leads.go and followups.go.
+				r.Get("/leads", s.handleGetLeads)
+				r.Get("/followups", s.handleGetFollowups)
+				r.Put("/followups/{group}", s.handlePutFollowup)
+				// Sending them: the review screen, then the host's Send. Host only:
+				// it goes from the host's own number and in their name. See followup_send.go.
+				r.Group(func(r chi.Router) {
+					r.Use(s.requireTrueOwner)
+					r.Post("/followups/plan", s.handleFollowupPlan)
+					r.Post("/followups/send", s.handleFollowupSend)
+				})
+				r.Patch("/questions/{id}", s.handlePatchQuestion)
+				// Auto mode's answer taken back off a question (qa_auto.go).
+				r.Post("/questions/{id}/retract", s.handleRetractAutoAnswer)
+				// The live Q&A assistant: duplicate questions grouped, a Top
+				// questions strip, and a private draft answer. See qa_assist.go.
+				r.Get("/qa/clusters", s.handleQAClusters)
+				r.Post("/qa/clusters/{id}/suggest", s.handleQASuggest)
+				// Draft answers from the AI knowledge: host team only until a
+				// host posts one, as the host's answer. See qa_drafts.go.
+				r.Post("/qa/drafts/{id}/post", s.handleQAPostDraft)
+				r.Delete("/qa/drafts/{id}", s.handleQADiscardDraft)
+				// Spam detection on the live chat and Q&A: the Flagged filter, its
+				// settings, and the one-click actions. Host team only. See spam.go.
+				r.Get("/spam", s.handleSpamFlags)
+				r.Patch("/spam/settings", s.handlePatchSpamSettings)
+				r.Post("/spam/{kind}/{id}", s.handleSpamAction)
+				// Which of the host's AI knowledge documents this session uses.
+				r.Get("/knowledge", s.handleSessionKnowledge)
+				r.Patch("/knowledge/past-answers", s.handlePatchSessionPastAnswers)
+				r.Patch("/knowledge/{docId}", s.handlePatchSessionKnowledge)
+				r.Post("/registrants/approve-all", s.handleApproveAll)
+
+				// A meeting's lobby: who is waiting, and letting them in (meeting.go).
+				r.Get("/lobby", s.handleLobby)
+				r.Post("/lobby/admit-all", s.handleLobbyAdmitAll)
+				r.Post("/lobby/{id}/admit", s.handleLobbyAdmit)
+				r.Post("/lobby/{id}/deny", s.handleLobbyDeny)
+
+				/* The approval queue, and a selective batch decision on it.
+				 *
+				 * GET returns only the rows awaiting a decision; /registrants
+				 * returns everybody in every state and is what the roster tab
+				 * uses. PATCH takes a chosen set of ids and one state for all
+				 * of them, which is the difference between reviewing forty
+				 * strangers and approving all forty. */
+				r.Get("/approvals", s.handlePendingApprovals)
+				r.Patch("/approvals", s.handleApprovals)
+
+				r.Post("/panelists", s.handleAddPanelist)
+				r.Delete("/panelists/{userID}", s.handleRemovePanelist)
+				r.Patch("/panelists/{userID}/co-host", s.handleSetCoHost)
+
+				// ---- in-session moderation ----
+				r.Get("/participants", s.handleParticipants)
+				r.Get("/edge", s.handleHostEdgeStatus)
+				r.Post("/mute-all", s.handleMuteAll)
+				r.Post("/participants/allow-all", s.handleAllowAllToSpeak)
+				r.Post("/participants/stage-all", s.handleBringAllOnStage)
+				r.Post("/participants/revoke-all", s.handleRevokeAllSpeaking)
+				r.Patch("/participants/{identity}/mute", s.handleMuteOne)
+				r.Post("/participants/{identity}/stage", s.handleSetStage)
+				r.Delete("/participants/{identity}", s.handleRemoveParticipant)
 			})
 		})
 	})

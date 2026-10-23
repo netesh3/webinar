@@ -347,8 +347,11 @@ export function useAvailableTools(input: {
   /** A streaming viewer (edge or CDN room): no participants, invite or settings — see
    *  lib/audience-tools.ts. */
   streaming?: boolean;
+  /** What a streaming room keeps anyway, for who is looking: the host team in a simulive
+   *  keeps Participants. A stable (module-level) array, or the memo below is busted. */
+  keepWhenStreaming?: readonly ToolId[];
 }): ToolId[] {
-  const { isHost, controls, whiteboard = false, meeting = false, streaming = false } = input;
+  const { isHost, controls, whiteboard = false, meeting = false, streaming = false, keepWhenStreaming } = input;
   return useMemo(
     () =>
       streamingAudienceTools(
@@ -363,6 +366,7 @@ export function useAvailableTools(input: {
           meeting,
         ),
         streaming,
+        keepWhenStreaming,
       ),
     [
       isHost,
@@ -372,6 +376,7 @@ export function useAvailableTools(input: {
       whiteboard,
       meeting,
       streaming,
+      keepWhenStreaming,
     ],
   );
 }

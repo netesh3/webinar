@@ -44,7 +44,7 @@ assert.equal(doorsOpenAtMs({ startsAt: at(30), doorsOpenMin: 10, doorsOpen: true
   const manualEarly = hostControls({ view: "waiting", manual: true, startsAt: at(30), doorsOpenMin: 10, nowMs: now });
   assert.deepEqual(
     { ...manualEarly, startIn: [...manualEarly.startIn] },
-    { startNow: true, startIn: [2, 5, 10], delay: false, cancel: false, openDoors: true, end: false },
+    { startNow: true, startIn: [2, 5, 10], delay: false, cancel: false, openDoors: true, end: false, goLive: false },
     "manual, nothing pending, doors shut",
   );
   const manualPending = hostControls({ view: "waiting", manual: true, startsAt: at(30), pendingStartAt: at(2), doorsOpenMin: 10, nowMs: now });
@@ -62,8 +62,14 @@ assert.equal(doorsOpenAtMs({ startsAt: at(30), doorsOpenMin: 10, doorsOpen: true
   assert.equal(autoDelayedPastDue.delay, true);
 
   const playing = hostControls({ view: "playing", manual: false, startsAt: at(-1), doorsOpenMin: 10, nowMs: now });
-  assert.deepEqual(playing, { startNow: false, startIn: [], delay: false, cancel: false, openDoors: false, end: true });
+  assert.deepEqual(playing, { startNow: false, startIn: [], delay: false, cancel: false, openDoors: false, end: true, goLive: true });
   assert.equal(hostControls({ view: "finished", manual: false, doorsOpenMin: 10, nowMs: now }).end, true);
+  assert.equal(
+    hostControls({ view: "finished", manual: false, doorsOpenMin: 10, nowMs: now }).goLive,
+    false,
+    "at the end it goes live by itself",
+  );
+  assert.equal(manualEarly.goLive, false, "nothing to end early before it plays");
   assert.equal(hostControls({ view: "live", manual: false, doorsOpenMin: 10, nowMs: now }).end, false, "the live room has End webinar");
   assert.equal(hostControls({ view: "ended", manual: false, doorsOpenMin: 10, nowMs: now }).startNow, false);
 }

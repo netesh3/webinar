@@ -26,6 +26,15 @@ assert.notEqual(same, attendee);
 assert.deepEqual(streamingAudienceTools(["chat", "participants", "settings"], true), ["chat"]);
 assert.deepEqual(streamingAudienceTools([], true), []);
 
+// What a streaming room keeps for who is looking: the simulive host team keeps Participants,
+// and only what it asked for — invite and settings still go.
+assert.deepEqual(
+  streamingAudienceTools(attendee, true, ["participants"]),
+  ["chat", "qa", "polls", "participants", "reactions", "hand", "sharefile"],
+);
+// Keeping a tool the list never had does not add it.
+assert.deepEqual(streamingAudienceTools(["chat", "settings"], true, ["participants"]), ["chat"]);
+
 // Meeting info: never for a streaming viewer, nor a plain WebRTC attendee.
 const base = { isHost: false, canPublish: false, meeting: false, cdnStage: false };
 assert.equal(showsMeetingInfo({ ...base, cdnStage: true }), false);

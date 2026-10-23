@@ -6,14 +6,22 @@ import { DefaultSimuliveDoorsOpenMin, type Webinar } from "@/lib/api-types";
 import { formatTime, localTimeZone } from "@/lib/format";
 import { DELAY_MINUTES, doorsOpenAtMs, hostControls, type SimuliveView } from "@/lib/simulive-host";
 import { formatOffset } from "@/lib/simulive-replay";
+import { goLiveSummary, peekGoLiveChoice, type GoLiveChoice } from "@/lib/simulive-golive";
 import { ConfirmModal, Spinner } from "../controls";
+import { CameraIcon } from "../icons";
 import { useToast } from "../providers";
+import { SimuliveGoLiveSetup } from "./simulive-golive-setup";
 
 /* The host team's controls in a simulive's room (api/internal/api/simulive_host.go): before
  * the start, Start now / Start in 2·5·10 min / Delay 5 min / Cancel and Open doors now, with
  * who is waiting; once it plays, End Simulive. Every change goes to the server, which tells
  * the room — so every waiting screen's countdown (this one's too) follows it from room
- * metadata. Which buttons show is lib/simulive-host.ts's hostControls. */
+ * metadata. Which buttons show is lib/simulive-host.ts's hostControls.
+ *
+ * And the live part after the replay: "After the replay: go live with your camera" opens a
+ * LOCAL preview to check the camera and mic and choose how to come on (simulive-golive-setup);
+ * "End replay early and go live" ends the recording for everyone now and moves the room to the
+ * live stage (POST /simulive/go-live). Nothing of the host's is published over the replay. */
 export function SimuliveHostBar({
   slug,
   view,
@@ -23,6 +31,7 @@ export function SimuliveHostBar({
   doorsOpen,
   waiting,
   onStarted,
+  onLive,
 }: {
   slug: string;
   view: SimuliveView;
@@ -34,11 +43,20 @@ export function SimuliveHostBar({
   /** How many of the audience are in the room. */
   waiting: number;
   onStarted: (startedAt: string) => void;
+  /** The live part began from this browser's own "go live" (the room's metadata says so too;
+   *  whichever arrives first moves the room). */
+  onLive?: (hostName?: string) => void;
 }) {
   const { notify } = useToast();
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [confirmGoLive, setConfirmGoLive] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  // What this tab chose for the live part, read once (it is this tab's own storage).
+  const [choice, setChoice] = useState<Pick<GoLiveChoice, "camera" | "mic"> | null>(() =>
+    peekGoLiveChoice(slug),
+  );
   const [doorsOpenMin, setDoorsOpenMin] = useState(DefaultSimuliveDoorsOpenMin);
   /* The answer to this browser's own last action, used until room metadata reports a change
    * (keyed by the metadata value it was made against, so no effect has to clear it). */
@@ -171,6 +189,28 @@ export function SimuliveHostBar({
           Open doors now
         </button>
       )}
+      {(view === "waiting" || view === "playing") && (
+        <button
+          type="button"
+          className={`${pill} bg-white/12 hover:bg-white/20`}
+          disabled={busy != null}
+          onClick={() => setSetupOpen(true)}
+          title={goLiveSummary(choice)}
+        >
+          <CameraIcon className="size-3.5" />
+          {choice?.camera ? "Camera ready for after the replay" : "After the replay: go live with your camera"}
+        </button>
+      )}
+      {controls.goLive && (
+        <button
+          type="button"
+          className={`${pill} bg-brand text-stage hover:bg-brand-hover`}
+          disabled={busy != null}
+          onClick={() => setConfirmGoLive(true)}
+        >
+          End replay early and go live
+        </button>
+      )}
       {controls.end && (
         <button
           type="button"
@@ -181,6 +221,31 @@ export function SimuliveHostBar({
           End Simulive
         </button>
       )}
+      {(view === "waiting" || view === "playing") && (
+        <p className="w-full text-[11.5px] text-white/65">{goLiveSummary(choice)}</p>
+      )}
+      <SimuliveGoLiveSetup
+        slug={slug}
+        open={setupOpen}
+        initial={choice}
+        onClose={() => setSetupOpen(false)}
+        onSaved={setChoice}
+      />
+      <ConfirmModal
+        open={confirmGoLive}
+        onClose={() => setConfirmGoLive(false)}
+        onConfirm={() =>
+          void act("golive", () => api.simuliveGoLive(slug)).then((wb) => {
+            setConfirmGoLive(false);
+            if (wb?.simuliveLiveAt) onLive?.(wb.host?.name);
+          })
+        }
+        title="End the replay and go live?"
+        body={`The recording stops for everyone now and the session carries on live: the audience moves to the live room and sees you on stage. ${goLiveSummary(choice).replace("When the replay ends you", "You")}`}
+        confirmLabel="Go live now"
+        busy={busy === "golive"}
+        dark
+      />
       <ConfirmModal
         open={confirmEnd}
         onClose={() => setConfirmEnd(false)}

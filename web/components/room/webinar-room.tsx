@@ -48,6 +48,7 @@ import {
   saveMedia,
   type RejoinRole,
 } from "@/lib/rejoin";
+import { goLiveEntry, peekGoLiveChoice, takeGoLiveChoice } from "@/lib/simulive-golive";
 import {
   meetingRejoinEntry,
   prejoinMedia,
@@ -571,16 +572,24 @@ function RoomSession({
   // A publisher checks their devices first; an attendee publishes nothing, so a
   // preview screen would be a pointless click between them and the webinar. A publisher
   // coming back after a refresh already checked them, minutes ago.
-  // The host team going live after a simulive's recording walks straight on, mic and camera
-  // off (rejoinEntry(null)): the audience is already waiting for them.
+  // The host team going live after a simulive's recording walks straight on: the audience is
+  // already waiting for them. With the camera and mic they chose in the simulive room's
+  // "go live with your camera" preview (lib/simulive-golive.ts), else both off.
+  const goingLiveFromSimulive = Boolean(join.simuliveLive) && join.canPublish && !rejoined;
   const [checked, setChecked] = useState(!join.canPublish || rejoined || Boolean(join.simuliveLive));
   const [entry, setEntry] = useState<Entry>(() => ({
-    ...(meetingEntry
-      ? meetingRejoinEntry(rejoined ? restored : null, hostMuted)
-      : rejoinEntry(rejoined ? restored : null, hostMuted)),
+    ...(goingLiveFromSimulive
+      ? goLiveEntry(peekGoLiveChoice(slug), hostMuted)
+      : meetingEntry
+        ? meetingRejoinEntry(rejoined ? restored : null, hostMuted)
+        : rejoinEntry(rejoined ? restored : null, hostMuted)),
     audioTrack: null,
     videoTrack: null,
   }));
+  // Used once: peeked above (an initializer may run twice), cleared here.
+  useEffect(() => {
+    if (goingLiveFromSimulive) takeGoLiveChoice(slug);
+  }, [goingLiveFromSimulive, slug]);
 
   /* Warm the connection up while the presenter is still on the pre-join screen — but only as
    * far as it is safe to.

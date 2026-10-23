@@ -34,6 +34,8 @@ import (
  *   cancel       DELETE /simulive/start-at    back to the schedule.
  *   open doors   POST   /simulive/open-doors
  *   end          POST   /simulive/end
+ *   go live      POST   /simulive/go-live     end the replay early and carry on live with
+ *                                             the audience (live after, below), now.
  *
  * Each change is told to the room (room metadata), so every waiting screen's countdown
  * follows it at once; a viewer not yet connected reads it from the webinar on its next poll.
@@ -380,4 +382,39 @@ func (s *Server) handleSimuliveEnd(w http.ResponseWriter, r *http.Request) {
 	replayPollCache.Delete(wb.ID)
 	s.simuliveAudit(r, "end")
 	httpx.JSON(w, http.StatusOK, ended)
+}
+
+/* handleSimuliveGoLive: the host team ends the replay early and goes live with the audience.
+ * The same live-after state the recording's end reaches with them in the room — the room is
+ * told (room metadata simuliveLiveAt), and every browser in it re-joins: the host team for a
+ * stage grant, the audience for the ordinary live room. Nothing of the host team's is ever
+ * published over the recording; their camera goes out only on that live stage. Still never
+ * recorded (refuseSimuliveRecording is by kind). Already live after answers as it is. */
+func (s *Server) handleSimuliveGoLive(w http.ResponseWriter, r *http.Request) {
+	wb, ok := s.simuliveForHost(w, r)
+	if !ok {
+		return
+	}
+	switch {
+	case wb.Status == types.StatusLive && wb.SimuliveLiveAt != "":
+		httpx.JSON(w, http.StatusOK, wb)
+		return
+	case wb.Status == types.StatusEnded:
+		httpx.Error(w, http.StatusConflict, "ended", "This session is over.")
+		return
+	case wb.Status != types.StatusLive:
+		httpx.Error(w, http.StatusConflict, "not_live", "The replay hasn't started yet.")
+		return
+	}
+	claimed, err := s.store.GoSimuliveLiveNow(r.Context(), wb.ID)
+	if err != nil {
+		s.fail(w, r, "simulive go live", err)
+		return
+	}
+	if claimed {
+		simuliveEndCache.Delete(wb.ID)
+		replayPollCache.Delete(wb.ID)
+		s.simuliveAudit(r, "go-live")
+	}
+	s.reloadAndAnswer(w, r, wb.ID, true)
 }
