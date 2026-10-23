@@ -48,12 +48,12 @@ def write_room(tmp_path):
 
 def test_transcribe_room_interleaves_speakers_with_timestamps(tmp_path):
     sp = write_room(tmp_path)
-    t = FakeTranscriber("large-v3-turbo", segments=[Segment(0.0, 0.8, "धन्यवाद"), Segment(2.2, 2.9, "ok")])
-    lines = transcribe_room(sp.dir, t, "roman", None)
+    t = FakeTranscriber("large-v3-turbo", segments=[Segment(0.0, 0.8, "thanks"), Segment(2.2, 2.9, "ok")])
+    lines = transcribe_room(sp.dir, t, "native", "en")
     assert all(call["final"] for call in t.calls)
     assert [(l.identity, l.start_ms, l.text) for l in lines] == [
-        ("user_1", 1_000_000, "dhanyavaad"),
-        ("user_2", 1_001_000, "dhanyavaad"),
+        ("user_1", 1_000_000, "thanks"),
+        ("user_2", 1_001_000, "thanks"),
         # Ravi's audio is only 1 s long, so a segment past its end is clamped to the end.
         ("user_2", 1_002_000, "ok"),
         # 2.2 s into Asha's chunk is 0.2 s into her second utterance.
@@ -71,7 +71,7 @@ def test_finalizer_posts_then_deletes_the_audio(tmp_path):
     room, model, lines = api.transcripts[0]
     assert room == "webinar_abc" and model == "large-v3-turbo"
     assert {l.identity for l in lines} == {"user_1", "user_2"}
-    assert lines[0].text == "namaste doston"  # roman by default
+    assert lines[0].text == "hello everyone"
     assert not sp.dir.exists()
 
 

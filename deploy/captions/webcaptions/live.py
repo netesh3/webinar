@@ -36,7 +36,6 @@ from .config import Config
 from .cpuguard import Level
 from .metrics import LatencyStats
 from .poster import ApiClient, caption_id, caption_packet, sender_for
-from .roman import apply_script
 from .segmenter import Utterance
 from .spool import RoomSpool
 from .transcriber import Transcriber
@@ -47,8 +46,6 @@ log = logging.getLogger("captions.live")
 MAX_LAG_S = 12.0
 MAX_LAG_DEGRADED_S = 6.0
 MAX_QUEUE = 6
-# Language re-detection cadence in auto mode: see language_for.
-REDETECT_EVERY = 3
 # A partial still waiting this long after it was taken is stale: a newer one is due.
 PARTIAL_STALE_MS = 1500
 
@@ -104,8 +101,6 @@ class LiveCaptioner:
         self.spool = spool
         self.clock_ms = clock_ms
         self.queue: deque[Pending] = deque()
-        self.languages: dict[str, str] = {}
-        self._since_detect: dict[str, int] = {}
         self.captions_off = False
         self.posted = 0
         self.skipped = 0
@@ -162,23 +157,6 @@ class LiveCaptioner:
                 return p
         return None
 
-    def language_for(self, identity: str) -> str | None:
-        """The language to decode a speaker's next utterance in; None means detect it.
-
-        Detection is a second pass of the encoder, so in auto mode it runs on a speaker's
-        first utterance and then one in every REDETECT_EVERY + 1, the language in between
-        being the speaker's last. Someone switching from English to Hindi is picked up
-        within a few lines."""
-        if self.cfg.whisper_language is not None:
-            return self.cfg.whisper_language
-        previous = self.languages.get(identity)
-        n = self._since_detect.get(identity, 0)
-        if previous is None or n >= REDETECT_EVERY:
-            self._since_detect[identity] = 0
-            return None
-        self._since_detect[identity] = n + 1
-        return previous
-
     def transcriber_for(self, level: Level) -> Transcriber:
         return self.fallback if level == Level.DEGRADED else self.live
 
@@ -196,15 +174,9 @@ class LiveCaptioner:
             if self.partial is not None and self.partial.id == p.id:
                 self.partial = None
         model = self.transcriber_for(level)
-        res = model.transcribe(
-            p.utterance.audio,
-            language=self.language_for(p.identity),
-            previous_language=self.languages.get(p.identity),
-            final=False,
-        )
+        res = model.transcribe(p.utterance.audio, language=self.cfg.whisper_language, final=False)
         self.stats.record("decode", self.clock_ms() - started)
-        self.languages[p.identity] = res.language
-        text = apply_script(res.text, self.cfg.script).strip()
+        text = res.text.strip()
         if not text:
             self.stats.maybe_log()
             return None
@@ -295,14 +267,9 @@ class LiveCaptioner:
         if not self.partials_allowed():
             return None
         t0 = self.clock_ms()
-        # No language detection of its own unless the speaker has none yet, and what it
-        # finds is not kept: the finals decide a speaker's language.
-        language = self.cfg.whisper_language or self.languages.get(p.identity)
-        res = self.partial_model.transcribe(
-            p.utterance.audio, language=language, previous_language=self.languages.get(p.identity), final=False
-        )
+        res = self.partial_model.transcribe(p.utterance.audio, language=self.cfg.whisper_language, final=False)
         self.stats.record("partial", self.clock_ms() - t0)
-        text = apply_script(res.text, self.cfg.script).strip()
+        text = res.text.strip()
         with self._lock:
             if not text or p.id in self._finalised:
                 return None  # the final is out, or on its way, and says it better

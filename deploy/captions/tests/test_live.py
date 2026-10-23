@@ -28,20 +28,12 @@ def make(level=Level.NORMAL, spool=None, **kw):
     return c, api, live, fb, state
 
 
-def test_posts_roman_caption_for_the_speaker():
+def test_posts_caption_for_the_speaker():
     c, api, live, _, _ = make()
     c.add("user_1", "Asha", utt())
-    assert c.process_next() == "namaste doston"
-    assert api.captions == [("webinar_abc", "user_1", "namaste doston", NOW - 2000)]
+    assert c.process_next() == "hello everyone"
+    assert api.captions == [("webinar_abc", "user_1", "hello everyone", NOW - 2000)]
     assert live.calls[0]["final"] is False
-
-
-def test_native_script_keeps_devanagari():
-    c, api, _, _, _ = make()
-    c.cfg = cfg(script="native")
-    c.add("user_1", "Asha", utt())
-    c.process_next()
-    assert api.captions[0][2] == "नमस्ते दोस्तों"
 
 
 def test_degraded_uses_fallback_model_and_keeps_only_newest_per_speaker():
@@ -81,26 +73,12 @@ def test_409_stops_decoding():
     assert len(live.calls) == 1
 
 
-def test_language_is_detected_then_reused_per_speaker():
+def test_every_line_is_decoded_in_english():
     c, api, live, _, _ = make()
-    for _ in range(6):
-        c.add("user_1", "A", utt())
+    for who in ("user_1", "user_1", "user_2"):
+        c.add(who, "A", utt())
         c.process_next()
-    # Detected on the first line, reused for three, detected again on the fifth.
-    assert [call["language"] for call in live.calls] == [None, "hi", "hi", "hi", None, "hi"]
-    assert live.calls[1]["previous"] == "hi"
-    # Another speaker gets their own detection.
-    c.add("user_2", "B", utt())
-    c.process_next()
-    assert live.calls[-1]["language"] is None
-
-
-def test_fixed_language_is_never_detected():
-    c, api, live, _, _ = make()
-    c.cfg = cfg(language="en")
-    c.add("user_1", "A", utt())
-    c.process_next()
-    assert live.calls[0]["language"] == "en"
+    assert [call["language"] for call in live.calls] == ["en", "en", "en"]
 
 
 def test_report_only_on_change():

@@ -1,10 +1,10 @@
 # Server-side live captions
 
-A LiveKit agent that captions the **active speakers** of a room with multilingual Whisper
-(faster-whisper, CTranslate2 int8 on CPU): English, Hindi and code-mixed Hinglish. It runs
-on the egress host — the SFU box in local-egress mode, or an egress worker VM — as its own
-container, never inside the API. Hindi and Hinglish are shown in **Roman script** by default
-("aap kaise hain"), English words untouched.
+A LiveKit agent that captions the **active speakers** of a room in **English only** with
+Whisper (faster-whisper, CTranslate2 int8 on CPU). It runs on the egress host — the SFU box
+in local-egress mode, or an egress worker VM — as its own container, never inside the API.
+There is no language detection and no other language or script: every pass decodes with
+`language="en"`.
 
 ```
 host turns captions on ─▶ API ── agent dispatch ──▶ LiveKit ──▶ caption agent (this)
@@ -66,7 +66,7 @@ All three internal endpoints check `X-Captions-Secret` against the API's `CAPTIO
 | `cpu_shares: 256` | a quarter of egress/LiveKit's weight under contention |
 | `nice -n 10` | in the image's command |
 | `oom_score_adj: 800`, `mem_limit` | the first thing the kernel kills, never the SFU |
-| CPU guard | samples **host** `/proc/stat` every 2 s: > 85 % for 10 s → **degraded** (small → base, one speaker, stale windows skipped); > 95 % → **paused** (no decoding; the API is told, browsers caption themselves); back one step after < 70 % for 20 s |
+| CPU guard | samples **host** `/proc/stat` every 2 s: > 85 % for 10 s → **degraded** (small.en → base.en, one speaker, stale windows skipped); > 95 % → **paused** (no decoding; the API is told, browsers caption themselves); back one step after < 70 % for 20 s |
 | Active speakers only | every mic is subscribed (LiveKit only reports active speakers a participant is subscribed to), but only `CAPTIONS_MAX_SPEAKERS` of them reach the model; silence stops at an RMS gate, so a 50-person room costs what a 5-person one does |
 | One decode at a time per room | overlapping speakers queue; a backlog is dropped, not grown |
 
@@ -84,12 +84,11 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_SECRET` | – | **required**, ≥ 32 chars, same value as the API's |
 | `CAPTIONS_API_URL` | `https://webinarliv.com` | where lines are posted |
 | `CAPTIONS_AGENT_NAME` | `webinar-captions` | must match the API's |
-| `CAPTIONS_MODEL` | `small` | live model (multilingual only: `small`, `base`, `medium`…) |
-| `CAPTIONS_FALLBACK_MODEL` | `base` | used while the CPU guard is degraded |
-| `CAPTIONS_FINAL_MODEL` | `large-v3-turbo` | after-session pass |
+| `CAPTIONS_MODEL` | `small.en` | live model (`small.en`, `base.en`, `medium.en`…) |
+| `CAPTIONS_FALLBACK_MODEL` | `base.en` | used while the CPU guard is degraded |
+| `CAPTIONS_FINAL_MODEL` | `large-v3-turbo` | after-session pass, decoded as English (see Models) |
 | `CAPTIONS_FINAL_ENABLED` | `true` | `false`: no audio kept, no final transcript |
-| `CAPTIONS_LANGUAGE` | `auto` | `auto` (English or Hindi per line, Urdu counted as Hindi), `en`, `hi` |
-| `CAPTIONS_SCRIPT` | `roman` | `roman`: Devanagari → Latin Hinglish; `native`: keep Devanagari |
+| `CAPTIONS_LANGUAGE` | `en` | the only value; anything else (old `auto`/`hi`) is logged as a warning and ignored. `CAPTIONS_SCRIPT` likewise |
 | `CAPTIONS_PROMPT` | – | decoder prompt to bias spellings (product names) |
 | `CAPTIONS_MAX_SPEAKERS` | `2` | transcribed at once |
 | `CAPTIONS_SPEAKER_LINGER_S` | `3` | a speaker keeps their slot this long after going quiet |
@@ -103,7 +102,6 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_PARTIALS` | `true` | interim captions for the main speaker (NORMAL only) |
 | `CAPTIONS_PARTIAL_INTERVAL_S` | `1` | how often the line so far is decoded (min 0.3) |
 | `CAPTIONS_PARTIAL_MODEL` | fallback model | model for interim captions |
-| `CAPTIONS_DETECT_MODEL` | fallback model | picks English/Hindi in auto mode (set to the live model for the old behaviour) |
 | `CAPTIONS_DIRECT_PUBLISH` | `true` | publish lines to the room directly; `false`: the API relays every line (the old path) |
 | `CAPTIONS_CPU_HIGH` / `_CRITICAL` / `_LOW` | `85` / `95` / `70` | guard thresholds, % of host |
 | `CAPTIONS_CPU_HIGH_FOR_S` / `_LOW_FOR_S` / `_SAMPLE_S` | `10` / `20` / `2` | guard timing |
@@ -125,17 +123,17 @@ caption worker unless the box itself has `CAPTIONS_ENABLED=true`.
 
 | | CPU | Memory |
 |---|---|---|
-| live `small`, 1–2 active speakers | ≈ 1.5–2 cores while people talk, ~0 in silence | ~0.6 GB per room process (+1 idle prewarmed) |
-| live `base` (degraded / 2-vCPU workers) | ≈ 0.5–0.8 cores | ~0.3 GB |
-| interim captions (`base` once a second, main speaker, NORMAL only) | ≈ +0.3–0.6 cores while they talk (inside the same docker cap) | none extra (shares the fallback model) |
+| live `small.en`, 1–2 active speakers | ≈ 1.5–2 cores while people talk, ~0 in silence | ~0.6 GB per room process (+1 idle prewarmed) |
+| live `base.en` (degraded / 2-vCPU workers) | ≈ 0.5–0.8 cores | ~0.3 GB |
+| interim captions (`base.en` once a second, main speaker, NORMAL only) | ≈ +0.3–0.6 cores while they talk (inside the same docker cap) | none extra (shares the fallback model) |
 | final `large-v3-turbo` | slower than real time at 2 cores (≈ 1–2× the session length) | ~1.7 GB while running, freed after |
 | disk | 32 KB/s per speaker while they talk (~115 MB/speaking-hour) | deleted after the final pass |
 
 Load test on the real box: a 1080p edge composite + two people talking continuously in
-Hinglish, watching `docker stats`, egress frame drops and caption latency; then the same with
+English, watching `docker stats`, egress frame drops and caption latency; then the same with
 the guard thresholds forced low (`CAPTIONS_CPU_HIGH=20`) to see degrade/pause/resume.
 
-First start downloads small (~480 MB), base (~150 MB) and large-v3-turbo (~1.6 GB) into the
+First start downloads small.en (~480 MB), base.en (~150 MB) and large-v3-turbo (~1.6 GB) into the
 `captions_models` volume; later starts are instant.
 
 ## Latency
@@ -147,15 +145,15 @@ edge path). The API logs `internal caption: relayed` per line with `age_ms`, `en
 and `handler_ms` (Cloud Run logs).
 
 End of a sentence → on screen in the LiveKit room. Decode times measured on an M-series
-laptop, int8, 2 threads, TTS English/Hindi clips (re-measure on the box from the log line);
+laptop, int8, 2 threads, TTS English clips (re-measure on the box from the log line);
 the API handler from Cloud Run request logs; the rest estimated:
 
 | stage | before | after |
 |---|---|---|
 | quiet that ends the line | 600 ms | 450 ms (250 ms once a line is 3 s long) |
-| first word of a monologue | up to 6 s + decode | partial after ~1 s + ~0.5 s (`base`); line cut at a breath ~3–4 s, hard cap 5 s |
-| decode, `small` (the encoder always runs on 30 s of padded audio, so 1 s costs ~ 6 s) | ~1.9–2.5 s | same |
-| language re-detect (1 line in 4, auto) | +1.7 s (a `small` encoder pass) | +0.45 s (`base`; agreed with `small` on all 6 test clips) |
+| first word of a monologue | up to 6 s + decode | partial after ~1 s + ~0.5 s (`base.en`); line cut at a breath ~3–4 s, hard cap 5 s |
+| decode, `small.en` (the encoder always runs on 30 s of padded audio, so 1 s costs ~ 6 s) | ~1.9–2.5 s | same |
+| language detection | +1.7 s on 1 line in 4 (multilingual `small`) | none (English only) |
 | POST (new TLS per line) + API handler (p50 32 ms, p90 55 ms) + SFU send | ~150–300 ms | off the display path (async, kept alive) |
 | SFU → browser | ~50 ms | ~50 ms |
 
@@ -166,14 +164,21 @@ cd deploy/captions && pip install -r requirements-dev.txt && python -m pytest -q
 ```
 
 numpy and pytest only: speaker selection, the CPU guard state machine and `/proc/stat`
-parsing, Roman transliteration, the segmenter, the post payloads and HTTP client, the live
+parsing, the segmenter, the post payloads and HTTP client, the live
 captioner and the final pass (with a fake transcriber — no model, no LiveKit). The API side
 is `api/internal/api/server_captions_test.go`.
 
-## Roman script
+## Models
 
-`webcaptions/roman.py` is a small rule-based mapper (everyday spellings, Hindi schwa
-deletion, short final vowels, nukta sounds), not ITRANS/IAST: those keep every inherent "a"
-and use capitals or diacritics, which does not read as Hinglish. It is a heuristic; unusual
-words (English loanwords Whisper spelt in Devanagari, mostly) can come out in an odd but
-readable spelling. `CAPTIONS_SCRIPT=native` turns it off.
+Live: `small.en` and `base.en`. On English the English-only checkpoints are more accurate
+than the multilingual ones of the same size (OpenAI's own results; the gap is largest at
+`base`/`small`), cost the same to decode, and never need a language-detection pass. They
+also cannot drift into another language or script, which is what the old multilingual
+setup (Hindi/Hinglish, Roman transliteration, Urdu-script filtering) kept doing.
+
+After the session: `large-v3-turbo` with `language="en"`. There is no `.en` large model;
+`distil-large-v3` is the English-only alternative, about the same size and somewhat faster,
+but it is tuned for its own chunked long-form decoding and is no more accurate on English
+than turbo, whose weights are already in the `captions_models` volume of every running box.
+Speed does not matter here (the pass runs only while the box is idle), so turbo stays; set
+`CAPTIONS_FINAL_MODEL=distil-large-v3` to try it.

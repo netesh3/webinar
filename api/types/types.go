@@ -1529,8 +1529,8 @@ var Features = []Feature{
 	},
 	{
 		Key:         FeatureCaptions,
-		Label:       "Server captions",
-		Description: "Live captions from the server's caption agent (Hindi, English, Hinglish) when the host turns captions on. On by default. Off falls back to captions on each speaker's device.",
+		Label:       "Server captions (English)",
+		Description: "Live English captions from the server's caption agent when the host turns captions on. On by default. Off falls back to captions on each speaker's device.",
 		Group:       FeatureGroupDelivery,
 	},
 	{

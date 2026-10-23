@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Mapping
 
-LANGUAGES = ("auto", "en", "hi")
-SCRIPTS = ("roman", "native")
+log = logging.getLogger("captions.config")
+
+# English only. An old .env or worker metadata may still say CAPTIONS_LANGUAGE=auto / hi or
+# set CAPTIONS_SCRIPT: those are warned about and ignored, never a reason not to start.
+LANGUAGES = ("en",)
 
 
 class ConfigError(ValueError):
@@ -48,18 +52,17 @@ class Config:
     # The LiveKit agent name the API dispatches (CAPTIONS_AGENT_NAME on both sides).
     agent_name: str = "webinar-captions"
 
-    # Models. Multilingual on purpose: the .en checkpoints cannot do Hindi.
-    model: str = "small"
-    fallback_model: str = "base"
+    # Models. English-only checkpoints live (more accurate than the multilingual ones of
+    # the same size on English, and nothing to detect); the after-session pass is the
+    # multilingual large-v3-turbo forced to English (see README "Models").
+    model: str = "small.en"
+    fallback_model: str = "base.en"
     final_model: str = "large-v3-turbo"
     final_enabled: bool = True
     model_dir: str = "/models"
 
-    # auto = pick English or Hindi per line; en / hi force one.
-    language: str = "auto"
-    # roman = Devanagari is transliterated to Latin (Hinglish as people type it); native keeps
-    # Devanagari. English words are never touched either way.
-    script: str = "roman"
+    # Always English; kept as a field for the log line and the decoder calls.
+    language: str = "en"
     # Optional decoder prompt, e.g. a few product names, to bias spelling.
     prompt: str = ""
 
@@ -91,9 +94,6 @@ class Config:
     partials: bool = True
     partial_interval_s: float = 1.0
     partial_model: str = ""
-    # The model that picks English or Hindi in auto mode (default: the fallback). Detection
-    # is a full encoder pass of its own; on `small` it doubled those lines' decode.
-    detect_model: str = ""
 
     # Publish each line straight to the room (the agent is in it, next to the SFU) instead
     # of waiting on the API's relay; the API still gets every final, off the display path.
@@ -120,13 +120,15 @@ class Config:
         return self.partial_model or self.fallback_model
 
     @property
-    def detect_model_name(self) -> str:
-        return self.detect_model or self.fallback_model
+    def whisper_language(self) -> str:
+        """The language every pass decodes in. Never None: there is no detection."""
+        return self.language
 
     @property
-    def whisper_language(self) -> str | None:
-        """The fixed language to decode in, or None for per-line detection."""
-        return None if self.language == "auto" else self.language
+    def script(self) -> str:
+        """Retired (captions are English, nothing to transliterate). Still read by the
+        finalizer through roman.apply_script, which is now a pass-through."""
+        return "native"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Config":
@@ -137,23 +139,22 @@ class Config:
             raise ConfigError("CAPTIONS_API_URL is required (e.g. https://webinarliv.com)")
         if len(secret) < 32:
             raise ConfigError("CAPTIONS_SECRET must be set, at least 32 characters, same as the API's")
-        language = env.get("CAPTIONS_LANGUAGE", "auto").strip().lower() or "auto"
+        language = env.get("CAPTIONS_LANGUAGE", "en").strip().lower() or "en"
         if language not in LANGUAGES:
-            raise ConfigError(f"CAPTIONS_LANGUAGE must be one of {LANGUAGES}, got {language!r}")
-        script = env.get("CAPTIONS_SCRIPT", "roman").strip().lower() or "roman"
-        if script not in SCRIPTS:
-            raise ConfigError(f"CAPTIONS_SCRIPT must be one of {SCRIPTS}, got {script!r}")
+            log.warning("CAPTIONS_LANGUAGE=%s ignored: captions are English only, using en", language)
+            language = "en"
+        if env.get("CAPTIONS_SCRIPT", "").strip():
+            log.warning("CAPTIONS_SCRIPT ignored: captions are English only")
         cfg = cls(
             api_url=api_url,
             secret=secret,
             agent_name=env.get("CAPTIONS_AGENT_NAME", "").strip() or "webinar-captions",
-            model=env.get("CAPTIONS_MODEL", "").strip() or "small",
-            fallback_model=env.get("CAPTIONS_FALLBACK_MODEL", "").strip() or "base",
+            model=env.get("CAPTIONS_MODEL", "").strip() or "small.en",
+            fallback_model=env.get("CAPTIONS_FALLBACK_MODEL", "").strip() or "base.en",
             final_model=env.get("CAPTIONS_FINAL_MODEL", "").strip() or "large-v3-turbo",
             final_enabled=_bool(env.get("CAPTIONS_FINAL_ENABLED"), True),
             model_dir=env.get("CAPTIONS_MODEL_DIR", "").strip() or "/models",
             language=language,
-            script=script,
             prompt=env.get("CAPTIONS_PROMPT", "").strip(),
             max_speakers=_int(env, "CAPTIONS_MAX_SPEAKERS", 2),
             speaker_linger_s=_float(env, "CAPTIONS_SPEAKER_LINGER_S", 3.0),
@@ -167,7 +168,6 @@ class Config:
             partials=_bool(env.get("CAPTIONS_PARTIALS"), True),
             partial_interval_s=_float(env, "CAPTIONS_PARTIAL_INTERVAL_S", 1.0),
             partial_model=env.get("CAPTIONS_PARTIAL_MODEL", "").strip(),
-            detect_model=env.get("CAPTIONS_DETECT_MODEL", "").strip(),
             direct_publish=_bool(env.get("CAPTIONS_DIRECT_PUBLISH"), True),
             cpu_high=_float(env, "CAPTIONS_CPU_HIGH", 85.0),
             cpu_critical=_float(env, "CAPTIONS_CPU_CRITICAL", 95.0),
