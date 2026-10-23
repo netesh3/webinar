@@ -464,7 +464,7 @@ export function HostWebinarsScreen() {
               onClick={startInstantWebinar}
               disabled={startingInstant}
               aria-busy={startingInstant}
-              className={actionCardClass}
+              className={`flex-1 ${actionCardClass}`}
             >
               <ActionCardBody
                 icon={
