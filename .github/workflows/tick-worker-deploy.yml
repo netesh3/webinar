@@ -1,0 +1,67 @@
+# Deploy the backup tick caller (deploy/cloudflare/tick-worker) to Cloudflare Workers.
+# A separate worker from the OpenNext web app: name webinarliv-tick, cron every minute, no routes.
+# See deploy/ops-box/README.md, "Backup caller".
+#
+# Secrets (repo): CLOUDFLARE_API_TOKEN, TICK_SECRET. Variable: CLOUDFLARE_ACCOUNT_ID.
+# TICK_SECRET is piped into `wrangler secret put` and never printed.
+#
+# No deploy guard: this worker does not touch live sessions (and a missed minute is harmless,
+# the ops droplet is the primary caller).
+
+name: Deploy Tick Worker (Cloudflare)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/cloudflare/tick-worker/**"
+      - ".github/workflows/tick-worker-deploy.yml"
+
+concurrency:
+  group: deploy-tick-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/cloudflare/tick-worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test
+        run: npm test
+
+      - name: Check secrets are present
+        env:
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+        run: |
+          set -euo pipefail
+          [ -n "${CLOUDFLARE_ACCOUNT_ID}" ] || { echo "::error::Repository variable CLOUDFLARE_ACCOUNT_ID is unset."; exit 1; }
+          [ -n "${CLOUDFLARE_API_TOKEN}" ] || { echo "::error::Secret CLOUDFLARE_API_TOKEN is unset."; exit 1; }
+          [ -n "${TICK_SECRET}" ] || { echo "::error::Secret TICK_SECRET is unset."; exit 1; }
+
+      # Deploy first so the worker exists, then set the secret (which publishes a new version).
+      # Until the secret lands the worker logs "TICK_SECRET is not set" and skips the call.
+      - name: Deploy worker
+        run: npx --yes wrangler@4 deploy
+
+      - name: Set TICK_SECRET
+        env:
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+        run: |
+          set -euo pipefail
+          # printf, not echo: no trailing newline in the stored secret.
+          printf '%s' "$TICK_SECRET" | npx --yes wrangler@4 secret put TICK_SECRET
