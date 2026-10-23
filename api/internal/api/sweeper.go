@@ -39,6 +39,8 @@ const (
 	// Recording retention deletes files, and once every five minutes is plenty; its lease
 	// is never released, which is what makes it run at most that often.
 	retentionEvery = 5 * time.Minute
+	// Expiry reminders are a day or a week ahead; a quarter of an hour late is still on time.
+	expiryReminderEvery = 15 * time.Minute
 	// The inbox cutoff is in days, so once a day is enough.
 	emailRetentionEvery = 24 * time.Hour
 	// The outbox cutoff is in days, so once a day is enough.
@@ -240,6 +242,8 @@ func (s *Server) runMaintenance(ctx context.Context) {
 
 	if s.cfg.RecordingsRetentionDays > 0 {
 		s.leasedJob(ctx, "recording-retention", retentionEvery, s.sweepExpiredRecordings)
+		// The 7-day and 1-day "about to be deleted" emails (recording_retention.go).
+		s.leasedJob(ctx, "recording-expiry-reminders", expiryReminderEvery, s.sweepRecordingExpiryReminders)
 	}
 	s.leasedJob(ctx, "engagement-retention", retentionEvery, s.sweepEngagementEvents)
 	// Moves pre-0098 cover images and profile photos out of Postgres; see images.go.
@@ -459,8 +463,8 @@ func (s *Server) sweepExpiredRecordings(ctx context.Context) {
 	if s.cfg.RecordingsRetentionDays <= 0 {
 		return
 	}
-	age := time.Duration(s.cfg.RecordingsRetentionDays) * 24 * time.Hour
-	expired, err := s.store.ExpiredRecordings(ctx, age, 50)
+	// Each session's own expiry: retention days from its end, or later when kept longer.
+	expired, err := s.store.ExpiredRecordings(ctx, s.cfg.RecordingsRetentionDays, 50)
 	if err != nil {
 		s.log.Error("recording retention: query failed", "error", err)
 		return
@@ -485,6 +489,6 @@ func (s *Server) sweepExpiredRecordings(ctx context.Context) {
 		}
 		s.log.Info("recording retention: deleted expired recording",
 			"slug", rec.Webinar, "recording", rec.ID, "createdAt", rec.CreatedAt,
-			"retentionDays", s.cfg.RecordingsRetentionDays)
+			"defaultRetentionDays", s.cfg.RecordingsRetentionDays)
 	}
 }

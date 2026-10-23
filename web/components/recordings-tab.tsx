@@ -9,10 +9,13 @@ import { formatBytes, formatClock } from "@/lib/format";
 import { ConfirmModal, CopyField, Modal, Spinner, Toggle, Alert } from "./controls";
 import { useAppConfig, useSession, useToast } from "./providers";
 import {
+  daysLeftText,
   daysUntilExpiry,
   recordingRetentionDays,
   retentionNotice,
 } from "@/lib/recording-retention";
+import { ApiError } from "@/lib/http";
+import { RecordingStorageMeter, useRecordingStorage } from "./recording-storage-meter";
 import {
   CloudAlertIcon,
   CloudCheckIcon,
@@ -65,9 +68,14 @@ export function RecordingsTab({
   // And the account's simulive switch (Admin -> Accounts): the server refuses one without it.
   const canSimulive = Boolean(account?.canHost && account.id === w.host.id && simuliveAllowed(account));
   const days = recordingRetentionDays(rows[0], cfg.recordingsRetentionDays);
+  /* How long a recording is kept is the owner's (the server refuses anyone else), and so is
+   * the storage it counts against. */
+  const isOwner = Boolean(account && account.id === w.host.id);
+  const { storage, reload: reloadStorage } = useRecordingStorage(isOwner && days > 0);
   const [playing, setPlaying] = useState<Recording | null>(null);
   const [sharing, setSharing] = useState<Recording | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Recording | null>(null);
+  const [confirmExpire, setConfirmExpire] = useState<Recording | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const player = useRef<VideoPlayerHandle>(null);
 
@@ -137,6 +145,46 @@ export function RecordingsTab({
     } finally {
       setBusy(null);
       setConfirmDelete(null);
+      reloadStorage();
+    }
+  }
+
+  async function keepLonger(rec: Recording) {
+    setBusy(rec.id);
+    try {
+      const kept = await api.keepRecording(w.id, rec.id);
+      notify(
+        kept.expiresAt
+          ? `Kept until ${new Date(kept.expiresAt).toLocaleDateString(undefined, { dateStyle: "medium" })}.`
+          : "Kept longer.",
+        "ok",
+      );
+      await onChanged();
+    } catch (e) {
+      // quota_exceeded carries the whole explanation: what is used, and what to do.
+      notify(e instanceof ApiError || e instanceof Error ? e.message : "Could not keep that recording.", "error");
+    } finally {
+      setBusy(null);
+      reloadStorage();
+    }
+  }
+
+  async function letExpire(rec: Recording) {
+    setBusy(rec.id);
+    try {
+      const after = await api.letRecordingExpire(w.id, rec.id);
+      notify(
+        after.expiresAt
+          ? `It will be deleted on ${new Date(after.expiresAt).toLocaleDateString(undefined, { dateStyle: "medium" })}. No more reminders.`
+          : "No more reminders for this recording.",
+        "ok",
+      );
+      await onChanged();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
+    } finally {
+      setBusy(null);
+      setConfirmExpire(null);
     }
   }
 
@@ -146,6 +194,12 @@ export function RecordingsTab({
         <Alert tone="warn" title={`Stored for ${days} days`}>
           {retentionNotice(days)}
         </Alert>
+      )}
+
+      {storage && (
+        <Card className="p-4">
+          <RecordingStorageMeter storage={storage} />
+        </Card>
       )}
 
       {w.streamWatchUrl && (
@@ -242,6 +296,8 @@ export function RecordingsTab({
               onPlay={() => setPlaying(rec)}
               onShare={() => setSharing(rec)}
               onDelete={() => setConfirmDelete(rec)}
+              onKeep={isOwner && days > 0 ? () => void keepLonger(rec) : null}
+              onLetExpire={isOwner && days > 0 ? () => setConfirmExpire(rec) : null}
               simuliveHref={
                 canSimulive && simuliveEligible(rec) ? simuliveScheduleHref(rec) : null
               }
@@ -252,7 +308,7 @@ export function RecordingsTab({
 
       <p className="text-[12px] leading-relaxed text-ink-3">
         {days > 0
-          ? `Cloud recordings are deleted after ${days} days. Download one to keep it on your computer. Everyone in the room is shown a recording indicator while a cloud recording is running.`
+          ? `Cloud recordings are deleted ${days} days after they end unless you keep them longer. Download one to keep it on your computer. Everyone in the room is shown a recording indicator while a cloud recording is running.`
           : "Recordings are stored in cloud storage and served from the CDN. Everyone in the room is shown a recording indicator while one is running."}
       </p>
 
@@ -277,6 +333,18 @@ export function RecordingsTab({
         title="Delete this recording?"
         body="The file is removed from cloud storage. This cannot be undone."
         confirmLabel="Delete"
+      />
+
+      <ConfirmModal
+        open={confirmExpire !== null}
+        busy={busy !== null}
+        onClose={() => setConfirmExpire(null)}
+        onConfirm={() => confirmExpire && void letExpire(confirmExpire)}
+        title="Let this recording expire?"
+        body={`It goes back to the standard ${days} days from when it ended${
+          confirmExpire?.extended ? " (any extra months are removed)" : ""
+        } — never sooner than a day from now — and we stop reminding you. You can still keep it longer until then.`}
+        confirmLabel="Let it expire"
       />
     </div>
   );
@@ -516,6 +584,8 @@ function RecordingCard({
   onPlay,
   onShare,
   onDelete,
+  onKeep,
+  onLetExpire,
   simuliveHref,
 }: {
   recording: Recording;
@@ -525,6 +595,9 @@ function RecordingCard({
   onPlay: () => void;
   onShare: () => void;
   onDelete: () => void;
+  /** "Keep longer" and "Let it expire": the owner's, null for anyone else. */
+  onKeep: (() => void) | null;
+  onLetExpire: (() => void) | null;
   /** "Replay as Simulive": the schedule form for this recording, or null when it is not
    *  offered (not ready yet, or not this account's to schedule). */
   simuliveHref: string | null;
@@ -637,15 +710,47 @@ function RecordingCard({
         </p>
 
         {ready && rec.expiresAt && (
-          <p className={`mt-1.5 text-[12px] ${soon ? "font-medium text-warn" : "text-ink-3"}`}>
-            {until !== null && until <= 0
-              ? "Deletes today — download a copy to keep it."
-              : until !== null && until === 1
-                ? "Deletes tomorrow. Download a copy to keep it."
-                : until !== null && until <= 7
-                  ? `Deletes in ${until} days. Download a copy to keep it.`
-                  : `Kept until ${hydrated ? new Date(rec.expiresAt).toLocaleDateString(undefined, { dateStyle: "medium" }) : rec.expiresAt}.`}
-          </p>
+          <div className="mt-1.5 space-y-1.5">
+            <p className={`flex flex-wrap items-center gap-1.5 text-[12px] ${soon ? "font-medium text-warn" : "text-ink-3"}`}>
+              <span>
+                {rec.extended ? "Kept until" : "Deletes"}{" "}
+                {hydrated
+                  ? new Date(rec.expiresAt).toLocaleDateString(undefined, { dateStyle: "medium" })
+                  : rec.expiresAt.slice(0, 10)}
+                {hydrated && until !== null ? ` · ${daysLeftText(until)}` : ""}
+              </span>
+              {rec.extended && <Badge tone="brand">Kept longer</Badge>}
+              {rec.remindersOff && !rec.extended && <Badge tone="neutral">Letting it expire</Badge>}
+            </p>
+            {onKeep && !busy && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onKeep}
+                  disabled={!rec.canExtend}
+                  title={
+                    rec.canExtend
+                      ? "Keep this recording 3 more months from its current date"
+                      : rec.overQuota
+                        ? "Made while your recording storage was full: kept for the standard period only"
+                        : "Your recording storage is full. Delete or let other recordings expire, or upgrade."
+                  }
+                >
+                  Keep 3 more months
+                </Button>
+                {onLetExpire && (rec.extended || !rec.remindersOff) && (
+                  <button
+                    type="button"
+                    onClick={onLetExpire}
+                    className="text-[12px] text-ink-3 underline-offset-2 hover:text-ink hover:underline"
+                  >
+                    Let it expire
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {processing && pct > 0 && (

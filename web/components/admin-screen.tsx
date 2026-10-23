@@ -73,6 +73,7 @@ import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 import { AdminSales } from "./admin-sales";
 import { AdminCostCalculator } from "./admin-cost-calculator";
 import { AdminHostCosts } from "./admin-host-costs";
+import { RecordingStorageField } from "./admin-recording-storage";
 import { ArrowLeftIcon, SparklesIcon } from "./icons";
 
 /* The admin panel: a dashboard first, then the two lists.
@@ -735,6 +736,18 @@ function AdminAccounts() {
                           defaultBytes={defaultMediaLimit(users ?? [])}
                           disabled={busy === u.id}
                           onSave={(mb) => void setMediaQuota(u, mb)}
+                        />
+                      )}
+
+                      {u.canHost && (
+                        <RecordingStorageField
+                          key={u.id}
+                          user={u}
+                          onSaved={(patch) =>
+                            setUsers((prev) =>
+                              (prev ?? []).map((row) => (row.id === u.id ? { ...row, ...patch } : row)),
+                            )
+                          }
                         />
                       )}
 

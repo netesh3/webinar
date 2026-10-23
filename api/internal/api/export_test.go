@@ -104,3 +104,14 @@ func SetRecordings(s *Server, m media.Store) { s.recordings = m }
 // ForgetMixRestarts clears a slug's mix restart backoff, which is process-wide and would
 // otherwise carry over from an earlier test that used the same slug.
 func ForgetMixRestarts(slug string) { forgetMixRestarts(slug) }
+
+// SweepRecordingExpiryReminders is the 7-day / 1-day reminder job on its own, without its lease.
+func SweepRecordingExpiryReminders(s *Server, ctx context.Context) { s.sweepRecordingExpiryReminders(ctx) }
+
+// SweepExpiredRecordings is the recording retention job on its own, without its lease.
+func SweepExpiredRecordings(s *Server, ctx context.Context) { s.sweepExpiredRecordings(ctx) }
+
+// RecordingStartStorage is the storage check a cloud recording's start makes.
+func RecordingStartStorage(s *Server, ctx context.Context, hostID, recordingID string) string {
+	return s.recordingStartStorage(ctx, hostID, recordingID)
+}

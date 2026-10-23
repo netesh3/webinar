@@ -157,6 +157,12 @@ const (
 	 * it is ABOUT the session being over, so the outbox sends it for an ended webinar. One
 	 * per session: session_recaps.emailed_at (migration 0128). */
 	NotifySessionRecap NotificationKind = "session_recap"
+
+	/* NotifyRecordingExpiring is the host's "recordings are about to be deleted" email and
+	 * bell, 7 days and 1 day before a recording's expiry. One per host per sweep, listing
+	 * every recording reaching a stage; recording_expiry_reminders (migration 0148) keeps
+	 * each recording's reminder to once per expiry per stage. */
+	NotifyRecordingExpiring NotificationKind = "recording_expiring"
 )
 
 /* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they
@@ -1103,6 +1109,8 @@ type HostWebinarPage struct {
 type HostRecordingSummary struct {
 	Count      int   `json:"count"`
 	DurationMs int64 `json:"durationMs"`
+	// ExpiresAt is when the soonest of them is deleted, RFC3339; empty when none expires.
+	ExpiresAt string `json:"expiresAt,omitempty"`
 }
 
 // HostWebinarCounts is the per-tab tally behind the host list's badges.
@@ -3436,6 +3444,17 @@ type AdminUser struct {
 	MediaQuotaBytes *int64 `json:"mediaQuotaBytes,omitempty"`
 	MediaLimitBytes int64  `json:"mediaLimitBytes"`
 	MediaUsedBytes  int64  `json:"mediaUsedBytes"`
+	/* RecordingQuotaBytes is an admin's override of the plan's recording storage; absent
+	 * uses the plan (PlanRecordingLimitBytes). RecordingLimitBytes is what applies and
+	 * RecordingUsedBytes what this host's ready recordings hold now. */
+	RecordingQuotaBytes     *int64 `json:"recordingQuotaBytes,omitempty"`
+	PlanRecordingLimitBytes int64  `json:"planRecordingLimitBytes"`
+	RecordingLimitBytes     int64  `json:"recordingLimitBytes"`
+	RecordingUsedBytes      int64  `json:"recordingUsedBytes"`
+	// RecordingRetentionDays is an admin's override of how long this host's recordings are
+	// kept; absent is the deployment's DefaultRecordingRetentionDays.
+	RecordingRetentionDays        *int `json:"recordingRetentionDays,omitempty"`
+	DefaultRecordingRetentionDays int  `json:"defaultRecordingRetentionDays"`
 }
 
 /* AdminStats is the admin dashboard's first read.
@@ -4210,6 +4229,19 @@ type Recording struct {
 	// ExpiresAt is when this file will be deleted from cloud storage, RFC3339.
 	// Empty when retention is disabled or createdAt could not be parsed.
 	ExpiresAt string `json:"expiresAt,omitempty"`
+	/* Extended says the host pressed "Keep longer" and ExpiresAt is past the default window.
+	 * CanExtend says "Keep longer" would be accepted now (the host is within their recording
+	 * storage quota and this recording was not started over quota). OverQuota marks a
+	 * recording started while the host was already over quota: default retention only.
+	 * RemindersOff is "Let it expire": no more expiry reminders for it. */
+	Extended     bool `json:"extended,omitempty"`
+	CanExtend    bool `json:"canExtend,omitempty"`
+	OverQuota    bool `json:"overQuota,omitempty"`
+	RemindersOff bool `json:"remindersOff,omitempty"`
+	/* StorageWarning is set on the start response only, when the host's stored recordings
+	 * are at or past RecordingQuotaWarnPercent of their quota. The recording goes ahead — a
+	 * live session is never refused — and the room shows this line. */
+	StorageWarning string `json:"storageWarning,omitempty"`
 	/* CaptionsAvailable says the session has a transcript or live captions its replay's CC
 	 * can be made from; ShowCaptions whether the host shows them on replays (default: on when
 	 * captions were shown live, off when the transcript was only kept for the AI). */
@@ -4220,6 +4252,73 @@ type Recording struct {
 	// single take still has one entry, so the player does not have to special-case
 	// the shape.
 	Parts []RecordingPart `json:"parts,omitempty"`
+}
+
+/* Recording retention and storage.
+ *
+ * A recording is kept for the host's retention days (Admin -> Accounts, else the deployment's
+ * RECORDINGS_RETENTION_DAYS, 30) from when it stopped. "Keep longer" adds RecordingKeepMonths
+ * to the expiry in effect and can be repeated, while the host's stored recordings are within
+ * their quota. The quota is the plan's (plan_limits, migration 0148: no plan 2 GB,
+ * Professional and trials 10 GB, Business 50 GB, Enterprise 200 GB) unless an admin set one
+ * for the account. */
+const (
+	RecordingKeepMonths       = 3
+	RecordingQuotaWarnPercent = 90
+	// MaxRecordingQuotaGB bounds an admin's per-account override.
+	MaxRecordingQuotaGB = 10 * 1024
+	// MaxRecordingRetentionDays bounds an admin's per-account default retention.
+	MaxRecordingRetentionDays = 3650
+)
+
+// RecordingStorage is GET /api/host/recording-storage: the meter and the rules behind it.
+type RecordingStorage struct {
+	UsedBytes  int64 `json:"usedBytes"`
+	QuotaBytes int64 `json:"quotaBytes"`
+	// PlanQuotaBytes is the plan's number; QuotaOverride says an admin set QuotaBytes instead.
+	PlanQuotaBytes int64 `json:"planQuotaBytes"`
+	QuotaOverride  bool  `json:"quotaOverride,omitempty"`
+	Plan           Plan  `json:"plan,omitempty"`
+	// RetentionDays is how long a new recording is kept; 0 means this deployment keeps them.
+	RetentionDays int `json:"retentionDays"`
+	KeepMonths    int `json:"keepMonths"`
+	// OverQuota is UsedBytes > QuotaBytes: "Keep longer" is refused until it is not.
+	OverQuota bool `json:"overQuota,omitempty"`
+}
+
+/* RecordingQuotaError is the 409 quota_exceeded body from "Keep longer": the usual error
+ * shape plus the numbers the message is about. */
+type RecordingQuotaError struct {
+	Error      string `json:"error"`
+	Message    string `json:"message"`
+	UsedBytes  int64  `json:"usedBytes"`
+	QuotaBytes int64  `json:"quotaBytes"`
+}
+
+// SetUserRecordingStorageRequest is PATCH /api/admin/users/{id}/recording-storage.
+// Replace semantics: null puts that one back on the plan / deployment default.
+type SetUserRecordingStorageRequest struct {
+	RecordingQuotaBytes    *int64 `json:"recordingQuotaBytes"`
+	RecordingRetentionDays *int   `json:"recordingRetentionDays"`
+}
+
+/* KeepRecordingLinkRequest is POST /api/host/recordings/keep-link: the "Keep 3 more months"
+ * link from an expiry email, signed for one recording, its host and the expiry the email was
+ * about. A second press of the same link keeps nothing more. */
+type KeepRecordingLinkRequest struct {
+	Recording string `json:"recording"`
+	// Expires is the expiry the email was about, unix seconds.
+	Expires int64  `json:"expires"`
+	Sig     string `json:"sig"`
+}
+
+// KeepRecordingLinkResponse says what the link did and where the recording now stands.
+type KeepRecordingLinkResponse struct {
+	// Status is "kept", or "already_kept" when this link was used before.
+	Status    string    `json:"status"`
+	Webinar   string    `json:"webinar"`
+	Topic     string    `json:"topic"`
+	ExpiresAt string    `json:"expiresAt,omitempty"`
 }
 
 // RecordingPart is one start/stop take inside a session. The bytes are a

@@ -192,6 +192,8 @@ function useRecorder(): RecorderContextValue {
           setStartedAt(began);
           setBytes(0);
           notifyRef.current("Recording started.", "ok");
+          // Storage nearly or already full: the recording goes ahead, the host is told.
+          if (rec.storageWarning) notifyRef.current(rec.storageWarning, "info");
         } catch (err: unknown) {
           recording.current = null;
           setState("idle");
@@ -210,6 +212,7 @@ function useRecorder(): RecorderContextValue {
         : {
             start: async (mime) => {
               const rec = await api.startRecording(slug, mime);
+              if (rec.storageWarning) notifyRef.current(rec.storageWarning, "info");
               return { id: rec.id };
             },
             chunk: async (id, blob) => {

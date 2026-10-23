@@ -394,7 +394,15 @@ function AlertItem({
           something needs doing and then makes you navigate to find it is half a
           feature. */}
       <Link
-        href={a.webinarId ? `/host/${a.webinarId}?tab=registrants` : "/host"}
+        href={
+          a.kind === "recording_expiring"
+            ? a.webinarId
+              ? `/host/${a.webinarId}?tab=recording`
+              : "/host?tab=past&recording=with"
+            : a.webinarId
+              ? `/host/${a.webinarId}?tab=registrants`
+              : "/host"
+        }
         data-alert-link={a.id}
         onClick={(e) => {
           if (swiped.current) {

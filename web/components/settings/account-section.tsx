@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Modal } from "../controls";
 import { HostRequest } from "../host-request";
 import { BillingCard } from "./billing-card";
+import { RecordingStorageCard } from "../recording-storage-meter";
 import { useSession } from "../providers";
 import { Badge, Button, Card } from "../ui";
 import { api } from "@/lib/api";
@@ -50,6 +51,7 @@ export function AccountSection({ account }: { account: Account }) {
         </div>
       </Card>
       <BillingCard />
+      {account.canHost && <RecordingStorageCard />}
       <DeleteAccount account={account} />
     </section>
   );

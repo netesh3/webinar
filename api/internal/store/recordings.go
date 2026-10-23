@@ -752,11 +752,13 @@ func (s *Store) DeleteRecording(ctx context.Context, slug, id string) ([]string,
 	return keys, nil
 }
 
-// ExpiredRecordings lists finished recordings older than age, oldest first.
+// ExpiredRecordings lists recording sessions past their expiry (recording_expires_at,
+// migrations/0148: the host's retention days after the last take stopped, or later if
+// the host kept it longer), oldest first. defaultDays is RECORDINGS_RETENTION_DAYS.
 // Active in-progress rows (status recording) are left alone so a long session
 // is not deleted out from under the encoder.
-func (s *Store) ExpiredRecordings(ctx context.Context, age time.Duration, limit int) ([]RecordingFile, error) {
-	if age <= 0 {
+func (s *Store) ExpiredRecordings(ctx context.Context, defaultDays int, limit int) ([]RecordingFile, error) {
+	if defaultDays <= 0 {
 		return nil, nil
 	}
 	if limit < 1 {
@@ -771,13 +773,13 @@ func (s *Store) ExpiredRecordings(ctx context.Context, age time.Duration, limit 
 		  JOIN webinars w ON w.id = r.webinar_id
 		  LEFT JOIN users u ON u.id = w.host_id
 		 WHERE r.parent_id IS NULL
-		   AND r.created_at < now() - $1::interval
+		   AND recording_expires_at(r.id, $1) < now()
 		   AND NOT EXISTS (
 		     SELECT 1 FROM recordings c
 		      WHERE (c.id = r.id OR c.parent_id = r.id) AND c.status = 'recording'
 		   )
 		 ORDER BY r.created_at ASC
-		 LIMIT $2`, age.String(), limit)
+		 LIMIT $2`, defaultDays, limit)
 	if err != nil {
 		return nil, err
 	}

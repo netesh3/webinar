@@ -3183,6 +3183,13 @@ export const NotifyPanelistCancelled: NotificationKind = "panelist_cancelled";
  * 	 * per session: session_recaps.emailed_at (migration 0128).
  */
 export const NotifySessionRecap: NotificationKind = "session_recap";
+/**
+ *  NotifyRecordingExpiring is the host's "recordings are about to be deleted" email and
+ * 	 * bell, 7 days and 1 day before a recording's expiry. One per host per sweep, listing
+ * 	 * every recording reaching a stage; recording_expiry_reminders (migration 0148) keeps
+ * 	 * each recording's reminder to once per expiry per stage.
+ */
+export const NotifyRecordingExpiring: NotificationKind = "recording_expiring";
 export const MaxReminders = 3;
 export const MinReminderOffset = 1;
 export const MaxReminderOffset = 30 * 24 * 60;
@@ -4198,6 +4205,10 @@ export interface HostWebinarPage {
 export interface HostRecordingSummary {
   count: number /* int */;
   durationMs: number /* int64 */;
+  /**
+   * ExpiresAt is when the soonest of them is deleted, RFC3339; empty when none expires.
+   */
+  expiresAt?: string;
 }
 /**
  * HostWebinarCounts is the per-tab tally behind the host list's badges.
@@ -7054,6 +7065,21 @@ export interface AdminUser {
   mediaQuotaBytes?: number /* int64 */;
   mediaLimitBytes: number /* int64 */;
   mediaUsedBytes: number /* int64 */;
+  /**
+   *  RecordingQuotaBytes is an admin's override of the plan's recording storage; absent
+   * 	 * uses the plan (PlanRecordingLimitBytes). RecordingLimitBytes is what applies and
+   * 	 * RecordingUsedBytes what this host's ready recordings hold now.
+   */
+  recordingQuotaBytes?: number /* int64 */;
+  planRecordingLimitBytes: number /* int64 */;
+  recordingLimitBytes: number /* int64 */;
+  recordingUsedBytes: number /* int64 */;
+  /**
+   * RecordingRetentionDays is an admin's override of how long this host's recordings are
+   * kept; absent is the deployment's DefaultRecordingRetentionDays.
+   */
+  recordingRetentionDays?: number /* int */;
+  defaultRecordingRetentionDays: number /* int */;
 }
 /**
  *  AdminStats is the admin dashboard's first read.
@@ -7872,6 +7898,23 @@ export interface Recording {
    */
   expiresAt?: string;
   /**
+   *  Extended says the host pressed "Keep longer" and ExpiresAt is past the default window.
+   * 	 * CanExtend says "Keep longer" would be accepted now (the host is within their recording
+   * 	 * storage quota and this recording was not started over quota). OverQuota marks a
+   * 	 * recording started while the host was already over quota: default retention only.
+   * 	 * RemindersOff is "Let it expire": no more expiry reminders for it.
+   */
+  extended?: boolean;
+  canExtend?: boolean;
+  overQuota?: boolean;
+  remindersOff?: boolean;
+  /**
+   *  StorageWarning is set on the start response only, when the host's stored recordings
+   * 	 * are at or past RecordingQuotaWarnPercent of their quota. The recording goes ahead — a
+   * 	 * live session is never refused — and the room shows this line.
+   */
+  storageWarning?: string;
+  /**
    *  CaptionsAvailable says the session has a transcript or live captions its replay's CC
    * 	 * can be made from; ShowCaptions whether the host shows them on replays (default: on when
    * 	 * captions were shown live, off when the transcript was only kept for the AI).
@@ -7885,6 +7928,101 @@ export interface Recording {
    * the shape.
    */
   parts?: RecordingPart[];
+}
+/**
+ *  Recording retention and storage.
+ *  *
+ *  * A recording is kept for the host's retention days (Admin -> Accounts, else the deployment's
+ *  * RECORDINGS_RETENTION_DAYS, 30) from when it stopped. "Keep longer" adds RecordingKeepMonths
+ *  * to the expiry in effect and can be repeated, while the host's stored recordings are within
+ *  * their quota. The quota is the plan's (plan_limits, migration 0148: no plan 2 GB,
+ *  * Professional and trials 10 GB, Business 50 GB, Enterprise 200 GB) unless an admin set one
+ *  * for the account.
+ */
+export const RecordingKeepMonths = 3;
+/**
+ *  Recording retention and storage.
+ *  *
+ *  * A recording is kept for the host's retention days (Admin -> Accounts, else the deployment's
+ *  * RECORDINGS_RETENTION_DAYS, 30) from when it stopped. "Keep longer" adds RecordingKeepMonths
+ *  * to the expiry in effect and can be repeated, while the host's stored recordings are within
+ *  * their quota. The quota is the plan's (plan_limits, migration 0148: no plan 2 GB,
+ *  * Professional and trials 10 GB, Business 50 GB, Enterprise 200 GB) unless an admin set one
+ *  * for the account.
+ */
+export const RecordingQuotaWarnPercent = 90;
+/**
+ * MaxRecordingQuotaGB bounds an admin's per-account override.
+ */
+export const MaxRecordingQuotaGB = 10 * 1024;
+/**
+ * MaxRecordingRetentionDays bounds an admin's per-account default retention.
+ */
+export const MaxRecordingRetentionDays = 3650;
+/**
+ * RecordingStorage is GET /api/host/recording-storage: the meter and the rules behind it.
+ */
+export interface RecordingStorage {
+  usedBytes: number /* int64 */;
+  quotaBytes: number /* int64 */;
+  /**
+   * PlanQuotaBytes is the plan's number; QuotaOverride says an admin set QuotaBytes instead.
+   */
+  planQuotaBytes: number /* int64 */;
+  quotaOverride?: boolean;
+  plan?: Plan;
+  /**
+   * RetentionDays is how long a new recording is kept; 0 means this deployment keeps them.
+   */
+  retentionDays: number /* int */;
+  keepMonths: number /* int */;
+  /**
+   * OverQuota is UsedBytes > QuotaBytes: "Keep longer" is refused until it is not.
+   */
+  overQuota?: boolean;
+}
+/**
+ *  RecordingQuotaError is the 409 quota_exceeded body from "Keep longer": the usual error
+ *  * shape plus the numbers the message is about.
+ */
+export interface RecordingQuotaError {
+  error: string;
+  message: string;
+  usedBytes: number /* int64 */;
+  quotaBytes: number /* int64 */;
+}
+/**
+ * SetUserRecordingStorageRequest is PATCH /api/admin/users/{id}/recording-storage.
+ * Replace semantics: null puts that one back on the plan / deployment default.
+ */
+export interface SetUserRecordingStorageRequest {
+  recordingQuotaBytes?: number /* int64 */;
+  recordingRetentionDays?: number /* int */;
+}
+/**
+ *  KeepRecordingLinkRequest is POST /api/host/recordings/keep-link: the "Keep 3 more months"
+ *  * link from an expiry email, signed for one recording, its host and the expiry the email was
+ *  * about. A second press of the same link keeps nothing more.
+ */
+export interface KeepRecordingLinkRequest {
+  recording: string;
+  /**
+   * Expires is the expiry the email was about, unix seconds.
+   */
+  expires: number /* int64 */;
+  sig: string;
+}
+/**
+ * KeepRecordingLinkResponse says what the link did and where the recording now stands.
+ */
+export interface KeepRecordingLinkResponse {
+  /**
+   * Status is "kept", or "already_kept" when this link was used before.
+   */
+  status: string;
+  webinar: string;
+  topic: string;
+  expiresAt?: string;
 }
 /**
  * RecordingPart is one start/stop take inside a session. The bytes are a

@@ -194,6 +194,9 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		s.pushRoomMetadata(r, sfu, wb)
 	}
 
+	// Never refused for storage (see recording_retention.go): flagged and warned instead.
+	rec.StorageWarning = s.recordingStartStorage(r.Context(), wb.Host.ID, rec.ID)
+
 	s.log.Info("recording started", "slug", slug, "recording", rec.ID,
 		"by", user.ID, "mime", mime, "mode", s.cfg.RecordingsMode)
 	httpx.JSON(w, http.StatusCreated, rec)
@@ -411,7 +414,7 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "list recordings", err)
 		return
 	}
-	s.stampRecordings(list)
+	s.stampRecordings(r.Context(), slugFromContext(r.Context()), list)
 	s.stampRecordingCaptions(r.Context(), slugFromContext(r.Context()), list)
 	// Cloud Run scales to zero, so the background sweepers may not have run for
 	// hours. Opening the tab that shows recordings is as good a trigger as a
@@ -775,8 +778,8 @@ func (s *Server) handleUpdateRecordingShare(w http.ResponseWriter, r *http.Reque
 		s.enqueueReplay(r.Context(), slug, rec)
 	}
 
-	s.stampRecording(&rec)
 	one := []types.Recording{rec}
+	s.stampRecordings(r.Context(), slug, one)
 	s.stampRecordingCaptions(r.Context(), slug, one)
 	httpx.JSON(w, http.StatusOK, one[0])
 }
@@ -861,7 +864,7 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 		UploadPercent:    session.UploadPercent,
 		Parts:            pubParts,
 	}
-	s.stampPublicRecording(&res)
+	s.stampPublicRecording(r.Context(), slug, &res)
 	// The AI recap's chapters, for a viewer who may watch it. See recap.go.
 	if unlocked {
 		if chapters, err := s.store.RecapChapters(r.Context(), slug); err == nil && len(chapters) > 0 {

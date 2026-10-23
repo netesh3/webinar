@@ -52,6 +52,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for i := range users {
+		users[i].DefaultRecordingRetentionDays = s.cfg.RecordingsRetentionDays
 		users[i].MediaLimitBytes = s.cfg.MediaQuotaDefaultBytes()
 		if q := users[i].MediaQuotaBytes; q != nil {
 			users[i].MediaLimitBytes = *q

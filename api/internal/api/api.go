@@ -580,6 +580,7 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/users/{id}/stage-cap", s.handleSetUserStageCap)
 			r.Patch("/users/{id}/meeting-cap", s.handleSetUserMeetingCap)
 			r.Patch("/users/{id}/media-quota", s.handleSetUserMediaQuota)
+			r.Patch("/users/{id}/recording-storage", s.handleSetUserRecordingStorage)
 			r.Patch("/users/{id}/plan", s.handleSetUserPlan)
 			r.Patch("/users/{id}/sfu", s.handleSetUserSFU)
 			r.Get("/sfu-projects", s.handleAdminSFUProjects)
@@ -642,6 +643,9 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/webinars/{slug}/recordings/{id}/captions.vtt", s.handleRecordingCaptions)
 				r.Patch("/webinars/{slug}/recordings/{id}/share", s.handleUpdateRecordingShare)
 				r.Delete("/webinars/{slug}/recordings/{id}", s.handleDeleteRecording)
+				// How long it is kept (recording_retention.go). The owner's alone.
+				r.Post("/webinars/{slug}/recordings/{id}/keep", s.handleKeepRecording)
+				r.Post("/webinars/{slug}/recordings/{id}/let-expire", s.handleLetRecordingExpire)
 			})
 
 			// Everything below needs the hosting capability, so an ordinary
@@ -652,6 +656,9 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/webinars", s.handleHostWebinars)
 				r.Post("/webinars", s.handleCreateWebinar)
 				r.Get("/recordings", s.handleHostRecordingLibrary)
+				// The recording storage meter, and the expiry email's "Keep 3 more months".
+				r.Get("/recording-storage", s.handleRecordingStorage)
+				r.Post("/recordings/keep-link", s.handleKeepRecordingLink)
 				// What delivery the schedule form offers. See edge.go.
 				r.Get("/delivery", s.handleDeliveryPolicy)
 

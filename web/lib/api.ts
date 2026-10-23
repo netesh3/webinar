@@ -134,6 +134,10 @@ import type {
   SimuliveScheduleRequest,
   SimuliveStartRequest,
   ReplayTimeline,
+  RecordingStorage,
+  KeepRecordingLinkRequest,
+  KeepRecordingLinkResponse,
+  SetUserRecordingStorageRequest,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 import { captionsURL } from "./caption-track";
@@ -1233,6 +1237,22 @@ export const api = {
       `/api/host/webinars/${seg(slug)}/recordings/${seg(id)}`,
     ),
 
+  /** "Keep longer": 3 more months from the current expiry. 409 quota_exceeded when the
+   *  host's recording storage is full. */
+  keepRecording: (slug: string, id: string) =>
+    post<Recording>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/keep`, {}),
+
+  /** "Let it expire": back to the default window, and no more reminders. */
+  letRecordingExpire: (slug: string, id: string) =>
+    post<Recording>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/let-expire`, {}),
+
+  /** The signed-in host's recording storage meter. */
+  recordingStorage: () => request<RecordingStorage>("/api/host/recording-storage", fresh),
+
+  /** The expiry email's one-click "Keep 3 more months". */
+  keepRecordingLink: (body: KeepRecordingLinkRequest) =>
+    post<KeepRecordingLinkResponse>("/api/host/recordings/keep-link", body),
+
   /** The file itself. A plain URL rather than a fetch: the browser streams it,
    *  supports range requests so the video can be scrubbed, and the session cookie
    *  travels with it. */
@@ -1589,6 +1609,18 @@ export const api = {
         mediaQuotaBytes: mediaQuotaBytes ?? undefined,
       } satisfies SetUserMediaQuotaRequest,
     ),
+
+  /** Set an account's recording storage (bytes) and default retention (days); null puts
+   *  either back on the plan / deployment default. Both are always sent. */
+  setUserRecordingStorage: (
+    userId: string,
+    recordingQuotaBytes: number | null,
+    recordingRetentionDays: number | null,
+  ) =>
+    patch<RecordingStorage>(`/api/admin/users/${seg(userId)}/recording-storage`, {
+      recordingQuotaBytes: recordingQuotaBytes ?? undefined,
+      recordingRetentionDays: recordingRetentionDays ?? undefined,
+    } satisfies SetUserRecordingStorageRequest),
 
   /** Put an account on a paid plan, or "" for none (the launch default). */
   setUserPlan: (userId: string, plan: Plan | "") =>
