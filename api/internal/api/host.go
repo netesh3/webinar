@@ -893,7 +893,8 @@ func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.De
 	 * DeleteRoom on a room that does not exist is not an error worth failing the request
 	 * over — the common case by far is a scheduled webinar nobody has opened — so the status
 	 * check is a way to keep the log honest rather than a correctness requirement. */
-	if wb, err := s.store.WebinarBySlug(ctx, slug); err == nil && wb.Status == types.StatusLive {
+	wb, wbErr := s.store.WebinarBySlug(ctx, slug)
+	if wbErr == nil && wb.Status == types.StatusLive {
 		if sfu, err := s.sfuFor(ctx, wb); err != nil {
 			s.log.Warn("delete webinar: could not resolve the livekit project",
 				"slug", slug, "error", err)
@@ -910,6 +911,19 @@ func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.De
 	deleted, err := s.store.DeleteWebinar(ctx, slug)
 	if err != nil {
 		return deleted, err
+	}
+
+	/* The Zoom meeting or webinar it ran on goes too, or it lingers in the host's
+	 * Zoom account. Logged, not fatal, like the bytes below: the webinar is gone
+	 * here either way. */
+	if wbErr == nil && zoom.IsVenue(wb.Venue) && wb.ZoomID != "" {
+		if flow := s.zoomFlow(); flow != nil {
+			if err := flow.Remove(ctx, wb.Host.ID, wb.Venue, wb.ZoomID); err != nil {
+				status, code, msg := zoom.ErrorParts(err)
+				s.log.Warn("delete webinar: zoom meeting left behind",
+					"slug", slug, "status", status, "code", code, "zoom", msg)
+			}
+		}
 	}
 
 	/* The bytes. Every failure is logged individually and none of them fails the caller: the
