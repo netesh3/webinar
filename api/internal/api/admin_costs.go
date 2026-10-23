@@ -30,7 +30,8 @@ import (
  *   - each host's usage by provider, and the platform's, for the shared costs.
  *
  * A report is cached for costCacheTTL per range: the queries scan every session in it, and
- * an admin flicking between hosts should not repeat them. ?fresh=1 skips the cache. */
+ * an admin flicking between hosts should not repeat them. ?fresh=1 skips the cache. The
+ * ignore list (cost_ignore.go) is matched per request, outside the cache. */
 
 const costCacheTTL = 10 * time.Minute
 
@@ -450,9 +451,24 @@ func (s *Server) costRequest(w http.ResponseWriter, r *http.Request) (*costRepor
 	return rep, provider, true
 }
 
+// costIgnores matches the report's hosts against the ignore list, as it is now.
+func (s *Server) costIgnores(w http.ResponseWriter, r *http.Request, rep *costReport) ([]store.CostIgnoreRule, map[string]string, float64, bool) {
+	rules, err := s.store.CostIgnoreRules(r.Context())
+	if err != nil {
+		s.fail(w, r, "cost ignore list", err)
+		return nil, nil, 0, false
+	}
+	by, hours := markIgnored(rep, rules)
+	return rules, by, hours, true
+}
+
 // handleAdminCosts is GET /api/admin/costs?from=&to=&provider=: every host's usage.
 func (s *Server) handleAdminCosts(w http.ResponseWriter, r *http.Request) {
 	rep, provider, ok := s.costRequest(w, r)
+	if !ok {
+		return
+	}
+	_, ignored, ignoredHours, ok := s.costIgnores(w, r, rep)
 	if !ok {
 		return
 	}
@@ -461,8 +477,10 @@ func (s *Server) handleAdminCosts(w http.ResponseWriter, r *http.Request) {
 		RangeStart: rep.rangeStart.UTC().Format(time.RFC3339), RangeEnd: rep.rangeEnd.UTC().Format(time.RFC3339),
 		Hosts: []types.AdminCostHost{}, Platform: rep.platform, GeneratedAt: rep.at.UTC().Format(time.RFC3339),
 	}
+	out.Platform.IgnoredSessionHours = ignoredHours
 	for _, h := range rep.hosts {
 		if fh, ok := filterHost(*h, provider); ok {
+			fh.IgnoredBy = ignored[fh.HostID]
 			out.Hosts = append(out.Hosts, fh)
 		}
 	}
@@ -496,13 +514,19 @@ func (s *Server) handleAdminCostHost(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 	}
+	rules, _, ignoredHours, ok := s.costIgnores(w, r, rep)
+	if !ok {
+		return
+	}
 	fh, _ := filterHost(*h, provider)
+	fh.IgnoredBy = costIgnoredBy(rules, fh.HostID, fh.Email)
 	out := types.AdminCostHostDetail{
 		From: rep.from, To: rep.to,
 		RangeStart: rep.rangeStart.UTC().Format(time.RFC3339), RangeEnd: rep.rangeEnd.UTC().Format(time.RFC3339),
 		Host: fh, Sessions: []types.AdminCostSession{}, Platform: rep.platform,
 		GeneratedAt: rep.at.UTC().Format(time.RFC3339),
 	}
+	out.Platform.IgnoredSessionHours = ignoredHours
 	for i := len(rep.sessions) - 1; i >= 0; i-- {
 		cs := rep.sessions[i]
 		if cs.hostID == id && (provider == "" || cs.Provider == provider) {

@@ -50,6 +50,9 @@ import type {
   AdminWhatsAppUsage,
   AdminCostsResponse,
   AdminCostHostDetail,
+  CostIgnoreList,
+  CostIgnoreRule,
+  CostIgnoreRuleInput,
   AlertsChangedResponse,
   AlertsResponse,
   AppConfig,
@@ -1526,6 +1529,10 @@ export const api = {
   /** One host's usage and their sessions, for the drill-down. */
   adminCostHost: (id: string, q: { from?: string; to?: string; provider?: string; fresh?: boolean }) =>
     request<AdminCostHostDetail>(`/api/admin/costs/hosts/${seg(id)}?${costQuery(q)}`, fresh),
+  /** The report's ignore list (test and staff accounts), with rules worth adding. */
+  costIgnoreList: () => request<CostIgnoreList>("/api/admin/costs/ignore", fresh),
+  addCostIgnoreRule: (rule: CostIgnoreRuleInput) => post<CostIgnoreRule>("/api/admin/costs/ignore", rule),
+  deleteCostIgnoreRule: (id: string) => del<StatusResponse>(`/api/admin/costs/ignore/${seg(id)}`),
 
   /** Every account, for the admin panel. Admin-only server side; `q` filters by
    *  email or name. */

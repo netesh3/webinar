@@ -251,4 +251,152 @@ func TestAdminCostsByHost(t *testing.T) {
 	if res, _ := h.do(http.MethodGet, "/api/admin/costs/hosts/00000000-0000-0000-0000-000000000000", nil); res.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown host: status %d, want 404", res.StatusCode)
 	}
+
+	testCostIgnoreList(t, h, a.ID, b.ID, path)
+}
+
+/* The ignore list on the same seeded report: only admins edit it; a matching host is marked
+ * and their session-hours (every provider's) are summed for the platform share. A has 3
+ * session-hours in September (2 h Edge, 1 h simulive), B 3 (Edge, meeting, GCP). */
+func testCostIgnoreList(t *testing.T, h *harness, aID, bID, path string) {
+	t.Helper()
+	const list = "/api/admin/costs/ignore"
+	rule := func(kind, value string) types.CostIgnoreRuleInput {
+		return types.CostIgnoreRuleInput{Kind: kind, Value: value, Note: "test account"}
+	}
+
+	// Only admins.
+	h.login("cost-a@test.dev")
+	for _, c := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodGet, list, nil},
+		{http.MethodPost, list, rule("email", "cost-a@test.dev")},
+		{http.MethodDelete, list + "/00000000-0000-0000-0000-000000000000", nil},
+	} {
+		if res, _ := h.do(c.method, c.path, c.body); res.StatusCode != http.StatusForbidden {
+			t.Errorf("host %s %s: status %d, want 403", c.method, c.path, res.StatusCode)
+		}
+	}
+	h.login("neeraj@acme.dev")
+
+	add := func(in types.CostIgnoreRuleInput, want int) types.CostIgnoreRule {
+		t.Helper()
+		res, raw := h.do(http.MethodPost, list, in)
+		if res.StatusCode != want {
+			t.Fatalf("add %+v: status %d body %s, want %d", in, res.StatusCode, raw, want)
+		}
+		var out types.CostIgnoreRule
+		if want == http.StatusCreated {
+			h.decode(raw, &out)
+		}
+		return out
+	}
+	report := func(p string) (map[string]types.AdminCostHost, types.AdminCostPlatform) {
+		t.Helper()
+		res, raw := h.do(http.MethodGet, p, nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d", p, res.StatusCode)
+		}
+		var rep types.AdminCostsResponse
+		h.decode(raw, &rep)
+		hosts := map[string]types.AdminCostHost{}
+		for _, x := range rep.Hosts {
+			hosts[x.HostID] = x
+		}
+		return hosts, rep.Platform
+	}
+	near := func(what string, got, want float64) {
+		t.Helper()
+		if math.Abs(got-want) > 1e-6 {
+			t.Errorf("%s = %v, want %v", what, got, want)
+		}
+	}
+
+	// Nothing on the list: nobody ignored.
+	hosts, plat := report(path)
+	if hosts[aID].IgnoredBy != "" || hosts[bID].IgnoredBy != "" || plat.IgnoredSessionHours != 0 {
+		t.Errorf("empty list ignored someone: %q %q %v", hosts[aID].IgnoredBy, hosts[bID].IgnoredBy, plat.IgnoredSessionHours)
+	}
+
+	// An exact email, whatever its case.
+	rb := add(rule("email", "Cost-B@Test.dev"), http.StatusCreated)
+	if rb.Value != "cost-b@test.dev" || rb.Label != "cost-b@test.dev" || rb.CreatedBy != "neeraj@acme.dev" {
+		t.Errorf("rule = %+v", rb)
+	}
+	add(rule("email", "cost-b@test.dev"), http.StatusConflict)
+	add(rule("pattern", "cost-b@test.dev"), http.StatusUnprocessableEntity)
+	add(rule("domain", "test.dev"), http.StatusUnprocessableEntity)
+	add(rule("host", "00000000-0000-0000-0000-000000000000"), http.StatusNotFound)
+
+	hosts, plat = report(path)
+	if hosts[bID].IgnoredBy != rb.ID || hosts[aID].IgnoredBy != "" {
+		t.Errorf("after email rule: A %q, B %q", hosts[aID].IgnoredBy, hosts[bID].IgnoredBy)
+	}
+	near("B's ignored session-hours", plat.IgnoredSessionHours, 3)
+	near("platform session-hours unchanged", plat.SessionHours, 6)
+	// The provider filter narrows the rows, not the ignored hours: the share is over everyone's.
+	hosts, plat = report(path + "&provider=gcp")
+	if hosts[bID].IgnoredBy != rb.ID {
+		t.Errorf("gcp filter lost the mark: %+v", hosts[bID])
+	}
+	near("ignored hours under the gcp filter", plat.IgnoredSessionHours, 3)
+	var det types.AdminCostHostDetail
+	res, raw := h.do(http.MethodGet, "/api/admin/costs/hosts/"+bID+"?from=2026-09-01&to=2026-09-30", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("detail: %d", res.StatusCode)
+	}
+	h.decode(raw, &det)
+	if det.Host.IgnoredBy != rb.ID || math.Abs(det.Platform.IgnoredSessionHours-3) > 1e-6 {
+		t.Errorf("detail ignored = %q, %v", det.Host.IgnoredBy, det.Platform.IgnoredSessionHours)
+	}
+
+	// The list, with suggestions: the test pattern still catching A, and the admin.
+	var got types.CostIgnoreList
+	res, raw = h.do(http.MethodGet, list, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("list: %d", res.StatusCode)
+	}
+	h.decode(raw, &got)
+	if len(got.Rules) != 1 || got.Rules[0].ID != rb.ID || got.Rules[0].Note != "test account" {
+		t.Errorf("rules = %+v", got.Rules)
+	}
+	sug := map[string]types.CostIgnoreSuggestion{}
+	for _, s := range got.Suggestions {
+		sug[s.Kind+":"+s.Value] = s
+	}
+	if s := sug["pattern:*@test.dev"]; s.Matches != 1 {
+		t.Errorf("*@test.dev suggestion = %+v (all %+v)", s, got.Suggestions)
+	}
+	if s := sug["host:"+aID]; s.Reason != "Test address" {
+		t.Errorf("A suggestion = %+v", s)
+	}
+	if _, ok := sug["host:"+bID]; ok {
+		t.Error("suggested B, who is already ignored")
+	}
+
+	// A host rule, then removing rules.
+	ra := add(rule("host", aID), http.StatusCreated)
+	if ra.Label != "cost-a@test.dev" {
+		t.Errorf("host rule label = %q", ra.Label)
+	}
+	_, plat = report(path)
+	near("A and B ignored", plat.IgnoredSessionHours, 6)
+	for _, id := range []string{ra.ID, rb.ID} {
+		if res, _ := h.do(http.MethodDelete, list+"/"+id, nil); res.StatusCode != http.StatusOK {
+			t.Errorf("delete %s: %d", id, res.StatusCode)
+		}
+	}
+	if res, _ := h.do(http.MethodDelete, list+"/"+rb.ID, nil); res.StatusCode != http.StatusNotFound {
+		t.Errorf("delete twice: %d, want 404", res.StatusCode)
+	}
+
+	// A pattern catches both.
+	rp := add(rule("pattern", "*@TEST.dev"), http.StatusCreated)
+	hosts, plat = report(path)
+	if hosts[aID].IgnoredBy != rp.ID || hosts[bID].IgnoredBy != rp.ID {
+		t.Errorf("pattern: A %q, B %q", hosts[aID].IgnoredBy, hosts[bID].IgnoredBy)
+	}
+	near("pattern ignored hours", plat.IgnoredSessionHours, 6)
 }
