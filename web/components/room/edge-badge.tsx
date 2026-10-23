@@ -1,9 +1,9 @@
 "use client";
 
-/* The host's reminder that this webinar is on Edge delivery, with how many people are watching
- * the stream (docs/edge-delivery.md). Those viewers are not in the video room, so the
- * participant list does not show them; this count is the open event streams. Renders nothing
- * for a standard webinar. */
+/* The host's notice while an Edge-delivery audience stream is still being prepared
+ * (docs/edge-delivery.md). There used to be an "Edge · N watching" chip in the header too;
+ * it was removed as noise — the participants panel's "Watching via stream" row covers who
+ * is watching. Renders nothing for a standard webinar, or once the stream is live. */
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
@@ -14,9 +14,8 @@ const POLL_MS = 5000;
 // While the audience stream is being prepared, check often so the popup goes the moment it is live.
 const POLL_PREPARING_MS = 2000;
 
-export function EdgeBadge() {
+export function EdgePreparingNotice() {
   const { slug } = useRoomUI();
-  const [viewers, setViewers] = useState<number | null>(null);
   const [edge, setEdge] = useState(false);
   const [preparing, setPreparing] = useState(false);
 
@@ -28,7 +27,6 @@ export function EdgeBadge() {
         const status = await api.hostEdgeStatus(slug);
         if (cancelled) return;
         setEdge(status.delivery === "edge");
-        setViewers(status.viewers);
         const isPreparing = status.audienceStream === AudienceStreamPreparing;
         setPreparing(isPreparing);
         if (status.delivery !== "edge") return; // nothing to keep counting
@@ -46,20 +44,8 @@ export function EdgeBadge() {
     };
   }, [slug]);
 
-  if (!edge) return null;
-  return (
-    <>
-      {preparing && <PreparingPopup />}
-      <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/85"
-      title="Edge delivery: the audience watches a low-latency stream, not the video room"
-    >
-      <span className="inline-block size-1.5 rounded-full bg-sky-400" />
-      Edge
-      {viewers != null && <span className="tabular-nums text-white/60">· {viewers} watching</span>}
-      </span>
-    </>
-  );
+  if (!edge || !preparing) return null;
+  return <PreparingPopup />;
 }
 
 /* Shown to the host while the webinar is live but the audience has no picture yet — the mix

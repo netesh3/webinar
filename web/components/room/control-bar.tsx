@@ -35,16 +35,15 @@ import {
 } from "@/lib/raised-hands";
 import {
   barSlots,
-  centerBarTools,
+  barPlacement,
   describeChange,
-  shareButtonOnBar,
   gridItems,
   isCustomised,
   isHomeTool,
   isPanelTool,
-  morePanelTools,
   tuckedTools,
   usableTools,
+  withHomeToolsTucked,
   wouldBump,
   type ToolbarChange,
   type ToolbarSnapshot,
@@ -295,7 +294,7 @@ export function ControlBar() {
   const whiteboard = useWhiteboard();
 
   const drag = useToolDrag();
-  const capacity = useSlotCapacity();
+  const slotCapacity = useSlotCapacity();
   // Screen share support, read here (not further down) because Share a video
   // file's availability depends on it.
   const canShare = useSyncExternalStore(subscribeNothing, readCanShare, readCanShareOnServer);
@@ -309,28 +308,27 @@ export function ControlBar() {
     whiteboard:
       !!whiteboard?.canDraw && (!whiteboard.state || whiteboard.isOwner || isHost),
   });
-  const slots = barSlots(tools.layout, capacity, usable);
-  const grid = gridItems(tools.layout, slots, usable);
-  /* YouTube and Settings: on the bar in their own place unless tucked into
-   * More (lib/tools.ts HOME_BAR_TOOLS). */
-  const tucked = tuckedTools(tools.layout);
-  const youtubeHome = usable.includes("youtube") && !tucked.includes("youtube");
   const compact = useCompact();
   const toggleSize = useMediaToggleSize();
   const viewport = useViewportWidth();
+  // A phone-shaped bar has no pin slots at all: Chat and Reactions are the
+  // whole strip there (lib/tools.ts barPlacement).
+  const capacity = compact ? 0 : slotCapacity;
+  const slots = barSlots(tools.layout, capacity, usable);
+  /* YouTube and Settings are home tools: in More by default, back on the bar
+   * only if somebody drags them out (lib/tools.ts HOME_BAR_TOOLS). On a compact
+   * bar they are always in More, whatever the saved layout says. */
+  const grid = gridItems(
+    compact ? withHomeToolsTucked(tools.layout) : tools.layout,
+    slots,
+    usable,
+  );
 
   // The centred strip's own left padding is what keeps it clear of mic+camera
   // below — they're out of flow so they don't push it, meaning this has to
   // reserve their actual width itself. Computed from the same conditions
-  // those buttons render on (not duplicated as a second source of truth that
-  // could drift, and reading the SAME live tier toggleSize does — not a flat
-  // guess sized for one phone width) rather than a flat guess sized for the
-  // worst case: a plain attendee with neither needs none of this reserved at
-  // all, and even a single MediaToggle is half of what two together need.
-  // Reserving for two unconditionally was what left no room for the centre
-  // strip's own content the one time both actually show — a full "Bring on
-  // stage" grant. Desktop doesn't need this: MediaToggle is fixed wider
-  // there (min-w-14) but `sm:` has enough room to spare either way.
+  // those buttons render on, reading the SAME live tier toggleSize does: a
+  // plain attendee with neither needs none of this reserved at all.
   const micToggleShown =
     (permissions.canPublish || permissions.mutedByHost) &&
     (permissions.canSpeak || permissions.mutedByHost);
@@ -342,54 +340,32 @@ export function ControlBar() {
 
   /* Attendee, not host or a scheduled panelist. `promoted` is exactly this:
    * "lifted out of the audience" — a scheduled panelist has canPublish
-   * without it, and the host is excluded outright. Everything below that
-   * treats a person differently from a panelist keys off this, not off
-   * canPublish alone. */
+   * without it, and the host is excluded outright. */
   const isAttendee = !isHost && (!permissions.canPublish || permissions.promoted);
-  // Phone only, and only below `sm` (where the captions are already hidden).
-  // Buttons scale down with the width; if the row still cannot hold Chat,
-  // Q&A, Raise hand and Reactions, slots comes back short and those last
-  // two move into More. At `sm` and above the strip is the one it was:
-  // attendees keep Chat, Q&A and Raise hand, and nothing here changes a
-  // host or panelist.
-  const phone = compact && isAttendee && viewport > 0 && viewport < PHONE_BAR_BREAK;
-  const attendeeWanted = phone
-    ? centerBarTools(availableTools, true, true, tucked).length
+  // Below `sm` the strip's buttons scale with the width, for every role; if
+  // the row still cannot hold Chat and Reactions, Reactions moves into More.
+  const phone = compact && viewport > 0 && viewport < PHONE_BAR_BREAK;
+  const phoneWanted = phone
+    ? barPlacement({ available: availableTools, compact: true, tucked: [] }).strip.length
     : 0;
   const phoneFit = phone
-    ? mobileEngagementFit(viewport, leftClusterCount, toggleSize, attendeeWanted)
+    ? mobileEngagementFit(viewport, leftClusterCount, toggleSize, phoneWanted)
     : null;
-  // Promoted on a phone: Share is in More even when the scaled icons would
-  // have left room for it. Mic and camera stay the live toggles above.
-  const shareOnBar = shareButtonOnBar({
+  /* What is inline and what is in More — one pure decision (lib/tools.ts). */
+  const placement = barPlacement({
+    available: availableTools,
     compact,
-    phone,
-    attendee: isAttendee,
-    mediaToggles: leftClusterCount,
-    cameraToggleShown,
+    tucked: tuckedTools(tools.layout),
+    slots: phoneFit?.slots,
   });
-  const engagementSlots = phoneFit?.slots;
-  const centerTools = centerBarTools(
-    availableTools,
-    compact,
-    phone,
-    tucked,
-    engagementSlots,
-  );
-  const panelItems = morePanelTools(
-    availableTools,
-    compact,
-    phone,
-    tucked,
-    engagementSlots,
-  );
+  const tucked = placement.tucked;
+  const youtubeHome = placement.youtubeInline && usable.includes("youtube");
+  const shareOnBar = placement.shareInline;
+  const centerTools = placement.strip;
+  const panelItems = placement.panel;
   // Once the host brings an attendee on stage, mic+camera claim the left —
-  // and Chat / Raise hand / More move to hug the right edge instead of
-  // staying centred, so the strip reads as two clear halves (yours, on the
-  // left; everyone else's tools, on the right) rather than mic and camera
-  // crowding into a centred cluster's space. Host and panelist keep the
-  // centred strip they've always had — isAttendee is false for both, by
-  // construction above.
+  // and the strip moves to hug the right edge instead of staying centred, so
+  // it reads as two clear halves. Host and panelist keep the centred strip.
   const shiftToolsRight = compact && isAttendee && leftClusterCount > 0;
 
   const raisedCount = raisedHandsButtonCount(
@@ -1156,7 +1132,7 @@ export function ControlBar() {
           {/* Recording sits with the centre tools the way Zoom parks Record —
               a capture control, not a mute/video twin. It renders nothing for
               anyone the server has not told they may record. */}
-          <RecordButton />
+          {placement.recordInline && <RecordButton />}
           {/* YouTube's home, beside Record. It moves into More like any other
               tool; its dialog is rendered once below either way. */}
           {youtubeHome && (
@@ -1357,6 +1333,14 @@ export function ControlBar() {
           <MoreButton
             open={gridVisible}
             count={gridVisible ? 0 : gridBadge}
+            // A live stream whose button is in More still shows it is live.
+            live={
+              !gridVisible &&
+              ((youtube.configured && !youtubeHome) ||
+                (["linkedin", "instagram", "facebook"] as const).some(
+                  (id) => platforms[id].live && !slots.some((s) => s.tool === id),
+                ))
+            }
             mentions={
               !gridVisible &&
               (grid.includes("chat") || (panelItems?.includes("chat") ?? false))
@@ -1469,10 +1453,13 @@ export function ControlBar() {
               // A tucked home tool can go back even on a screen with no pin
               // slots — it returns to its own place, not a slot. So a phone
               // that tucked Settings can always put it back.
-              canCustomize={capacity > 0 || tucked.length > 0}
+              // A compact bar has no room for anything more, home tools
+              // included, so nothing there offers to move onto it.
+              canCustomize={placement.pinSlots && (capacity > 0 || tucked.length > 0)}
               movableIds={
                 capacity > 0 ? undefined : grid.filter((id) => isHomeTool(id))
               }
+              recordSlot={placement.recordInline ? undefined : <RecordButton />}
               bumpTarget={wouldBump(tools.layout, capacity, usable)}
               editing={editingNow}
               onEditingChange={setEditing}

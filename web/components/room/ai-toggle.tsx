@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { AI_PAUSED_TOOLTIP, AI_TOGGLE_TOOLTIP, aiPaused, aiToggleConfirm, aiToggleVisible, sessionAIOn } from "@/lib/ai-session";
+import { aiPaused, aiToggleConfirm, aiToggleVisible, sessionAIOn } from "@/lib/ai-session";
 import type { ControlsPatch } from "@/lib/api-types";
 import { SparklesIcon } from "../icons";
 import { useToast } from "../providers";
@@ -41,29 +41,33 @@ export function AIToggle() {
     }
   };
 
+  // A plain toggle button (aria-pressed), no switch drawn inside it: filled
+  // with the brand colour when on, outlined and neutral when off or paused.
+  // The title says the state and what a click does.
+  const title = on
+    ? status === "live"
+      ? "AI on: click to pause"
+      : "AI on: click to turn off for this session"
+    : paused
+      ? "AI paused: click to resume"
+      : "AI off: click to turn on";
+
   return (
     <button
       type="button"
-      role="switch"
-      aria-checked={on}
+      aria-pressed={on}
       aria-label={paused ? "AI is paused for this session" : "AI for this session"}
-      title={paused ? AI_PAUSED_TOOLTIP : AI_TOGGLE_TOOLTIP}
+      title={title}
       disabled={busy}
       onClick={() => void toggle()}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:opacity-60 ${
-        on ? "bg-brand/25 text-white hover:bg-brand/35" : "bg-white/10 text-white/70 hover:bg-white/20"
+      className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:opacity-60 sm:h-8 sm:px-2.5 ${
+        on
+          ? "border-brand bg-brand text-white hover:bg-brand/90"
+          : "border-white/25 bg-transparent text-white/70 hover:border-white/40 hover:text-white"
       }`}
     >
-      <SparklesIcon className={`size-3.5 ${on ? "text-[#a3c8ff]" : ""}`} />
-      {paused ? "AI paused" : "AI"}
-      <span
-        aria-hidden
-        className={`relative ml-0.5 inline-block h-3.5 w-6 rounded-full transition-colors ${on ? "bg-brand" : "bg-white/25"}`}
-      >
-        <span
-          className={`absolute top-0.5 size-2.5 rounded-full bg-white transition-[left] ${on ? "left-3" : "left-0.5"}`}
-        />
-      </span>
+      <SparklesIcon className="size-4" />
+      <span className="hidden sm:inline">{paused ? "AI paused" : "AI"}</span>
     </button>
   );
 }

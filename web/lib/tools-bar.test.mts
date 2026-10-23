@@ -4,12 +4,17 @@
  */
 
 import {
+  barPlacement,
   centerBarTools,
-  fitAttendeeCompactBar,
+  fitCompactBar,
+  moreGroups,
   morePanelTools,
   shareButtonOnBar,
+  withHomeToolsTucked,
   CENTER_BAR_TOOLS,
+  HOME_BAR_TOOLS,
   type ToolId,
+  type ToolLayout,
 } from "./tools.ts";
 import {
   BAR_SLOT_CAPACITY,
@@ -46,14 +51,14 @@ console.log("\ncenterBarTools");
 }
 
 {
+  // Every role gets the same phone strip: Chat and Reactions, nothing else.
   const phone = centerBarTools(ALL, true);
-  ok(phone.join() === "chat,qa,hand", "a phone bar keeps Chat, Q&A and Raise hand");
+  ok(phone.join() === "chat,reactions", "a phone bar keeps only Chat and Reactions");
   const more = morePanelTools(ALL, true) ?? [];
-  ok(
-    more.includes("settings") && more.includes("participants"),
-    "the rest of the cluster, including Participants, lands in More",
-  );
-  ok(!more.includes("chat") && !more.includes("hand") && !more.includes("qa"), "standing tools are not duplicated into More");
+  for (const id of ["qa", "polls", "participants", "hand", "settings"] as ToolId[]) {
+    ok(more.includes(id), `${id} lands in More on a phone`);
+  }
+  ok(!more.includes("chat") && !more.includes("reactions"), "standing tools are not duplicated into More");
 }
 
 {
@@ -66,59 +71,97 @@ console.log("\ncenterBarTools");
 }
 
 {
-  // Attendee phones put Reactions on the strip with Chat, Q&A and Raise hand.
-  // Passing no slot budget is that full row; More keeps everything else.
-  const phoneAttendee = centerBarTools(ALL, true, true);
-  ok(
-    phoneAttendee.join() === "chat,qa,hand,reactions",
-    "an attendee phone bar keeps Chat, Q&A, Raise hand and Reactions",
-  );
-  const more = morePanelTools(ALL, true, true) ?? [];
-  ok(!more.includes("reactions") && !more.includes("qa"), "tools on the bar are not duplicated into More");
-  ok(
-    more.includes("settings") && more.includes("participants"),
-    "everything else still lands in More",
-  );
-}
-
-{
-  // A short row sheds Reactions first, then Q&A. Both stay reachable in More.
-  // Chat and Raise hand stay until even those two cannot fit.
-  for (const slots of [0, 1, 2, 3, 4, 6]) {
-    const onBar = centerBarTools(ALL, true, true, [], slots);
-    const more = morePanelTools(ALL, true, true, [], slots) ?? [];
-    const reachable = onBar.includes("reactions") || more.includes("reactions");
-    ok(reachable, `reactions is on the bar or in More at ${slots} slots`);
+  // A short row sheds Reactions; Chat stays until even it cannot fit.
+  for (const slots of [0, 1, 2, 4]) {
+    const onBar = centerBarTools(ALL, true, [], slots);
+    const more = morePanelTools(ALL, true, [], slots) ?? [];
     ok(
-      !(onBar.includes("reactions") && more.includes("reactions")),
-      `reactions is not in both places at ${slots} slots`,
+      onBar.includes("reactions") !== more.includes("reactions"),
+      `reactions is in exactly one place at ${slots} slots`,
     );
-    ok(onBar.length <= Math.max(0, slots), `attendee row stays within ${slots} slots`);
+    ok(onBar.length <= Math.max(0, slots), `phone row stays within ${slots} slots`);
   }
+  ok(centerBarTools(ALL, true, [], 1).join() === "chat", "one slot keeps Chat");
+  ok(fitCompactBar(["chat", "reactions"], 1).join() === "chat", "Reactions is shed first");
+}
+
+console.log("\nbarPlacement (desktop vs phone, per role)");
+
+const HOST_TOOLS: ToolId[] = [...ALL, "youtube", "captions", "polls"];
+const ATTENDEE_TOOLS: ToolId[] = ["chat", "qa", "participants", "invite", "settings", "hand", "reactions"];
+const PANELIST_TOOLS: ToolId[] = ["chat", "qa", "polls", "participants", "invite", "settings", "reactions"];
+
+{
+  // Desktop host, default layout (home tools tucked).
+  const d = barPlacement({ available: HOST_TOOLS, compact: false, tucked: [...HOME_BAR_TOOLS] });
+  ok(!d.youtubeInline, "desktop: YouTube is in More by default");
+  ok(!d.strip.includes("settings"), "desktop: Settings is in More by default");
   ok(
-    centerBarTools(ALL, true, true, [], 3).join() === "chat,qa,hand",
-    "one short slot moves Reactions into More and keeps Q&A",
+    d.strip.join() === "chat,qa,polls,participants,hand,reactions",
+    "desktop keeps the standing strip inline, minus Settings",
   );
-  ok(
-    (morePanelTools(ALL, true, true, [], 3) ?? []).includes("reactions"),
-    "the shed Reactions button is in More",
-  );
-  ok(
-    centerBarTools(ALL, true, true, [], 2).join() === "chat,hand",
-    "two short slots move Q&A and Reactions into More",
-  );
-  ok(
-    fitAttendeeCompactBar(["chat", "qa", "hand", "reactions"], 2).join() === "chat,hand",
-    "shedding keeps Chat then Raise hand, in bar order",
-  );
+  ok(d.shareInline && d.recordInline && d.pinSlots, "desktop keeps Share, Record and pin slots");
+  ok(d.panel === undefined, "desktop has no leftover standing row in More");
+
+  // Desktop, somebody dragged both home tools back onto the bar.
+  const back = barPlacement({ available: HOST_TOOLS, compact: false, tucked: [] });
+  ok(back.youtubeInline && back.strip.includes("settings"), "desktop: a home tool put back stays inline");
 }
 
 {
-  // Host/panelist never pass `attendee` — same bar as always.
-  const phoneHost = centerBarTools(ALL, true);
-  ok(phoneHost.join() === "chat,qa,hand", "host/panelist compact bar includes Q&A");
-  const more = morePanelTools(ALL, true) ?? [];
-  ok(more.includes("reactions"), "Reactions stays in More for host/panelist, same as before");
+  const a = barPlacement({ available: ATTENDEE_TOOLS, compact: false, tucked: [...HOME_BAR_TOOLS] });
+  ok(a.strip.join() === "chat,qa,participants,hand,reactions", "desktop attendee strip, Settings in More");
+  ok(!a.youtubeInline, "an attendee never gets YouTube");
+}
+
+for (const [role, tools] of [
+  ["host", HOST_TOOLS],
+  ["panelist", PANELIST_TOOLS],
+  ["attendee", ATTENDEE_TOOLS],
+] as const) {
+  // Even a layout with home tools on the bar puts them in More on a phone.
+  const p = barPlacement({ available: tools, compact: true, tucked: [] });
+  ok(p.strip.join() === "chat,reactions", `phone ${role}: only Chat and Reactions inline`);
+  ok(!p.youtubeInline && !p.shareInline && !p.recordInline, `phone ${role}: YouTube, Share, Record in More`);
+  ok(!p.pinSlots, `phone ${role}: no pin slots`);
+  ok(p.tucked.join() === "youtube,settings", `phone ${role}: home tools count as tucked`);
+  const panel = p.panel ?? [];
+  ok(!panel.includes("settings"), `phone ${role}: Settings comes from the grid, not twice`);
+  for (const id of tools) {
+    if (id === "chat" || id === "reactions") continue;
+    if (!(CENTER_BAR_TOOLS as readonly ToolId[]).includes(id)) continue;
+    if (id === "settings") continue;
+    ok(panel.includes(id), `phone ${role}: ${id} is in More`);
+  }
+}
+
+{
+  const p = barPlacement({ available: HOST_TOOLS, compact: true, tucked: [], slots: 1 });
+  ok(p.strip.join() === "chat" && (p.panel ?? []).includes("reactions"), "a tight phone row moves Reactions into More");
+  const d = barPlacement({ available: HOST_TOOLS, compact: false, tucked: [], slots: 1 });
+  ok(d.strip.length > 1, "slots never trim a desktop strip");
+}
+
+{
+  const l: ToolLayout = { pinned: [], overflow: ["invite"], recent: [], windows: {}, nextZ: 1 };
+  const t = withHomeToolsTucked(l);
+  ok(t.overflow.join() === "invite,youtube,settings", "a phone reads every home tool as in More");
+  ok(withHomeToolsTucked(t) === t, "and leaves an already-tucked layout alone");
+}
+
+console.log("\nmoreGroups");
+
+{
+  const g = moreGroups(["share", "raised-hands", "qa", "participants", "youtube", "host", "settings", "invite"]);
+  ok(
+    g.map((x) => x.id).join() === "engage,people,present,stream,manage",
+    "sections come in a fixed order",
+  );
+  ok(g[0].keys.join() === "raised-hands,qa", "Engage holds Q&A and raised hands");
+  ok(g[1].keys.join() === "participants,invite", "People holds Participants and Invite");
+  ok(g[4].keys.join() === "host,settings", "Manage holds Host tools and Settings");
+  ok(moreGroups(["chat"]).length === 1, "empty sections are dropped");
+  ok(moreGroups(["mystery"]).at(-1)?.keys.join() === "mystery", "unknown entries are not lost");
 }
 
 {
@@ -132,80 +175,20 @@ console.log("\ncenterBarTools");
 }
 
 {
-  const desktopShare = shareButtonOnBar({
-    compact: false,
-    phone: false,
-    attendee: true,
-    mediaToggles: 2,
-    cameraToggleShown: true,
-  });
-  ok(desktopShare, "desktop still keeps Share on the bar");
-  const hostPhoneShare = shareButtonOnBar({
-    compact: true,
-    phone: false,
-    attendee: false,
-    mediaToggles: 2,
-    cameraToggleShown: true,
-  });
-  ok(!hostPhoneShare, "a host phone with the camera toggle still parks Share in More");
-  const tabletMicOnly = shareButtonOnBar({
-    compact: true,
-    phone: false,
-    attendee: true,
-    mediaToggles: 1,
-    cameraToggleShown: false,
-  });
-  ok(tabletMicOnly, "tablet still uses the camera-toggle rule for Share");
-}
-
-{
-  // Promoted attendee on a phone: mic + camera are the two toggles, Share is
-  // in More even when every engagement tool fits, and the row's pixels stay
-  // inside the strip.
-  const promotedShare = shareButtonOnBar({
-    compact: true,
-    phone: true,
-    attendee: true,
-    mediaToggles: 2,
-    cameraToggleShown: true,
-  });
-  ok(!promotedShare, "a promoted phone attendee keeps Share in More");
-  const micOnlyShare = shareButtonOnBar({
-    compact: true,
-    phone: true,
-    attendee: true,
-    mediaToggles: 1,
-    cameraToggleShown: false,
-  });
-  ok(!micOnlyShare, "Share stays in More when only the mic toggle is showing");
+  ok(shareButtonOnBar({ compact: false }), "desktop keeps Share on the bar");
+  ok(!shareButtonOnBar({ compact: true }), "every compact bar parks Share in More");
 
   for (const width of [320, 360, 390, 430]) {
     const toggle = mediaToggleSizeForWidth(width);
-    const fit = mobileEngagementFit(width, 2, toggle, 4);
-    const onBar = centerBarTools(ALL, true, true, [], fit.slots);
-    const more = morePanelTools(ALL, true, true, [], fit.slots) ?? [];
-    ok(onBar.length <= fit.slots, `${width}px promoted row stays within its slot budget`);
+    const fit = mobileEngagementFit(width, 2, toggle, 2);
+    const onBar = centerBarTools(ALL, true, [], fit.slots);
+    ok(onBar.length <= fit.slots, `${width}px row with mic and camera stays within its slot budget`);
     ok(
       phoneBarRowPx(onBar.length, fit.buttonPx) <= fit.available,
-      `${width}px promoted row does not overflow the strip`,
+      `${width}px row does not overflow the strip`,
     );
-    ok(
-      onBar.includes("reactions") || more.includes("reactions"),
-      `${width}px promoted attendee can still reach Reactions`,
-    );
-    ok(onBar.includes("chat") && onBar.includes("hand"), `${width}px keeps Chat and Raise hand`);
-    ok(!onBar.includes("invite"), `${width}px does not pull Invite onto the strip`);
+    ok(onBar.join() === "chat,reactions", `${width}px keeps Chat and Reactions with mic and camera`);
   }
-
-  const narrow = mobileEngagementFit(320, 2, mediaToggleSizeForWidth(320), 4);
-  ok(narrow.slots === 3, "a 320px promoted phone sheds one engagement tool");
-  ok(
-    centerBarTools(ALL, true, true, [], narrow.slots).join() === "chat,qa,hand",
-    "that shed tool is Reactions, not Chat or Raise hand",
-  );
-  const roomy = mobileEngagementFit(390, 2, mediaToggleSizeForWidth(390), 4);
-  ok(roomy.slots === 4, "a 390px promoted phone fits Reactions on the bar");
-  ok(!promotedShare, "Share is still in More on that 390px phone");
 }
 
 {

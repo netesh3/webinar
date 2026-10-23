@@ -30,7 +30,9 @@ import { useRoomUI } from "./context";
  * changed the audience's.
  */
 
-const ICON = {
+/** The icon for each view — also the header's Views button, which shows the
+ *  current one. */
+export const LAYOUT_ICON = {
   speaker: SpeakerViewIcon,
   grid: GridIcon,
   spotlight: PinIcon,
@@ -140,7 +142,7 @@ function CompactBody({
       </p>
       <div className="space-y-0.5">
         {LAYOUT_MODES.map((mode) => {
-          const Icon = ICON[mode];
+          const Icon = LAYOUT_ICON[mode];
           const active = stage.mode === mode;
           return (
             <button
@@ -218,7 +220,7 @@ function DetailedBody() {
 
       <div className="space-y-0.5">
         {LAYOUT_MODES.map((mode) => {
-          const Icon = ICON[mode];
+          const Icon = LAYOUT_ICON[mode];
           const active = stage.mode === mode;
           return (
             <button

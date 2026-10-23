@@ -104,7 +104,7 @@ import { CtaPopup } from "./cta-popup";
 import { CaptionOverlay } from "./caption-overlay";
 import { FileShareBar } from "./file-share-bar";
 import { MeetingInfo } from "./meeting-info";
-import { LayoutModeSwitch, ViewsMenu } from "./views-menu";
+import { ViewsMenu } from "./views-menu";
 import { Stage } from "./stage";
 import {
   RaisedHandsProvider,
@@ -130,7 +130,7 @@ import { KeepScreenOn } from "@/lib/wake-lock";
 import { CdnAttendeeRoom } from "./cdn-attendee-room";
 import { EdgeAudienceRoom } from "./edge-audience-room";
 import { liveWithLabel } from "@/lib/simulive-host";
-import { EdgeBadge } from "./edge-badge";
+import { EdgePreparingNotice } from "./edge-badge";
 import { JoinTap } from "./join-tap";
 
 /* The webinar room.
@@ -2015,8 +2015,11 @@ export function RoomHeader() {
   // the host brought on stage is no longer "view only", and a badge still saying
   // so while they hold a microphone is the same stale-join-response bug the
   // control bar had.
+  //
+  // Nothing for the host: they know they are the host, and the header is
+  // crowded enough without saying so on every frame.
   const standing = isHost
-    ? { label: "Host", tone: "ok" as const }
+    ? null
     : permissions.mutedByHost
       ? { label: "Muted by host", tone: "warn" as const }
       : permissions.audioOnly
@@ -2053,7 +2056,7 @@ export function RoomHeader() {
               the browser that pressed the button. Not the audience, who are not in
               the file (showsRecordingState). */}
           <RecordingIndicator />
-          {isHost && !join.meeting && <EdgeBadge />}
+          {isHost && !join.meeting && <EdgePreparingNotice />}
           {/* Somebody at a meeting's door. Up here because the host is looking at the
               people they are talking to, not at a panel. */}
           {lobby && <LobbyChip waiting={lobby.waiting} onOpen={() => tools.open("participants")} />}
@@ -2069,26 +2072,32 @@ export function RoomHeader() {
         </div>
       </div>
 
-      <div className="pointer-events-auto flex shrink-0 items-center gap-1">
+      {/* Every control here is the same 32px (44px tap targets on a phone),
+          rounded-lg, gap-1.5. On a phone only the essentials stay: Views and
+          the AI switch. Controls is Host tools in More there. */}
+      <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+        {standing && (
+          <span className="hidden sm:inline-flex">
+            <Badge tone={standing.tone}>{standing.label}</Badge>
+          </span>
+        )}
+
         {/* Nothing to arrange when the stage is a single CDN video element —
             every option in here would leave the picture exactly as it was. */}
-        <LayoutModeSwitch />
         {!cdnStage && <ViewsMenu />}
 
-        <span className="hidden sm:block">
-          <Badge tone={standing.tone}>{standing.label}</Badge>
-        </span>
-
-        {/* Host controls stay in the header — that is where hosts look. Settings
-            live under More so the chrome is one primary action for hosts, not two. */}
+        {/* Host controls stay in the header — that is where hosts look. Icon and
+            label from `lg`, icon only below it; on a phone it is in More. */}
         {isHost && (
           <button
             type="button"
             onClick={() => tools.open("host")}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 text-[12px] font-medium text-white transition-colors hover:bg-white/20 outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+            aria-label="Controls"
+            title="Host controls"
+            className="hidden h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-2 text-[12px] font-medium text-white transition-colors hover:bg-white/20 outline-none focus-visible:ring-2 focus-visible:ring-white/50 md:inline-flex lg:px-2.5"
           >
-            <SlidersIcon className="size-3.5" />
-            <span className="hidden sm:inline">Controls</span>
+            <SlidersIcon className="size-4" />
+            <span className="hidden lg:inline">Controls</span>
           </button>
         )}
         {/* The room's AI switch: host and co-hosts of an account with AI, top right. */}
