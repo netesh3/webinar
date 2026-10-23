@@ -19,11 +19,25 @@ def test_defaults_are_english_only():
 def test_overrides_and_validation():
     c = Config.from_env({**ENV, "CAPTIONS_LANGUAGE": "EN", "CAPTIONS_CPUS": "1.5"})
     assert c.whisper_language == "en" and c.cpu_threads == 1
-    for bad in ({"CAPTIONS_LANGUAGE": "hi"}, {"CAPTIONS_LANGUAGE": "auto"}, {"CAPTIONS_LANGUAGE": "fr"},
-                {"CAPTIONS_MAX_SPEAKERS": "0"}, {"CAPTIONS_SECRET": "short"}, {"CAPTIONS_API_URL": ""},
+    for bad in ({"CAPTIONS_MAX_SPEAKERS": "0"}, {"CAPTIONS_SECRET": "short"}, {"CAPTIONS_API_URL": ""},
                 {"CAPTIONS_CPU_LOW": "90"}):
         with pytest.raises(ConfigError):
             Config.from_env({**ENV, **bad})
+
+
+@pytest.mark.parametrize("old", [{"CAPTIONS_LANGUAGE": "auto"}, {"CAPTIONS_LANGUAGE": "hi"},
+                                 {"CAPTIONS_SCRIPT": "roman"}, {"CAPTIONS_LANGUAGE": "hi", "CAPTIONS_SCRIPT": "native"}])
+def test_old_language_settings_warn_and_still_start_in_english(old, caplog):
+    with caplog.at_level("WARNING", logger="captions.config"):
+        c = Config.from_env({**ENV, **old})
+    assert c.language == "en" and c.whisper_language == "en"
+    assert "ignored" in caplog.text
+
+
+def test_english_setting_does_not_warn(caplog):
+    with caplog.at_level("WARNING", logger="captions.config"):
+        Config.from_env({**ENV, "CAPTIONS_LANGUAGE": "en"})
+    assert caplog.text == ""
 
 
 def test_prompt_is_only_the_hosts():

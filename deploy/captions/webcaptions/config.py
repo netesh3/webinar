@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Mapping
 
-# English only. CAPTIONS_LANGUAGE is still read so an old .env with `en` keeps working;
-# anything else is refused rather than silently captioned in English.
+log = logging.getLogger("captions.config")
+
+# English only. An old .env or worker metadata may still say CAPTIONS_LANGUAGE=auto / hi or
+# set CAPTIONS_SCRIPT: those are warned about and ignored, never a reason not to start.
 LANGUAGES = ("en",)
 
 
@@ -138,7 +141,10 @@ class Config:
             raise ConfigError("CAPTIONS_SECRET must be set, at least 32 characters, same as the API's")
         language = env.get("CAPTIONS_LANGUAGE", "en").strip().lower() or "en"
         if language not in LANGUAGES:
-            raise ConfigError(f"CAPTIONS_LANGUAGE must be one of {LANGUAGES} (captions are English only), got {language!r}")
+            log.warning("CAPTIONS_LANGUAGE=%s ignored: captions are English only, using en", language)
+            language = "en"
+        if env.get("CAPTIONS_SCRIPT", "").strip():
+            log.warning("CAPTIONS_SCRIPT ignored: captions are English only")
         cfg = cls(
             api_url=api_url,
             secret=secret,

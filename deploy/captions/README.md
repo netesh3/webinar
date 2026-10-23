@@ -88,7 +88,7 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_FALLBACK_MODEL` | `base.en` | used while the CPU guard is degraded |
 | `CAPTIONS_FINAL_MODEL` | `large-v3-turbo` | after-session pass, decoded as English (see Models) |
 | `CAPTIONS_FINAL_ENABLED` | `true` | `false`: no audio kept, no final transcript |
-| `CAPTIONS_LANGUAGE` | `en` | the only accepted value (anything else is a config error) |
+| `CAPTIONS_LANGUAGE` | `en` | the only value; anything else (old `auto`/`hi`) is logged as a warning and ignored. `CAPTIONS_SCRIPT` likewise |
 | `CAPTIONS_PROMPT` | – | decoder prompt to bias spellings (product names) |
 | `CAPTIONS_MAX_SPEAKERS` | `2` | transcribed at once |
 | `CAPTIONS_SPEAKER_LINGER_S` | `3` | a speaker keeps their slot this long after going quiet |
