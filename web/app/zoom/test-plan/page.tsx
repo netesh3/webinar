@@ -17,13 +17,27 @@ const UPDATED = "October 23, 2026";
  * Keep it in step with docs/zoom-marketplace-submission.md and the calls in
  * api/internal/zoom. Never put test credentials here. */
 
+type Shot = {
+  /** File in public/zoom/test-plan/. */
+  file: string;
+  alt: string;
+  caption: string;
+  width: number;
+  height: number;
+};
+
 type TestCase = {
   id: string;
   title: string;
   steps: ReactNode[];
   expected: ReactNode;
+  note?: ReactNode;
   scopes: string[];
+  /** Screenshots from a full dry run on a free (Basic) Zoom account. */
+  shots?: Shot[];
 };
+
+const W = 1600;
 
 const CASES: TestCase[] = [
   {
@@ -53,6 +67,29 @@ const CASES: TestCase[] = [
       </>
     ),
     scopes: ["user:read:user"],
+    shots: [
+      {
+        file: "a-integrations.png",
+        alt: "Webinar Liv Settings, Integrations tab. The Zoom card under Meetings says Not connected and has a Connect Zoom button.",
+        caption: "Settings → Integrations, before connecting.",
+        width: W,
+        height: 923,
+      },
+      {
+        file: "a-zoom-consent.png",
+        alt: "Zoom consent screen: Webinar Liv would like permission to create, update, view and delete meetings and webinars, view a user, add registrants and view participants. Allow and Decline buttons.",
+        caption: "Zoom's consent screen.",
+        width: W,
+        height: 923,
+      },
+      {
+        file: "a-zoom-connected.png",
+        alt: "Settings, Integrations tab after authorizing. The Zoom card says Connected, shows the Zoom account webinarliv@gmail.com and a Disconnect button.",
+        caption: "Back in Webinar Liv: Zoom connected.",
+        width: W,
+        height: 923,
+      },
+    ],
   },
   {
     id: "B",
@@ -79,6 +116,29 @@ const CASES: TestCase[] = [
       </>
     ),
     scopes: ["meeting:write:meeting"],
+    shots: [
+      {
+        file: "b-where-it-runs.png",
+        alt: "The Where it runs section of the schedule form, with Zoom meeting selected instead of This app or Zoom webinar.",
+        caption: "Where it runs: Zoom meeting.",
+        width: W,
+        height: 281,
+      },
+      {
+        file: "b-webinar-page.png",
+        alt: "The host page of the scheduled webinar Zoom review — test session. It says This session runs in Zoom. Go live opens Zoom as the host. It ends in Zoom. It shows the share link, a Go live button and a Webinar scheduled message.",
+        caption: "The webinar in Webinar Liv.",
+        width: W,
+        height: 923,
+      },
+      {
+        file: "b-zoom-meetings.png",
+        alt: "Zoom web portal, Meetings, Upcoming: Zoom review — test session, today 10:30 PM to 11:30 PM.",
+        caption: "The same meeting in Zoom.",
+        width: W,
+        height: 923,
+      },
+    ],
   },
   {
     id: "C",
@@ -111,7 +171,32 @@ const CASES: TestCase[] = [
         Webinar Liv sends the confirmation and reminders.
       </>
     ),
+    note: (
+      <>
+        Registering with an email address that is new to Webinar Liv sends a
+        &quot;confirm your email&quot; message first. After the attendee opens
+        it, the join email with their Zoom link arrives. On a free Zoom
+        account that link is the meeting&apos;s shared join link, not a
+        personal one (see <a href="#free-zoom">Free (Basic) Zoom accounts</a>).
+      </>
+    ),
     scopes: ["meeting:write:registrant"],
+    shots: [
+      {
+        file: "d-registration-page.png",
+        alt: "Public registration page for Zoom review — test session, with the Register & Join form filled in: name Test Attendee, an email address, country and mobile number.",
+        caption: "The public registration page.",
+        width: W,
+        height: 900,
+      },
+      {
+        file: "d-email-verified.png",
+        alt: "Webinar Liv Verify your email page saying Your email is verified. If you registered for a webinar, your join link is on its way to this inbox.",
+        caption: "After opening the confirm-your-email message.",
+        width: W,
+        height: 923,
+      },
+    ],
   },
   {
     id: "E",
@@ -129,6 +214,15 @@ const CASES: TestCase[] = [
       </>
     ),
     scopes: ["meeting:read:meeting"],
+    shots: [
+      {
+        file: "e-host-in-zoom.png",
+        alt: "Zoom meeting window with the host, Webinar liv, in the meeting after clicking Go live.",
+        caption: "The host in the Zoom meeting.",
+        width: W,
+        height: 839,
+      },
+    ],
   },
   {
     id: "F",
@@ -144,7 +238,7 @@ const CASES: TestCase[] = [
     ],
     expected: (
       <>
-        Webinar Liv marks the webinar <strong>Ended</strong>. The attendance
+        Webinar Liv marks the webinar <strong>Completed</strong>. The attendance
         page lists the participants with join and leave times and time
         attended. Joins and leaves are recorded from the{" "}
         <code>meeting.participant_joined</code> and{" "}
@@ -153,7 +247,38 @@ const CASES: TestCase[] = [
         list to complete the report.
       </>
     ),
+    note: (
+      <>
+        On a free Zoom account, attendance comes from the live participant
+        events only, and people who join through the shared link without an
+        email show up as walk-ins (see{" "}
+        <a href="#free-zoom">Free (Basic) Zoom accounts</a>).
+      </>
+    ),
     scopes: ["meeting:read:participant", "meeting:read:list_past_participants"],
+    shots: [
+      {
+        file: "f-attendee-join.png",
+        alt: "Zoom's Join meeting page, opened from the attendee's join link, with Join from Zoom Workplace app and Join from browser buttons.",
+        caption: "The attendee's join link opens Zoom.",
+        width: W,
+        height: 1000,
+      },
+      {
+        file: "f-attendee-in-zoom.png",
+        alt: "Zoom meeting window from the attendee's side: Test Attendee and the host, Webinar liv, are both in the meeting.",
+        caption: "The attendee in the Zoom meeting.",
+        width: W,
+        height: 839,
+      },
+      {
+        file: "f-results.png",
+        alt: "Webinar Liv Results for Zoom review — test session after the meeting ended in Zoom. Status Completed, 2 registered, 1 attended, 5 minute average watch time.",
+        caption: "Results after the meeting ended in Zoom.",
+        width: W,
+        height: 839,
+      },
+    ],
   },
   {
     id: "G",
@@ -195,6 +320,36 @@ const CASES: TestCase[] = [
     ],
     expected: <>The matching Zoom meeting or webinar is deleted from the Zoom account.</>,
     scopes: ["meeting:delete:meeting", "webinar:delete:webinar"],
+    shots: [
+      {
+        file: "h-delete-confirm.png",
+        alt: "Webinar Liv confirmation dialog: Delete this webinar and its records? with Cancel and Delete this webinar buttons.",
+        caption: "Deleting a webinar in Webinar Liv.",
+        width: W,
+        height: 839,
+      },
+      {
+        file: "h-webinar-list.png",
+        alt: "Webinar Liv webinar list after the delete, showing No webinars yet.",
+        caption: "The webinar list after the delete.",
+        width: W,
+        height: 839,
+      },
+      {
+        file: "h-zoom-before.png",
+        alt: "Zoom Meetings, Upcoming, before the delete: Zoom review — test session today and Zoom review — delete test tomorrow at 11:43 PM.",
+        caption: "Zoom before deleting “Zoom review — delete test”.",
+        width: W,
+        height: 923,
+      },
+      {
+        file: "h-zoom-after.png",
+        alt: "Zoom Meetings, Upcoming, after the delete: only Zoom review — test session is listed; Zoom review — delete test is gone.",
+        caption: "Zoom after: the meeting is removed.",
+        width: W,
+        height: 923,
+      },
+    ],
   },
   {
     id: "I",
@@ -215,6 +370,22 @@ const CASES: TestCase[] = [
       </>
     ),
     scopes: [],
+    shots: [
+      {
+        file: "i-before.png",
+        alt: "Webinar Liv Settings, Integrations, before disconnecting: the sidebar lists Zoom and Email under Integrations, 2 connected.",
+        caption: "Before: Zoom listed as connected.",
+        width: W,
+        height: 839,
+      },
+      {
+        file: "i-after.png",
+        alt: "Webinar Liv Settings, Integrations, after disconnecting: the sidebar lists only Email under Integrations, 1 connected.",
+        caption: "After: Zoom no longer connected.",
+        width: W,
+        height: 839,
+      },
+    ],
   },
   {
     id: "J",
@@ -276,6 +447,26 @@ const SCOPES: { scope: string; use: string; cases: string }[] = [
   { scope: "webinar:delete:webinar", use: "DELETE /webinars/{webinarId}", cases: "H" },
 ];
 
+function Shots({ shots }: { shots: Shot[] }) {
+  return (
+    <div className="legal-shots">
+      {shots.map((s) => {
+        const src = `/zoom/test-plan/${s.file}`;
+        return (
+          <figure key={s.file}>
+            <a href={src} target="_blank" rel="noopener">
+              {/* eslint-disable-next-line @next/next/no-img-element -- static
+                  screenshots that link to the full-size file. */}
+              <img src={src} alt={s.alt} width={s.width} height={s.height} loading="lazy" />
+            </a>
+            <figcaption>{s.caption}</figcaption>
+          </figure>
+        );
+      })}
+    </div>
+  );
+}
+
 function ScopeList({ scopes }: { scopes: string[] }) {
   if (scopes.length === 0) return <>none</>;
   return (
@@ -327,6 +518,30 @@ export default function ZoomTestPlanPage() {
         <li>A second browser or a private window to act as the attendee.</li>
       </ul>
 
+      <h3 id="free-zoom">Free (Basic) Zoom accounts</h3>
+      <p>
+        The screenshots on this page are from a dry run on a free (Basic) Zoom
+        account. The flow works there too, with these differences:
+      </p>
+      <ul>
+        <li>
+          Zoom does not allow per-registrant links for meetings on a free
+          account (&quot;Only available for paid users&quot;), so attendees
+          get the meeting&apos;s shared join link instead. Zoom Webinars need
+          the Webinar add-on.
+        </li>
+        <li>
+          Zoom&apos;s past-participants report API is not available on a free
+          account, so attendance comes from Zoom&apos;s live participant
+          events.
+        </li>
+        <li>
+          Attendees who join through the shared link without an email show up
+          as walk-ins rather than matched to their registration.
+        </li>
+      </ul>
+      <p>Click any screenshot to open it full size.</p>
+
       <h2>Test credentials</h2>
       <p>
         The Webinar Liv sign-in email and password are provided in the
@@ -349,9 +564,15 @@ export default function ZoomTestPlanPage() {
           <p>
             <strong>Expected:</strong> {c.expected}
           </p>
+          {c.note && (
+            <p>
+              <strong>Note:</strong> {c.note}
+            </p>
+          )}
           <p>
             <strong>Scopes exercised:</strong> <ScopeList scopes={c.scopes} />
           </p>
+          {c.shots && <Shots shots={c.shots} />}
         </section>
       ))}
 
