@@ -4315,10 +4315,10 @@ type KeepRecordingLinkRequest struct {
 // KeepRecordingLinkResponse says what the link did and where the recording now stands.
 type KeepRecordingLinkResponse struct {
 	// Status is "kept", or "already_kept" when this link was used before.
-	Status    string    `json:"status"`
-	Webinar   string    `json:"webinar"`
-	Topic     string    `json:"topic"`
-	ExpiresAt string    `json:"expiresAt,omitempty"`
+	Status    string `json:"status"`
+	Webinar   string `json:"webinar"`
+	Topic     string `json:"topic"`
+	ExpiresAt string `json:"expiresAt,omitempty"`
 }
 
 // RecordingPart is one start/stop take inside a session. The bytes are a
