@@ -118,6 +118,25 @@ Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`), `CLOUDFLARE_A
 
 Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). LiveKit on Hetzner: [`deploy/livekit-hetzner/README.md`](../deploy/livekit-hetzner/README.md). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
 
+### Deploy guard (no deploy while a session is live)
+
+Every deploy job's first step is [`.github/scripts/wait-no-live.sh`](../.github/scripts/wait-no-live.sh). It asks the production API's `GET /api/internal/live-status` (header `X-Tick-Secret: $TICK_SECRET`; mounted only when `TICK_SECRET` is set, same as `/api/internal/tick`). The answer is `{live: [{slug, kind, state, project, startsAt, startedAt}], count, byProject}`. A session counts when it is `live` (webinar, meeting or simulive), a simulive with its doors open, or `starting-soon` (scheduled within the next 10 min, or up to 15 min past its start without the host pressing Start). `project` is the room's LiveKit project (pin, else the host's assigned project, else the default), or `zoom`. It returns slugs only, no PII.
+
+While anything in scope is live, the job prints the blocking slugs and re-checks every 60 s for up to 3 h, then deploys as soon as nothing is live. After 3 h it fails.
+
+| Workflow | Waits for | If the API cannot answer |
+|---|---|---|
+| Deploy API (Cloud Run) | any session | proceeds when the API is down (`/readyz` fails) or predates the endpoint (404), because the deploy is the fix; otherwise retries 10 min, then fails |
+| Deploy Web (Cloudflare Workers) | any session | retries 10 min, then **fails** |
+| Deploy LiveKit (DigitalOcean) | sessions on `do-blr` (var `DO_LIVEKIT_PROJECT`) | retries 10 min, then **fails** (the box restart would cut off everyone on it) |
+| Deploy LiveKit (Hetzner) | sessions on `default` (var `HETZNER_LIVEKIT_PROJECT`) | retries 10 min, then **fails** |
+
+The 10-minute retry covers a merge that ships the API and a box change together: the box deploy waits while the new API rolls out.
+
+**Override:** Actions → the workflow → Run workflow → tick **force**. This skips the guard and logs a warning. Optional repo variable `LIVE_STATUS_API_BASE` changes the API it asks (default `https://webcast-api-65278594492.asia-south1.run.app`).
+
+**Queueing:** each workflow keeps its concurrency group (`cancel-in-progress: false`). While one run waits, a newer push replaces any run still pending in the group, so the newest commit deploys once the sessions end and deploys do not pile up.
+
 ---
 
 ## Trust boundaries and what each piece owns

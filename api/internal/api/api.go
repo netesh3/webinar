@@ -375,6 +375,8 @@ func (s *Server) Routes() http.Handler {
 		 * mounted without a secret. See tick.go. */
 		if s.cfg.TickSecret != "" {
 			r.Post("/internal/tick", s.handleInternalTick)
+			// The deploy guard's question: is anything live? See live_status.go.
+			r.Get("/internal/live-status", s.handleInternalLiveStatus)
 		}
 		/* The server caption agent's endpoints (deploy/captions). Not mounted without
 		 * CAPTIONS_SECRET. See server_captions.go. */
