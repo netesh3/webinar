@@ -12,6 +12,7 @@ import type { StageLayoutApi } from "@/lib/layout";
 import type { Realtime, Sender } from "@/lib/realtime";
 import type { ToolApi, ToolId } from "@/lib/tools";
 import type { MeetingLobbyApi } from "./meeting-lobby";
+import type { SpamApi } from "./spam-alerts";
 
 /* Shared state for the room UI.
  *
@@ -107,6 +108,11 @@ export type RoomUI = {
    * webinar, which has no lobby. Optional so a room shell that is never a meeting (the
    * preview, the CDN audience) need not set it. */
   lobby?: MeetingLobbyApi | null;
+
+  /* Spam detection's flags on the chat and Q&A (spam-alerts.tsx), with the alert toasts and
+   * the one-click actions. Only for the host and co-hosts of a webinar — null for everyone
+   * else; the audience never sees a flag. Optional so other room shells need not set it. */
+  spam?: SpamApi | null;
 
   /* The room as the SERVER sees it, polled for the host only.
    *

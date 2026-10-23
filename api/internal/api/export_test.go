@@ -59,6 +59,17 @@ func RetrieveKnowledge(s *Server, ctx context.Context, wb types.Webinar, questio
 // IsAILimit reports whether err is a monthly AI cap.
 func IsAILimit(err error) bool { return errors.Is(err, errAILimit) }
 
+// SetSpamEvery sets how long a pending message waits for a spam pass; the returned func
+// restores it.
+func SetSpamEvery(d time.Duration) func() {
+	old := spamEvery
+	spamEvery = d
+	return func() { spamEvery = old }
+}
+
+// RunSpamLane is the spam lane of RunTick on its own.
+func RunSpamLane(s *Server, ctx context.Context) { s.runSpamLane(ctx) }
+
 // RunRecaps is the recap lane of RunTick on its own.
 func RunRecaps(s *Server, ctx context.Context) { s.runRecaps(ctx) }
 

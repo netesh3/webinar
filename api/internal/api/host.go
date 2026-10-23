@@ -2432,37 +2432,43 @@ func (s *Server) handleRemoveParticipant(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := sfu.RemoveParticipant(r.Context(), lk.RoomName(slug), identity); err != nil {
-		if errors.Is(err, lk.ErrNotInRoom) && s.isEdge(r.Context(), slug) {
-			// An edge viewer is never in the room. Record the removal so they cannot
-			// join again, and tell their event stream, which ends it (edge.go).
-			s.removeEdgeViewer(r.Context(), sfu, slug, identity)
-			httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
-			return
-		}
-		if errors.Is(err, lk.ErrNotInRoom) {
-			// Already gone is the requested end state.
-			httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
-			return
-		}
+	if err := s.removeParticipant(r.Context(), sfu, slug, identity); err != nil {
 		s.fail(w, r, "remove participant", err)
 		return
 	}
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
+}
+
+// removeParticipant takes one person out of the session behind slug and keeps them out.
+// Shared by the participant list's Remove and spam detection's Remove person (spam.go).
+func (s *Server) removeParticipant(ctx context.Context, sfu RoomManager, slug, identity string) error {
+	if err := sfu.RemoveParticipant(ctx, lk.RoomName(slug), identity); err != nil {
+		if errors.Is(err, lk.ErrNotInRoom) && s.isEdge(ctx, slug) {
+			// An edge viewer is never in the room. Record the removal so they cannot
+			// join again, and tell their event stream, which ends it (edge.go).
+			s.removeEdgeViewer(ctx, sfu, slug, identity)
+			return nil
+		}
+		if errors.Is(err, lk.ErrNotInRoom) {
+			// Already gone is the requested end state.
+			return nil
+		}
+		return err
+	}
 	// Removing someone who was promoted should not let them return to the stage
 	// by rejoining with the same key.
-	if err := s.store.RevokeStage(r.Context(), slug, identity); err != nil {
+	if err := s.store.RevokeStage(ctx, slug, identity); err != nil {
 		s.log.Warn("remove participant: could not revoke stage grant",
 			"slug", slug, "identity", identity, "error", err)
 	}
 	// And a refresh, or the link reopened, must not put them straight back in:
 	// the automatic rejoin path reads this (rejoin.go).
-	if err := s.store.RecordRemoval(r.Context(), slug, identity); err != nil {
+	if err := s.store.RecordRemoval(ctx, slug, identity); err != nil {
 		s.log.Warn("remove participant: could not record removal",
 			"slug", slug, "identity", identity, "error", err)
 	}
-
 	s.log.Info("participant removed", "slug", slug, "identity", identity)
-	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "removed"})
+	return nil
 }
 
 // ----------------------------------------------------------- registrants

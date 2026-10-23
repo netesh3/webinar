@@ -86,6 +86,7 @@ import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, useRoomUI, type RoomUI } from "./context";
 import { PreJoin } from "./prejoin";
 import { LobbyChip, useLobbyToasts, useMeetingLobby } from "./meeting-lobby";
+import { useSpamFlags } from "./spam-alerts";
 import { RecorderProvider, RecordingBanner, RecordingIndicator } from "./recording";
 import { useAudiencePolls } from "@/lib/polls";
 import { handAudience } from "@/lib/hand-toasts";
@@ -1599,6 +1600,8 @@ function ConnectedRoom({
   // "Asha is waiting to join", with Admit and Deny, for whoever runs a meeting. Gone while
   // Participants is open, where the lobby list has the same buttons.
   const roomLobby = meeting && isHost ? lobby : null;
+  // Spam detection's flags and alerts, for the host team of a webinar (spam-alerts.tsx).
+  const spam = useSpamFlags(slug, realtime.spamRevision, isHost && !meeting);
   const openParticipants = useCallback(() => openTool("participants"), [openTool]);
   useLobbyToasts(
     roomLobby,
@@ -1706,6 +1709,7 @@ function ConnectedRoom({
       markEnding,
       realtime,
       lobby: roomLobby,
+      spam,
       roster,
       polls,
       network,
@@ -1746,6 +1750,7 @@ function ConnectedRoom({
       me,
       realtime,
       roomLobby,
+      spam,
       roster,
       polls,
       network,

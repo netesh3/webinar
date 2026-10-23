@@ -111,4 +111,10 @@ type SessionRecapResponse struct {
 	 * session_ai_off_intervals windows, migration 0143), rounded up; 0 when never. What was
 	 * said, asked or chatted then is not in the recap, and the Results page says so. */
 	AIPausedMin int `json:"aiPausedMin,omitempty"`
+	/* SpamFlagged is how many chat messages and questions were flagged as spam during the
+	 * session (api/internal/api/spam.go); SpamRemoved how many of those were taken out of the
+	 * room (deleted, hidden, auto-hidden, or their sender removed or muted). For the Results
+	 * page; 0 when none. */
+	SpamFlagged int `json:"spamFlagged,omitempty"`
+	SpamRemoved int `json:"spamRemoved,omitempty"`
 }

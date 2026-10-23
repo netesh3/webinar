@@ -267,6 +267,13 @@ type LobbyMessage = { kind: "lobby"; waiting: number };
  * participant claiming it, and is dropped on receipt. */
 type QAClustersMessage = { kind: "qa-clusters" };
 
+/* "The spam flags changed — re-read them."
+ *
+ * Sent only by the SERVER (announceSpam in api/internal/api/spam.go), addressed to the host
+ * and co-hosts alone: the audience never sees a flag. No payload; the room re-reads GET /spam.
+ * A copy with a sender is a participant claiming it, and is dropped on receipt. */
+type SpamFlagsMessage = { kind: "spam-flags" };
+
 export type RoomMessage =
   | ChatMessage
   | QuestionMessage
@@ -288,7 +295,8 @@ export type RoomMessage =
   | StageInviteMessage
   | StageInviteClearMessage
   | LobbyMessage
-  | QAClustersMessage;
+  | QAClustersMessage
+  | SpamFlagsMessage;
 
 /** The reactions a client may send. Anything else is dropped on receipt, so one
  *  patched client cannot push arbitrary strings into everyone's UI. */
@@ -532,6 +540,8 @@ function decode(bytes: Uint8Array): RoomMessage | null {
       return { kind: "polls-changed" };
     case "qa-clusters":
       return { kind: "qa-clusters" };
+    case "spam-flags":
+      return { kind: "spam-flags" };
     case "survey-changed":
       return { kind: "survey-changed" };
     case "hands-cleared": {
@@ -794,6 +804,8 @@ export type Realtime = {
   surveyRevision: number;
   /** Bumped when the server says the Q&A assistant's clusters changed (host team only). */
   qaClustersRevision: number;
+  /** Bumped when the server says the spam flags changed (host team only; spam.go). */
+  spamRevision: number;
   /** Merges a history batch into the conversation, de-duplicating by id. `deleted`
    *  is the ids moderation removed while this client was away (see ChatBacklog). */
   mergeBacklog: (messages: ChatMessage[], deleted?: readonly string[]) => void;
@@ -869,6 +881,7 @@ export function useRealtime(
   const [pollsRevision, setPollsRevision] = useState(0);
   const [surveyRevision, setSurveyRevision] = useState(0);
   const [qaClustersRevision, setQAClustersRevision] = useState(0);
+  const [spamRevision, setSpamRevision] = useState(0);
 
   // Refs so the send helpers keep a stable identity across re-renders: they end
   // up in the dependency arrays of components that would otherwise re-subscribe
@@ -1053,6 +1066,9 @@ export function useRealtime(
         case "qa-clusters":
           setQAClustersRevision((n) => n + 1);
           break;
+        case "spam-flags":
+          setSpamRevision((n) => n + 1);
+          break;
         case "hands-cleared":
           setHandMap({});
           notify.current?.onHandsCleared?.();
@@ -1125,7 +1141,7 @@ export function useRealtime(
       const msg = decode(payload);
       // The lobby count is the server's to give: a packet with a sender is a participant
       // claiming it, and is dropped (see LobbyMessage).
-      if ((msg?.kind === "lobby" || msg?.kind === "qa-clusters") && _p) return;
+      if ((msg?.kind === "lobby" || msg?.kind === "qa-clusters" || msg?.kind === "spam-flags") && _p) return;
       if (msg) apply(msg);
     };
 
@@ -1501,6 +1517,7 @@ export function useRealtime(
     pollsRevision,
     surveyRevision,
     qaClustersRevision,
+    spamRevision,
     mergeBacklog,
     mergeQuestions,
     chatCursor,

@@ -17,6 +17,9 @@ import type {
   AIWebinarSetup,
   AIWebinarSetupRequest,
   QAClustersResponse,
+  SpamFlagsResponse,
+  SpamSettings,
+  SpamSettingsPatch,
   QASuggestResponse,
   QAPostDraftResponse,
   KnowledgeDoc,
@@ -1088,6 +1091,24 @@ export const api = {
       ...fresh,
       signal,
     }),
+
+  /** Spam detection's flags on the live chat and Q&A (host and co-hosts only), with the
+   *  session's settings. Also what lets a due AI pass run. See api/internal/api/spam.go. */
+  spamFlags: (slug: string, signal?: AbortSignal) =>
+    request<SpamFlagsResponse>(`/api/host/webinars/${seg(slug)}/spam`, {
+      ...fresh,
+      signal,
+    }),
+
+  spamSettings: (slug: string, body: SpamSettingsPatch) =>
+    patch<SpamSettings>(`/api/host/webinars/${seg(slug)}/spam/settings`, body),
+
+  /** One host action on a flagged message: delete, hide, remove, mute, unmute or not_spam. */
+  spamAction: (slug: string, kind: "chat" | "question", id: string, action: string) =>
+    post<StatusResponse>(
+      `/api/host/webinars/${seg(slug)}/spam/${seg(kind)}/${seg(id)}`,
+      { action },
+    ),
 
   /** A private draft answer for one cluster: shown to this host only, never posted. */
   suggestQAAnswer: (slug: string, clusterId: string) =>

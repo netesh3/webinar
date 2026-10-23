@@ -34,6 +34,8 @@ import { chatFocusDraft } from "@/lib/raised-hands";
 import { MentionComposer } from "./mention-composer";
 import { useMentionPeople } from "./mention-people";
 import { useRaisedHandsPanel } from "./raised-hands-panel";
+import { FlaggedFilter, FlaggedList } from "./spam-alerts";
+import { waitingCount } from "@/lib/spam";
 
 /* Chat.
  *
@@ -55,8 +57,10 @@ import { useRaisedHandsPanel } from "./raised-hands-panel";
 const MAX_CHARS = 2000;
 
 export function ChatPanel() {
-  const { slug, joinKey, realtime, controls, permissions, isHost, me, join } = useRoomUI();
+  const { slug, joinKey, realtime, controls, permissions, isHost, me, join, spam } = useRoomUI();
   const noun = join.meeting ? "meeting" : "webinar";
+  // The host team's "Flagged" filter: possible spam, with one-click actions (spam-alerts.tsx).
+  const [showFlagged, setShowFlagged] = useState(false);
   const [draft, setDraft] = useState<Draft>({ text: "", mentions: [] });
   const chatMention = useRaisedHandsPanel().chatMention;
   // "Message" on a raised hand. There is no direct-message thread, so the room
@@ -283,6 +287,13 @@ export function ChatPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {isHost && <HostChatPermission />}
+      {spam && (
+        <FlaggedFilter
+          flagged={showFlagged}
+          count={waitingCount(spam.data?.flags ?? [], "chat")}
+          onChange={setShowFlagged}
+        />
+      )}
 
       {/* Relative so the catch-up pill can sit over the foot of the conversation
           rather than in the composer, where it would push the box around. */}
@@ -355,6 +366,14 @@ export function ChatPanel() {
                 </span>
               )}
             </button>
+          </div>
+        )}
+
+        {/* The host team's Flagged filter (spam-alerts.tsx), over the conversation rather
+            than instead of it, so the conversation keeps its scroll position. */}
+        {spam && showFlagged && (
+          <div className="absolute inset-0 overflow-y-auto bg-surface px-3 py-3">
+            <FlaggedList kind="chat" />
           </div>
         )}
       </div>
