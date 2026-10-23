@@ -24,7 +24,7 @@ import (
  *
  * The browser engine (web/lib/local-captions.ts) runs Whisper tiny.en in each speaker's own
  * tab: English only, and it costs the speaker's laptop. The server engine is a LiveKit agent
- * on the egress host (deploy/captions) running multilingual faster-whisper over the ACTIVE
+ * on the egress host (deploy/captions) running English-only faster-whisper over the ACTIVE
  * speakers only. It never runs inside the API; the API only:
  *
  *   - dispatches it to a room when the host turns server captions on, and removes the

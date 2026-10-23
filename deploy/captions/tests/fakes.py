@@ -6,7 +6,7 @@ from webcaptions.transcriber import Result, Segment
 
 
 class FakeTranscriber:
-    def __init__(self, name="fake", text="नमस्ते दोस्तों", language="hi", segments=None):
+    def __init__(self, name="fake", text="hello everyone", language="en", segments=None):
         self.name = name
         self.text = text
         self.language = language

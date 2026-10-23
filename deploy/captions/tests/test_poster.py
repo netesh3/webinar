@@ -70,11 +70,11 @@ def api():
 
 def test_client_sends_secret_header_and_json(api):
     client, rec = api
-    assert client.caption("webinar_a", "user_1", "नमस्ते sab", 42) == 200
+    assert client.caption("webinar_a", "user_1", "héllo — café", 42) == 200
     path, secret, body = rec.calls[0]
     assert path == "/api/internal/captions"
     assert secret == SECRET
-    assert body["text"] == "नमस्ते sab"  # UTF-8, not escaped away
+    assert body["text"] == "héllo — café"  # UTF-8, not escaped away
     # Not urllib's default: Cloudflare answers "Python-urllib/3.x" with a 403.
     assert rec.agents[0] == USER_AGENT and "urllib" not in rec.agents[0].lower()
 

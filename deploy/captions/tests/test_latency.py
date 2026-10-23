@@ -127,7 +127,7 @@ def make(level=Level.NORMAL, shown=True, room=None, spool=None, edge=False, **cf
     state = {"level": level, "shown": shown, "now": NOW}
     api = FakeApi()
     api.edge = edge
-    live, fb, part = FakeTranscriber("small"), FakeTranscriber("base"), FakeTranscriber("partial", text="namaste")
+    live, fb, part = FakeTranscriber("small"), FakeTranscriber("base"), FakeTranscriber("partial", text="hello")
     room = Room() if room is None else room
     c = LiveCaptioner(
         cfg(**cfgkw), api, "webinar_abc", live, fb, lambda: state["level"], spool, clock_ms=lambda: state["now"],
@@ -139,20 +139,20 @@ def make(level=Level.NORMAL, shown=True, room=None, spool=None, edge=False, **cf
 def test_final_is_published_to_the_room_then_posted_as_published():
     c, api, room, live, _, _ = make()
     c.add("user_1", "Asha", utt())
-    assert c.process_next() == "namaste doston"
+    assert c.process_next() == "hello everyone"
     assert len(room.packets) == 1
     pkt = room.packets[0]
-    assert pkt["kind"] == "caption" and pkt["text"] == "namaste doston" and "partial" not in pkt
+    assert pkt["kind"] == "caption" and pkt["text"] == "hello everyone" and "partial" not in pkt
     assert pkt["from"] == {"identity": "user_1", "name": "Asha", "role": "panelist"}
     assert pkt["id"] == f"user_1:{NOW - 2000}" and pkt["endedAt"] == NOW - 1000 and pkt["lagMs"] == 1000
-    assert api.lines == [dict(identity="user_1", text="namaste doston", started=NOW - 2000, ended=NOW - 1000,
+    assert api.lines == [dict(identity="user_1", text="hello everyone", started=NOW - 2000, ended=NOW - 1000,
                               partial=False, published=True)]
 
 
 def test_unknown_switch_leaves_the_relay_to_the_api():
     c, api, room, *_ = make(shown=None)
     c.add("user_1", "A", utt())
-    assert c.process_next() == "namaste doston"
+    assert c.process_next() == "hello everyone"
     assert room.packets == [] and api.lines[0]["published"] is False
 
 
@@ -183,7 +183,7 @@ def test_post_runs_through_post_async():
     c, api, room, *_ = make()
     c.post_async = jobs.append
     c.add("user_1", "A", utt())
-    assert c.process_next() == "namaste doston"
+    assert c.process_next() == "hello everyone"
     assert room.packets and not api.lines  # on the room before the POST has even started
     jobs[0]()
     assert api.lines
@@ -194,7 +194,7 @@ def test_partial_is_published_as_partial_and_never_stored_or_spooled(tmp_path):
     c, api, room, live, part, _ = make(spool=sp)
     assert c.offer_partial("user_1", "Asha", utt(seconds=1.2))
     p = c.next_partial()
-    assert c.process_partial(p) == "namaste"
+    assert c.process_partial(p) == "hello"
     assert room.packets[0]["partial"] is True and room.packets[0]["id"] == f"user_1:{NOW - 2000}"
     assert part.calls and not live.calls  # the cheaper model
     assert api.captions == [] and api.lines == []  # not an edge room: no POST
@@ -207,7 +207,7 @@ def test_partials_reach_the_api_only_for_an_edge_room():
     assert c.edge
     c.offer_partial("user_1", "A", utt())
     c.process_partial(c.next_partial())
-    assert api.lines == [dict(identity="user_1", text="namaste", started=NOW - 2000, ended=NOW - 1000,
+    assert api.lines == [dict(identity="user_1", text="hello", started=NOW - 2000, ended=NOW - 1000,
                               partial=True, published=True)]
     assert api.captions == []  # a partial is never a transcript line
 
@@ -243,7 +243,7 @@ def test_finals_go_first_and_a_partial_waits():
     c.offer_partial("user_1", "A", utt(start=NOW - 900))
     c.add("user_2", "B", utt())
     assert c.next_partial() is None  # a final is waiting
-    assert c.process_next() == "namaste doston"
+    assert c.process_next() == "hello everyone"
     p = c.next_partial()
     assert p is not None and p.identity == "user_1"
 
@@ -273,15 +273,11 @@ def test_a_stale_partial_is_dropped():
     assert c.next_partial() is None
 
 
-def test_partial_keeps_the_speakers_language_and_does_not_change_it():
+def test_partials_are_decoded_in_english():
     c, api, room, live, part, _ = make()
-    c.add("user_1", "A", utt(start=NOW - 5000))
-    c.process_next()  # detected: hi
-    part.language = "en"
     c.offer_partial("user_1", "A", utt())
     c.process_partial(c.next_partial())
-    assert part.calls[-1]["language"] == "hi"
-    assert c.languages["user_1"] == "hi"
+    assert part.calls[-1]["language"] == "en"
 
 
 def test_latency_is_measured():
@@ -342,53 +338,39 @@ def test_captions_shown_from_room_metadata():
 def test_config_defaults_and_env():
     c = Config.from_env({"CAPTIONS_API_URL": "https://x", "CAPTIONS_SECRET": "s" * 40})
     assert (c.silence_end_s, c.max_utterance_s, c.soft_utterance_s) == (0.45, 5.0, 3.0)
-    assert c.partials and c.partial_model_name == "base" and c.direct_publish
+    assert c.partials and c.partial_model_name == "base.en" and c.direct_publish
     c = Config.from_env({"CAPTIONS_API_URL": "https://x", "CAPTIONS_SECRET": "s" * 40, "CAPTIONS_PARTIALS": "false",
                          "CAPTIONS_PARTIAL_MODEL": "small", "CAPTIONS_DIRECT_PUBLISH": "0"})
     assert not c.partials and c.partial_model_name == "small" and not c.direct_publish
 
 
-# ------------------------------------------------------------------ language detection
+# ------------------------------------------------------------------ English only
 
 
 class _FakeWhisper:
     """faster-whisper's WhisperModel, as far as WhisperTranscriber uses it."""
 
-    def __init__(self, lang):
-        self.lang = lang
+    def __init__(self):
         self.detects = 0
         self.languages = []
 
     def detect_language(self, audio=None, language_detection_segments=1):
         self.detects += 1
-        return self.lang, 0.9, [(self.lang, 0.9), ("en" if self.lang != "en" else "hi", 0.1)]
+        return "hi", 0.9, [("hi", 0.9)]
 
     def transcribe(self, audio, language=None, **kw):
         self.languages.append(language)
         return iter([]), None
 
 
-def test_language_is_detected_by_the_cheaper_model():
+def test_whisper_always_decodes_english_and_never_detects():
     from webcaptions.transcriber import WhisperTranscriber
 
-    base = WhisperTranscriber("base", 2, "/nowhere")
-    base._model = _FakeWhisper("hi")
-    small = WhisperTranscriber("small", 2, "/nowhere", detector=base)
-    small._model = _FakeWhisper("en")
-    res = small.transcribe(np.zeros(SR, np.float32), language=None)
-    assert res.language == "hi" and base._model.detects == 1 and small._model.detects == 0
-    assert small._model.languages == ["hi"]
-    # A known language is never detected; the final pass detects with its own model.
-    small.transcribe(np.zeros(SR, np.float32), language="en")
-    small.transcribe(np.zeros(SR, np.float32), language=None, final=True)
-    assert base._model.detects == 1 and small._model.detects == 1
-
-
-def test_detect_model_defaults_to_the_fallback():
-    c = Config.from_env({"CAPTIONS_API_URL": "https://x", "CAPTIONS_SECRET": "s" * 40})
-    assert c.detect_model_name == "base"
-    c = Config.from_env({"CAPTIONS_API_URL": "https://x", "CAPTIONS_SECRET": "s" * 40, "CAPTIONS_DETECT_MODEL": "small"})
-    assert c.detect_model_name == "small"
+    t = WhisperTranscriber("small.en", 2, "/nowhere")
+    t._model = _FakeWhisper()
+    for kw in ({}, {"language": None}, {"language": "hi"}, {"final": True}):
+        assert t.transcribe(np.zeros(SR, np.float32), **kw).language == "en"
+    assert t._model.languages == ["en"] * 4 and t._model.detects == 0
 
 
 # ------------------------------------------------------------------ keep-alive

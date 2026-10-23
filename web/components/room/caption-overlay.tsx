@@ -221,8 +221,8 @@ export function useCaptionsMoreAction():
       // Nothing local is set: this control reacts to the same broadcast as every
       // other browser, which is what keeps them in agreement.
       //
-      // On asks for server captions first (Hindi, English and Hinglish, and no
-      // speaker's laptop doing the work). Where none are deployed, or the
+      // On asks for server captions first (English, and no speaker's laptop
+      // doing the work). Where none are deployed, or the
       // agent could not be dispatched, the ordinary switch turns on on-device
       // captions instead. Off is the ordinary switch, which also removes the
       // agent.

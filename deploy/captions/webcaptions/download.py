@@ -3,7 +3,7 @@
     python -m webcaptions.download
 
 Idempotent: a model already in the cache is not fetched again, so after the first start
-this takes a second. The first start downloads small (~480 MB), base (~150 MB) and, unless
+this takes a second. The first start downloads small.en (~480 MB), base.en (~150 MB) and, unless
 CAPTIONS_FINAL_ENABLED=false, large-v3-turbo (~1.6 GB).
 """
 

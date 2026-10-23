@@ -52,8 +52,8 @@ def _now_ms() -> int:
 
 
 def _models(cfg: Config) -> dict[str, WhisperTranscriber]:
-    """live, fallback and partial, one instance per distinct model name (the partial and
-    language-detection models are the fallback by default, so they cost no extra memory)."""
+    """live, fallback and partial, one instance per distinct model name (the partial model
+    is the fallback by default, so it costs no extra memory)."""
     by_name: dict[str, WhisperTranscriber] = {}
 
     def get(name: str) -> WhisperTranscriber:
@@ -61,12 +61,7 @@ def _models(cfg: Config) -> dict[str, WhisperTranscriber]:
             by_name[name] = WhisperTranscriber(name, cfg.cpu_threads, cfg.model_dir, cfg.prompt)
         return by_name[name]
 
-    detector = get(cfg.detect_model_name)
-    out = {"live": get(cfg.model), "fallback": get(cfg.fallback_model), "partial": get(cfg.partial_model_name)}
-    for t in by_name.values():
-        if t is not detector:
-            t.detector = detector
-    return out
+    return {"live": get(cfg.model), "fallback": get(cfg.fallback_model), "partial": get(cfg.partial_model_name)}
 
 
 def prewarm(proc: JobProcess) -> None:
@@ -168,8 +163,8 @@ async def entrypoint(ctx: JobContext) -> None:
         post_async=post_async,
     )
     log.info(
-        "captions joined %s (model %s, partials %s, language %s, script %s, shown %s)",
-        room_name, cfg.model, cfg.partial_model_name if cfg.partials else "off", cfg.language, cfg.script, shown[0],
+        "captions joined %s (model %s, partials %s, language %s, shown %s)",
+        room_name, cfg.model, cfg.partial_model_name if cfg.partials else "off", cfg.language, shown[0],
     )
 
     @room.on("room_metadata_changed")
