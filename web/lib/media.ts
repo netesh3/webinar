@@ -179,14 +179,19 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
  *
  * Encodings (shareEncodingPlan in network.ts — the same functions the share ladder reads, so
  * the two cannot drift):
- *   sharp  ONE encoding at the capture's resolution (1080p at most): VP9 L1T3 SVC at 2.5 Mbps
- *          (temporal layers the SFU drops per viewer), or H264 single at 4 Mbps. No 720p
- *          layer for anyone to be switched onto. SHARE_KEEP_RESOLUTION turns this off.
- *   video  the 720p floor and the capture as simulcast (VP9 rid L1T1, or H264).
+ *   every mode, every room (webinar stage, panelists, co-hosts, meetings: all publish here):
+ *          ONE encoding at the capture's resolution (1080p at most), maintain-resolution,
+ *          VP9 L1T3 SVC (temporal layers the SFU drops per viewer) or H264 single. No 720p
+ *          layer for anyone to be switched onto.
+ *            sharp  15 fps, VP9 2.5 / H264 4 Mbps
+ *            video  30 fps, VP9 4 / H264 5 Mbps (a played clip, a file share)
+ *   SHARE_KEEP_RESOLUTION=0 puts every mode back on the 720p floor + capture simulcast
+ *   (VP9 rid L1T1, or H264), video on maintain-framerate.
  * Priority over the camera is set on the live senders by prioritiseShare (network.ts), since
  * there is no reliable publish option for it.
  *
- * Degradation: "sharp" is maintain-resolution — slides and terminals must not blur to hold a
+ * Degradation (simulcast layout only; the single layout is maintain-resolution in both
+ * modes): "sharp" is maintain-resolution — slides and terminals must not blur to hold a
  * frame rate, and contentHint "detail" asks the same of the encoder (except VP9 L1T3, which
  * must be "motion" — share-mode.ts). "video" is
  * maintain-framerate, for a smooth clip (and a smooth recording of one). Either way the
@@ -195,9 +200,9 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
  */
 export function sharePublishOptions(mode: ShareMode): TrackPublishOptions {
   const codec = shareCodec(typeof navigator === "undefined" ? "" : navigator.userAgent);
-  // Layout, codec, scalability, degradation and bitrates: shareEncodingPlan (network.ts). A
-  // sharp share is ONE full-resolution encoding (VP9 L1T3 / H264 single) that drops frames,
-  // not pixels; video mode keeps the 720p + 1080p simulcast. See SHARE_KEEP_RESOLUTION.
+  // Layout, codec, scalability, degradation and bitrates: shareEncodingPlan (network.ts). Every
+  // share is ONE full-resolution encoding (VP9 L1T3 / H264 single) that drops frames, not
+  // pixels, in both modes. See SHARE_KEEP_RESOLUTION.
   const plan = shareEncodingPlan(mode, codec);
   return {
     audioPreset: AudioPresets.musicStereo,
@@ -228,12 +233,13 @@ export async function applyShareMode(track: LocalVideoTrack, mode: ShareMode): P
   noteShareMode(media, mode);
   // VP9 L1T3 stays "motion" in both modes (share-mode.ts): its frame rate depends on it.
   if (media) media.contentHint = shareEncoderHint(mode, codec, layout);
-  await track.setDegradationPreference(shareDegradation(mode));
+  // maintain-resolution in both modes on the single layout: a clip loses frames, not pixels.
+  await track.setDegradationPreference(shareDegradation(mode, layout));
   if (!sender) return;
   try {
     const params = sender.getParameters();
     const layers = shareLayers(mode, codec, layout);
-    const top = shareTop(mode, codec);
+    const top = shareTop(mode, codec, layout);
     params.encodings?.forEach((encoding, i) => {
       if (encoding.active === false) return;
       encoding.maxFramerate = (i < layers.length ? layers[i] : top).encoding.maxFramerate;

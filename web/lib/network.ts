@@ -478,8 +478,24 @@ export function shareLayers(
   ];
 }
 
-export function shareTop(mode: ShareMode, codec: ShareCodec = "h264"): VideoPreset {
-  return new VideoPreset(1920, 1080, SHARE_BITRATES[codec][mode].top, SHARE_MODE_FPS[mode]);
+/* What the single full-resolution share encoding (SHARE_KEEP_RESOLUTION) may spend at 1080p.
+ *
+ * Sharp keeps the simulcast top layer's numbers (VP9 2.5 / H264 4 Mbps at 15 fps). Video mode
+ * (a played clip, a file share) is 30 fps of motion on ONE encoding that must not drop to 720p,
+ * so it gets more: VP9 4 Mbps, H264 5 Mbps. Under pressure the ladder (shareLadder) cuts fps
+ * and bitrate on it, never resolution. */
+export const SHARE_SINGLE_BITRATES: Record<ShareCodec, Record<ShareMode, number>> = {
+  vp9: { sharp: 2_500_000, video: 4_000_000 },
+  h264: { sharp: SHARE_1080_BITRATE, video: 5_000_000 },
+};
+
+export function shareTop(
+  mode: ShareMode,
+  codec: ShareCodec = "h264",
+  layout: ShareLayout = "simulcast",
+): VideoPreset {
+  const bitrate = layout === "single" ? SHARE_SINGLE_BITRATES[codec][mode] : SHARE_BITRATES[codec][mode].top;
+  return new VideoPreset(1920, 1080, bitrate, SHARE_MODE_FPS[mode]);
 }
 
 /* Everything codec-, mode- and layout-dependent about publishing a share, in one pure place
@@ -503,7 +519,8 @@ export function shareEncodingPlan(
   codec: ShareCodec,
   keepResolution: boolean = SHARE_KEEP_RESOLUTION,
 ): ShareEncodingPlan {
-  const layout = shareLayout(mode, keepResolution);
+  // Every mode, every room kind: one full-resolution encoding unless the switch is off.
+  const layout = shareLayout(keepResolution);
   return {
     layout,
     videoCodec: codec,
@@ -514,10 +531,12 @@ export function shareEncodingPlan(
     simulcast: layout === "single" ? false : codec === "vp9" ? true : undefined,
     scalabilityMode: shareScalabilityMode(codec, layout),
     backupCodec: codec === "vp9" ? "h264" : "vp8",
-    degradationPreference: shareDegradation(mode),
+    // maintain-resolution in both modes on the single layout (share-mode.ts).
+    degradationPreference: shareDegradation(mode, layout),
     encoderHint: shareEncoderHint(mode, codec, layout),
-    // The codec's own bitrates (SHARE_BITRATES): VP9 needs far less than H264 for sharp text.
-    screenShareEncoding: shareTop(mode, codec).encoding,
+    // The codec's own bitrates (SHARE_BITRATES / SHARE_SINGLE_BITRATES): VP9 needs far less
+    // than H264 for sharp text; video mode's single encoding gets more for 30 fps of motion.
+    screenShareEncoding: shareTop(mode, codec, layout).encoding,
     screenShareSimulcastLayers: shareLayers(mode, codec, layout),
   };
 }
@@ -539,14 +558,16 @@ export type ShareRung = {
  * sample, a mid-share switch to video (or back) moves the bitrates within a few seconds.
  *
  * The single layout has one rung per tier, and no rung ever turns it off or scales it: under
- * severe loss / queueing a sharp share keeps its full resolution and gives up frames — 8 fps,
- * then 4 — with a smaller bitrate, which maintain-resolution spends on the same pixels. A
- * single-layout share switched to video (a clip played mid-share) keeps its frame rate and
- * lets the bitrate fall, as video mode always has. */
-export const SHARE_SINGLE_RUNGS = {
-  reduced: { bitrate: 0.6, fps: 8 },
-  minimal: { bitrate: 0.4, fps: 4 },
-} as const;
+ * severe loss / queueing a share keeps its full resolution and gives up frames, with a smaller
+ * bitrate that maintain-resolution spends on the same pixels. Sharp: 15 -> 8 -> 4 fps. Video
+ * (a played clip, a file share): 30 -> 15 -> 8 fps. Resolution is never a step. */
+export const SHARE_SINGLE_RUNGS: Record<
+  ShareMode,
+  Record<"reduced" | "minimal", { bitrate: number; fps: number }>
+> = {
+  sharp: { reduced: { bitrate: 0.6, fps: 8 }, minimal: { bitrate: 0.4, fps: 4 } },
+  video: { reduced: { bitrate: 0.6, fps: 15 }, minimal: { bitrate: 0.4, fps: 8 } },
+};
 
 export function shareLadder(
   codec: ShareCodec = "h264",
@@ -555,14 +576,15 @@ export function shareLadder(
 ): Record<PublishTier, ShareRung[]> {
   const { floor, top } = SHARE_BITRATES[codec][mode];
   if (layout === "single") {
-    const rung = (r: { bitrate: number; fps: number }): ShareRung =>
-      mode === "sharp"
-        ? { maxBitrate: Math.round(top * r.bitrate), maxFramerate: r.fps }
-        : { maxBitrate: Math.round(top * r.bitrate) };
+    const single = SHARE_SINGLE_BITRATES[codec][mode];
+    const rung = (r: { bitrate: number; fps: number }): ShareRung => ({
+      maxBitrate: Math.round(single * r.bitrate),
+      maxFramerate: r.fps,
+    });
     return {
-      full: [{ maxBitrate: top }],
-      reduced: [rung(SHARE_SINGLE_RUNGS.reduced)],
-      minimal: [rung(SHARE_SINGLE_RUNGS.minimal)],
+      full: [{ maxBitrate: single }],
+      reduced: [rung(SHARE_SINGLE_RUNGS[mode].reduced)],
+      minimal: [rung(SHARE_SINGLE_RUNGS[mode].minimal)],
     };
   }
   return {
@@ -855,7 +877,7 @@ export function useNetworkHealth(
         const mode = liveShareMode(track.mediaStreamTrack, layout === "single" && codec === "vp9");
         const wanted = shareLadder(codec, mode, layout)[next];
         const layers = shareLayers(mode, codec, layout);
-        const top = shareTop(mode, codec);
+        const top = shareTop(mode, codec, layout);
         /* Neither layer may keep a congestion-era scaleResolutionDownBy that left text soft:
          * the low layer is the 720p floor, and the top layer IS the capture (scale 1). */
         const sourceH =
