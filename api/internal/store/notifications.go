@@ -146,7 +146,20 @@ func (s *Store) DB() Querier { return s.pool }
 // Pool is the connection pool itself, for a module that keeps its own SQL (engage/crmstore).
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
+/* liveAlert is the predicate every bell query shares: not dismissed, and under 90 days old.
+ *
+ * The age limit hides an in-app alert once it is that old, read or not.
+ *
+ * The bell is for things a host might still act on. A registration that waited three months
+ * has long been decided (or the webinar is over), so an old alert is noise in the panel and,
+ * if unread, a badge that never goes away. The row is kept; only the list and the count skip it.
+ */
+const liveAlert = ` AND n.dismissed_at IS NULL AND n.created_at > now() - make_interval(days => 90)`
+
 /* HostAlerts returns a host's in-app notifications, newest first.
+ *
+ * Dismissed and expired alerts (see liveAlert) are left out, so a closed notification does
+ * not come back on a refresh.
  *
  * Scoped to user_id, which is the whole access rule for this endpoint: there is no route that
  * takes a user id, so a caller can only ever read their own. `unreadOnly` serves the badge;
@@ -166,7 +179,7 @@ func (s *Store) HostAlerts(ctx context.Context, userID string, unreadOnly bool, 
 		       n.subject, n.body, n.read_at IS NULL, n.created_at
 		  FROM notifications n
 		  LEFT JOIN webinars w ON w.id = n.webinar_id
-		 WHERE n.user_id = $1`+where+`
+		 WHERE n.user_id = $1`+liveAlert+where+`
 		 ORDER BY n.created_at DESC
 		 LIMIT $2`, userID, limit)
 	if err != nil {
@@ -194,8 +207,8 @@ func (s *Store) HostAlerts(ctx context.Context, userID string, unreadOnly bool, 
 func (s *Store) UnreadAlertCount(ctx context.Context, userID string) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx, `
-		SELECT count(*) FROM notifications
-		 WHERE user_id = $1 AND read_at IS NULL`, userID).Scan(&n)
+		SELECT count(*) FROM notifications n
+		 WHERE n.user_id = $1 AND n.read_at IS NULL`+liveAlert, userID).Scan(&n)
 	return n, err
 }
 
@@ -225,6 +238,38 @@ func (s *Store) MarkAlertsRead(ctx context.Context, userID string, ids []string)
 		tag, err = s.pool.Exec(ctx, `
 			UPDATE notifications SET read_at = now()
 			 WHERE user_id = $1 AND read_at IS NULL AND id::text = ANY($2::text[])`, userID, ids)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+/* DismissAlerts closes a host's alerts for good; an empty id list means all of them.
+ *
+ * Soft: dismissed_at is set and the row stays (it is also the record that the host was
+ * told). A dismissed alert is read too, so nothing it leaves behind can hold up the badge.
+ * Scoped to user_id for the same reason as MarkAlertsRead — an id from another host's
+ * panel matches nothing, and the caller sees 0.
+ */
+func (s *Store) DismissAlerts(ctx context.Context, userID string, ids []string) (int, error) {
+	var (
+		tag pgconn.CommandTag
+		err error
+	)
+	if len(ids) == 0 {
+		tag, err = s.pool.Exec(ctx, `
+			UPDATE notifications
+			   SET dismissed_at = now(), read_at = COALESCE(read_at, now())
+			 WHERE user_id = $1 AND dismissed_at IS NULL`, userID)
+	} else {
+		if len(ids) > 1000 {
+			ids = ids[:1000]
+		}
+		tag, err = s.pool.Exec(ctx, `
+			UPDATE notifications
+			   SET dismissed_at = now(), read_at = COALESCE(read_at, now())
+			 WHERE user_id = $1 AND dismissed_at IS NULL AND id::text = ANY($2::text[])`, userID, ids)
 	}
 	if err != nil {
 		return 0, err

@@ -699,6 +699,9 @@ func (s *Server) Routes() http.Handler {
 				 * the caller's user id in SQL instead. */
 				r.Get("/alerts", s.handleHostAlerts)
 				r.Post("/alerts/read", s.handleReadHostAlerts)
+				r.Post("/alerts/read-all", s.handleReadAllHostAlerts)
+				r.Post("/alerts/dismiss-all", s.handleDismissAllHostAlerts)
+				r.Delete("/alerts/{id}", s.handleDismissHostAlert)
 				r.Patch("/registrations/{id}", s.handleSetRegistrationState)
 
 				// Everything below is scoped to one webinar the caller owns.

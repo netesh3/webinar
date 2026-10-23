@@ -197,6 +197,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And an attendee whose video connection is down: the stage invite their presence poll
 	# replays shows once, and is cleared when it has gone.
 	cd web && node --experimental-strip-types --no-warnings lib/presence-step.test.mts
+	# And the notification bell: a dismissed or cleared row leaves the list and the badge
+	# once, and a swipe or the Delete key on a focused row is what dismisses it.
+	cd web && node --experimental-strip-types --no-warnings lib/notifications.test.mts
 	# And which delivery the schedule form and the instant button offer: edge only on a
 	# GCP or DO video server, the Standard / Edge choice on Hetzner with the switch.
 	cd web && node --experimental-strip-types --no-warnings lib/delivery-policy.test.mts

@@ -208,6 +208,14 @@ type AlertsResponse struct {
 	Unread int         `json:"unread"`
 }
 
+/* AlertsChangedResponse answers a bulk change to the bell (dismiss one, dismiss all, read
+ * all): how many rows it touched, and the badge count afterwards, so the panel can show the
+ * server's number rather than guess at it. */
+type AlertsChangedResponse struct {
+	Changed int `json:"changed"`
+	Unread  int `json:"unread"`
+}
+
 /* ApprovalsRequest is the batch decision: a set of registrations and one state for all of them.
  *
  * IDs rather than "everyone pending" because a host reviewing forty strangers approves some and
