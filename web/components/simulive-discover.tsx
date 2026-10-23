@@ -124,16 +124,27 @@ export function SimulivePicker() {
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {library.map((rec) => (
-            <li key={rec.id}>
-              <Link
-                href={simuliveScheduleHref(rec)}
-                className="group block overflow-hidden rounded-xl border border-line bg-surface outline-none transition-[border-color,box-shadow] hover:border-brand-line hover:shadow-[0_2px_8px_rgba(19,22,25,0.08)] focus-visible:ring-2 focus-visible:ring-brand/40"
+            <li
+              key={rec.id}
+              className="overflow-hidden rounded-xl border border-line bg-surface transition-[border-color,box-shadow] hover:border-brand-line hover:shadow-[0_2px_8px_rgba(19,22,25,0.08)]"
+            >
+              {/* The picture previews the recording; the text below schedules it. */}
+              <button
+                type="button"
+                onClick={() => setPreviewing(rec)}
+                aria-label={`Preview ${rec.topic}`}
+                className="block w-full outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
                 <RecordingThumb
                   src={api.recordingFileURL(rec.webinar, firstPlayablePart(rec))}
                   durationMs={rec.durationMs}
                   parts={rec.parts?.length ?? 1}
                 />
+              </button>
+              <Link
+                href={simuliveScheduleHref(rec)}
+                className="group block outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
                 <div className="p-3">
                   <p className="truncate text-[13.5px] font-semibold text-ink">{rec.topic}</p>
                   <p className="mt-0.5 text-[12px] text-ink-3">
@@ -151,7 +162,7 @@ export function SimulivePicker() {
               <button
                 type="button"
                 onClick={() => setPreviewing(rec)}
-                className="mt-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
+                className="mx-1.5 mb-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
               >
                 <PlayIcon className="size-3" />
                 Preview
