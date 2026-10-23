@@ -845,6 +845,12 @@ export interface AdminCostPlatform {
    * FirstSessionAt is each provider's first session ever (RFC 3339): a box is counted from then.
    */
   firstSessionAt: { [key: string]: string};
+  /**
+   *  BoxHours is, for a provider whose box is created on demand (api/internal/api/sfu_box.go),
+   * 	 * the hours it existed in the range: measured droplet lifetimes, plus the around-the-clock
+   * 	 * hours before it was managed. Absent: the box is counted from FirstSessionAt, 24/7.
+   */
+  boxHours?: { [key: string]: number /* float64 */};
   sessionHours: number /* float64 */;
   /**
    * UnattributedAIUSD is AI spent with no host (the sales chat, platform jobs).
@@ -2437,6 +2443,10 @@ export const PushRecordingExpiring: PushKind = "recording_expiring";
  */
 export const PushApprovalRequested: PushKind = "approval_requested";
 /**
+ * Admins: an operator alert (the on-demand video server could not start).
+ */
+export const PushOpsAlert: PushKind = "ops_alert";
+/**
  * "Send test notification" in Settings. Not a preference: it always goes.
  */
 export const PushTest: PushKind = "test";
@@ -2842,6 +2852,73 @@ export const NotifySalesHandoff: NotificationKind = "sales_handoff";
  * NotifySalesReply is an admin's reply mailed to a visitor who left the chat.
  */
 export const NotifySalesReply: NotificationKind = "sales_reply";
+
+//////////
+// source: sfu_box.go
+
+/**
+ * Video server states a waiting screen shows (VideoServerStatus.State).
+ */
+export const VideoServerReady = "ready";
+/**
+ * Video server states a waiting screen shows (VideoServerStatus.State).
+ */
+export const VideoServerStarting = "starting";
+/**
+ * Video server states a waiting screen shows (VideoServerStatus.State).
+ */
+export const VideoServerFailed = "failed";
+/**
+ * VideoServerNone is a session whose server is not started on demand: always ready.
+ */
+export const VideoServerNone = "none";
+/**
+ *  VideoServerStatus is GET /api/webinars/{slug}/server: whether the session's video server is
+ *  * up, for the "Starting servers…" waiting screen. Read-only: asking does not start anything
+ *  * (a join does).
+ */
+export interface VideoServerStatus {
+  state: string;
+  message: string;
+  /**
+   * SinceSec is how long it has been in this state; EtaSec a rough wait left while starting.
+   */
+  sinceSec: number /* int */;
+  etaSec: number /* int */;
+}
+/**
+ * AdminSFUBoxRun is one droplet's life.
+ */
+export interface AdminSFUBoxRun {
+  dropletId: number /* int64 */;
+  createdAt: string;
+  readyAt?: string;
+  deletedAt?: string;
+  hours: number /* float64 */;
+}
+/**
+ *  AdminSFUBox is GET /api/admin/sfu-box: the on-demand video server's state, its recent
+ *  * droplets and the hours it ran in the last 30 days (what the cost calculator can use
+ *  * instead of 24/7).
+ */
+export interface AdminSFUBox {
+  enabled: boolean;
+  project: string;
+  desired: string;
+  actual: string;
+  dropletId: number /* int64 */;
+  since: string;
+  lastError: string;
+  failures: number /* int */;
+  nextAttemptAt?: string;
+  lastNeededAt?: string;
+  requestedUntil?: string;
+  alwaysOn: boolean;
+  warmLeadMin: number /* int */;
+  idleGraceMin: number /* int */;
+  hoursLast30d: number /* float64 */;
+  runs: AdminSFUBoxRun[];
+}
 
 //////////
 // source: slots.go
@@ -3409,6 +3486,12 @@ export const NotifySessionRecap: NotificationKind = "session_recap";
  * 	 * each recording's reminder to once per expiry per stage.
  */
 export const NotifyRecordingExpiring: NotificationKind = "recording_expiring";
+/**
+ *  NotifyOpsAlert is an operator alert in an admin's bell (the email goes beside it): today
+ * 	 * the on-demand video server failing to start or not being ready at a session's start
+ * 	 * (api/internal/api/sfu_box.go).
+ */
+export const NotifyOpsAlert: NotificationKind = "ops_alert";
 export const MaxReminders = 3;
 export const MinReminderOffset = 1;
 export const MaxReminderOffset = 30 * 24 * 60;
@@ -4635,10 +4718,12 @@ export const FeatureCloudRecording = "cloud_recording";
 export const FeatureJoinWithoutRegistration = "join_without_registration";
 /**
  *  FeatureInstantWebinar lets a host go live without scheduling: the
- * 	 * "Instant webinar" card, and a create that sets Instant.
+ * 	 * "Instant webinar" card, "Meet now", and any create that sets Instant
+ * 	 * (meetings too, since migrations/0152: the on-demand video server needs a
+ * 	 * few minutes' warning, so instant sessions are an admin's per-host switch).
  * 	 *
- * 	 * Off — the default — means every webinar is scheduled first. See
- * 	 * migrations/0073.
+ * 	 * Off — the default, in every plan — means every session is scheduled first.
+ * 	 * See migrations/0073 and 0152.
  */
 export const FeatureInstantWebinar = "instant_webinar";
 /**

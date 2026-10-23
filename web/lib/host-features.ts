@@ -1,6 +1,7 @@
 import {
   FeatureCloudRecording,
   FeatureFollowupSend,
+  FeatureInstantWebinar,
   FeatureMeetings,
   FeatureSimulive,
 } from "./api-types.ts";
@@ -34,6 +35,13 @@ export function simuliveCardOffered(account: WithFeatures): boolean {
  *  turned it off. */
 export function meetingsOffered(account: WithFeatures): boolean {
   return hasFeature(account, FeatureMeetings);
+}
+
+/** "Start a meeting" and the Instant webinar card: going live without scheduling. An admin's
+ *  per-host switch (instant_webinar, "Instant meetings/webinars (warm-up)"), off by default,
+ *  because the video server is started on demand and needs a few minutes' warning. */
+export function instantOffered(account: WithFeatures): boolean {
+  return hasFeature(account, FeatureInstantWebinar);
 }
 
 /** Sending the AI follow-up drafts from Results (followup_send, which needs ai). */

@@ -8,6 +8,8 @@ import (
 	"github.com/livekit/protocol/livekit"
 
 	"github.com/netkumar/webcast/api/internal/ai"
+	"github.com/netkumar/webcast/api/internal/doapi"
+	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
@@ -127,3 +129,28 @@ func FlushPush(s *Server, ctx context.Context) { s.flushPush(ctx) }
 
 // SweepPushReminders queues the 15-minute reminders that are due.
 func SweepPushReminders(s *Server, ctx context.Context) { s.sweepPushReminders(ctx) }
+
+/* SetBox points the on-demand box at a fake DigitalOcean (doapitest) and replaces its
+ * readiness probe, its LiveKit activity check and its clock. cfg.SFUBox must be enabled. */
+func SetBox(s *Server, cloud *doapi.Client, probe func(context.Context) error,
+	activity func(context.Context) (lk.Activity, error), now func() time.Time) {
+	if s.box == nil {
+		panic("SetBox: cfg.SFUBox is not enabled")
+	}
+	s.box.cloud = cloud
+	s.box.probe = probe
+	s.box.activity = activity
+	s.box.now = now
+	s.box.invalidate()
+}
+
+// BoxStep is one step of the on-demand box's state machine.
+func BoxStep(s *Server, ctx context.Context) { s.boxStep(ctx) }
+
+// ForgetBoxCache drops the box state a join would trust for a few seconds, and the probe throttle.
+func ForgetBoxCache(s *Server) {
+	s.box.invalidate()
+	s.box.mu.Lock()
+	s.box.lastProbe = time.Time{}
+	s.box.mu.Unlock()
+}

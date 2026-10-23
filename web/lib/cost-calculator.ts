@@ -124,9 +124,17 @@ export const RECORDING_STORES: Record<RecordingStore, { label: string; perGbMont
 /** Everything that changes with the video provider. Each is editable per provider. */
 export type ProviderRates = {
   label: string;
-  /** An always-on SFU box a month (0 when the SFU is started per session instead). */
+  /** The SFU box a month if it ran all month (0 when the SFU is started per session instead). */
   boxMonthlyUsd: number;
-  /** Transfer the box brings to the pool, TB a month. */
+  /** The box exists only while sessions need it (created on demand and deleted when idle,
+   *  api/internal/api/sfu_box.go): billed for the hours it runs, at boxMonthlyUsd / 730 an hour. */
+  boxOnDemand: boolean;
+  /** Hours a month an on-demand box runs. 0 estimates it from the sessions: their hours, plus
+   *  boxOverheadMinutes each (warm-up before, idle grace after). Admin → Video server shows the
+   *  measured hours of the last 30 days. */
+  boxHoursPerMonth: number;
+  boxOverheadMinutes: number;
+  /** Transfer the box brings to the pool, TB a month (prorated by the hours an on-demand box runs). */
   boxIncludedTb: number;
   /** CPU cores on the box, for the captions capacity line. */
   boxCores: number;
@@ -152,6 +160,9 @@ export const DEFAULT_PROVIDERS: Record<Provider, ProviderRates> = {
   gcp: {
     label: "GCP (Mumbai)",
     boxMonthlyUsd: 0,
+    boxOnDemand: false,
+    boxHoursPerMonth: 0,
+    boxOverheadMinutes: 55,
     boxIncludedTb: 0,
     boxCores: 2,
     sfuPerHour: 0.07,
@@ -167,6 +178,9 @@ export const DEFAULT_PROVIDERS: Record<Provider, ProviderRates> = {
   hetzner: {
     label: "Hetzner (CX33)",
     boxMonthlyUsd: 9.2,
+    boxOnDemand: false,
+    boxHoursPerMonth: 0,
+    boxOverheadMinutes: 55,
     boxIncludedTb: 20,
     boxCores: 4,
     sfuPerHour: 0,
@@ -182,6 +196,10 @@ export const DEFAULT_PROVIDERS: Record<Provider, ProviderRates> = {
   do: {
     label: "DigitalOcean (BLR1 c-4)",
     boxMonthlyUsd: 84,
+    // Created on demand since 2026-10-23: 15 min warm-up + 40 min idle grace around sessions.
+    boxOnDemand: true,
+    boxHoursPerMonth: 0,
+    boxOverheadMinutes: 55,
     boxIncludedTb: 5,
     boxCores: 4,
     sfuPerHour: 0,
@@ -664,6 +682,20 @@ export function peakConcurrent(platformHours: number, busyHours: number): number
   return Math.max(0, Math.ceil(nonNeg(platformHours) / h - 1e-9));
 }
 
+/** Hours a month the video server box runs: 0 with no box, all month for an always-on one, and
+ *  for an on-demand one the set boxHoursPerMonth, else the platform's session-hours plus
+ *  boxOverheadMinutes per session (an upper bound: overlapping sessions share the overhead). */
+export function boxRunHours(p: ProviderRates, platformSessionHours: number, platformSessions: number): number {
+  if (!(nonNeg(p.boxMonthlyUsd) > 0)) return 0;
+  if (!p.boxOnDemand) return HOURS_PER_MONTH;
+  const set = nonNeg(p.boxHoursPerMonth);
+  if (set > 0) return Math.min(HOURS_PER_MONTH, set);
+  return Math.min(
+    HOURS_PER_MONTH,
+    nonNeg(platformSessionHours) + (nonNeg(platformSessions) * nonNeg(p.boxOverheadMinutes)) / 60,
+  );
+}
+
 /** The plan the attendee cap stands for, and its recording quota in GB. */
 export function quotaFor(cap: number): { plan: string; gb: number } {
   const q = RECORDING_QUOTAS.find((x) => x.cap === cap) ?? RECORDING_QUOTAS[2];
@@ -767,6 +799,9 @@ export function calculateCost(raw: CostInputs): CostResult {
   const alwaysOn = nonNeg(p.boxMonthlyUsd) > 0;
   const boxes = alwaysOn ? Math.max(1, Math.ceil(peakSessions / Math.max(1, nonNeg(i.boxSessionCapacity)) - 1e-9)) : 0;
   const extraBoxes = Math.max(0, boxes - 1);
+  // An on-demand box bills only the hours it runs (boxRunHours); its transfer allowance follows.
+  const boxOnHours = boxRunHours(p, platformSessionHours, (webinars + meetings) * coaches);
+  const boxShare = boxOnHours / HOURS_PER_MONTH;
 
   // ---- Render workers. Not co-located: one per live edge webinar. Co-located: each box
   // renders one mix at a time over the busy hours; the edge hours beyond that need workers.
@@ -788,7 +823,7 @@ export function calculateCost(raw: CostInputs): CostResult {
   const pooledGbPerCoach =
     stageGb + originGb + originShareGb + webrtcGb + meetingGb + recordedGb + youtubeGb + sfuExtraGb + (onServer ? apiGb : 0);
   const includedGb =
-    (nonNeg(p.boxIncludedTb) * Math.max(1, boxes) +
+    (nonNeg(p.boxIncludedTb) * Math.max(1, boxes) * (alwaysOn ? boxShare : 1) +
       (onServer ? nonNeg(p.apiServerIncludedTb) : 0) +
       (nonNeg(p.workerIncludedTb) * workerHoursPlatform) / HOURS_PER_MONTH) *
     1000;
@@ -1047,7 +1082,7 @@ export function calculateCost(raw: CostInputs): CostResult {
     captionShare *
     (nonNeg(i.liveCaptionCores) + nonNeg(i.finalCaptionFactor) * nonNeg(i.finalCaptionCores)) *
     nonNeg(i.captionsModelFactor);
-  const capacityCoreHours = alwaysOn ? nonNeg(p.boxCores) * HOURS_PER_MONTH * Math.max(1, boxes) : null;
+  const capacityCoreHours = alwaysOn ? nonNeg(p.boxCores) * boxOnHours * Math.max(1, boxes) : null;
   if (captionCoreHours > 0) {
     const platform = captionCoreHours * coaches;
     info(
@@ -1125,12 +1160,20 @@ export function calculateCost(raw: CostInputs): CostResult {
   const share = (usd: number) => usd / coaches;
   const fixed = (key: string, label: string, usd: number, note?: string) =>
     add(undefined, "fixed", key, label, share(nonNeg(usd)), note ?? `$${nonNeg(usd).toFixed(2)} a month over ${coaches} coaches`);
-  fixed("box", `Video server box (${p.label})`, p.boxMonthlyUsd);
+  const boxUsd = nonNeg(p.boxMonthlyUsd) * (alwaysOn ? boxShare : 1);
+  fixed(
+    "box",
+    `Video server box (${p.label})`,
+    boxUsd,
+    alwaysOn && p.boxOnDemand
+      ? `On demand: ${fmt(boxOnHours)} h a month ${nonNeg(p.boxHoursPerMonth) > 0 ? "(set)" : `(session hours + ${fmt(nonNeg(p.boxOverheadMinutes))} min warm-up and idle grace each)`} × $${(nonNeg(p.boxMonthlyUsd) / HOURS_PER_MONTH).toFixed(3)}/h = $${boxUsd.toFixed(2)}, over ${coaches} coaches`
+      : undefined,
+  );
   fixed(
     "extra-boxes",
     `Extra video server boxes (${extraBoxes})`,
-    extraBoxes * nonNeg(p.boxMonthlyUsd),
-    `Peak ≈ ${peakSessions} sessions at once (${fmt(platformSessionHours)} session-hours over ${fmt(nonNeg(i.busyHoursPerMonth))} busy hours), ${fmt(nonNeg(i.boxSessionCapacity))} a box: ${extraBoxes} × $${nonNeg(p.boxMonthlyUsd)} over ${coaches} coaches`,
+    extraBoxes * boxUsd,
+    `Peak ≈ ${peakSessions} sessions at once (${fmt(platformSessionHours)} session-hours over ${fmt(nonNeg(i.busyHoursPerMonth))} busy hours), ${fmt(nonNeg(i.boxSessionCapacity))} a box: ${extraBoxes} × $${boxUsd.toFixed(2)} over ${coaches} coaches`,
   );
   add(
     undefined,

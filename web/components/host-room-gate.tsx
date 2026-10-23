@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WebinarRoom } from "./room/webinar-room";
 import { Spinner } from "./controls";
 import { Button, ButtonLink, Card } from "./ui";
@@ -12,6 +12,7 @@ import type { JoinResponse } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { detectArrival, hasRejoinIntent, type Arrival } from "@/lib/rejoin";
 import { trackEvent } from "@/lib/telemetry";
+import { serverRetryDelayMs, serverWaitCopy, serverWaitOf, type ServerWait } from "@/lib/video-server";
 
 /** Starts the stage for a host or panelist. Requires the session cookie; the API
  *  refuses to mint a publishing token for anyone else. */
@@ -27,9 +28,13 @@ export function HostRoomGate({ slug }: { slug: string }) {
   const hydrated = useHydrated();
   const [arrival] = useState<Arrival>(() => detectArrival(slug));
   const rejoin = arrival === "rejoin";
-  /* A video server stopped to save money answers sfu_starting while it boots (about a
-   * minute): wait on it and ask again, rather than show "Can't start". */
-  const [serverStarting, setServerStarting] = useState(false);
+  /* A video server started on demand answers sfu_starting while it boots (about two minutes)
+   * and sfu_failed when it could not be started (lib/video-server.ts): wait on it and ask
+   * again, rather than show "Can't start". A failure also offers Try again. */
+  const [serverWait, setServerWait] = useState<ServerWait | null>(null);
+  const waitStart = useRef<number | null>(null);
+  const [waitedSec, setWaitedSec] = useState(0);
+  const [retrying, setRetrying] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -53,17 +58,21 @@ export function HostRoomGate({ slug }: { slug: string }) {
           window.location.assign(res.zoomStartUrl);
           return;
         }
-        setServerStarting(false);
+        setServerWait(null);
         setJoin(res);
       })
       .catch((e: unknown) => {
         if (!active) return;
-        if (e instanceof ApiError && e.code === "sfu_starting") {
-          setServerStarting(true);
-          retry = setTimeout(() => setAttempt((n) => n + 1), 5000);
+        const wait = e instanceof ApiError ? serverWaitOf(e.code) : null;
+        if (wait) {
+          setServerWait(wait);
+          const now = Date.now();
+          waitStart.current ??= now;
+          setWaitedSec(Math.round((now - waitStart.current) / 1000));
+          retry = setTimeout(() => setAttempt((n) => n + 1), serverRetryDelayMs(wait));
           return;
         }
-        setServerStarting(false);
+        setServerWait(null);
         if (e instanceof ApiError) setError({ code: e.code, message: e.message });
         else setError({ code: "unknown", message: "Could not start the webinar." });
       });
@@ -110,21 +119,42 @@ export function HostRoomGate({ slug }: { slug: string }) {
 
   const signInNeeded = error?.code === "unauthenticated";
 
-  if (serverStarting && !error) {
+  if (serverWait && !error) {
+    const copy = serverWaitCopy(serverWait, true, waitedSec);
+    const retryNow = () => {
+      setRetrying(true);
+      // Only the host may ask; a panelist's 403 is fine, the join below asks again either way.
+      api
+        .retryVideoServer(slug)
+        .catch(() => undefined)
+        .finally(() => {
+          setRetrying(false);
+          setAttempt((n) => n + 1);
+        });
+    };
     return (
       <main className="grid min-h-dvh place-items-center p-6">
         <Card className="w-full max-w-md p-6 text-center">
           <div role="status" aria-live="polite">
-          <span
-            aria-hidden="true"
-            className="mx-auto mb-3 block size-6 animate-spin rounded-full border-2 border-brand/30 border-t-brand"
-          />
-          <h1 className="text-[17px] font-semibold">Getting the video server ready…</h1>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
-            It was paused while no webinars were running. This takes about a minute, and you&apos;ll
-            go straight into your room when it&apos;s up.
-          </p>
+            {serverWait === "starting" ? (
+              <span
+                aria-hidden="true"
+                className="mx-auto mb-3 block size-6 animate-spin rounded-full border-2 border-brand/30 border-t-brand"
+              />
+            ) : null}
+            <h1 className="text-[17px] font-semibold">{copy.title}</h1>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">{copy.body}</p>
           </div>
+          {copy.retry ? (
+            <div className="mt-5 grid gap-2">
+              <Button onClick={retryNow} disabled={retrying}>
+                {retrying ? "Trying…" : "Try again"}
+              </Button>
+              <Link href={`/host/${slug}`} className="text-[12.5px] text-brand hover:underline">
+                Back to the dashboard
+              </Link>
+            </div>
+          ) : null}
         </Card>
       </main>
     );

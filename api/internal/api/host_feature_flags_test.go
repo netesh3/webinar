@@ -92,6 +92,10 @@ func TestSimuliveAndMeetingsNeedTheirSwitch(t *testing.T) {
 
 	// Meetings: on by default, refused (instant and scheduled) once an admin turns them off.
 	meeting := types.WebinarInput{Topic: "Stand-up", Kind: types.KindMeeting, Instant: true, TimeZone: "UTC"}
+	// "Meet now" needs the instant switch, off by default (migrations/0152).
+	res, raw = h.do(http.MethodPost, "/api/host/webinars", meeting)
+	h.wantError(res, raw, http.StatusForbidden, "feature_off")
+	forceFeature(t, h, host.ID, types.FeatureInstantWebinar, true)
 	res, raw = h.do(http.MethodPost, "/api/host/webinars", meeting)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("meeting by default: %d %s", res.StatusCode, raw)

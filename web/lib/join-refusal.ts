@@ -6,6 +6,8 @@
  * failure, are not — those still offer another attempt.
  */
 
+import { serverWaitCopy, serverWaitOf } from "./video-server.ts";
+
 export type JoinRefusalAction = "retry" | "register" | "none";
 
 export type JoinRefusal = {
@@ -38,24 +40,23 @@ export function attendeeJoinRefusal(code: string, message: string): JoinRefusal 
   if (joinCodeIsEnded(code)) {
     return { title: ENDED_JOIN_TITLE, body: ENDED_JOIN_BODY, action: "none" };
   }
+  // The on-demand video server starting (or failing to): the screen waits and asks again.
+  const wait = serverWaitOf(code);
+  if (wait) {
+    const copy = serverWaitCopy(wait, false, 0);
+    return { title: copy.title, body: copy.body, action: "none" };
+  }
   const title = joinRefusalTitle(code);
   return {
     title,
     body: bodyUnlessRepeat(title, message),
     // Removed is the host's decision; the same automatic rejoin would only be refused again.
-    // sfu_starting retries by itself (attendee-room-gate), so no button.
-    action: REGISTER_CODES.has(code)
-      ? "register"
-      : code === "removed" || code === "sfu_starting"
-        ? "none"
-        : "retry",
+    action: REGISTER_CODES.has(code) ? "register" : code === "removed" ? "none" : "retry",
   };
 }
 
 function joinRefusalTitle(code: string): string {
   switch (code) {
-    case "sfu_starting":
-      return "Getting the webinar ready…";
     case "not_approved":
       return "Waiting for approval";
     case "locked":

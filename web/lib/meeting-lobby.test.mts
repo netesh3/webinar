@@ -90,3 +90,8 @@ assert.equal(knockGoesIn(""), false);
 assert.equal(MEETING_POLL_MS, 3_000);
 
 console.log("meeting-lobby: ok");
+
+// The on-demand video server: starting and failed are both a wait that keeps polling.
+assert.equal(lobbyScreen("sfu_starting", "").title, "Starting servers…");
+assert.equal(lobbyScreen("sfu_failed", "").poll, true);
+assert.equal(lobbyScreen("sfu_failed", "").title, "The video server couldn't start");

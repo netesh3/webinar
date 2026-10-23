@@ -23,6 +23,8 @@ const (
 	PushRecordingExpiring PushKind = "recording_expiring"
 	// Host: a registration is waiting for approval.
 	PushApprovalRequested PushKind = "approval_requested"
+	// Admins: an operator alert (the on-demand video server could not start).
+	PushOpsAlert PushKind = "ops_alert"
 	// "Send test notification" in Settings. Not a preference: it always goes.
 	PushTest PushKind = "test"
 )

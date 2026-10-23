@@ -671,6 +671,14 @@ func (s *Server) ensureRoom(
 		return moved, count, known, nil
 	}
 
+	/* The on-demand box never fails over (sfu_box.go): its sessions wait for it rather than
+	 * land on another provider. A refusal here is a box that said ready a moment ago and is
+	 * not answering: tell the caller to wait, and let the next look re-read its state. */
+	if s.managesProject(project) {
+		s.log.Warn("on-demand video server refused a room; not failing over", "slug", wb.ID, "project", project, "error", err)
+		s.box.invalidate()
+		return nil, 0, false, errSFUStarting
+	}
 	for _, next := range s.sfu.Candidates() {
 		if next == project {
 			continue

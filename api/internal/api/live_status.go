@@ -47,7 +47,8 @@ func (s *Server) handleInternalLiveStatus(w http.ResponseWriter, r *http.Request
 		byProject[l.Project]++
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, http.StatusOK, liveStatusResponse{Live: live, Count: len(live), ByProject: byProject, Finalizing: finalizing})
+	httpx.JSON(w, http.StatusOK, liveStatusResponse{Live: live, Count: len(live), ByProject: byProject,
+		Finalizing: finalizing, Boxes: s.boxLiveStatuses(r.Context())})
 }
 
 // liveStatusResponse is GET /api/internal/live-status.
@@ -57,4 +58,7 @@ type liveStatusResponse struct {
 	ByProject map[string]int      `json:"byProject"`
 	// Finalizing is never null, so the deploy script can read it without a default.
 	Finalizing []store.LiveSession `json:"finalizing"`
+	/* Boxes is each on-demand video server's state (sfu_box.go), by project: the DigitalOcean
+	 * deploy skips a box that is down (the next boot pulls the latest files itself). Never null. */
+	Boxes map[string]boxLiveStatus `json:"boxes"`
 }

@@ -17,6 +17,7 @@ import { trackEvent } from "@/lib/telemetry";
 import { usePrimeMediaOnGesture } from "@/lib/media-unlock";
 import { isAwaitingEmail, joinProvesKey } from "@/lib/guest-registration";
 import { attendeeJoinRefusal } from "@/lib/join-refusal";
+import { serverRetryDelayMs, serverWaitOf } from "@/lib/video-server";
 import { MEETING_POLL_MS, lobbyScreen, type LobbyScreen } from "@/lib/meeting-lobby";
 import { LobbyStatus, MeetingKnockForm } from "./meeting-door";
 
@@ -59,18 +60,19 @@ export function AttendeeRoomGate({
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [openingZoom, setOpeningZoom] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  /* The webinar's video server was paused while nothing ran on it and is booting (about a
-   * minute): ask again every few seconds instead of waiting for a "Try again" click. */
-  // A meeting polls its own way (below), sfu_starting included.
-  const serverStarting = !meeting && error?.code === "sfu_starting";
+  /* The webinar's video server is started on demand (lib/video-server.ts): while it starts,
+   * or after it failed and is being retried, ask again on a timer instead of waiting for a
+   * "Try again" click, and go in by itself when it answers. Edge viewers join the same way. */
+  // A meeting polls its own way (below), sfu_starting and sfu_failed included.
+  const serverWait = meeting ? null : serverWaitOf(error?.code);
   useEffect(() => {
-    if (!serverStarting) return;
+    if (!serverWait) return;
     const t = setTimeout(() => {
       setError(null);
       setAttempt((n) => n + 1);
-    }, 5000);
+    }, serverRetryDelayMs(serverWait));
     return () => clearTimeout(t);
-  }, [serverStarting]);
+  }, [serverWait]);
 
   /* The meeting lobby: what the last answer means, and whether to ask again by itself.
    *

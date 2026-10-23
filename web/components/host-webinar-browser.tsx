@@ -725,7 +725,7 @@ function EmptyList({
     return (
       <Empty
         title="Nothing upcoming"
-        hint="Start a meeting now, or schedule one for later."
+        hint="Schedule one, and share the link."
         action={<ButtonLink href="/host/new/meeting">Schedule a meeting</ButtonLink>}
       />
     );

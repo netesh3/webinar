@@ -38,17 +38,19 @@ import (
 
 // pushKindsOrder is the Settings page's list, attendee kinds first.
 var pushKindsOrder = []struct {
-	kind types.PushKind
-	host bool
+	kind  types.PushKind
+	host  bool
+	admin bool // listed for admins only
 }{
-	{types.PushWebinarLive, false},
-	{types.PushWebinarReminder, false},
-	{types.PushReplayReady, false},
-	{types.PushMeetingStarted, false},
-	{types.PushLobbyKnock, true},
-	{types.PushApprovalRequested, true},
-	{types.PushRecapReady, true},
-	{types.PushRecordingExpiring, true},
+	{types.PushWebinarLive, false, false},
+	{types.PushWebinarReminder, false, false},
+	{types.PushReplayReady, false, false},
+	{types.PushMeetingStarted, false, false},
+	{types.PushLobbyKnock, true, false},
+	{types.PushApprovalRequested, true, false},
+	{types.PushRecapReady, true, false},
+	{types.PushRecordingExpiring, true, false},
+	{types.PushOpsAlert, true, true},
 }
 
 const (
@@ -220,6 +222,9 @@ func (s *Server) handlePushPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 	out := types.PushPreferencesResponse{Enabled: s.push != nil, Devices: devices}
 	for _, k := range pushKindsOrder {
+		if k.admin && !user.IsAdmin {
+			continue
+		}
 		on, set := prefs[k.kind]
 		out.Preferences = append(out.Preferences, types.PushPreference{Kind: k.kind, Enabled: !set || on, Host: k.host})
 	}

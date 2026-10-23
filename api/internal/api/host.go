@@ -250,6 +250,10 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Go live now on the on-demand box: start warming it while the host's room opens.
+	if in.Instant {
+		s.boxWarmFor(r.Context(), wb)
+	}
 	httpx.JSON(w, http.StatusCreated, wb)
 }
 
@@ -261,8 +265,9 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	/* Before the lead check. An instant create has no time picker, so a
 	 * soon start must come back as "this account cannot", not as "schedule it
 	 * at least 15 minutes from now". */
-	/* An instant MEETING is not gated: "meet now" is the ordinary way a meeting starts, and
-	 * meetings are open to every host (meeting.go). The switch is about instant webinars. */
+	/* Instant meetings and webinars share one switch (instant_webinar, "Instant meetings/
+	 * webinars (warm-up)"): the on-demand video server needs a few minutes' warning
+	 * (sfu_box.go), so "go live now" is an admin's per-host choice, used for testing. */
 	meeting := in.Kind == types.KindMeeting
 	// What kind of session this account may create at all (Admin -> Accounts).
 	if meeting && !s.requireHostFeature(w, r, user.ID, types.FeatureMeetings) {
@@ -271,7 +276,7 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if in.Kind == types.KindSimulive && !s.requireHostFeature(w, r, user.ID, types.FeatureSimulive) {
 		return types.Webinar{}, false
 	}
-	if in.Instant && !meeting && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
+	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return types.Webinar{}, false
 	}
 	/* Go live now. The server's clock, not the browser's: a client clock a
@@ -1292,7 +1297,7 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 
 	room := lk.RoomName(slug)
 	sfu, _, _, err := s.ensureRoom(r.Context(), wb, room)
-	if errors.Is(err, errSFUStarting) {
+	if errors.Is(err, errSFUStarting) || errors.Is(err, errSFUFailed) {
 		/* The webinar is live and its server is booting. That is a successful Start: the
 		 * host's room waits on "getting the video server ready" and joins once it is up,
 		 * which creates the room, and the sweeper starts the mix then. */

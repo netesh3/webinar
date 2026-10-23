@@ -283,6 +283,7 @@ const LABELS: Record<string, { label: string; description: string }> = {
   approval_requested: { label: "Registrations to approve", description: "A new registration for a webinar that needs approval." },
   recap_ready: { label: "Recap ready", description: "Your session's AI recap is ready." },
   recording_expiring: { label: "Recordings expiring", description: "Recordings about to be deleted, 7 days and 1 day ahead." },
+  ops_alert: { label: "Operator alerts (admins)", description: "The video server could not be started, or was not ready when a session began." },
 };
 
 /** Settings → Notifications. */

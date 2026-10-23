@@ -167,6 +167,10 @@ type Server struct {
 	// maintenanceHook runs first in the maintenance lane. Tests only (export_test.go).
 	maintenanceHook func(context.Context)
 
+	/* box is the on-demand DigitalOcean video server's manager (sfu_box.go), nil unless
+	 * SFU_BOX_PROJECT and DO_API_TOKEN are set. */
+	box *boxManager
+
 	/* ai answers the AI features through the configured providers, falling to the next
 	 * one when a free allowance runs out. Never nil; with no providers configured it is
 	 * a chain that answers nothing, and ai.Enabled says so. */
@@ -279,6 +283,7 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 	}
 	srv.initEngagement()
 	newPushSender(srv)
+	srv.box = srv.newBoxManager()
 
 	/* Edge delivery's event bus. With a store it fans out across instances through Postgres
 	 * LISTEN/NOTIFY; the LISTEN connection opens only when this instance gets its first edge
@@ -409,6 +414,8 @@ func (s *Server) Routes() http.Handler {
 		 * the internet works. What it is not is enumerable, which the list was.
 		 */
 		r.Get("/webinars/{slug}", s.handleGetWebinar)
+		// The "Starting servers…" waiting screen's question (sfu_box.go). Read-only.
+		r.Get("/webinars/{slug}/server", s.handleVideoServerStatus)
 		// A follow-up email's unsubscribe link (followup_send.go): the page, and the press.
 		r.Get("/email/unsubscribe/{token}", s.handleUnsubscribe)
 		r.Post("/email/unsubscribe/{token}", s.handleUnsubscribe)
@@ -608,6 +615,8 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/ai", s.handleAdminAIStatus)
 
 			r.Get("/costs", s.handleAdminCosts)
+			// The on-demand video server's state and hours (sfu_box.go).
+			r.Get("/sfu-box", s.handleAdminSFUBox)
 			r.Get("/costs/hosts/{id}", s.handleAdminCostHost)
 			r.Get("/costs/ignore", s.handleCostIgnoreList)
 			r.Post("/costs/ignore", s.handleCostIgnoreAdd)
@@ -745,6 +754,8 @@ func (s *Server) Routes() http.Handler {
 					})
 
 					r.Post("/start", s.handleStartWebinar)
+					// "Try again" when the on-demand video server failed to start (sfu_box.go).
+					r.Post("/server/retry", s.handleRetryVideoServer)
 					r.Post("/end", s.handleEndWebinar)
 					r.Patch("/controls", s.handleUpdateControls)
 					// Server-side captions on or off: dispatches or removes the caption

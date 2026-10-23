@@ -395,7 +395,9 @@ function AlertItem({
           feature. */}
       <Link
         href={
-          a.kind === "recording_expiring"
+          a.kind === "ops_alert"
+            ? "/admin"
+            : a.kind === "recording_expiring"
             ? a.webinarId
               ? `/host/${a.webinarId}?tab=recording`
               : "/host?tab=past&recording=with"

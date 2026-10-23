@@ -1011,8 +1011,8 @@ function AccountFeatures({
         const on = updated.features.includes(key);
         notify(
           on
-            ? `Instant webinar enabled for ${user.name || user.email}.`
-            : `Instant webinar disabled for ${user.name || user.email}.`,
+            ? `Instant meetings/webinars enabled for ${user.name || user.email}.`
+            : `Instant meetings/webinars disabled for ${user.name || user.email}.`,
           "ok",
         );
       }

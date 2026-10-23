@@ -331,6 +331,9 @@ func (s *Server) buildCostReport(ctx context.Context, from, to string, lo, hi ti
 			r.platform.FirstSessionAt[prov] = t.UTC().Format(time.RFC3339)
 		}
 	}
+	if err := s.costBoxHours(ctx, r); err != nil {
+		return nil, err
+	}
 	for _, c := range rows {
 		u, prov := sessionUsage(c, shares[c.WebinarID])
 		if prov == "" {
@@ -534,4 +537,49 @@ func (s *Server) handleAdminCostHost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+/* costBoxHours fills platform.BoxHours for the on-demand video server (sfu_box.go): the hours
+ * its droplets existed inside the range (sfu_box_runs), plus, before the first managed
+ * droplet, the hours since the provider's first session, when the box ran around the clock.
+ * The browser uses it instead of "every hour since the first session" (web/lib/host-costs.ts). */
+func (s *Server) costBoxHours(ctx context.Context, r *costReport) error {
+	if s.box == nil {
+		return nil
+	}
+	project := s.box.cfg.Project
+	measured, since, ok, err := s.store.SFUBoxHours(ctx, project, r.rangeStart, r.rangeEnd)
+	if err != nil || !ok {
+		return err
+	}
+	prov := s.costProviderOf(project)
+	hours := measured
+	if first, has := r.platform.FirstSessionAt[prov]; has {
+		if t, perr := time.Parse(time.RFC3339, first); perr == nil {
+			start := maxTime(t, r.rangeStart)
+			end := minTime(since, r.rangeEnd)
+			if end.After(start) {
+				hours += end.Sub(start).Hours()
+			}
+		}
+	}
+	if r.platform.BoxHours == nil {
+		r.platform.BoxHours = map[string]float64{}
+	}
+	r.platform.BoxHours[prov] += hours
+	return nil
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }

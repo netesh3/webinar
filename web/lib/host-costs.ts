@@ -117,8 +117,12 @@ export function workerHours(u: AdminCostUsage, p: Provider, i: CostInputs) {
   return { render, composite };
 }
 
-/** Hours of the range a provider's box existed: from its first session (or the range's start). */
+/** Hours of the range a provider's box existed. A box created on demand (the API's
+ *  platform.boxHours, from its droplets' lifetimes) counts what it actually ran; any other
+ *  runs around the clock from its first session (or the range's start). */
 export function boxHours(p: Provider, platform: AdminCostPlatform, rangeStart: string, rangeEnd: string): number {
+  const measured = platform.boxHours?.[p];
+  if (typeof measured === "number") return Math.max(0, measured);
   const first = platform.firstSessionAt?.[p];
   if (!first) return 0;
   const start = Date.parse(first) > Date.parse(rangeStart) ? first : rangeStart;

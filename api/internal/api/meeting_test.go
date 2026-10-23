@@ -33,6 +33,10 @@ func (h *harness) instantMeeting(topic string, mutate func(*types.WebinarInput))
 	if mutate != nil {
 		mutate(&in)
 	}
+	// "Meet now" is the admin's per-host instant switch (migrations/0152).
+	if in.Instant {
+		forceFeature(h.t, h, meAccount(h.t, h).ID, types.FeatureInstantWebinar, true)
+	}
 	res, raw := h.do(http.MethodPost, "/api/host/webinars", in)
 	if res.StatusCode != http.StatusCreated {
 		h.t.Fatalf("create meeting: status %d body %s", res.StatusCode, raw)
