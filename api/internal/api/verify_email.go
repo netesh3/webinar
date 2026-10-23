@@ -78,6 +78,11 @@ func (s *Server) deliverCompletedRegistrations(ctx context.Context, done []store
 		} else if strings.TrimSpace(item.Registration.Email) != "" {
 			s.notifyNewRegistration(ctx, wb, item.Registration, true)
 			mail = true
+			// The same Zoom push as a registration that needed no link
+			// (finishCommittedRegistration): without it the person has no
+			// personal Zoom link, and the room refuses them.
+			s.pushZoomRegistrant(ctx, wb, item.Registration.ID, item.Registration.Email,
+				item.Registration.FirstName, item.Registration.LastName)
 		}
 		s.engage.OnRegistered(ctx, wb, item.Registration, item.WhatsAppOptIn)
 	}
