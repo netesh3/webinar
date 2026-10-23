@@ -4238,6 +4238,10 @@ type Recording struct {
 	// single take still has one entry, so the player does not have to special-case
 	// the shape.
 	Parts []RecordingPart `json:"parts,omitempty"`
+	/* Source is "upload" for a video the host uploaded (/api/host/videos, migrations/0153):
+	 * no webinar (Webinar is empty), Topic is its title, no original session to replay
+	 * engagement from. Empty for a recording of a session. */
+	Source string `json:"source,omitempty"`
 }
 
 /* Recording retention and storage.
@@ -4305,6 +4309,68 @@ type KeepRecordingLinkResponse struct {
 	Webinar   string `json:"webinar"`
 	Topic     string `json:"topic"`
 	ExpiresAt string `json:"expiresAt,omitempty"`
+}
+
+/* Uploaded videos (/api/host/videos, api/internal/api/video_upload.go): a host's own MP4 or
+ * MOV (H.264 video, AAC or no audio), uploaded from the browser straight to object storage in
+ * parts, to play as a Simulive. It becomes a Recording with Source "upload", counted against
+ * the recording storage quota and kept like a recording: the host's retention days from the
+ * upload, "Keep longer" for RecordingKeepMonths more, again and again. */
+const (
+	// MaxVideoUploadBytes is the largest file one upload takes.
+	MaxVideoUploadBytes int64 = 4 << 30
+	// VideoUploadMinPartBytes is the smallest part size a file is cut into (S3 needs 5 MiB).
+	VideoUploadMinPartBytes int64 = 8 << 20
+	// VideoUploadMaxTitle bounds an uploaded video's title.
+	VideoUploadMaxTitle = 200
+)
+
+// StartVideoUploadRequest is POST /api/host/videos/uploads: the file about to be sent.
+type StartVideoUploadRequest struct {
+	Filename  string `json:"filename"`
+	SizeBytes int64  `json:"sizeBytes"`
+	// Mime is the browser's File.type; the container is decided by the probe, not this.
+	Mime  string `json:"mime"`
+	Title string `json:"title,omitempty"`
+}
+
+/* VideoUpload is one upload in flight: cut the file into PartCount parts of PartSize bytes
+ * (the last one shorter), PUT each to a URL from .../parts, then .../complete. UploadedParts
+ * is the parts the bucket already has, so an interrupted upload carries on where it stopped. */
+type VideoUpload struct {
+	ID            string `json:"id"`
+	Filename      string `json:"filename"`
+	Title         string `json:"title"`
+	SizeBytes     int64  `json:"sizeBytes"`
+	PartSize      int64  `json:"partSize"`
+	PartCount     int    `json:"partCount"`
+	UploadedParts []int  `json:"uploadedParts"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+// VideoUploadPartsRequest asks for upload URLs for these part numbers (1-based, at most 100).
+type VideoUploadPartsRequest struct {
+	Parts []int `json:"parts"`
+}
+
+// VideoUploadPartURL is where to PUT one part. Valid for an hour.
+type VideoUploadPartURL struct {
+	Part int    `json:"part"`
+	URL  string `json:"url"`
+}
+
+type VideoUploadPartsResponse struct {
+	URLs []VideoUploadPartURL `json:"urls"`
+}
+
+// CompleteVideoUploadRequest finishes an upload; Title, when set, replaces the one it started with.
+type CompleteVideoUploadRequest struct {
+	Title string `json:"title,omitempty"`
+}
+
+// RenameVideoRequest is PATCH /api/host/videos/{id}.
+type RenameVideoRequest struct {
+	Title string `json:"title"`
 }
 
 // RecordingPart is one start/stop take inside a session. The bytes are a
@@ -4620,6 +4686,9 @@ type AppConfig struct {
 	 */
 	CloudRecordingEnabled bool   `json:"cloudRecordingEnabled"`
 	RecordingMode         string `json:"recordingMode,omitempty"`
+	/* VideoUploadEnabled is whether a host can upload a video for a Simulive: the
+	 * recordings store is object storage the browser can upload to directly. */
+	VideoUploadEnabled bool `json:"videoUploadEnabled,omitempty"`
 	// RecordingsRetentionDays is how long cloud recordings are kept before
 	// automatic deletion. 0 means they are kept until a host deletes them.
 	RecordingsRetentionDays int `json:"recordingsRetentionDays"`

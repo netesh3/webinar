@@ -25,7 +25,11 @@ export function RecordingPreviewPlayer({ rec, autoPlay = true }: { rec: Recordin
   const [startedAt, setStartedAt] = useState<string | undefined>(undefined);
   const [loaded, setLoaded] = useState(false);
 
+  // An uploaded video has no session, so no recap to take chapters from.
+  const uploaded = rec.source === "upload";
+
   useEffect(() => {
+    if (uploaded) return;
     const ctl = new AbortController();
     void Promise.all([
       api.sessionRecap(rec.webinar, ctl.signal).catch(() => null),
@@ -40,7 +44,7 @@ export function RecordingPreviewPlayer({ rec, autoPlay = true }: { rec: Recordin
       setLoaded(true);
     });
     return () => ctl.abort();
-  }, [rec.webinar]);
+  }, [rec.webinar, uploaded]);
 
   useEffect(() => {
     if (autoPlay) player.current?.seek(0);
@@ -55,7 +59,7 @@ export function RecordingPreviewPlayer({ rec, autoPlay = true }: { rec: Recordin
         ref={player}
         sources={recordingSources(
           rec,
-          (id) => api.recordingFileURL(rec.webinar, id),
+          (id) => api.recordingPlayURL(rec, id),
           rec.captionsAvailable ? (part) => api.recordingCaptionsURL(rec.webinar, rec.id, part) : undefined,
         )}
         durationMs={rec.durationMs}
@@ -65,7 +69,11 @@ export function RecordingPreviewPlayer({ rec, autoPlay = true }: { rec: Recordin
         <span className="min-w-0 truncate font-medium text-ink-2">{rec.topic}</span>
         <span className="font-mono tabular-nums">{formatClock(rec.durationMs)}</span>
       </p>
-      {!loaded ? (
+      {uploaded ? (
+        <p className="mt-2.5 border-t border-line px-4 py-3 text-[12.5px] text-ink-3">
+          Uploaded video: no chapters or captions.
+        </p>
+      ) : !loaded ? (
         <p className="flex items-center gap-2 px-4 py-3 text-[12.5px] text-ink-3">
           <Spinner className="size-3.5" /> Loading chapters…
         </p>

@@ -4,14 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Modal, Spinner, Toggle } from "../controls";
 import { useSession } from "../providers";
-import { Button } from "../ui";
+import { Badge, Button } from "../ui";
 import { RecordingThumb } from "../recordings-tab";
 import { RecordingPreviewPlayer } from "../recording-preview";
+import { VideoUploadPanel } from "../video-upload";
 import { api } from "@/lib/api";
 import { FeatureReplayEngage, type Recording } from "@/lib/api-types";
 import { formatClock, formatDuration } from "@/lib/format";
 import { useHydrated } from "@/lib/clock";
 import { eligibleRecordings, switchRecording } from "@/lib/simulive-create";
+import { isUploadedVideo, withUploaded } from "@/lib/simulive-discover";
 import { assistantLabelFor, autoAnswerDisclosure, autoModeAvailable } from "@/lib/qa-auto";
 import { FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
@@ -48,6 +50,8 @@ export function SimuliveSourceSection({
    * mounts (so no media is fetched past the thumbnail) until asked for. */
   const [previewing, setPreviewing] = useState(false);
   const [previewInPicker, setPreviewInPicker] = useState<string | null>(null);
+  // "Use a recording" | "Upload a video": where the video comes from.
+  const [mode, setMode] = useState<"recording" | "upload">("recording");
 
   useEffect(() => {
     let active = true;
@@ -85,7 +89,46 @@ export function SimuliveSourceSection({
       description="Plays to everyone at the time you pick, as if it were live. The session runs as long as the recording."
     >
       <div id="simulive-recording" className="grid gap-3">
-        {library === null ? (
+        <div
+          role="tablist"
+          aria-label="Where the video comes from"
+          className="inline-flex w-fit rounded-lg border border-line bg-surface-2 p-0.5"
+        >
+          {(
+            [
+              ["recording", "Use a recording"],
+              ["upload", "Upload a video"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={mode === key}
+              onClick={() => setMode(key)}
+              className={`rounded-md px-3 py-1.5 text-[12.5px] font-medium ${
+                mode === key ? "bg-surface text-ink shadow-sm" : "text-ink-2 hover:text-ink"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Hidden rather than unmounted, so switching tabs never stops an upload. */}
+        <div hidden={mode !== "upload"}>
+          <VideoUploadPanel
+            compact
+            onUploaded={(rec) => {
+              setLibrary((list) => withUploaded(list, rec));
+              setFailed(false);
+              choose(rec);
+              setMode("recording");
+            }}
+          />
+        </div>
+
+        {mode === "upload" ? null : library === null ? (
           <div className="flex items-center gap-2 text-[12.5px] text-ink-3">
             <Spinner className="size-4" /> Loading your recordings…
           </div>
@@ -99,17 +142,20 @@ export function SimuliveSourceSection({
                 className="group w-full shrink-0 overflow-hidden rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand/40 sm:w-44"
               >
                 <RecordingThumb
-                  src={api.recordingFileURL(current.webinar, firstPlayable(current))}
+                  src={api.recordingPlayURL(current, firstPlayable(current))}
                   durationMs={current.durationMs}
                   parts={current.parts?.length ?? 1}
                 />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-semibold text-ink">{current.topic}</p>
+                <p className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[13.5px] font-semibold text-ink">{current.topic}</span>
+                  {isUploadedVideo(current) && <Badge tone="brand">Uploaded</Badge>}
+                </p>
                 <p className="mt-0.5 text-[12px] text-ink-3">
                   {formatClock(current.durationMs)} ·{" "}
                   {hydrated
-                    ? `recorded ${new Date(current.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })}`
+                    ? `${isUploadedVideo(current) ? "uploaded" : "recorded"} ${new Date(current.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })}`
                     : current.createdAt}
                 </p>
               </div>
@@ -143,7 +189,7 @@ export function SimuliveSourceSection({
                 : form.simuliveRecordingId
                   ? "That recording isn't ready to replay, or is no longer in your library. Pick another."
                   : library.length === 0
-                    ? "You have no ready recordings yet. Record a session first, then replay it here."
+                    ? "You have no ready recordings yet. Record a session first, or upload a video."
                     : "Pick the recording to play."}
             </p>
             {library.length > 0 && (
@@ -159,7 +205,12 @@ export function SimuliveSourceSection({
         )}
 
         <p className="rounded-lg bg-surface-2 px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
-          {replay ? (
+          {isUploadedVideo(current) ? (
+            <>
+              An uploaded video has no original session, so only the video plays: no chat, Q&amp;A or polls
+              replay. New attendees still chat and ask questions live.
+            </>
+          ) : replay ? (
             <>
               ✨ The original chat, Q&amp;A and polls will replay at the times they happened.{" "}
               {editing && slug ? (
@@ -197,7 +248,7 @@ export function SimuliveSourceSection({
           setPreviewInPicker(null);
         }}
         title="Choose a recording"
-        description="Your ready recordings, newest first. Ones still uploading appear once they finish."
+        description="Your ready recordings and uploaded videos, newest first. Ones still uploading appear once they finish."
         size="lg"
       >
         <ul className="grid gap-2 py-1">
@@ -216,7 +267,10 @@ export function SimuliveSourceSection({
                     }`}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-medium text-ink">{rec.topic}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[13.5px] font-medium text-ink">{rec.topic}</span>
+                        {isUploadedVideo(rec) && <Badge tone="brand">Uploaded</Badge>}
+                      </span>
                       <span className="mt-0.5 block text-[12px] text-ink-3">
                         {hydrated
                           ? new Date(rec.createdAt).toLocaleString(undefined, {

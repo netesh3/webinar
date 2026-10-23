@@ -681,6 +681,17 @@ func (s *Server) Routes() http.Handler {
 				// The recording storage meter, and the expiry email's "Keep 3 more months".
 				r.Get("/recording-storage", s.handleRecordingStorage)
 				r.Post("/recordings/keep-link", s.handleKeepRecordingLink)
+				// Uploaded videos for Simulive: straight to the bucket in parts (video_upload.go).
+				r.Post("/videos/uploads", s.handleStartVideoUpload)
+				r.Get("/videos/uploads/{id}", s.handleVideoUploadStatus)
+				r.Post("/videos/uploads/{id}/parts", s.handleVideoUploadParts)
+				r.Post("/videos/uploads/{id}/complete", s.handleCompleteVideoUpload)
+				r.Delete("/videos/uploads/{id}", s.handleCancelVideoUpload)
+				r.Get("/videos/{id}/file", s.handleVideoFile)
+				r.Patch("/videos/{id}", s.handleRenameVideo)
+				r.Delete("/videos/{id}", s.handleDeleteVideo)
+				r.Post("/videos/{id}/keep", s.handleKeepVideo)
+				r.Post("/videos/{id}/let-expire", s.handleLetVideoExpire)
 				// What delivery the schedule form offers. See edge.go.
 				r.Get("/delivery", s.handleDeliveryPolicy)
 
@@ -920,6 +931,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		SupabaseAnonKey:         s.cfg.SupabaseAnonKey,
 		GoogleAuth:              s.cfg.GoogleAuthEnabled(),
 		CloudRecordingEnabled:   s.recordings != nil,
+		VideoUploadEnabled:      s.videoUploadEnabled(),
 		RecordingMode:           s.cfg.RecordingsMode,
 		RecordingsRetentionDays: s.cfg.RecordingsRetentionDays,
 		EmailConfigured:         s.mail.Configured(),

@@ -479,7 +479,12 @@ func (s *Server) handleDownloadRecording(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	inline := r.URL.Query().Get("download") != "1"
+	s.serveRecordingFile(w, r, rec, r.URL.Query().Get("download") != "1")
+}
+
+// serveRecordingFile sends a ready recording's bytes to its host: a redirect to the CDN or a
+// presigned URL where there is one, else streamed with range support.
+func (s *Server) serveRecordingFile(w http.ResponseWriter, r *http.Request, rec store.RecordingFile, inline bool) {
 	name := downloadName(rec.Topic, rec.CreatedAt, store.ExtForMime(rec.Mime))
 
 	if s.redirectRecordingObject(w, r, rec.StorageKey, name, rec.Mime, inline) {

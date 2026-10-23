@@ -115,6 +115,9 @@ func SweepRecordingExpiryReminders(s *Server, ctx context.Context) {
 // SweepExpiredRecordings is the recording retention job on its own, without its lease.
 func SweepExpiredRecordings(s *Server, ctx context.Context) { s.sweepExpiredRecordings(ctx) }
 
+// SweepAbandonedVideoUploads aborts uploads nobody finished, without its lease.
+func SweepAbandonedVideoUploads(s *Server, ctx context.Context) { s.sweepAbandonedVideoUploads(ctx) }
+
 // RecordingStartStorage is the storage check a cloud recording's start makes.
 func RecordingStartStorage(s *Server, ctx context.Context, hostID, recordingID string) string {
 	return s.recordingStartStorage(ctx, hostID, recordingID)

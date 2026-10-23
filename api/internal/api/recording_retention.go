@@ -80,6 +80,15 @@ func (s *Server) stampPublicRecording(ctx context.Context, slug string, rec *typ
 /* stampRecordings fills each session's expiry, whether it was kept longer, and whether
  * "Keep longer" would be accepted now. One read for the host's meter, one for the list. */
 func (s *Server) stampRecordings(ctx context.Context, slug string, list []types.Recording) {
+	hostID, err := s.store.HostIDFor(ctx, slug)
+	if err != nil {
+		hostID = ""
+	}
+	s.stampHostRecordings(ctx, hostID, list)
+}
+
+// stampHostRecordings is stampRecordings for recordings of hostID's (the library, uploads).
+func (s *Server) stampHostRecordings(ctx context.Context, hostID string, list []types.Recording) {
 	for i := range list {
 		s.stampRecording(&list[i])
 	}
@@ -87,7 +96,7 @@ func (s *Server) stampRecordings(ctx context.Context, slug string, list []types.
 		return
 	}
 	overQuota := false
-	if hostID, err := s.store.HostIDFor(ctx, slug); err == nil {
+	if hostID != "" {
 		if st, err := s.store.RecordingStorageFor(ctx, hostID, s.cfg.RecordingsRetentionDays); err == nil {
 			overQuota = st.OverQuota
 			for i := range list {
@@ -101,7 +110,7 @@ func (s *Server) stampRecordings(ctx context.Context, slug string, list []types.
 	}
 	got, err := s.store.RecordingRetentions(ctx, ids, s.cfg.RecordingsRetentionDays)
 	if err != nil {
-		s.log.Warn("recording retention: could not read expiries", "slug", slug, "error", err)
+		s.log.Warn("recording retention: could not read expiries", "host", hostID, "error", err)
 		return
 	}
 	for i := range list {
@@ -464,7 +473,7 @@ func (s *Server) expiryReminderMessages(batch []store.ExpiringRecording) []store
 		n.Items = append(n.Items, notify.ExpiringItem{
 			Topic: e.Topic, CreatedAt: e.CreatedAt, ExpiresAt: e.ExpiresAt, SizeBytes: e.SizeBytes,
 			KeepURL: s.keepLinkURL(e.ID, e.HostID, e.ExpiresAt),
-			OpenURL: base + "/host/" + url.PathEscape(e.Webinar) + "?tab=recording",
+			OpenURL: recordingOpenURL(base, e.Webinar),
 		})
 	}
 	subject, text, alert := notify.RecordingExpiryEmail(n)
@@ -479,4 +488,13 @@ func (s *Server) expiryReminderMessages(batch []store.ExpiringRecording) []store
 		})
 	}
 	return msgs
+}
+
+// recordingOpenURL is where a recording is looked after: its webinar's Recording tab, or for
+// an uploaded video (no webinar) the Simulive library that lists uploads.
+func recordingOpenURL(base, slug string) string {
+	if slug == "" {
+		return base + "/host/new/simulive"
+	}
+	return base + "/host/" + url.PathEscape(slug) + "?tab=recording"
 }

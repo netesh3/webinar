@@ -34,6 +34,16 @@ export function simuliveLibrary<
     .map((x) => x.r);
 }
 
+/** A video the host uploaded (no webinar, no original session) rather than a recording. */
+export function isUploadedVideo(rec: Pick<Recording, "source"> | null | undefined): boolean {
+  return rec?.source === "upload";
+}
+
+/** After an upload: the new video first in the picker, once. */
+export function withUploaded<R extends Pick<Recording, "id">>(list: readonly R[] | null | undefined, rec: R): R[] {
+  return [rec, ...(list ?? []).filter((r) => r.id !== rec.id)];
+}
+
 /** The take a thumbnail shows: the first stored part, or the recording itself. */
 export function firstPlayablePart(rec: Pick<Recording, "id" | "parts">): string {
   return rec.parts?.find((p) => p.status === "ready" && p.sizeBytes > 0)?.id ?? rec.id;

@@ -32,7 +32,7 @@ import (
 
 // simuliveJoins brings in the recording r and the original webinar o, for a simulive w.
 const simuliveJoins = `JOIN recordings r ON r.id = w.simulive_recording_id
-	JOIN webinars o ON o.id = r.webinar_id`
+	LEFT JOIN webinars o ON o.id = r.webinar_id`
 
 // simuliveLengthSQL is the session's length in ms (see above).
 const simuliveLengthSQL = `LEAST(
@@ -73,7 +73,7 @@ func (s *Store) StartSimuliveIfDue(ctx context.Context, slug string) (bool, erro
 		UPDATE webinars w SET status = 'live', started_at = COALESCE(w.started_at, `+simuliveTargetSQL+`),
 		       simulive_start_at = NULL, simulive_live_at = NULL, simulive_host_gone_at = NULL, ended_at = NULL, empty_since = NULL, ai_off_this_session = NOT w.ai_enabled,
 		       updated_at = now()
-		  FROM recordings r JOIN webinars o ON o.id = r.webinar_id
+		  FROM recordings r LEFT JOIN webinars o ON o.id = r.webinar_id
 		 WHERE r.id = w.simulive_recording_id AND w.slug = $1 AND `+simuliveDueSQL, slug)
 	if err != nil {
 		return false, err
@@ -90,7 +90,7 @@ func (s *Store) StartSimuliveIfDue(ctx context.Context, slug string) (bool, erro
 func (s *Store) EndSimuliveIfDue(ctx context.Context, slug string) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE webinars w SET status = 'ended', ended_at = now(), empty_since = NULL, updated_at = now()
-		  FROM recordings r JOIN webinars o ON o.id = r.webinar_id
+		  FROM recordings r LEFT JOIN webinars o ON o.id = r.webinar_id
 		 WHERE r.id = w.simulive_recording_id AND w.slug = $1 AND `+simuliveOverSQL, slug)
 	if err != nil {
 		return false, err
@@ -236,7 +236,7 @@ func (s *Store) simuliveRoomUpdate(ctx context.Context, slug, set string, args .
 func (s *Store) GoSimuliveLiveIfOver(ctx context.Context, slug string) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE webinars w SET simulive_live_at = now(), simulive_host_gone_at = NULL, updated_at = now()
-		  FROM recordings r JOIN webinars o ON o.id = r.webinar_id
+		  FROM recordings r LEFT JOIN webinars o ON o.id = r.webinar_id
 		 WHERE r.id = w.simulive_recording_id AND w.slug = $1 AND `+simuliveOverSQL, slug)
 	if err != nil {
 		return false, err

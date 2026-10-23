@@ -382,6 +382,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/qa-auto.test.mts
 	# Finding simulive: the cross-session picker, the Results card and its dismissal.
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-discover.test.mts
+	# Uploading a video for Simulive: the parts, the progress bar, resume, retry and cancel.
+	cd web && node --experimental-strip-types --no-warnings lib/video-uploader.test.mts
 	# Previewing the recording on the simulive form: its chapters, or "No chapters yet".
 	cd web && node --experimental-strip-types --no-warnings lib/recording-preview.test.mts
 	# A simulive's shared clock: snap-back on drift, resume on pause, and no seek controls.

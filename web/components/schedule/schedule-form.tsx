@@ -383,7 +383,8 @@ function ScheduleFormBody({
       }
       const rec = (list ?? []).find((r) => r.id === simuliveFrom);
       if (!rec || !active) return;
-      const source = await api.hostWebinar(rec.webinar).catch(() => null);
+      // An uploaded video has no webinar: its own title is the prefill.
+      const source = rec.webinar ? await api.hostWebinar(rec.webinar).catch(() => null) : null;
       if (!active) return;
       const fill = simulivePrefill(rec, source);
       setForm((f) => ({
