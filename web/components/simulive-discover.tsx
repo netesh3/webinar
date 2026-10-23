@@ -20,6 +20,7 @@ import { Spinner } from "./controls";
 import { CloseIcon, PlayIcon } from "./icons";
 import { useSession } from "./providers";
 import { RecordingThumb } from "./recordings-tab";
+import { RecordingPreviewModal } from "./recording-preview";
 import { SimuliveInfoButton, useReplayEngage } from "./simulive-info";
 import { Badge, ButtonLink, Card, Empty } from "./ui";
 
@@ -60,6 +61,8 @@ export function SimulivePicker() {
   const { account, status } = useSession();
   const [library, setLibrary] = useState<Recording[] | null>(null);
   const [failed, setFailed] = useState(false);
+  // The recording playing in the preview dialog: nothing past the thumbnails loads until then.
+  const [previewing, setPreviewing] = useState<Recording | null>(null);
   // The account's simulive switch: without it the server refuses the schedule this leads to.
   const allowed = simuliveAllowed(account);
 
@@ -145,10 +148,19 @@ export function SimulivePicker() {
                   </p>
                 </div>
               </Link>
+              <button
+                type="button"
+                onClick={() => setPreviewing(rec)}
+                className="mt-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
+              >
+                <PlayIcon className="size-3" />
+                Preview
+              </button>
             </li>
           ))}
         </ul>
       )}
+      <RecordingPreviewModal rec={previewing} onClose={() => setPreviewing(null)} />
     </>
   );
 }
