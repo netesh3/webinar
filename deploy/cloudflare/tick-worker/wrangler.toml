@@ -1,0 +1,16 @@
+# Backup caller for the API's one-minute background pass (deploy/ops-box/README.md, "Backup caller").
+# Separate from the OpenNext web worker (web/wrangler.jsonc): no routes, no custom domain.
+# Deployed by .github/workflows/tick-worker-deploy.yml; the secret TICK_SECRET is set by CI.
+name = "webinarliv-tick"
+main = "src/index.js"
+compatibility_date = "2026-03-01"
+workers_dev = false
+
+[vars]
+TICK_URL = "https://webcast-api-65278594492.asia-south1.run.app/api/internal/tick"
+
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
