@@ -54,6 +54,7 @@ import { FileShareBar } from "./file-share-bar";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { RoomHeader } from "./webinar-room";
 import { EdgePlayer } from "./edge-player";
+import { useReturnQuiet } from "@/lib/use-return-quiet";
 import { mayBeSpeakerView } from "@/lib/speaker-view";
 
 export function EdgeAudienceRoom({
@@ -145,6 +146,9 @@ export function EdgeAudienceRoom({
     setRemoved(true);
     onRemoved();
   }, [onRemoved]);
+  // Back from a locked phone or another app: the event stream reopens by itself, usually in a
+  // second or two, so "Reconnecting chat…" waits a moment first (lib/use-return-quiet.ts).
+  const returnQuiet = useReturnQuiet();
   const streamState = useEdgeEvents({
     room,
     slug,
@@ -346,7 +350,7 @@ export function EdgeAudienceRoom({
                           lowLatency={Boolean(join.lowLatency)}
                           speakerView={mayBeSpeakerView(controls.audienceLayout)}
                         />
-                        {streamState === "retrying" && (
+                        {streamState === "retrying" && !returnQuiet && (
                           <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full bg-black/60 px-3 py-1 text-[11.5px] text-white/80">
                             Reconnecting chat…
                           </div>

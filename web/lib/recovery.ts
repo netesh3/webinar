@@ -19,7 +19,49 @@ export type LostReason = "ended" | "removed" | "duplicate" | "lost";
 
 export type Recovery =
   | { action: "retry"; attempt: number; delayMs: number }
+  /** Out of attempts, but the person could not have been reconnected anyway: wait for the
+   *  page to come back into view or the network to return, then start the ladder again. */
+  | { action: "wait" }
   | { action: "give-up" };
+
+/** Whether this page can reach the network right now, as far as the browser says. */
+export type Reach = {
+  /** document.visibilityState is "hidden": a locked phone, another app, a minimised window. */
+  hidden: boolean;
+  /** navigator.onLine. Only `false` is trusted — `true` can be a captive portal. */
+  online: boolean;
+};
+
+/* Why "wait" exists, and why it only applies once the attempts are spent.
+ *
+ * A phone that is locked, or switched to another app, freezes or throttles this page and
+ * often takes its network away. The ladder's five attempts span about fifteen seconds, so
+ * they all fail inside that window, and the person came back to "Connection lost" and a
+ * Rejoin button — on a network that was fine the moment they looked at the screen again.
+ *
+ * The attempts are still spent normally while hidden, not paused: a laptop's background tab
+ * keeps its network, and reconnecting it there is what keeps a webinar audible while somebody
+ * works in another window. Only the dead end is replaced. When the page returns (or the
+ * network does), the room starts the ladder again from the first rung.
+ *
+ * Offline with the page in view waits too: there is nothing a Rejoin could do before the
+ * network is back, and the moment it is, reconnecting by itself is what the person wants.
+ *
+ * Only those two wake it — the page being looked at, the network coming back — never a timer.
+ * A timer retrying a hidden tab in the background is what let an old, forgotten tab reconnect
+ * and take the identity back from a newer one (DUPLICATE_IDENTITY ends the newer tab), and
+ * every retry asks the API for a credential, which announces the attendee to the host again. */
+
+/** How long a presenter may wait like this before giving up. Their camera and microphone stay
+ *  open while the room waits (publishers keep their tracks across an unpublish), and that is
+ *  not something to leave running for ever in a tab nobody is looking at. An attendee has no
+ *  capture open and waits as long as it takes. */
+export const RECOVERY_WAIT_MAX_MS = 10 * 60_000;
+
+/** Whether out-of-attempts should wait rather than give up. */
+export function shouldWait(reach: Reach | undefined): boolean {
+  return !!reach && (reach.hidden || !reach.online);
+}
 
 /* Backoff, not a tight loop — but the FIRST rung is nearly immediate, and that asymmetry is
  * deliberate.
@@ -45,15 +87,19 @@ export const RECOVERY_BACKOFF_MS = [250, 1_000, 2_000, 4_000, 8_000];
  * planRecovery decides whether a disconnect is worth retrying.
  *
  * `attemptsSoFar` counts retries already spent, so the first call for a fresh drop passes 0.
+ * `reach` is the page's visibility and network now; without it, running out of attempts is
+ * always final (the old behaviour).
  */
-export function planRecovery(reason: LostReason, attemptsSoFar: number): Recovery {
+export function planRecovery(reason: LostReason, attemptsSoFar: number, reach?: Reach): Recovery {
   /* Only "lost" is retried, and the distinction is the whole point. Being removed by the
    * host, the room being deleted, and the same identity signing in elsewhere are decisions
    * somebody made — retrying would either fail identically or fight the other tab for the
    * identity, which is a loop that looks like a crash. "lost" is the one that means the
    * network, and networks come back. */
   if (reason !== "lost") return { action: "give-up" };
-  if (attemptsSoFar >= RECOVERY_BACKOFF_MS.length) return { action: "give-up" };
+  if (attemptsSoFar >= RECOVERY_BACKOFF_MS.length) {
+    return shouldWait(reach) ? { action: "wait" } : { action: "give-up" };
+  }
   return {
     action: "retry",
     attempt: attemptsSoFar + 1,

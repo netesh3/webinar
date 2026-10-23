@@ -118,14 +118,18 @@ export function judgeWorklet(
  *     REANCHOR_MS (a louder person on the microphone, or the same one leaning in) becomes
  *     the new estimate. */
 
-/** Speech RMS after the gain, in dBFS, that the leveller aims for. Comfortably conversational
- *  for a WebRTC speech track; a speaker whose RNNoise output already sits above
+/** Speech RMS after the gain, in dBFS, that the leveller aims for. Was −20, and attendees
+ *  still reported "the host's voice is low": −16 is where Zoom and Meet deliver speech, so a
+ *  webinar no longer sounds quieter than the call the audience just left. Speech peaks sit
+ *  12–15 dB over its RMS, so the loudest syllables reach the limiter's knee and are rolled
+ *  off there rather than clipped. A speaker whose RNNoise output already sits above
  *  LEVEL_TARGET_DB − 3.5 dB needs no more than MAKEUP_GAIN and is not touched. */
-export const LEVEL_TARGET_DB = -20;
+export const LEVEL_TARGET_DB = -16;
 
-/** The most the leveller adds: +12 dB. Enough for a laptop microphone at arm's length; not
- *  so much that a near-silent capture is turned into amplified hiss. */
-export const LEVEL_MAX_GAIN = 4;
+/** The most the leveller adds: +18 dB. Was +12, which a laptop microphone at arm's length
+ *  after RNNoise could still be short of. PAUSE_CEILING_DB, not this, is what keeps a
+ *  near-silent capture in a noisy room from being turned into amplified hiss. */
+export const LEVEL_MAX_GAIN = 8;
 
 /** How far over full scale the limiter's curve reaches. A WaveShaper only shapes inputs in
  *  -1..1 and clamps the rest — a hard clip — so the leveller's gain goes in divided by this

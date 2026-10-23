@@ -8,6 +8,7 @@ import {
   BACK_MS,
   ConnectionToastTracker,
   LOST_AFTER_MS,
+  RESUME_QUIET_MS,
   SHOW_AFTER_MS,
   connectionToastText,
   linkForRoom,
@@ -300,6 +301,61 @@ function connected(): ConnectionToastTracker {
   t.tick(1_000 + SHOW_AFTER_MS);
   const v = t.view()!;
   ok(connectionToastText(v).detail.startsWith("You're offline"), "offline copy when navigator is offline");
+}
+
+// ---- back from a locked phone / another app: the room resumes quietly
+{
+  // Dropped while hidden, long enough that "Connection lost" was up behind the lock screen.
+  const t = connected();
+  t.update(ladder(5), 1_000);
+  t.tick(1_000 + LOST_AFTER_MS + 5_000);
+  ok(phase(t.view()) === "lost", "(setup) the outage escalated while nobody was looking");
+  const back = 1_000 + LOST_AFTER_MS + 30_000;
+  t.resumed(back);
+  ok(phase(t.view()) === "none", "returning takes the stale card down");
+  ok(t.nextDeadline() === back + RESUME_QUIET_MS, "nothing is drawn before the quiet window ends", String(t.nextDeadline()));
+  t.update(ladder(1), back + 50);
+  t.tick(back + SHOW_AFTER_MS);
+  ok(phase(t.view()) === "none", "the usual show delay does not draw a card inside the quiet window");
+  t.update(up, back + 2_500);
+  ok(phase(t.view()) === "none", "a resume inside the window says nothing at all — no back-online card");
+  ok(t.nextDeadline() === null, "and leaves nothing scheduled");
+}
+{
+  // The resume takes longer than the window: the person is told, but not that it is lost.
+  const t = connected();
+  t.update(ladder(5), 1_000);
+  const back = 60_000;
+  t.resumed(back);
+  t.update(ladder(1), back + 50);
+  t.tick(back + RESUME_QUIET_MS - 1);
+  ok(phase(t.view()) === "none", "still quiet just inside the window");
+  t.tick(back + RESUME_QUIET_MS);
+  ok(phase(t.view()) === "reconnecting", "a slow resume shows Reconnecting… once the window ends", phase(t.view()));
+  ok(t.nextDeadline() === back + LOST_AFTER_MS, "and escalates on a clock started at the return, not the drop", String(t.nextDeadline()));
+  t.update(up, back + RESUME_QUIET_MS + 500);
+  ok(phase(t.view()) === "back", "a card that was shown closes as back online");
+}
+{
+  // A drop that starts just after returning — the frozen page noticing its dead socket.
+  const t = connected();
+  t.resumed(10_000);
+  t.update(sdk, 11_000);
+  t.tick(11_000 + SHOW_AFTER_MS);
+  ok(phase(t.view()) === "none", "a drop right after returning also waits out the quiet window");
+  t.tick(10_000 + RESUME_QUIET_MS);
+  ok(phase(t.view()) === "reconnecting", "and shows at its end if still down");
+}
+{
+  // Returning with nothing wrong changes nothing, and the next real drop behaves as always.
+  const t = connected();
+  t.resumed(10_000);
+  ok(phase(t.view()) === "none" && t.nextDeadline() === null, "returning to a healthy room shows and schedules nothing");
+  const later = 10_000 + RESUME_QUIET_MS + 1_000;
+  t.update(sdk, later);
+  ok(t.nextDeadline() === later + SHOW_AFTER_MS, "a later drop waits only the usual delay", String(t.nextDeadline()));
+  t.tick(later + SHOW_AFTER_MS);
+  ok(phase(t.view()) === "reconnecting", "and shows as before");
 }
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);

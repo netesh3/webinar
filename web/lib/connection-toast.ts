@@ -25,6 +25,11 @@
  *    out the same show delay, so a final attempt inside the first 6s does not flash early.
  *  - Dismissing it hides it for the rest of that outage, except the escalation to "lost",
  *    which is the one thing still worth interrupting for.
+ *  - Coming back to the page after being away (a locked phone, another app) is a fresh
+ *    start: `resumed()` restarts the clocks of any outage still running and holds every
+ *    card back for RESUME_QUIET_MS while the room reconnects by itself. Nobody was looking
+ *    while the page was hidden, so "Reconnecting…" (or "Connection lost") from that time is
+ *    stale the moment they look, and a resume that lands inside the window says nothing.
  *
  * No LiveKit import: the room maps its ConnectionState onto LinkState, which keeps this file
  * runnable under plain Node.
@@ -59,17 +64,25 @@ export type ConnectionToastView =
 export const SHOW_AFTER_MS = RECONNECT_INDICATOR_DELAY_MS;
 export const BACK_MS = 2_500;
 export const LOST_AFTER_MS = 12_000;
+/** After returning from the background, how long the room gets to reconnect by itself before
+ *  any card is drawn. A resume asks for a fresh credential, reconnects and republishes, which
+ *  is usually 1–3 s; this leaves room for a slow phone network on top. */
+export const RESUME_QUIET_MS = 8_000;
+// Hidden at least this long counts as having been away: one rule for every part of the page.
+export { AWAY_MIN_MS } from "./background-return.ts";
 
 export type ConnectionToastTiming = {
   showAfterMs: number;
   backMs: number;
   lostAfterMs: number;
+  resumeQuietMs: number;
 };
 
 const DEFAULT_TIMING: ConnectionToastTiming = {
   showAfterMs: SHOW_AFTER_MS,
   backMs: BACK_MS,
   lostAfterMs: LOST_AFTER_MS,
+  resumeQuietMs: RESUME_QUIET_MS,
 };
 
 export function isHealthy(signal: ConnectionSignal): boolean {
@@ -92,6 +105,8 @@ export class ConnectionToastTracker {
   private greeted = false;
   private greetPending = false;
   private now = 0;
+  /** No card before this: the page has just come back from the background. */
+  private quietUntil = 0;
   /** Owns the 6s show clock, so a recovery cannot leave time stacked for the next drop. */
   private readonly indicator: ReconnectIndicator;
 
@@ -147,6 +162,20 @@ export class ConnectionToastTracker {
     this.now = now;
     this.advance(now);
     if (this.backUntil !== null && now >= this.backUntil) this.backUntil = null;
+  }
+
+  /** The page has come back from the background. Any outage still running is treated as
+   *  starting now — its show and lost clocks restart, and a card drawn while nobody was
+   *  looking comes down — and nothing is drawn before RESUME_QUIET_MS. */
+  resumed(now: number): void {
+    this.now = now;
+    this.quietUntil = now + this.timing.resumeQuietMs;
+    if (this.outageSince === null) return;
+    this.outageSince = now;
+    this.shown = false;
+    this.dismissedPhase = null;
+    this.indicator.update(false, now);
+    this.indicator.update(true, now);
   }
 
   /** The person clicked it away. */
@@ -206,7 +235,11 @@ export class ConnectionToastTracker {
   /** When the view next changes with no new signal, for the caller's timer. */
   nextDeadline(): number | null {
     if (this.outageSince !== null) {
-      if (!this.shown) return this.indicator.showAt(this.now);
+      if (!this.shown) {
+        // showAt is null once the show delay has passed, which only leaves the quiet window.
+        const when = Math.max(this.indicator.showAt(this.now) ?? this.now, this.quietUntil);
+        return when > this.now ? when : null;
+      }
       const lostAt = this.outageSince + this.timing.lostAfterMs;
       return this.now < lostAt ? lostAt : null;
     }
@@ -214,9 +247,10 @@ export class ConnectionToastTracker {
   }
 
   private advance(now: number): void {
-    if (this.outageSince !== null && !this.shown && this.indicator.update(true, now)) {
-      this.shown = true;
-    }
+    if (this.outageSince === null || this.shown) return;
+    // Always fed, so the show clock keeps its start through the quiet window.
+    const due = this.indicator.update(true, now);
+    if (due && now >= this.quietUntil) this.shown = true;
   }
 
   private backVisible(now: number): boolean {

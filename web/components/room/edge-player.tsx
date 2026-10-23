@@ -19,7 +19,7 @@
  * sample, and, with the debug clock on, the server-synced clock the composite draws too. */
 
 import Hls from "hls.js";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BEHIND_LIVE_SECONDS,
   MODE_BUFFER,
@@ -38,6 +38,8 @@ import {
   type PlaybackMode,
 } from "@/lib/edge-hls";
 import { setEdgeVideoDelay } from "@/lib/caption-sync";
+import { jumpToLiveOnReturn } from "@/lib/background-return";
+import { useReturnQuiet } from "@/lib/use-return-quiet";
 import { deviceSummary } from "@/lib/device";
 import { trackEvent } from "@/lib/telemetry";
 import { useAppConfig } from "../providers";
@@ -440,7 +442,7 @@ export function EdgePlayer({
     return () => clearInterval(timer);
   }, [telemetryEnabled, identity, slug, native]);
 
-  const jumpToLive = () => {
+  const jumpToLive = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
     const hls = hlsRef.current;
@@ -450,7 +452,32 @@ export function EdgePlayer({
       : video.seekable.length > 0 ? video.seekable.end(video.seekable.length - 1) - 1 : null;
     if (edge != null && Number.isFinite(edge)) video.currentTime = edge;
     void video.play().catch(() => {});
-  };
+  }, []);
+
+  /* Back from a locked phone or another app. The phone paused the video while the page was
+   * hidden, so it would carry on from where it stopped — minutes behind everyone else, behind
+   * a Back to live button the person has to notice. Far enough behind to have shown that
+   * button, it jumps to live by itself; otherwise it just plays again. The "Reconnecting…"
+   * badge stays down meanwhile (useReturnQuiet): a stall while catching up is not news. */
+  const onReturn = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !playingRef.current) return;
+    const hls = hlsRef.current;
+    const latency =
+      hls && Number.isFinite(hls.latency) && hls.latency > 0
+        ? hls.latency
+        : video.seekable.length > 0
+          ? video.seekable.end(video.seekable.length - 1) - video.currentTime
+          : null;
+    if (jumpToLiveOnReturn({ latencySec: latency, behindSec: BEHIND_LIVE_SECONDS[modeRef.current] })) {
+      // The catch-up tick must not jump again straight after this one.
+      lastJumpRef.current = Date.now();
+      jumpToLive();
+    } else if (video.paused) {
+      void video.play().catch(() => {});
+    }
+  }, [jumpToLive]);
+  const quiet = useReturnQuiet(onReturn);
 
   const behind = latency != null && latency > BEHIND_LIVE_SECONDS[mode];
 
@@ -503,7 +530,7 @@ export function EdgePlayer({
           frozen ? "" : "hidden"
         }`}
       />
-      {reconnecting && !loading && (
+      {reconnecting && !loading && !quiet && (
         <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center">
           <span className="rounded-full bg-black/70 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
             Reconnecting…

@@ -17,7 +17,7 @@
  * trip. The drop is the internet; the dead end was ours.
  */
 
-import { planRecovery, RECOVERY_BACKOFF_MS, recoveryWindowMs } from "./recovery.ts";
+import { planRecovery, RECOVERY_BACKOFF_MS, recoveryWindowMs, shouldWait } from "./recovery.ts";
 
 let failures = 0;
 let checks = 0;
@@ -132,7 +132,7 @@ console.log("\nplanRecovery");
   let total = 0;
   for (let i = 0; i < 50; i++) {
     const plan = planRecovery("lost", attempts);
-    if (plan.action === "give-up") break;
+    if (plan.action !== "retry") break;
     retries++;
     total += plan.delayMs;
     attempts = plan.attempt;
@@ -148,7 +148,7 @@ console.log("\nplanRecovery");
   let attempts = 0;
   for (;;) {
     const plan = planRecovery("lost", attempts);
-    if (plan.action === "give-up") break;
+    if (plan.action !== "retry") break;
     seen.push(plan.attempt);
     attempts = plan.attempt;
   }
@@ -157,6 +157,25 @@ console.log("\nplanRecovery");
     RECOVERY_BACKOFF_MS.map((_, i) => i + 1),
     "the attempt numbers shown to the user run 1..n with no gaps",
   );
+}
+
+console.log("\nwaiting instead of giving up");
+
+{
+  const spent = RECOVERY_BACKOFF_MS.length;
+  const visible = { hidden: false, online: true };
+  const hidden = { hidden: true, online: true };
+  const offline = { hidden: false, online: false };
+  eq(planRecovery("lost", spent), { action: "give-up" }, "without reach, out of attempts is final (old behaviour)");
+  eq(planRecovery("lost", spent, visible), { action: "give-up" }, "in view and online, out of attempts is still final");
+  eq(planRecovery("lost", spent, hidden), { action: "wait" }, "a locked phone or another app waits instead of the dead end");
+  eq(planRecovery("lost", spent, offline), { action: "wait" }, "offline waits for the network instead of the dead end");
+  // Attempts are still spent while hidden: a laptop's background tab keeps its network.
+  eq(planRecovery("lost", 0, hidden).action, "retry", "hidden does not pause the ladder");
+  for (const reason of ["ended", "removed", "duplicate"] as const) {
+    eq(planRecovery(reason, 0, hidden), { action: "give-up" }, `${reason} is never waited out either`);
+  }
+  ok(!shouldWait(undefined) && shouldWait(hidden) && shouldWait(offline) && !shouldWait(visible), "shouldWait");
 }
 
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);

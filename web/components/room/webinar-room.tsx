@@ -80,7 +80,14 @@ import { LockIcon, SignalIcon, SlidersIcon } from "../icons";
 import { useAppConfig, useToast } from "../providers";
 import { Badge } from "../ui";
 import { ControlBar } from "./control-bar";
-import { planRecovery, RECOVERY_BACKOFF_MS } from "@/lib/recovery";
+import {
+  planRecovery,
+  RECOVERY_BACKOFF_MS,
+  RECOVERY_WAIT_MAX_MS,
+  type Reach,
+} from "@/lib/recovery";
+import { disconnectVerdict } from "@/lib/disconnect-reason";
+import { pageLeaveNotice } from "@/lib/background-return";
 import { usePresenceFallback } from "@/lib/presence";
 import { ActiveSpeakerProvider } from "./active-speaker";
 import { AIToggle } from "./ai-toggle";
@@ -326,6 +333,8 @@ export function WebinarRoom({
         const fresh = isScheduledPresenter
           ? await api.hostJoin(slug)
           : await api.join(slug, joinKey);
+        // A response without a credential is no better than none: go ahead with the old one.
+        if (!fresh.url || !fresh.token) return null;
         return { url: fresh.url, token: fresh.token };
       } catch (e) {
         // The server refusing a new token because the session is over is an answer, not a
@@ -724,6 +733,11 @@ function ConnectedRoom({
   const [attempt, setAttempt] = useState(0);
   const [recovering, setRecovering] = useState<number | null>(null);
   const attempts = useRef(0);
+  /* Set when the ladder ran out while the page was hidden or offline and the room waited
+   * for it to come back (see "wait" in lib/recovery.ts), until the next connect lands — so
+   * that connect can report how the resume went. A ref: it outlives the connect effect it
+   * started in, because the retry it schedules re-runs that effect. */
+  const resuming = useRef<{ waitedSince: number; wokeAt: number; trigger: string } | null>(null);
 
   // Held in a ref so the connect effect does not re-run — and therefore does not
   // tear down and rebuild the connection — when the parent re-renders and hands
@@ -868,6 +882,14 @@ function ConnectedRoom({
       trackEvent("presence_fallback", { userId: join.identity, roomName: slug }, { state: room.state });
     }
   }, [telemetryEnabled, join.identity, slug, room]);
+  // Read by the connect effect through a ref, so the flag is not one of its dependencies.
+  const reportResume = useRef<(payload: Record<string, unknown>) => void>(() => {});
+  useEffect(() => {
+    reportResume.current = (payload) => {
+      if (!telemetryEnabled) return;
+      trackEvent("background_resume", { userId: join.identity, roomName: slug }, payload);
+    };
+  }, [telemetryEnabled, join.identity, slug]);
   // Read by the connect effect through a ref, so the flag is not one of its dependencies.
   const reportConnectFailure = useRef<(attempt: number, err: unknown) => void>(() => {});
   useEffect(() => {
@@ -1030,6 +1052,68 @@ function ConnectedRoom({
    * track does nothing, and the track that matters here is precisely the one
    * LiveKit has just let go of without stopping. */
   const captured = useRef(new Set<LocalTrack>());
+
+  /* What a presenter was sending when the page hit a lifecycle event livekit may disconnect
+   * and stop local tracks for — pagehide and beforeunload certainly (a cancelled navigation, a
+   * download link, a bfcache restore all survive it), and Chrome's `freeze` possibly (livekit
+   * listens for it on window without capture; whether it ever reaches that listener is not
+   * something this code can know). So this is only what *was* on: the next successful connect
+   * compares it with what is on now and tells the presenter about whatever did not come back
+   * (see the connect effect). A capture-phase listener on window hears all three, and the
+   * reads happen before livekit's asynchronous disconnect gets to stopping anything. Forgotten
+   * as soon as it is known nothing was lost: livekit resumed by itself, or the page came back
+   * into view still connected. */
+  const leftWithMedia = useRef<{ mic: boolean; camera: boolean; share: boolean } | null>(null);
+  useEffect(() => {
+    if (!join.canPublish) return;
+    const forget = () => {
+      leftWithMedia.current = null;
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && room.state === ConnectionState.Connected) forget();
+    };
+    const onPageLeave = () => {
+      if (room.state !== ConnectionState.Connected) return;
+      const lp = room.localParticipant;
+      const was = {
+        mic: lp.isMicrophoneEnabled,
+        camera: lp.isCameraEnabled,
+        share: lp.isScreenShareEnabled,
+      };
+      if (was.mic || was.camera || was.share) leftWithMedia.current = was;
+    };
+    const events = ["freeze", "pagehide", "beforeunload"] as const;
+    for (const e of events) window.addEventListener(e, onPageLeave, true);
+    document.addEventListener("visibilitychange", onVisible);
+    room.on(RoomEvent.Reconnected, forget);
+    return () => {
+      for (const e of events) window.removeEventListener(e, onPageLeave, true);
+      document.removeEventListener("visibilitychange", onVisible);
+      room.off(RoomEvent.Reconnected, forget);
+    };
+  }, [room, join.canPublish]);
+  const notifyRef = useRef(notify);
+  useEffect(() => {
+    notifyRef.current = notify;
+  }, [notify]);
+
+  /* The end of a Leave, exactly once, from wherever it is reached: onDisconnected for a room
+   * that was up; leave() itself for one already down (waiting, between retries), which emits
+   * nothing on disconnect(); and the connect effect when Leave was pressed while a connect was
+   * in flight and that connect then failed, which emits nothing for the queued disconnect
+   * either — that used to leave "Reconnecting… (n of 5)" on screen with nothing retrying. */
+  const leaveDone = useRef(false);
+  const completeLeave = useCallback(() => {
+    if (leaveDone.current) return;
+    leaveDone.current = true;
+    setRecovering(null);
+    stopLocalCapture(room, captured.current);
+    onLeaveRef.current();
+  }, [room]);
+  const completeLeaveRef = useRef(completeLeave);
+  useEffect(() => {
+    completeLeaveRef.current = completeLeave;
+  }, [completeLeave]);
   // Camera and microphone go off with the session, not when the SFU gets round to closing.
   useEffect(() => {
     if (status === "ended") stopLocalCapture(room, captured.current);
@@ -1163,29 +1247,107 @@ function ConnectedRoom({
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let settle: ReturnType<typeof setTimeout> | undefined;
+    let stopWaiting: (() => void) | undefined;
+    /* This instance's own connect() has succeeded. onDisconnected only acts on a connection
+     * this instance set up (see disconnectVerdict): a failed connect emits Disconnected
+     * before it rejects, and the catch below owns that; the previous instance's cleanup
+     * disconnect lands here too, as CLIENT_INITIATED, while this one is still fetching a
+     * credential. */
+    let established = false;
+
+    const reach = (): Reach => ({
+      hidden: typeof document !== "undefined" && document.visibilityState === "hidden",
+      online: typeof navigator === "undefined" || navigator.onLine !== false,
+    });
+
+    /* Out of attempts while the page was hidden or offline. Instead of the "Connection lost"
+     * dead end, wait — and start the ladder again from the first rung as soon as the page is
+     * looked at again or the network comes back (see "wait" in lib/recovery.ts for why
+     * nothing else wakes it). The devices stay open, exactly as they do between rungs, but
+     * not for ever: a presenter still waiting after RECOVERY_WAIT_MAX_MS gets the old
+     * terminal screen, with their camera and microphone released. */
+    const waitForReturn = () => {
+      if (stopWaiting) return;
+      const waitedSince = Date.now();
+      const wake = (trigger: string) => {
+        // Leave pressed while waiting: they are gone, and must not be brought back.
+        if (cancelled || leaving.current) return;
+        if (trigger === "visible" && document.visibilityState !== "visible") return;
+        if (navigator.onLine === false) return;
+        stopWaiting?.();
+        resuming.current = { waitedSince, wokeAt: Date.now(), trigger };
+        attempts.current = 0;
+        const plan = planRecovery("lost", 0);
+        if (plan.action !== "retry") return;
+        attempts.current = plan.attempt;
+        setRecovering(plan.attempt);
+        retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
+      };
+      const onVisible = () => wake("visible");
+      const onOnline = () => wake("online");
+      const cap = join.canPublish
+        ? setTimeout(() => {
+            if (cancelled) return;
+            // A page that was frozen runs this the moment it thaws, possibly before the
+            // visibilitychange that would wake it: someone looking at it now gets the
+            // reconnect, not the dead end.
+            if (document.visibilityState === "visible" && navigator.onLine !== false) {
+              wake("visible");
+              return;
+            }
+            stopWaiting?.();
+            setRecovering(null);
+            stopLocalCapture(room, captured.current);
+            setExit("lost");
+          }, RECOVERY_WAIT_MAX_MS)
+        : undefined;
+      document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("online", onOnline);
+      stopWaiting = () => {
+        clearTimeout(cap);
+        document.removeEventListener("visibilitychange", onVisible);
+        window.removeEventListener("online", onOnline);
+        stopWaiting = undefined;
+      };
+    };
 
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
-      const exitReason = overRef.current && !leaving.current ? "ended" : classifyDisconnect(reason);
+      /* See disconnectVerdict (lib/disconnect-reason.ts). Leaving is decided by this page, not
+       * by the reason: livekit's own CLIENT_INITIATED (Chrome freezing a background tab) and
+       * its reason-less give-up after a network loss used to be ignored here, leaving the room
+       * disconnected with nothing trying to bring it back. Both are retried now. */
+      const verdict = disconnectVerdict({
+        reason,
+        established,
+        leaving: leaving.current,
+        over: overRef.current,
+      });
+      if (verdict === "ignore") return;
+      const exitReason = verdict === "left" ? null : verdict;
       if (!exitReason) {
         // Pressing Leave is as terminal for this browser's devices as being
         // thrown out is; only a retryable drop keeps them open.
-        if (leaving.current) {
-          stopLocalCapture(room, captured.current);
-          onLeaveRef.current();
-        }
+        completeLeaveRef.current();
         return;
       }
       /* Only "lost" is worth retrying, and the distinction matters. Being removed by the
        * host, the room being deleted, or the same identity signing in elsewhere are all
        * decisions somebody made — reconnecting would either fail identically or fight the
        * other tab. "lost" is the one that means the network, and the network comes back. */
-      const plan = planRecovery(exitReason, attempts.current);
+      const plan = planRecovery(exitReason, attempts.current, reach());
       if (plan.action === "retry") {
         attempts.current = plan.attempt;
         reportEvent("room_reconnecting", { attempt: plan.attempt, reason: exitReason, role: join.role });
         setRecovering(plan.attempt);
         retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
+        return;
+      }
+      if (plan.action === "wait") {
+        // Out of attempts while hidden or offline: waiting for the page or network to return
+        // (lib/recovery.ts), not an exit.
+        reportEvent("room_waiting", { reason: exitReason, role: join.role });
+        waitForReturn();
         return;
       }
       reportEvent("room_exit", { reason: exitReason, role: join.role });
@@ -1218,14 +1380,52 @@ function ConnectedRoom({
           return;
         }
         const credential = fresh ?? join;
+        if (leaving.current) {
+          completeLeaveRef.current();
+          return;
+        }
         await connect(credential.url, credential.token, CONNECT_OPTIONS);
-        if (cancelled) return;
+        established = true;
+        if (cancelled) {
+          // Unmounted by a Leave while this connect was still queued: nothing else will ever
+          // close it, and the person would stay in the room until the page unloads.
+          if (leaving.current) void room.disconnect();
+          return;
+        }
         setRecovering(null);
+        const resumed = resuming.current;
+        if (resumed) {
+          resuming.current = null;
+          const now = Date.now();
+          reportResume.current({
+            trigger: resumed.trigger,
+            waitedMs: resumed.wokeAt - resumed.waitedSince,
+            resumeMs: now - resumed.wokeAt,
+            attempt: attempts.current,
+          });
+        }
         /* Before the settle timer, not after: until this has run the presenter is connected
          * and publishing nothing, and that is not a state to start calling stable. See
          * lib/republish.ts for what a fresh session does not carry over and why. */
         if (attempts.current > 0) await restorePublications();
         if (cancelled) return;
+        /* livekit stops every local track when it disconnects for a page-lifecycle event
+         * (`freeze`, pagehide), and nothing republishes them: the presenter is back, sending
+         * nothing. Said plainly rather than turned back on for them — whether the camera and
+         * microphone go live again is theirs to decide. See leftWithMedia. */
+        const before = leftWithMedia.current;
+        leftWithMedia.current = null;
+        if (before) {
+          // Only what was on then and is off now: a track restorePublications brought back,
+          // or one livekit never stopped, is not news.
+          const lp = room.localParticipant;
+          const notice = pageLeaveNotice({
+            mic: before.mic && !lp.isMicrophoneEnabled,
+            camera: before.camera && !lp.isCameraEnabled,
+            share: before.share && !lp.isScreenShareEnabled,
+          });
+          if (notice) notifyRef.current(notice, "info");
+        }
         // Forgiven only after it has held. See STABLE_MS.
         settle = setTimeout(() => {
           attempts.current = 0;
@@ -1235,6 +1435,11 @@ function ConnectedRoom({
         setConnectedEpoch(epochRef.current);
       } catch (err) {
         if (cancelled) return;
+        // Leave pressed while this connect was in flight: it failed, and they are gone.
+        if (leaving.current) {
+          completeLeaveRef.current();
+          return;
+        }
         /* A connect that never landed is the same fault as one that dropped, and used to be
          * treated as final. It is retried on the same schedule: the common reason for the
          * first attempt failing is that the network was not ready yet, which is exactly what
@@ -1242,11 +1447,13 @@ function ConnectedRoom({
         // Reported, because a connect that never lands is otherwise invisible: join_attempt
         // without join_success says it happened, not why.
         reportConnectFailure.current(attempts.current, err);
-        const plan = planRecovery("lost", attempts.current);
+        const plan = planRecovery("lost", attempts.current, reach());
         // Grafana Faro (lib/observability.ts): every failed connect, and whether it was the last.
+        // Waiting (once the room has connected, below) is not the last: it reconnects on return.
+        const waits = plan.action === "wait" && epochRef.current > 0;
         reportError("room_connect_failed", err, {
           attempt: attempts.current,
-          final: plan.action !== "retry",
+          final: plan.action !== "retry" && !waits,
           role: join.role,
           meeting: Boolean(join.meeting),
         });
@@ -1254,6 +1461,12 @@ function ConnectedRoom({
           attempts.current = plan.attempt;
           setRecovering(plan.attempt);
           retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
+          return;
+        }
+        // Only once this room has connected: a first join that never landed is still the
+        // failure screen, where the person can see what went wrong.
+        if (waits) {
+          waitForReturn();
           return;
         }
         setFailure(
@@ -1268,6 +1481,7 @@ function ConnectedRoom({
       cancelled = true;
       clearTimeout(retry);
       clearTimeout(settle);
+      stopWaiting?.();
       room.off(RoomEvent.Disconnected, onDisconnected);
       void disconnect();
     };
@@ -1587,8 +1801,16 @@ function ConnectedRoom({
 
   const leave = useCallback(() => {
     leaving.current = true;
+    /* Leave normally completes in onDisconnected. A room that is already down — waiting to
+     * reconnect, or between retries — emits nothing on disconnect(), so it is completed here,
+     * or the button did nothing. The connect effect checks `leaving` too, so a later wake or
+     * retry does not bring them back. */
+    if (room.state === ConnectionState.Disconnected) {
+      completeLeave();
+      return;
+    }
     void disconnect();
-  }, [disconnect]);
+  }, [disconnect, room, completeLeave]);
 
   // The server's view of the room, for the host only. It is the one list that
   // includes hidden attendees, so it is both the only honest headcount and the only
@@ -2328,32 +2550,6 @@ function stopLocalCapture(room: Room, published: Set<LocalTrack>) {
   };
   room.localParticipant.trackPublications.forEach(({ track }) => release(track));
   published.forEach(release);
-}
-
-/** Maps LiveKit's disconnect reason onto something worth telling a person.
- *
- *  Returns null when they disconnected themselves, which needs no explanation. */
-function classifyDisconnect(reason?: DisconnectReason): ExitReason | null {
-  switch (reason) {
-    case DisconnectReason.ROOM_DELETED:
-    case DisconnectReason.ROOM_CLOSED:
-    case DisconnectReason.SERVER_SHUTDOWN:
-      return "ended";
-    case DisconnectReason.PARTICIPANT_REMOVED:
-      return "removed";
-    // The same join key opened in a second tab. Saying so beats the two tabs
-    // silently fighting over one identity.
-    case DisconnectReason.DUPLICATE_IDENTITY:
-      return "duplicate";
-    case DisconnectReason.SIGNAL_CLOSE:
-    case DisconnectReason.STATE_MISMATCH:
-      return "lost";
-    case DisconnectReason.CLIENT_INITIATED:
-    case undefined:
-      return null;
-    default:
-      return "lost";
-  }
 }
 
 /** The host's way out of a session that ended without them pressing End here. */
