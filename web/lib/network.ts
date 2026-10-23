@@ -10,7 +10,19 @@ import {
   type Room,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SHARE_MODE_FPS, shareModeOfHint, type ShareCodec, type ShareMode } from "./share-mode.ts";
+import {
+  SHARE_KEEP_RESOLUTION,
+  SHARE_MODE_FPS,
+  liveShareMode,
+  shareDegradation,
+  shareEncoderHint,
+  shareLayout,
+  shareLayoutOfEncodings,
+  shareScalabilityMode,
+  type ShareCodec,
+  type ShareLayout,
+  type ShareMode,
+} from "./share-mode.ts";
 
 /* Watching the connection, and doing something about it.
  *
@@ -160,6 +172,10 @@ export type OutboundSummary = {
   qualityLimitationReason: string;
   /** "1920x1080@15,1280x720@15", top first; only encodings sending frames. */
   layers: string;
+  /** The top encoding's, e.g. "L1T3" for a keep-resolution VP9 share. Absent if not reported. */
+  scalabilityMode?: string;
+  /** How many encodings the sender has: 1 is the keep-resolution single layout. */
+  encodings: number;
 };
 
 export function summariseOutbound(reports: readonly Record<string, unknown>[]): OutboundSummary {
@@ -177,6 +193,8 @@ export function summariseOutbound(reports: readonly Record<string, unknown>[]): 
     layers: sending
       .map((r) => `${n(r.frameWidth)}x${n(r.frameHeight)}@${Math.round(n(r.framesPerSecond) ?? 0)}`)
       .join(","),
+    ...(typeof top?.scalabilityMode === "string" ? { scalabilityMode: top.scalabilityMode } : {}),
+    encodings: reports.length,
   };
 }
 
@@ -440,8 +458,16 @@ export function shareCodecOfTrack(codec: string | undefined): ShareCodec {
  * whatever exists. So the share goes out as the 720p floor and the 1080p capture — no
  * layer below 720p for a congested moment to drop everybody onto. Capture is 1080p at most
  * (SHARE_CAPTURE_MAX); the top layer is the first thing the ladder turns off.
+ *
+ * The "single" layout (a sharp share, share-mode.ts SHARE_KEEP_RESOLUTION) has no layers
+ * under the capture at all: one encoding, full resolution, fewer fps under pressure.
  */
-export function shareLayers(mode: ShareMode, codec: ShareCodec = "h264"): VideoPreset[] {
+export function shareLayers(
+  mode: ShareMode,
+  codec: ShareCodec = "h264",
+  layout: ShareLayout = "simulcast",
+): VideoPreset[] {
+  if (layout === "single") return [];
   return [
     new VideoPreset(
       SHARE_FLOOR_DESKTOP.width,
@@ -454,6 +480,46 @@ export function shareLayers(mode: ShareMode, codec: ShareCodec = "h264"): VideoP
 
 export function shareTop(mode: ShareMode, codec: ShareCodec = "h264"): VideoPreset {
   return new VideoPreset(1920, 1080, SHARE_BITRATES[codec][mode].top, SHARE_MODE_FPS[mode]);
+}
+
+/* Everything codec-, mode- and layout-dependent about publishing a share, in one pure place
+ * so it can be tested per browser (sharePublishOptions in media.ts spreads it). */
+export type ShareEncodingPlan = {
+  layout: ShareLayout;
+  videoCodec: ShareCodec;
+  /** Undefined: inherit publishDefaults (simulcast on). */
+  simulcast?: boolean;
+  scalabilityMode?: "L1T3" | "L1T1";
+  backupCodec: "h264" | "vp8";
+  degradationPreference: "maintain-resolution" | "maintain-framerate";
+  /** What the encoder is told: VP9 L1T3 has to be "motion" (share-mode.ts). */
+  encoderHint: "detail" | "motion";
+  screenShareEncoding: VideoPreset["encoding"];
+  screenShareSimulcastLayers: VideoPreset[];
+};
+
+export function shareEncodingPlan(
+  mode: ShareMode,
+  codec: ShareCodec,
+  keepResolution: boolean = SHARE_KEEP_RESOLUTION,
+): ShareEncodingPlan {
+  const layout = shareLayout(mode, keepResolution);
+  return {
+    layout,
+    videoCodec: codec,
+    /* VP9 simulcast: simulcast + an L1T* mode is what makes livekit-client publish VP9 as rid
+     * encodings rather than SVC (isSVCSimulcast); the SFU (>= 1.13.7) takes it.
+     * VP9 single: simulcast off + L1T3 is one SVC encoding, temporal layers only.
+     * H264 single: simulcast off is one encoding at the capture's size (computeVideoEncodings). */
+    simulcast: layout === "single" ? false : codec === "vp9" ? true : undefined,
+    scalabilityMode: shareScalabilityMode(codec, layout),
+    backupCodec: codec === "vp9" ? "h264" : "vp8",
+    degradationPreference: shareDegradation(mode),
+    encoderHint: shareEncoderHint(mode, codec, layout),
+    // The codec's own bitrates (SHARE_BITRATES): VP9 needs far less than H264 for sharp text.
+    screenShareEncoding: shareTop(mode, codec).encoding,
+    screenShareSimulcastLayers: shareLayers(mode, codec, layout),
+  };
 }
 
 /** The publish defaults (roomOptions): the sharp mode, H264's bitrates. */
@@ -470,12 +536,35 @@ export type ShareRung = {
 /* The rungs for a codec and mode. applyShareLadder re-applies them on every sample, so they
  * have to be the published codec's own numbers: H264's here would put a sharp VP9 share
  * straight back on the 1.5 / 4 Mbps that kept its 1080p layer off. And because it runs every
- * sample, a mid-share switch to video (or back) moves the bitrates within a few seconds. */
+ * sample, a mid-share switch to video (or back) moves the bitrates within a few seconds.
+ *
+ * The single layout has one rung per tier, and no rung ever turns it off or scales it: under
+ * severe loss / queueing a sharp share keeps its full resolution and gives up frames — 8 fps,
+ * then 4 — with a smaller bitrate, which maintain-resolution spends on the same pixels. A
+ * single-layout share switched to video (a clip played mid-share) keeps its frame rate and
+ * lets the bitrate fall, as video mode always has. */
+export const SHARE_SINGLE_RUNGS = {
+  reduced: { bitrate: 0.6, fps: 8 },
+  minimal: { bitrate: 0.4, fps: 4 },
+} as const;
+
 export function shareLadder(
   codec: ShareCodec = "h264",
   mode: ShareMode = "sharp",
+  layout: ShareLayout = "simulcast",
 ): Record<PublishTier, ShareRung[]> {
   const { floor, top } = SHARE_BITRATES[codec][mode];
+  if (layout === "single") {
+    const rung = (r: { bitrate: number; fps: number }): ShareRung =>
+      mode === "sharp"
+        ? { maxBitrate: Math.round(top * r.bitrate), maxFramerate: r.fps }
+        : { maxBitrate: Math.round(top * r.bitrate) };
+    return {
+      full: [{ maxBitrate: top }],
+      reduced: [rung(SHARE_SINGLE_RUNGS.reduced)],
+      minimal: [rung(SHARE_SINGLE_RUNGS.minimal)],
+    };
+  }
   return {
     full: [{ maxBitrate: floor }, { maxBitrate: top }],
     reduced: [{ maxBitrate: floor }, { maxBitrate: 0 }],
@@ -760,10 +849,12 @@ export function useNetworkHealth(
         if (!params.encodings?.length) return;
         // The published codec's rungs: VP9 and H264 shares spend differently (SHARE_BITRATES).
         const codec = shareCodecOfTrack(track.codec);
+        // One encoding = the keep-resolution layout (share-mode.ts): one rung, never scaled.
+        const layout = shareLayoutOfEncodings(params.encodings.length);
         // Read back off the track, so a mid-share mode switch is honoured here too.
-        const mode = shareModeOfHint(track.mediaStreamTrack?.contentHint);
-        const wanted = shareLadder(codec, mode)[next];
-        const layers = shareLayers(mode, codec);
+        const mode = liveShareMode(track.mediaStreamTrack, layout === "single" && codec === "vp9");
+        const wanted = shareLadder(codec, mode, layout)[next];
+        const layers = shareLayers(mode, codec, layout);
         const top = shareTop(mode, codec);
         /* Neither layer may keep a congestion-era scaleResolutionDownBy that left text soft:
          * the low layer is the 720p floor, and the top layer IS the capture (scale 1). */

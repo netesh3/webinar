@@ -8,6 +8,7 @@ import {
   RoomEvent,
   Track,
   type LocalTrack,
+  type LocalVideoTrack,
   type RemoteParticipant,
   type RemoteTrack,
 } from "livekit-client";
@@ -26,7 +27,8 @@ import {
 } from "./audio-watch";
 import { isAndroid, lockScreenState, type LockScreenState } from "./lock-screen-audio";
 import { deviceSummary } from "./device";
-import { summariseOutbound } from "./network";
+import { shareCodecOfTrack, summariseOutbound } from "./network";
+import { liveShareMode, shareLayoutOfEncodings } from "./share-mode";
 
 /* A temporary telemetry path for one performance-test window — see
  * api/internal/api/telemetry.go for the backend half and why it logs the
@@ -174,6 +176,17 @@ async function sampleLocalTrack(track: LocalTrack): Promise<void> {
     // The top layer actually sent, and all of them: frameWidth/Height above then mean "what the
     // best-served viewer can get", and `layers` shows a 1080p layer switched off.
     Object.assign(payload, summariseOutbound(outbound));
+  }
+  if (track.source === Track.Source.ScreenShare && track.kind === Track.Kind.Video) {
+    /* For the keep-resolution share (share-mode.ts): with codec, layout and mode next to
+     * frameHeight / framesPerSecond / qualityLimitationReason, a sample shows whether a
+     * bandwidth-limited share held 1080 and gave up frames, as it should. */
+    const video = track as LocalVideoTrack;
+    const codec = shareCodecOfTrack(video.codec);
+    const layout = shareLayoutOfEncodings(outbound.length);
+    payload.codec = video.codec;
+    payload.shareLayout = layout;
+    payload.shareMode = liveShareMode(video.mediaStreamTrack, layout === "single" && codec === "vp9");
   }
   push("quality_sample", payload);
 }
