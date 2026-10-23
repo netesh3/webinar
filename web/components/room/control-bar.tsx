@@ -85,10 +85,11 @@ import {
   MinusIcon,
   PipIcon,
   PlusIcon,
+  PopOutIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
 } from "../icons";
-import { useToast } from "../providers";
+import { useAppConfig, useToast } from "../providers";
 import { useMicMeter } from "@/lib/mic-level";
 import { useRoomUI } from "./context";
 import { InviteMenu } from "./invite-panel";
@@ -114,6 +115,8 @@ import { EndWebinarDialog, SendSurveyButton } from "./host-survey";
 import { LeaveConfirm } from "./leave-confirm";
 import { PipStage } from "./pip-stage";
 import { PresenterPip } from "./own-share-view";
+import { MINI_CONTROLS_SIZE, MiniControls } from "./mini-controls";
+import { SHARE_TIP_KEY, shareStartOffer, shouldShowShareTip } from "@/lib/share-hints";
 import { useRaisedHandsPanel } from "./raised-hands-panel";
 import { useToolDrag, type DropHandler } from "./tool-drag";
 import { tool } from "./tools";
@@ -273,12 +276,28 @@ export function ControlBar() {
     !fileShare.active && wantsPresenterView(ownShare.surface) && ownShare.surface === "window"
       ? ownShare.surface
       : null;
+  /* What the floating window holds: the default (the stage, or the presenter's window
+   * while sharing a window) or the mini control bar (components/room/mini-controls.tsx),
+   * which somebody asked for on purpose — so it survives returning to the tab and is the
+   * one floating window allowed while the entire screen is shared. */
+  const [pipView, setPipView] = useState<"default" | "mini">("default");
+  /** When this person joined, for the mini controls' clock while not sharing. */
+  const [joinedAt] = useState(() => Date.now());
   const pip = usePictureInPicture({
     enabled: !connecting,
     shareActive: screenShares.length > 0,
-    keepOpen: presentingSurface !== null,
+    keepOpen: presentingSurface !== null || pipView === "mini",
     autoEnter: !sharingEntireScreen,
   });
+  // Back to the default whenever the window goes, so the next one (Pop out, or the browser's
+  // own auto-enter) is the stage again. Adjusted during render, not in an effect.
+  const [pipContainer, setPipContainer] = useState(pip.container);
+  if (pipContainer !== pip.container) {
+    setPipContainer(pip.container);
+    if (!pip.container) setPipView("default");
+  }
+  const miniActive = pipView === "mini" && pip.container !== null;
+  const { appName } = useAppConfig();
   const captionsAction = useCaptionsMoreAction();
   const youtube = useYouTubeStream();
   const linkedin = usePlatformStream("linkedin");
@@ -738,7 +757,7 @@ export function ControlBar() {
   );
 
   /** Hands off to the browser's own picker, with a hint at which pane to open on. */
-  const startScreenShare = useCallback(
+  const openSharePicker = useCallback(
     (surface: "browser" | "window" | "monitor") => {
       if (previewChrome) {
         setPreviewSharing(true);
@@ -761,6 +780,35 @@ export function ControlBar() {
       );
     },
     [previewChrome, toggle, localParticipant, notify],
+  );
+
+  /* The one-time tip before the first picker (lib/share-hints.ts): a window or a tab keeps
+   * this room's own controls off the audience's screen; the entire screen does not. Its
+   * Continue is a click of its own, so the picker still opens with a fresh gesture. Closed
+   * any way at all, it is remembered. */
+  const [shareTip, setShareTip] = useState<{ run: () => void } | null>(null);
+  const rememberShareTip = useCallback(() => {
+    try {
+      window.localStorage.setItem(SHARE_TIP_KEY, "1");
+    } catch {
+      // Private mode: shown again next time, which is harmless.
+    }
+  }, []);
+  const startScreenShare = useCallback(
+    (surface: "browser" | "window" | "monitor") => {
+      let stored: string | null = null;
+      try {
+        stored = window.localStorage.getItem(SHARE_TIP_KEY);
+      } catch {
+        stored = "1"; // No storage: a tip that could never be remembered would nag.
+      }
+      if (!shouldShowShareTip(stored)) {
+        openSharePicker(surface);
+        return;
+      }
+      setShareTip({ run: () => openSharePicker(surface) });
+    },
+    [openSharePicker, setShareTip],
   );
 
   /* "Share something else": pick first, swap second.
@@ -804,26 +852,134 @@ export function ControlBar() {
     if (presentingSurface) openPip(PRESENTER_PIP_SIZE[presentingSurface]);
   }, [presentingSurface, openPip]);
   const openedForShare = useRef<number | null>(null);
-  const { close: closePip } = pip;
+  const { close: closePip, resize: resizePip, active: pipActive, composed: miniSupported } = pip;
   useEffect(() => {
     if (presentingSurface && ownShare.startedAt !== null) {
       if (openedForShare.current === ownShare.startedAt) return;
       openedForShare.current = ownShare.startedAt;
+      // Mini controls already floating stay as they are: they were asked for. Once per share,
+      // so closing them later does not bring the presenter's window up in their place.
+      if (miniActive) return;
       openPresenterPip();
       return;
     }
     if (openedForShare.current !== null) {
       openedForShare.current = null;
-      closePip();
+      if (!miniActive) closePip();
     }
-  }, [presentingSurface, ownShare.startedAt, openPresenterPip, closePip]);
+  }, [presentingSurface, ownShare.startedAt, openPresenterPip, closePip, miniActive]);
 
   // A floating window already open when an entire-screen share starts would be on the shared
-  // screen for everyone to see, so it goes.
-  const pipActive = pip.active;
+  // screen for everyone to see, so it goes — unless it is the mini controls, which are the
+  // smallest thing of ours that can be there, and were opened on purpose.
   useEffect(() => {
-    if (sharingEntireScreen && pipActive) closePip();
-  }, [sharingEntireScreen, pipActive, closePip]);
+    if (sharingEntireScreen && pipActive && !miniActive) closePip();
+  }, [sharingEntireScreen, pipActive, miniActive, closePip]);
+
+  /* The mini control bar. Opened by "Pop out controls", by a tab share starting, or from
+   * the entire-screen toast. Swaps into a window already open rather than opening a second
+   * one, which the API refuses anyway. Closing the window (its X, or Leave) puts the view
+   * back; a share ending leaves it open if it was asked for. */
+  const miniOpenedForShare = useRef(false);
+  const openMini = useCallback(
+    (forShare = false) => {
+      miniOpenedForShare.current = forShare;
+      setPipView("mini");
+      if (pipActive) resizePip(MINI_CONTROLS_SIZE);
+      else openPip(MINI_CONTROLS_SIZE);
+    },
+    [pipActive, openPip, resizePip],
+  );
+  useEffect(() => {
+    if (!pip.container) miniOpenedForShare.current = false;
+  }, [pip.container]);
+
+  /* When our share starts: offer the mini controls (lib/share-hints.ts). A tab share takes
+   * the presenter away to that tab, so they open straight away when Chrome still allows it
+   * (the Share click is usually fresh enough); the entire screen gets a toast instead, because
+   * nothing of ours should appear on it without being asked for. */
+  const offeredForShare = useRef<number | null>(null);
+  const offerTimer = useRef<number | undefined>(undefined);
+  const openMiniTimer = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      window.clearTimeout(offerTimer.current);
+      window.clearTimeout(openMiniTimer.current);
+    },
+    [],
+  );
+  const { upsert, dismissKey } = useToast();
+  useEffect(() => {
+    if (fileShare.active || ownShare.startedAt === null) return;
+    if (offeredForShare.current === ownShare.startedAt) return;
+    offeredForShare.current = ownShare.startedAt;
+    const offer = shareStartOffer(ownShare.surface, {
+      miniSupported,
+      miniOpen: miniActive,
+    });
+    if (offer.kind === "none") return;
+    if (offer.kind === "open-mini") {
+      // A task later rather than in the effect body (which must not set state); the Share
+      // click's activation is time-based, so it is still there. Not cancelled by a re-run —
+      // offeredForShare keeps this to once per share — only by leaving.
+      openMiniTimer.current = window.setTimeout(() => openMini(true), 0);
+      return;
+    }
+    const key = "share-entire-screen";
+    const message =
+      offer.kind === "suggest-mini"
+        ? `You're sharing your entire screen, so the ${appName} tab shows up for your audience whenever it is in front. Pop out the mini controls and stay in what you're presenting.`
+        : `You're sharing your entire screen, so the ${appName} tab shows up for your audience whenever it is in front. Next time, share a window or a tab instead.`;
+    upsert(key, {
+      message,
+      interactive: true,
+      node: (
+        <div className="rounded-xl border border-white/10 bg-[#11141b]/95 px-4 py-3 text-[13px] text-white shadow-lg backdrop-blur">
+          <p className="leading-snug text-white/85">{message}</p>
+          <div className="mt-2.5 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => dismissKey(key)}
+              className="h-8 rounded-lg px-3 text-[12.5px] font-medium text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              {offer.kind === "suggest-mini" ? "Not now" : "OK"}
+            </button>
+            {offer.kind === "suggest-mini" && (
+              <button
+                type="button"
+                onClick={() => {
+                  dismissKey(key);
+                  openMini(true);
+                }}
+                className="h-8 rounded-lg bg-brand px-3 text-[12.5px] font-semibold text-white hover:bg-brand/90"
+              >
+                Pop out controls
+              </button>
+            )}
+          </div>
+        </div>
+      ),
+    });
+    window.clearTimeout(offerTimer.current);
+    offerTimer.current = window.setTimeout(() => dismissKey(key), 12_000);
+  }, [
+    fileShare.active,
+    ownShare.startedAt,
+    ownShare.surface,
+    miniSupported,
+    miniActive,
+    openMini,
+    upsert,
+    dismissKey,
+    appName,
+  ]);
+
+  // Opened for a share, so it goes with the share. Asked for by its own button: it stays.
+  useEffect(() => {
+    if (sharing || !miniOpenedForShare.current) return;
+    miniOpenedForShare.current = false;
+    closePip();
+  }, [sharing, closePip]);
 
   /* The stage's buttons (components/room/own-share-view.tsx) ask for these by event. */
   const presenterActions = useRef({ stop: () => {}, switch: () => {}, float: () => {} });
@@ -1533,7 +1689,7 @@ export function ControlBar() {
             onClick={() => (pip.active ? pip.close({ dismiss: true }) : pip.open())}
             disabled={connecting}
             aria-label={pip.active ? "Close the floating window" : "Pop out into a floating window"}
-            aria-pressed={pip.active}
+            aria-pressed={pip.active && !miniActive}
             title={pip.active ? "Close the floating window" : "Pop out"}
             className={`hidden size-10 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 sm:grid ${
               pip.active
@@ -1542,6 +1698,26 @@ export function ControlBar() {
             }`}
           >
             <PipIcon className="size-4.5" />
+          </button>
+        )}
+        {/* Pop out controls: the mini control bar (mini-controls.tsx). Document PiP only —
+            Safari and Firefox have no window to put it in, so no button. Offered while the
+            entire screen is shared too: it is the smallest thing of ours that can be on it. */}
+        {pip.composed && (permissions.canPublish || isHost) && (
+          <button
+            type="button"
+            onClick={() => (miniActive ? pip.close({ dismiss: true }) : openMini())}
+            disabled={connecting}
+            aria-label={miniActive ? "Close the mini controls" : "Pop out controls"}
+            aria-pressed={miniActive}
+            title={miniActive ? "Close the mini controls" : "Pop out controls"}
+            className={`hidden size-10 shrink-0 place-items-center rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 sm:grid ${
+              miniActive
+                ? "bg-white/20 text-white"
+                : "text-white/70 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <PopOutIcon className="size-4.5" />
           </button>
         )}
         {isHost && <SendSurveyButton disabled={connecting} />}
@@ -1618,7 +1794,44 @@ export function ControlBar() {
           which is what lets the buttons in there call the same handlers as the bar's. */}
       {pip.container &&
         createPortal(
-          presentingSurface ? (
+          miniActive ? (
+            <MiniControls
+              micEnabled={isMicrophoneEnabled}
+              cameraEnabled={isCameraEnabled}
+              canSpeak={permissions.canSpeak && !permissions.mutedByHost}
+              canShareCamera={permissions.canShareCamera}
+              onMic={onMicClick}
+              onCamera={onCameraClick}
+              sharing={sharing}
+              onStopShare={() => void stopSharing()}
+              shareStartedAt={fileShare.active ? null : ownShare.startedAt}
+              joinedAt={joinedAt}
+              /* The entire screen is captured with this window on it: the numbers are
+                 withheld, as the bar withholds them while presenting (see `presenting`). */
+              hands={raisedCount ?? 0}
+              showHands={raisedCount !== null && !sharingEntireScreen}
+              unreadChat={sharingEntireScreen ? 0 : (unread.chat ?? 0)}
+              onChat={
+                availableTools.includes("chat")
+                  ? () => {
+                      window.focus();
+                      if (tools.panelTab !== "chat") activate("chat");
+                    }
+                  : null
+              }
+              meeting={join.meeting === true}
+              hostLeave={isHost}
+              onLeave={() => {
+                if (isHost) {
+                  // The host's leave is a menu of choices, in the main window.
+                  window.focus();
+                  setLeaveMenuOpen(true);
+                  return;
+                }
+                leave();
+              }}
+            />
+          ) : presentingSurface ? (
             <PresenterPip
               share={ownShare}
               participant={localParticipant}
@@ -1656,6 +1869,25 @@ export function ControlBar() {
           onScreenShare={startScreenShare}
         />
       )}
+
+      {/* The one-time tip before the first share picker (lib/share-hints.ts). */}
+      <ConfirmModal
+        open={shareTip !== null}
+        onClose={() => {
+          rememberShareTip();
+          setShareTip(null);
+        }}
+        onConfirm={() => {
+          const run = shareTip?.run;
+          rememberShareTip();
+          setShareTip(null);
+          run?.();
+        }}
+        title="Before you share"
+        body={`Tip: share a window or a tab so the ${appName} controls aren't shown to your audience.`}
+        confirmLabel="Choose what to share"
+        dark
+      />
 
       {/* A host or co-host taking the screen from somebody else. Confirmed rather than
           done outright: it ends another person's presentation mid-sentence. */}

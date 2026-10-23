@@ -8,6 +8,7 @@ import {
   type TrackPublishOptions,
   type VideoPreset,
 } from "livekit-client";
+import { currentDisplayMediaHints } from "./share-hints";
 import {
   shareCaptureResolution,
   shareCodec,
@@ -152,12 +153,13 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
       mobile: isMobilePublisher(),
       mobileFloor: SHARE_FLOOR_MOBILE,
     }),
-    // Offer a control to swap the shared window mid-share instead of stopping and
-    // starting again — which, in a webinar, means a gap the audience sees.
-    surfaceSwitching: "include",
-    // The current tab is almost never what a presenter means to share, and picking
-    // it produces the infinite-mirror effect.
-    selfBrowserSurface: "exclude",
+    // The picker hints, for the Chromium versions that know them (lib/share-hints.ts):
+    // surfaceSwitching offers a control to swap the shared window mid-share instead of
+    // stopping and starting again — which, in a webinar, means a gap the audience sees;
+    // selfBrowserSurface "exclude" hides this tab, which is almost never what a presenter
+    // means to share and produces the infinite-mirror effect when it is; preferCurrentTab
+    // false and systemAudio "include" round it off.
+    ...currentDisplayMediaHints(),
   };
 }
 

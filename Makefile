@@ -159,6 +159,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the presenter's own-share view: which surface a capture is, and that the entire
 	# screen is never played back to itself (the audience would get the mirror too).
 	cd web && node --experimental-strip-types --no-warnings lib/own-share.test.mts
+	# The share picker's hints (hide this tab, keep the full screen) and the tips around it.
+	cd web && node --experimental-strip-types --no-warnings lib/share-hints.test.mts
 	# And route-level access control, where both failure directions are silent: a
 	# participant reading a registrant list, or a panelist locked out of their own stage.
 	cd web && node --experimental-strip-types --no-warnings lib/access.test.mts

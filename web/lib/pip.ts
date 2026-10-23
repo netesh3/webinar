@@ -123,6 +123,9 @@ export type PipApi = {
    *  and remembers whatever the user resizes it to. */
   open: (size?: { width: number; height: number }) => void;
   close: (opts?: PipCloseOptions) => void;
+  /** Resizes an open Document PiP window — swapping what is in it for something smaller or
+   *  larger. Chrome only honours it with a click still fresh; ignored otherwise. */
+  resize: (size: { width: number; height: number }) => void;
 };
 
 /* Capability read through useSyncExternalStore, with a server snapshot of false.
@@ -338,5 +341,13 @@ export function usePictureInPicture({
   // that they are no longer in.
   useEffect(() => () => close(), [close]);
 
-  return { supported, composed, container, active: container !== null, open, close };
+  const resize = useCallback((size: { width: number; height: number }) => {
+    try {
+      win.current?.resizeTo(size.width, size.height);
+    } catch {
+      // No user activation: the window keeps its size, and its content still fits.
+    }
+  }, []);
+
+  return { supported, composed, container, active: container !== null, open, close, resize };
 }
