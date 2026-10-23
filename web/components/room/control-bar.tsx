@@ -7,7 +7,7 @@ import {
   useRoomContext,
   useTracks,
 } from "@livekit/components-react";
-import { ConnectionState, Track } from "livekit-client";
+import { ConnectionState, Track, type LocalTrackPublication } from "livekit-client";
 import {
   cloneElement,
   Fragment,
@@ -72,6 +72,7 @@ import {
 } from "@/lib/own-share";
 import { canShareFile } from "@/lib/file-share";
 import { useShareLock } from "@/lib/use-share-lock";
+import { browserEndedShare, stopScreenShare } from "@/lib/share-stop";
 import { ConfirmModal, Spinner } from "../controls";
 import {
   CameraIcon,
@@ -681,13 +682,30 @@ export function ControlBar() {
     }
     setPending("share");
     try {
-      await localParticipant.setScreenShareEnabled(false);
+      // Not setScreenShareEnabled(false): that unpublishes without stopping the capture, and
+      // Chrome's "Sharing this tab" bar stays up (lib/share-stop.ts).
+      await stopScreenShare(localParticipant);
     } catch {
       // Stopping share should not throw error toasts
     } finally {
       setPending(null);
     }
   }, [previewChrome, fileShare, localParticipant, notify]);
+
+  /* The browser ending the share — its own "Stop sharing", or the shared window closing.
+   * LiveKit unpublishes the ended video itself but leaves the tab audio published and
+   * capturing, which keeps the capture alive; sweep up the rest of it. */
+  useEffect(() => {
+    if (previewChrome) return;
+    const onUnpublished = (pub: LocalTrackPublication) => {
+      if (!browserEndedShare(pub.source, pub.track)) return;
+      void stopScreenShare(localParticipant, [pub.track]).catch(() => {});
+    };
+    localParticipant.on("localTrackUnpublished", onUnpublished);
+    return () => {
+      localParticipant.off("localTrackUnpublished", onUnpublished);
+    };
+  }, [previewChrome, localParticipant]);
 
   /* One screen share at a time (lib/share-lock.ts). A host or co-host may take the
    * screen from whoever has it, after saying so; anybody else waits for it to be free.
@@ -761,7 +779,8 @@ export function ControlBar() {
     }
     setPending("share");
     try {
-      await localParticipant.setScreenShareEnabled(false);
+      // The old capture is stopped, not just unpublished, or it keeps running behind the new one.
+      await stopScreenShare(localParticipant);
       // createScreenTracks already marked them ScreenShare / ScreenShareAudio.
       for (const track of tracks) {
         await localParticipant.publishTrack(track, sharePublishOptions("sharp"));
