@@ -14,6 +14,7 @@ import type { JoinResponse } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { detectArrival, hasRejoinIntent, type Arrival } from "@/lib/rejoin";
 import { trackEvent } from "@/lib/telemetry";
+import { reportEvent } from "@/lib/observability";
 import { usePrimeMediaOnGesture } from "@/lib/media-unlock";
 import { isAwaitingEmail, joinProvesKey } from "@/lib/guest-registration";
 import { attendeeJoinRefusal } from "@/lib/join-refusal";
@@ -193,6 +194,11 @@ export function AttendeeRoomGate({
       .catch((e: unknown) => {
         if (!current()) return;
         if (e instanceof ApiError) keepIfProven({ code: e.code });
+        // Grafana Faro: why an attendee could not get in (a code, nothing personal). Not the
+        // video server still starting, which is retried every few seconds and is not a refusal.
+        if (!(e instanceof ApiError && serverWaitOf(e.code))) {
+          reportEvent("room_join_refused", { door: "attendee", code: e instanceof ApiError ? e.code : "unknown" });
+        }
         setError(
           e instanceof ApiError
             ? { code: e.code, message: e.message }
