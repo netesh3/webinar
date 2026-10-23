@@ -83,6 +83,58 @@ directory, so no new `ufw allow` rules are needed:
 - **Retention:** 15 days (`prometheus.yml` + the `--storage.tsdb.retention.time`
   flag in `docker-compose.yml`).
 
+### Grafana Cloud (Alloy, optional)
+
+`docker-compose.alloy.yml` runs [Grafana Alloy](https://grafana.com/docs/alloy/)
+(`grafana/alloy:v1.21.2`, host network, UI on `127.0.0.1:12345` only) with
+`alloy/config.alloy`. It ships, to Grafana Cloud:
+
+| What | Source | Job label |
+|---|---|---|
+| LiveKit metrics | `127.0.0.1:7801` | `livekit` |
+| MediaMTX metrics | `127.0.0.1:9998` (`metrics: true` in `mediamtx.yml.template`, loopback only, not in ufw, the cloud firewall or the Caddyfile) | `mediamtx` |
+| Host metrics | embedded node_exporter (`prometheus.exporter.unix`): CPU, memory, load, disk, filesystems, NIC, TCP/UDP counters, PSI | `node` |
+| Container metrics | embedded cAdvisor: CPU, throttling, memory, OOMs per container (`name`, `service`) | `cadvisor` |
+| Container logs | every container via the docker socket (read-only), labels `container`, `service`, `stream`; debug/trace lines dropped | - |
+
+Every series and log line carries `box` (from `ALLOY_BOX` in `.env`, else the droplet's
+hostname, e.g. `sfu-blr-1`). Series are trimmed to an allow-list (Go runtime series, per-CPU
+guest modes, per-container network/disk/process series dropped) to stay well inside the free
+tier's 10k active series; check **Cost management → Metrics** after the first day.
+
+**Off until configured.** `redeploy.sh` starts Alloy only when `/opt/livekit/.env` has all five
+of the settings below; with none it does nothing, with some it warns and does not start it.
+The deploy workflow (**Deploy LiveKit (DigitalOcean)**) writes them into the box's `.env` from
+repo variables and a secret. That `.env` is on the `sfu-data` volume, so every later on-demand
+droplet has them at boot; the image is in the snapshot (`deploy/digitalocean/build-image.sh`).
+
+| Name | Kind | Where in Grafana Cloud |
+|---|---|---|
+| `GRAFANA_CLOUD_PROM_URL` | variable | Stack → Prometheus → Details → Remote Write Endpoint (`https://prometheus-prod-…/api/prom/push`) |
+| `GRAFANA_CLOUD_PROM_USER` | variable | same page, Username / Instance ID (a number) |
+| `GRAFANA_CLOUD_LOKI_URL` | variable | Stack → Loki → Details → URL, plus `/loki/api/v1/push` |
+| `GRAFANA_CLOUD_LOKI_USER` | variable | same page, User (a number) |
+| `GRAFANA_CLOUD_TOKEN` | **secret** | Administration → Cloud access policies: a policy with `metrics:write` and `logs:write`, then a token for it |
+
+```bash
+gh variable set GRAFANA_CLOUD_PROM_URL  --body 'https://prometheus-prod-XX-prod-ap-south-1.grafana.net/api/prom/push'
+gh variable set GRAFANA_CLOUD_PROM_USER --body '1234567'
+gh variable set GRAFANA_CLOUD_LOKI_URL  --body 'https://logs-prod-XXX.grafana.net/loki/api/v1/push'
+gh variable set GRAFANA_CLOUD_LOKI_USER --body '765432'
+gh secret set GRAFANA_CLOUD_TOKEN        # paste the token at the prompt
+gh workflow run livekit-do-deploy.yml    # writes them to the box and starts Alloy
+```
+
+The deploy skips while the on-demand box is down; the settings land on the next deploy that
+finds it up (or start a session first). To turn Alloy off, remove the lines from the box's
+`.env` (`ssh root@<box> "sed -i '/^GRAFANA_CLOUD_/d' /opt/livekit/.env && /opt/livekit/redeploy.sh"`)
+and delete the variables so the next deploy does not write them back. Check it on the box:
+`docker compose -f docker-compose.yml -f docker-compose.alloy.yml logs alloy`, or the UI
+through `ssh -L 12345:127.0.0.1:12345 root@<box>`.
+
+The local Prometheus and Grafana above still run; once Grafana Cloud has the dashboards you
+want, they can be removed in a later change.
+
 ### TURN relay vs. direct (item #2 — not a LiveKit Prometheus metric)
 
 LiveKit's own Prometheus metrics don't expose per-connection ICE path
