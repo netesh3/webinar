@@ -282,7 +282,8 @@ func (s *Server) handleVideoUploadParts(w http.ResponseWriter, r *http.Request) 
 	}
 	out := types.VideoUploadPartsResponse{URLs: make([]types.VideoUploadPartURL, 0, len(body.Parts))}
 	for _, n := range body.Parts {
-		if n < 1 || n > up.PartCount() {
+		// 10,000 is S3's part-number ceiling (and keeps the int32 conversion below in range).
+		if n < 1 || n > up.PartCount() || n > 10000 {
 			httpx.Error(w, http.StatusUnprocessableEntity, "bad_parts",
 				fmt.Sprintf("This upload has parts 1 to %d.", up.PartCount()))
 			return
