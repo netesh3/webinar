@@ -820,6 +820,8 @@ func (s *Server) issueToken(
 		Whiteboard: publishes && !spec.Promoted &&
 			!(isMeeting(wb) && joinKeyFromIdentity(spec.Identity) != "") &&
 			s.hostFeature(r.Context(), wb.Host.ID, types.FeatureWhiteboard),
+		// The host's beta switch, for everyone in the room. See JoinResponse.AV1.
+		AV1:              s.hostFeature(r.Context(), wb.Host.ID, types.FeatureAV1),
 		JoinKey:          joinKeyFromIdentity(spec.Identity),
 		MaxDurationMin:   wb.MaxDurationMin,
 		CdnBroadcast:     cdnBroadcast,

@@ -123,7 +123,7 @@ export function CdnAttendeeRoom({
 
   const [room] = useState(() => {
     // Weak devices take the VP8 / H264 backup instead of decoding AV1 (lib/receive-codecs.ts).
-    void primeReceivePolicy("participant");
+    void primeReceivePolicy("participant", join.av1);
     return new Room();
   });
 

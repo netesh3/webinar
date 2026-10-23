@@ -43,7 +43,7 @@ import {
   shareTop,
 } from "./network";
 import { currentIsMobile } from "./device";
-import { av1Now, primeAv1Probes } from "./codec-policy";
+import { av1Now, primeAv1Probes, setAv1Session } from "./codec-policy";
 import { primeReceivePolicy } from "./receive-codecs";
 
 export { canCaptureCamera1080, cameraCapturePreset } from "./network";
@@ -384,14 +384,18 @@ const PHONE_PIXEL_DENSITY = 1.5;
 export function roomOptions(
   prefs: MediaPreferences,
   canPublish: boolean,
+  /** The session host's "AV1 video (beta)" switch (JoinResponse.av1). Off: no AV1 at all. */
+  av1 = false,
 ): RoomOptions {
   const capture = cameraCapturePreset();
   const phone = currentIsMobile();
-  // Usually already answered by the pre-join screen; if not, the room applies it when it is
-  // (useCameraCodec in webinar-room.tsx), before or after the first camera publish.
-  if (canPublish) primeAv1Probes();
+  // Everything AV1 is behind the beta switch: publishing (av1Now) and the receive filter.
+  setAv1Session(av1);
+  // Answered while the pre-join screen is up; the room applies it to the publish defaults when
+  // it arrives (the AV1 effect in webinar-room.tsx), before or after the first camera publish.
+  if (canPublish && av1) primeAv1Probes();
   // And whether this device should receive AV1 at all, before the Room negotiates anything.
-  void primeReceivePolicy("participant");
+  void primeReceivePolicy("participant", av1);
   return {
     /* Measured in DEVICE pixels, not CSS pixels.
      *

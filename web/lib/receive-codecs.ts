@@ -26,6 +26,10 @@ export type ReceiveRole = "recorder" | "participant";
 
 export type ReceiveInputs = {
   role: ReceiveRole;
+  /** The session host's "AV1 video (beta)" switch. Off: participants are left alone entirely
+   *  (nothing publishes AV1, and no RTCPeerConnection patch is installed). The recorder
+   *  excludes AV1 regardless — it only narrows what the recorder accepts. */
+  sessionAv1?: boolean;
   ua: string;
   /** navigator.hardwareConcurrency; 0 = unknown. */
   cores: number;
@@ -40,6 +44,7 @@ export const RECEIVE_AV1_MAX_WEAK_CORES = 4;
 
 export function receiveAv1Verdict(p: ReceiveInputs): ReceiveVerdict {
   if (p.role === "recorder") return { excludeAv1: true, reason: "recorder" };
+  if (!p.sessionAv1) return { excludeAv1: false, reason: "beta-off" };
   if (p.cores > 0 && p.cores <= RECEIVE_AV1_MAX_WEAK_CORES) {
     return { excludeAv1: true, reason: `cores-${p.cores}` };
   }
@@ -115,21 +120,24 @@ function install(): void {
   } as typeof proto.createAnswer;
 }
 
-/** Sets the policy for this page; must run before the Room connects. */
+/** Sets the policy for this page; must run before the Room connects. The RTCPeerConnection
+ *  patch is installed only the first time something is excluded — a page that never excludes
+ *  AV1 (every session without the beta switch) is never patched. */
 export function setReceiveAv1Excluded(exclude: boolean): void {
   excludeAv1 = exclude;
-  install();
+  if (exclude) install();
 }
 
 /* Decide and install for this page. Synchronous first answer (decoding unknown: phones excluded),
  * then refined by decodingInfo for any LATER negotiation — a phone with hardware AV1 decode gets
- * it on the next subscription. Returns the final verdict. */
-export function primeReceivePolicy(role: ReceiveRole): Promise<ReceiveVerdict> {
+ * it on the next subscription. Returns the final verdict. Without the session's beta switch a
+ * participant is left alone (no probe, no patch). */
+export function primeReceivePolicy(role: ReceiveRole, sessionAv1 = false): Promise<ReceiveVerdict> {
   if (typeof navigator === "undefined") return Promise.resolve({ excludeAv1: false, reason: "server" });
-  const base = { role, ua: navigator.userAgent ?? "", cores: navigator.hardwareConcurrency ?? 0 };
+  const base = { role, sessionAv1, ua: navigator.userAgent ?? "", cores: navigator.hardwareConcurrency ?? 0 };
   const first = receiveAv1Verdict({ ...base, decoding: null });
   setReceiveAv1Excluded(first.excludeAv1);
-  if (role === "recorder" || !navigator.mediaCapabilities?.decodingInfo) return Promise.resolve(first);
+  if (role === "recorder" || !sessionAv1 || !navigator.mediaCapabilities?.decodingInfo) return Promise.resolve(first);
   return navigator.mediaCapabilities
     .decodingInfo({
       type: "webrtc",
