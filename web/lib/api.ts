@@ -121,6 +121,7 @@ import type {
   Webinar,
   WebinarInput,
   EdgeStatus,
+  DeliveryPolicy,
   ServerTime,
   ReplayHideRequest,
   SimuliveAutoAnswer,
@@ -474,6 +475,14 @@ export const api = {
     `${API_BASE}/api/webinars/${seg(slug)}/events/beat?t=${encodeURIComponent(token)}`,
   edgeLeaveUrl: (slug: string, token: string) =>
     `${API_BASE}/api/webinars/${seg(slug)}/events/leave?t=${encodeURIComponent(token)}`,
+
+  /** Which delivery the schedule form offers, for a new webinar or one being edited
+   *  (lib/delivery-policy.ts). */
+  hostDeliveryPolicy: (slug?: string) =>
+    request<DeliveryPolicy>(
+      `/api/host/delivery${slug ? `?slug=${encodeURIComponent(slug)}` : ""}`,
+      fresh,
+    ),
 
   /** The host's view of edge delivery for one webinar: on or off, and how many watch. */
   hostEdgeStatus: (slug: string) =>

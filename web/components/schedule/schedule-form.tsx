@@ -20,13 +20,15 @@ import type { MessagesSaveHandle } from "@/engage";
 import {
   FeatureCloudRecording,
   FeatureJoinWithoutRegistration,
-  FeatureEdgeDelivery, FeatureZoom,
+  FeatureZoom,
   type CRMMediaFile,
   type MessageSlot,
   type Webinar,
   type WebinarInput,
 } from "@/lib/api-types";
 import { useHydrated, useNow } from "@/lib/clock";
+import { deliveryToSend } from "@/lib/delivery-policy";
+import { useDeliveryPolicy } from "@/lib/use-delivery-policy";
 import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
 import { planRecurrence } from "@/lib/recurrence";
@@ -260,6 +262,8 @@ function ScheduleFormBody({
   );
   const editing = webinar !== null;
   const meeting = editing ? isMeetingKind(webinar) : newMeeting;
+  // Edge only, the Standard / Edge choice, or neither (lib/delivery-policy.ts).
+  const deliveryPolicy = useDeliveryPolicy(!meeting, webinar?.id);
   /* "Replay as Simulive" on a recording: a new simulive of that recording. Read once — the
    * form keeps the recording in its own state from here, and "Change recording" edits that. */
   const [simuliveFrom] = useState<string | null>(() =>
@@ -599,6 +603,17 @@ function ScheduleFormBody({
       };
     }
     const asSeries = seriesMember || form.kind === "recurring";
+    const venue =
+      asSeries || form.kind === "simulive"
+        ? "app"
+        : (account?.features ?? []).includes(FeatureZoom)
+          ? form.venue
+          : "app";
+    const delivery = deliveryToSend(
+      deliveryPolicy,
+      { kind: asSeries ? "recurring" : form.kind, venue },
+      form.delivery,
+    );
     return {
       topic: form.topic,
       summary: form.summary,
@@ -642,20 +657,11 @@ function ScheduleFormBody({
         ...(form.kind === "simulive" ? { multistream: false } : {}),
       },
       controls: form.controls,
-      venue:
-        asSeries || form.kind === "simulive"
-          ? "app"
-          : (account?.features ?? []).includes(FeatureZoom)
-            ? form.venue
-            : "app",
-      /* Only a host with the switch says anything: everyone else omits it and the server
-       * keeps what is saved. Edge fits a single live webinar in this app; otherwise standard. */
-      ...((account?.features ?? []).includes(FeatureEdgeDelivery)
-        ? {
-            delivery:
-              !asSeries && form.kind === "live" && form.venue === "app" ? form.delivery : "standard",
-          }
-        : {}),
+      venue,
+      /* Edge where every webinar is edge (a GCP or DO video server), the host's pick where
+       * they have the choice; a host with neither omits it and the server keeps what is
+       * saved. The server applies the same rule to the save whatever this sends. */
+      ...(delivery ? { delivery } : {}),
     };
   }
 
@@ -1058,6 +1064,7 @@ function ScheduleFormBody({
               fields={shownFields}
               editing={editing}
               webinar={webinar}
+              deliveryPolicy={deliveryPolicy}
               imagePreview={imagePreview}
               onImage={(prepared, preview) => {
                 setPendingImage(prepared);

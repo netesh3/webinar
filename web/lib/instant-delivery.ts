@@ -3,6 +3,8 @@
  * button and the host's last pick is remembered in this browser. Anything unreadable
  * falls back to standard: a stored value is a preference, never a reason to go edge. */
 
+import type { DeliveryOffer } from "./delivery-policy";
+
 export type InstantDelivery = "standard" | "edge";
 
 export const INSTANT_DELIVERY_KEY = "webcast.instantDelivery";
@@ -11,12 +13,14 @@ export function parseInstantDelivery(raw: string | null | undefined): InstantDel
   return raw === "edge" ? "edge" : "standard";
 }
 
-/** What the create request sends: edge only when the host may use it and chose it. */
+/** What the create request sends: edge where every webinar is edge (a GCP or DO video
+ *  server, lib/delivery-policy.ts), the host's pick where they have the choice, else standard. */
 export function instantDeliveryFor(
   choice: InstantDelivery,
-  edgeAllowed: boolean,
+  offer: DeliveryOffer,
 ): InstantDelivery {
-  return edgeAllowed && choice === "edge" ? "edge" : "standard";
+  if (offer === "edge-only") return "edge";
+  return offer === "choice" && choice === "edge" ? "edge" : "standard";
 }
 
 export function readInstantDelivery(): InstantDelivery {

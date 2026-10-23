@@ -650,6 +650,8 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/webinars", s.handleHostWebinars)
 				r.Post("/webinars", s.handleCreateWebinar)
 				r.Get("/recordings", s.handleHostRecordingLibrary)
+				// What delivery the schedule form offers. See edge.go.
+				r.Get("/delivery", s.handleDeliveryPolicy)
 
 				// The schedule form's topic-tag suggestions: this host's own tags,
 				// never another host's — see handleHostTracks.

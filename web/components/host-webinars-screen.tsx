@@ -26,7 +26,9 @@ import {
   hostListFilterKey,
   hostListPageKey,
 } from "@/lib/host-list-cache";
-import { FeatureEdgeDelivery, type Webinar, type WebinarInput } from "@/lib/api-types";
+import { type Webinar, type WebinarInput } from "@/lib/api-types";
+import { deliveryOffer } from "@/lib/delivery-policy";
+import { useDeliveryPolicy } from "@/lib/use-delivery-policy";
 import { simuliveCardOffered } from "@/lib/host-features";
 import {
   instantDeliveryFor,
@@ -66,7 +68,8 @@ function instantWebinarInput(
     kind: "live",
     status: "scheduled",
     instant: true,
-    // Standard unless the host has Edge delivery and picked it beside the button.
+    // Edge on a GCP/DO video server; elsewhere standard unless the host has Edge
+    // delivery and picked it beside the button.
     delivery,
     registrationRequired: true,
     approval: "automatic",
@@ -204,7 +207,10 @@ export function HostWebinarsScreen() {
   /* features on /api/auth/me, not isAdmin. An admin without the switch gets
    * the single Schedule card. */
   const createActions = hostHomeCreateActions(account?.features);
-  const edgeAllowed = (account?.features ?? []).includes(FeatureEdgeDelivery);
+  /* Edge-only on a GCP or DO video server (no choice), the Standard / Edge choice for a
+   * Hetzner host with the switch, else nothing. See lib/delivery-policy.ts. */
+  const deliveryPolicy = useDeliveryPolicy(canHost && !bypass);
+  const instantOffer = deliveryOffer(deliveryPolicy, { kind: "live", venue: "app" });
   const twoColumns = hostHomeCreateColumns(createActions) === 2;
   /* "Simulive" needs its own switch (Admin -> Accounts), and plays one of the host's cloud
    * recordings, so cloud_recording too. See lib/host-features.ts. */
@@ -304,7 +310,7 @@ export function HostWebinarsScreen() {
     setStartingInstant(true);
     try {
       const created = await api.createWebinar(
-        instantWebinarInput(maxAttendees, instantDeliveryFor(instantDelivery, edgeAllowed)),
+        instantWebinarInput(maxAttendees, instantDeliveryFor(instantDelivery, instantOffer)),
       );
       await api.startWebinar(created.id);
       pendingTab.open(`/host/${created.id}/room`);
@@ -472,7 +478,7 @@ export function HostWebinarsScreen() {
                 subtitle="Go live immediately, no form"
               />
             </button>
-            {edgeAllowed && (
+            {instantOffer === "choice" && (
               <InstantDeliveryChoice
                 value={instantDelivery}
                 disabled={startingInstant}

@@ -84,8 +84,9 @@ export type FormState = {
   streamKey: string;
   streamWatchUrl: string;
   venue: "app" | "zoom_meeting" | "zoom_webinar";
-  /** How the audience receives the session (docs/edge-delivery.md). Offered only to hosts
-   *  with the edge_delivery feature, for a single live webinar in this app. */
+  /** How the audience receives the session (docs/edge-delivery.md). A choice only on a
+   *  Hetzner video server for hosts with the edge_delivery feature, for a webinar or series
+   *  in this app; on GCP and DigitalOcean it is always edge (lib/delivery-policy.ts). */
   delivery: "standard" | "edge";
   recurrence: RecurrenceForm;
   /** "this" edits one session. "following" edits it and later non-exception sessions. */

@@ -1,8 +1,10 @@
 # Edge delivery (beta)
 
 The second way to run a webinar, beside **Standard** (everyone on the LiveKit SFU). The old
-**CDN broadcast** mode (audience on a WHEP mix) was retired on 2026-10-20. Edge is opt-in per webinar, so
-both can run side by side on the same deployment and be compared.
+**CDN broadcast** mode (audience on a WHEP mix) was retired on 2026-10-20. On GCP and
+DigitalOcean video servers edge is the **only** webinar delivery (2026-10-23, see "Where edge is
+the standard" below); on Hetzner it is still opt-in per webinar, so both can run side by side
+and be compared.
 
 ```
  Stage (1–5 people)                       Audience (hundreds to thousands)
@@ -31,11 +33,42 @@ both can run side by side on the same deployment and be compared.
 
 ## How it works
 
-- **The switch.** `webinars.delivery` (`standard`|`edge`, migration 0120) behind the
-  `edge_delivery` feature (Admin → Accounts → features). Only a single live webinar in this
-  app can be edge, not Zoom, simulive or a recurring series. The schedule form shows
-  **Delivery: Standard / Edge (beta)** under *Where it runs* only for hosts with the switch.
-  Copy webinar carries it.
+- **The switch.** `webinars.delivery` (`standard`|`edge`, migration 0120). On GCP and DO it
+  is always `edge` for a webinar (next section). On Hetzner it is behind the `edge_delivery`
+  feature (Admin → Accounts → features), and the schedule form shows **Delivery: Standard /
+  Edge (beta)** under *Where it runs* only for hosts with the switch. A webinar or a recurring
+  series in this app can be edge; Zoom, simulive and meetings cannot. Copy webinar carries it.
+- **Recurring series.** Every occurrence is its own webinar row with its own slug, so its own
+  mix (started by its Start, stopped by its End), MediaMTX path `live/<slug>`, event stream
+  and attendance. A save that writes several occurrences (create, convert to a series, "this
+  and following") writes the delivery to each draft or scheduled one it covers
+  (`SetSeriesDelivery`); an occurrence that is live or over keeps its own.
+
+## Where edge is the standard (GCP and DigitalOcean)
+
+- **Rule.** A webinar (one-off, instant or recurring) in this app whose room is, or will be,
+  on a project whose provider is `gcp` or `do` is saved as edge, whatever the form sent
+  (`resolveDelivery`, `api/internal/api/edge.go`). The `edge_delivery` switch is implied there,
+  at save and at join (`edgeAllowed`). Meetings and simulive are always standard. Hetzner keeps
+  the old choice. Not forced without `BROADCAST_RTMP_BASE` (no origin to push to), and never
+  changed on a webinar that is live or ended.
+- **Provider.** The project's `provider` in `LIVEKIT_PROJECTS`, else guessed from its id and
+  label (`do-blr` → do, `india`/Mumbai → gcp, anything else Hetzner; `CostProvider`).
+- **Before the pin.** A webinar is pinned to a project on its first join. Until then the
+  target is what that join would choose: the host's assigned project (Admin → Accounts → Video
+  server) when it is enabled, else the first enabled project (`firstChoice`). No enabled
+  project at all counts as edge. An admin who reassigns the host before the first join moves
+  the room; edge works on every provider, and the join checks the switch again on Hetzner.
+- **Form.** `GET /api/host/delivery[?slug=]` (`types.DeliveryPolicy`): `edgeOnly` hides the
+  choice and shows "Your audience watches a low-latency stream; speakers join live"; the
+  instant button sends edge with no choice beside it (`web/lib/delivery-policy.ts`).
+- **Existing webinars.** At boot the API moves draft and scheduled webinars (`kind` live or
+  recurring, venue app) pinned to, or headed for, a GCP/DO project onto edge
+  (`BackfillEdgeDelivery`, idempotent; no SQL migration, because the provider lives in config).
+  Live and ended sessions, meetings, simulive, Zoom and Hetzner-pinned webinars are untouched.
+- **Costs.** The audience is ~2.5 s behind the stage, which shows in Q&A and stage invites.
+  Each concurrent webinar runs one composite mix (~1–1.5 cores on the DO c-4, or an egress
+  worker on GCP), so plan the box from the number of concurrent webinars, not attendees.
 - **Join.** For an edge webinar, an attendee who is not on the stage gets no LiveKit token. The
   join response has `delivery: "edge"`, `playbackUrl` and `eventsToken`, which is signed with
   `SESSION_SECRET` under its own issuer and lasts 6h. Anyone on the stage gets an ordinary
@@ -188,6 +221,8 @@ refuses to boot rather than falling back silently. Raise the resolution only whe
 box can carry it (see Phase 2).
 
 ## Test it side by side
+
+On a Hetzner project (on GCP/DO there is no Standard webinar to compare against):
 
 1. Deploy. The migration runs on its own.
 2. **Admin → Accounts →** pick a host **→ Features → Edge delivery (beta)** on.

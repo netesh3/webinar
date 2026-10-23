@@ -180,6 +180,8 @@ func run() error {
 	apiServer.UseEngage(crm)
 	go apiServer.StartMeetingLimitSweeper(ctx)
 	go apiServer.StartRecordingRetentionSweeper(ctx)
+	// Future webinars on GCP/DO video servers are edge-only (docs/edge-delivery.md).
+	go apiServer.BackfillEdgeDelivery(ctx)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

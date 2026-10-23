@@ -1004,8 +1004,10 @@ type Webinar struct {
 	/* Delivery is how the audience receives the session: DeliveryStandard (everyone on
 	 * the SFU, or the WHEP mix for CDN-broadcast hosts — today's behaviour) or
 	 * DeliveryEdge (the audience watches LL-HLS and gets chat, polls and controls over
-	 * the SSE event stream, never connecting to LiveKit). Edge is opt-in per webinar,
-	 * behind FeatureEdgeDelivery. See docs/edge-delivery.md. */
+	 * the SSE event stream, never connecting to LiveKit). A webinar on a GCP or
+	 * DigitalOcean video server is always edge; on Hetzner edge is opt-in per webinar,
+	 * behind FeatureEdgeDelivery. Meetings and simulive are always standard. See
+	 * docs/edge-delivery.md. */
 	Delivery string `json:"delivery,omitempty"`
 	/* ZoomNotice is set on a save Zoom's plan refused. Not stored. */
 	ZoomNotice string `json:"zoomNotice,omitempty"`
@@ -1316,8 +1318,9 @@ const (
 	 * polls and controls over the SSE event stream instead of LiveKit.
 	 *
 	 * Off — the default for every account, because absent means off — means the
-	 * choice is not offered and a save asking for it is refused. Beta. See
-	 * docs/edge-delivery.md. */
+	 * choice is not offered and a save asking for it is refused. Only consulted on a
+	 * Hetzner video server: on GCP and DigitalOcean every webinar is edge and the switch
+	 * is implied (DeliveryPolicy). See docs/edge-delivery.md. */
 	FeatureEdgeDelivery = "edge_delivery"
 	/* FeatureAI is the AI writing help: "Write with AI" when scheduling, and the AI
 	 * features after it. Each call counts against the monthly AI caps
@@ -1497,7 +1500,7 @@ var Features = []Feature{
 	{
 		Key:         FeatureEdgeDelivery,
 		Label:       "Edge delivery (beta)",
-		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery.",
+		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery. Only matters on Hetzner video servers: on GCP and DigitalOcean every webinar is edge for every host.",
 		Group:       FeatureGroupDelivery,
 	},
 	{
@@ -3922,6 +3925,18 @@ type JoinResponse struct {
 // latency clock overlay.
 type ServerTime struct {
 	Now int64 `json:"now"`
+}
+
+/* DeliveryPolicy is GET /api/host/delivery[?slug=]: which delivery the schedule form may
+ * offer this host, for a new webinar or (with slug) for one they own.
+ *
+ * EdgeOnly is a webinar on a GCP or DigitalOcean video server (or one not placed yet that
+ * will be): it is always edge, the form offers no choice and the server ignores the field.
+ * EdgeChoice is the old Standard / Edge choice, for a host with the edge_delivery switch on
+ * any other server. Both false is standard only. Meetings and simulive are always standard. */
+type DeliveryPolicy struct {
+	EdgeOnly   bool `json:"edgeOnly"`
+	EdgeChoice bool `json:"edgeChoice"`
 }
 
 /* EdgeStatus is the host's view of a webinar's delivery: whether the audience is on edge,

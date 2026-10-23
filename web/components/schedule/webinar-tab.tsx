@@ -12,7 +12,7 @@ import {
   timeZoneNames,
   zonedToInstant,
 } from "@/lib/format";
-import type { CRMMediaFile, Webinar } from "@/lib/api-types";
+import type { CRMMediaFile, DeliveryPolicy, Webinar } from "@/lib/api-types";
 import type { PreparedWebinarImage } from "@/lib/webinar-image";
 import { BasicsSection } from "./basics";
 import { FormGroup, FormSection, Text } from "./chrome";
@@ -47,9 +47,12 @@ export function WebinarTab({
   survey,
   polls,
   feedbackPreviews,
+  deliveryPolicy = null,
 }: {
   /** A meeting's form: the topic and When, nothing else. */
   meeting?: boolean;
+  /** What delivery to offer (lib/delivery-policy.ts), null while it loads. */
+  deliveryPolicy?: DeliveryPolicy | null;
   form: FormState;
   set: SetForm;
   fields: Record<string, string>;
@@ -150,7 +153,7 @@ export function WebinarTab({
           startsAtPreview={startsAtPreview}
         />
       </FormGroup>
-      <WhereSection form={form} set={set} fields={fields} />
+      <WhereSection form={form} set={set} fields={fields} deliveryPolicy={deliveryPolicy} />
       <RegistrationSection form={form} set={set} fields={fields} />
       <RoomSection
         form={form}
