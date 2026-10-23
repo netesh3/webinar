@@ -9,15 +9,22 @@ Facts below were checked against the code on main (`api/internal/zoom`, `api/int
 
 ## Before you submit
 
-1. **Remove the unused scopes** (see [Scopes](#scopes)). Zoom rejects apps that request scopes they do
+1. **Production must use the Production Client ID.** Zoom's reviewers authorize against
+   https://webinarliv.com, so the deployed `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET` must be the app's
+   *Production* credentials (App Credentials → Production), not the Development ones. Switch the
+   secrets and redeploy the API before submitting, then check that **Connect Zoom** shows the
+   production app on Zoom's consent screen.
+2. **Remove the unused scopes** (see [Scopes](#scopes)). Zoom rejects apps that request scopes they do
    not use, and the app currently has 8 extra ones.
-2. **Remove the `recording.completed` event subscription.** The app acknowledges it and stores nothing,
+3. **Remove the `recording.completed` event subscription.** The app acknowledges it and stores nothing,
    and keeping it means asking for a recording scope.
-3. **Make a reviewer account on Webinar Liv** with Zoom available (see [Test account](#test-account)).
-4. Check these pages load while signed out:
+4. **Make a reviewer account on Webinar Liv** with Zoom available (see [Test account](#test-account)).
+5. Check these pages load while signed out:
    - https://webinarliv.com/privacy (has a "Zoom (optional)" section)
    - https://webinarliv.com/terms
    - https://webinarliv.com/integrations/zoom (add, use and remove instructions)
+   - https://webinarliv.com/zoom/test-plan (reviewer test plan, unlisted and `noindex`; source in
+     `web/app/zoom/test-plan/page.tsx`)
 
 ## App listing
 
@@ -73,7 +80,9 @@ Zoom account (Pro or above; Zoom webinars need the Webinars add-on).
 
 ## Scopes
 
-Keep exactly these 13. Each one is used by a call in `api/internal/zoom/client.go`.
+Keep exactly these 15. Each one is used by a call in `api/internal/zoom/client.go` or by an event
+subscription. The reviewer test plan at https://webinarliv.com/zoom/test-plan maps each scope to a
+test case.
 
 | Scope | Why (paste into the scope description) |
 | --- | --- |
@@ -83,12 +92,14 @@ Keep exactly these 13. Each one is used by a call in `api/internal/zoom/client.g
 | `meeting:update:meeting` | Keep the title, time and length in step when the host edits the webinar (`PATCH /meetings/{id}`). |
 | `meeting:delete:meeting` | Delete the meeting when the host deletes the webinar or moves it off Zoom before anyone was sent a link (`DELETE /meetings/{id}`). |
 | `meeting:write:registrant` | Add each person who registers on Webinar Liv, so they get a personal join link (`POST /meetings/{id}/registrants`). |
+| `meeting:read:participant` | Receive `meeting.participant_joined` / `meeting.participant_left` events for meetings the host created from Webinar Liv, to record live attendance. No REST call uses it; Zoom requires it for those event subscriptions. |
 | `meeting:read:list_past_participants` | After the meeting ends, read who attended and for how long for the host's attendance report (`GET /past_meetings/{id}/participants`). |
 | `webinar:write:webinar` | Same as the meeting scope above, for Zoom webinars (`POST /users/me/webinars`). |
 | `webinar:read:webinar` | Same, for Zoom webinars (`GET /webinars/{id}`). |
 | `webinar:update:webinar` | Same, for Zoom webinars (`PATCH /webinars/{id}`). |
 | `webinar:delete:webinar` | Same, for Zoom webinars (`DELETE /webinars/{id}`). |
 | `webinar:write:registrant` | Same, for Zoom webinars (`POST /webinars/{id}/registrants`). |
+| `webinar:read:participant` | Same, for `webinar.participant_joined` / `webinar.participant_left` events. |
 | `webinar:read:list_past_participants` | Same, for Zoom webinars (`GET /past_webinars/{id}/participants`). |
 
 **Remove these 8.** Nothing in the code calls them:
@@ -123,7 +134,11 @@ Zoom's reviewers need to sign in to Webinar Liv and connect their own Zoom test 
 3. Put the email and password in the submission form's test credentials field, never in git.
 4. After the review is approved, delete the account or change its password.
 
-**Instructions for reviewers** (paste into the form):
+**Test plan.** Zoom asks for a step-by-step test plan covering authorization, each scope and every
+feature. Link https://webinarliv.com/zoom/test-plan in the submission. It never holds credentials.
+
+**Instructions for reviewers** (paste into the form; the full plan is at
+https://webinarliv.com/zoom/test-plan):
 
 > 1. Go to https://webinarliv.com/login and sign in with the test credentials above.
 > 2. Open Settings → Integrations. On the Zoom card, click **Connect Zoom** and approve with your
