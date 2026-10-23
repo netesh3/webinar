@@ -87,7 +87,9 @@ export function SimuliveInfoButton({
 }
 
 /** The "Simulive" create option on the Webinars home: a card to the recording picker, with
- *  "What's a Simulive?" under it (a button cannot sit inside the card's link). */
+ *  the "What's a Simulive?" ⓘ in its top-right corner. A button cannot sit inside the card's
+ *  link, so the ⓘ is the link's sibling, laid over it; below the card it made this one row
+ *  taller than its neighbours. */
 export function SimuliveCreateCard({
   cardClass,
   children,
@@ -97,11 +99,11 @@ export function SimuliveCreateCard({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Link href={SIMULIVE_PICKER_HREF} className={cardClass}>
+    <div className="relative flex">
+      <Link href={SIMULIVE_PICKER_HREF} className={`flex-1 ${cardClass}`}>
         {children}
       </Link>
-      <SimuliveInfoButton variant="link" className="self-start px-1" />
+      <SimuliveInfoButton className="absolute top-1 right-1" />
     </div>
   );
 }
