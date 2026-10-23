@@ -1,6 +1,6 @@
 /* The AI recap: the pure half.
  *
- * What the Results tab's recap card says when there is no recap yet, the action items as
+ * What the AI insights tab's recap card says when there is no recap yet, the action items as
  * text to paste, and how a chapter — seconds from when the SESSION went live — maps onto
  * a recording, which starts whenever somebody pressed Record and may be several takes
  * with gaps between them. The components (components/ai-recap-card.tsx, the player in

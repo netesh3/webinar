@@ -3,8 +3,9 @@
  * Three tabs per stage, in the order a coach works: before the webinar Overview (the link,
  * the numbers, what goes out on its own, anyone waiting), People (who registered, pending
  * approvals first) and Setup (everything about how it runs). Live adds Results. After it,
- * Results (the Engagement dashboard), Follow up (the one place to message people after a
- * webinar) and, when this host may use cloud recording, Recording.
+ * Results (the Engagement dashboard), AI (the recap, hot leads and follow-up drafts, for an
+ * account with AI), Follow up (the one place to message people after a webinar) and, when
+ * this host may use cloud recording, Recording.
  *
  * Pure so node can test it: old links still say ?tab=report, ?tab=admit, ?tab=messages, and
  * a link that silently lands somewhere else is the kind of breakage nobody reports. */
@@ -12,7 +13,7 @@
 import type { SectionId } from "./engagement/sections.ts";
 
 export const PRE_EVENT_TABS = ["Overview", "People", "Setup"] as const;
-export const ENDED_TABS = ["Results", "Follow up", "Recording"] as const;
+export const ENDED_TABS = ["Results", "AI", "Follow up", "Recording"] as const;
 
 export type HostTab =
   | (typeof PRE_EVENT_TABS)[number]
@@ -31,16 +32,21 @@ export function stepFor(status: HostStatus): Step {
 
 /* Follow up needs WhatsApp. Recording is the cloud-recording tab, so it is omitted
  * unless this host has that switch — local recording has no library here. Live adds
- * Results after the three, so the numbers are one click away while it runs. */
+ * Results after the three, so the numbers are one click away while it runs.
+ *
+ * AI (recap, hot leads, follow-up writer) is after the end only, and only for an account
+ * with the AI switch: without it there is no tab, and Results shows nothing AI. */
 export function tabsFor(
   status: HostStatus,
   whatsapp = false,
   cloudRecording = false,
   meeting = false,
+  ai = false,
 ): readonly HostTab[] {
-  if (meeting) return meetingTabs(tabsFor(status, whatsapp, cloudRecording));
+  if (meeting) return meetingTabs(tabsFor(status, whatsapp, cloudRecording, false, ai));
   if (status === "ended") {
     const tabs: HostTab[] = ["Results"];
+    if (ai) tabs.push("AI");
     if (whatsapp) tabs.push("Follow up");
     if (cloudRecording) tabs.push("Recording");
     return tabs;
@@ -85,6 +91,11 @@ const QUERY: Record<string, HostTab> = {
   messages: "Follow up",
   recording: "Recording",
   recordings: "Recording",
+  ai: "AI",
+  "ai-insights": "AI",
+  recap: "AI",
+  leads: "AI",
+  "hot-leads": "AI",
 };
 
 /** On an ended webinar, links to tabs that became Results sections open that section. */
@@ -109,10 +120,13 @@ export function allowedTab(
   whatsapp = false,
   cloudRecording = false,
   meeting = false,
+  ai = false,
 ): HostTab | null {
   if (!tab) return null;
-  const tabs = tabsFor(status, whatsapp, cloudRecording, meeting);
+  const tabs = tabsFor(status, whatsapp, cloudRecording, meeting, ai);
   if (tabs.includes(tab)) return tab;
+  // A recap link for an account without AI (any more): Results has the session's numbers.
+  if (status === "ended" && tab === "AI") return "Results";
   // An old People link to a meeting before its end has nowhere better than Overview.
   if (meeting && status !== "ended" && tab === "People") return "Overview";
   if (status === "ended" && tab === "People") return "Results";
@@ -137,15 +151,17 @@ export function defaultTab(
     requested,
     cloudRecording = false,
     meeting = false,
+    ai = false,
   }: {
     pending?: number;
     whatsapp?: boolean;
     requested?: string | null;
     cloudRecording?: boolean;
     meeting?: boolean;
+    ai?: boolean;
   } = {},
 ): HostTab {
-  const asked = allowedTab(tabFromQuery(requested), status, whatsapp, cloudRecording, meeting);
+  const asked = allowedTab(tabFromQuery(requested), status, whatsapp, cloudRecording, meeting, ai);
   if (asked) return asked;
   return status === "ended" ? "Results" : "Overview";
 }

@@ -19,7 +19,7 @@ import {
 /** How often a recap still being written is looked at again. */
 const PENDING_POLL_MS = 30_000;
 
-/* The Results tab's AI recap card, for an ended session: what was covered, what the host
+/* The AI insights tab's recap card, for an ended session: what was covered, what the host
  * promised, what the audience asked. Written automatically when the session ends (and
  * emailed to the host); there is nothing to press. The empty states are lib/recap.ts. */
 export function AIRecapCard({ slug }: { slug: string }) {

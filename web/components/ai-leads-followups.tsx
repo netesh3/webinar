@@ -59,7 +59,7 @@ function AITitle({ children }: { children: string }) {
   );
 }
 
-/* The Results tab's two AI cards for an ended session, side by side: Hot leads (who to
+/* The AI insights tab's two cards for an ended session, side by side: Hot leads (who to
  * follow up with first, and why) and the Follow-up writer (a draft per group). The leads
  * are read once here and shared, so the follow-up groups' exports are the same people. */
 export function AILeadsAndFollowups({ webinar }: { webinar: Webinar }) {

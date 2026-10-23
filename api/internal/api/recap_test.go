@@ -208,7 +208,7 @@ func TestRecapAfterWebinarEndsEmailsTheHostOnce(t *testing.T) {
 	}
 	if email.Subject != "✨ Your AI recap: Money basics for young earners" ||
 		!strings.Contains(email.Body, "Share the budgeting sheet") ||
-		!strings.Contains(email.Body, "/host/"+wb.ID+"?tab=results") ||
+		!strings.Contains(email.Body, "/host/"+wb.ID+"?tab=ai") ||
 		!strings.Contains(email.HTML, "Which SIP should I start with?") {
 		t.Errorf("email = %+v", email)
 	}

@@ -56,4 +56,26 @@ assert.equal(allowedTab(tabFromQuery("recordings"), "ended", false, true), "Reco
 assert.equal(allowedTab(tabFromQuery("admit"), "ended"), "Results");
 assert.equal(allowedTab(tabFromQuery("settings"), "ended"), null);
 
+// The AI tab: ended sessions only, for an account with AI, right after Results.
+assert.deepEqual(tabsFor("ended", true, true, false, true), ["Results", "AI", "Follow up", "Recording"]);
+assert.deepEqual(tabsFor("ended", false, false, false, true), ["Results", "AI"]);
+assert.deepEqual(tabsFor("ended", true, true, false, false), ["Results", "Follow up", "Recording"]);
+for (const s of ["draft", "scheduled", "live"]) {
+  assert.ok(!tabsFor(s, true, true, false, true).includes("AI"), s);
+  assert.ok(!tabsFor(s, true, true, true, true).includes("AI"), `meeting ${s}`);
+}
+// Meetings get it too (they have no Follow up).
+assert.deepEqual(tabsFor("ended", true, true, true, true), ["Results", "AI", "Recording"]);
+assert.deepEqual(tabsFor("ended", true, true, true, false), ["Results", "Recording"]);
+// ?tab=ai (the recap email) and its spellings.
+for (const q of ["ai", "AI", "recap", "leads", "ai-insights"]) assert.equal(tabFromQuery(q), "AI", q);
+assert.equal(defaultTab("ended", { ai: true, requested: "ai" }), "AI");
+assert.equal(defaultTab("ended", { ai: true, meeting: true, requested: "recap" }), "AI");
+// Without AI, or before the end, a recap link falls back sensibly.
+assert.equal(defaultTab("ended", { ai: false, requested: "ai" }), "Results");
+assert.equal(defaultTab("live", { ai: true, requested: "ai" }), "Overview");
+assert.equal(defaultTab("scheduled", { ai: true, requested: "ai" }), "Overview");
+// Old ?tab=results links still open Results (which points at the AI tab).
+assert.equal(defaultTab("ended", { ai: true, requested: "results" }), "Results");
+
 console.log("host-tabs: ok");

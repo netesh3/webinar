@@ -26,7 +26,7 @@ type RecapNotice struct {
 	Topic        string
 	Meeting      bool
 	Recap        types.SessionRecap
-	ResultsURL   string // absolute: the Results tab
+	RecapURL     string // absolute: the AI insights tab (?tab=ai)
 	RecordingURL string // absolute: the host's recording, empty when there is none
 }
 
@@ -123,7 +123,7 @@ func RecapEmail(n RecapNotice) (subject, text, html string) {
 	if n.Recap.Notice != "" {
 		b.WriteString(n.Recap.Notice + "\n\n")
 	}
-	fmt.Fprintf(&b, "See the full results:\n%s\n\n", n.ResultsURL)
+	fmt.Fprintf(&b, "See the full recap, hot leads and follow-ups:\n%s\n\n", n.RecapURL)
 	if n.RecordingURL != "" {
 		fmt.Fprintf(&b, "Watch the recording:\n%s\n\n", n.RecordingURL)
 	}
@@ -247,7 +247,7 @@ var recapHTML = template.Must(template.New("recap").Parse(`<!DOCTYPE html>
   <tr><td class="wl-pad wl-btn" align="left" style="padding:24px 40px 8px 40px;">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
       <td align="center" bgcolor="#0b5cff" style="background-color:#0b5cff;border-radius:10px;">
-        <a href="{{.ResultsURL}}" target="_blank" style="display:inline-block;padding:14px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:20px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">See the full results</a>
+        <a href="{{.RecapURL}}" target="_blank" style="display:inline-block;padding:14px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:20px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">See the full recap</a>
       </td>
     </tr></table>
   </td></tr>

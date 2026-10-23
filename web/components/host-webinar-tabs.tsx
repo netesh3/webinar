@@ -13,7 +13,7 @@ import { SimuliveAutoCard } from "./simulive-auto-card";
 import { SimuliveAutopilotCard } from "./simulive-discover";
 import { SimuliveStartCard } from "./schedule/simulive-start";
 import { EngagementTab } from "./engagement/engagement-tab";
-import { CalendarIcon, PlusIcon, TrashIcon } from "./icons";
+import { CalendarIcon, PlusIcon, SparklesIcon, TrashIcon } from "./icons";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
 import { SortHeader, useSort } from "./sort-header";
 import { Avatar, Badge, Button, ButtonLink, Card, ListPager, SectionTitle } from "./ui";
@@ -28,6 +28,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import {
   ChannelEmail,
+  FeatureAI,
   FeatureAIKnowledge,
   FeatureCloudRecording,
   FeatureJoinWithoutRegistration,
@@ -112,11 +113,14 @@ export function HostWebinarTabs({
   // The AI knowledge pick: the session's documents, for an account with AI. A co-host on
   // someone else's session reads the host's; the server answers feature_off for the rest.
   const aiKnowledge = (account?.features ?? []).includes(FeatureAIKnowledge);
+  // The AI tab (recap, hot leads, follow-up writer) after the end. Without AI it is not
+  // offered and Results shows nothing AI.
+  const ai = (account?.features ?? []).includes(FeatureAI);
   /* A meeting has no People and no Follow up (lib/host-tabs.ts meetingTabs), and its Overview
    * and Setup leave out what is about registrants. Recording, chat, Q&A, polls and Results are
    * the webinar's own, because a meeting's room has all of them. */
   const meeting = isMeetingKind(w);
-  const tabs = tabsFor(w.status, whatsappConnect, cloudRecording, meeting);
+  const tabs = tabsFor(w.status, whatsappConnect, cloudRecording, meeting, ai);
 
   const [tab, setTab] = useState<HostTab>(() =>
     defaultTab(w.status, {
@@ -124,17 +128,20 @@ export function HostWebinarTabs({
       requested: initialTab,
       cloudRecording,
       meeting,
+      ai,
     }),
   );
 
   // Follow ?tab= when a link names a tab. Adjusted during render when the inputs change,
-  // not in an effect after it. cloudRecording is one of those inputs: the session arrives
-  // after the first paint, and a host who has the switch should not stay on the fallback.
+  // not in an effect after it. cloudRecording and ai are among those inputs: the session
+  // arrives after the first paint, and a host who has the switch should not stay on the
+  // fallback (the recap email's ?tab=ai would otherwise land on Results).
   const queryInputs = JSON.stringify([
     initialTab ?? null,
     w.status,
     whatsappConnect,
     cloudRecording,
+    ai,
   ]);
   const [seenQueryInputs, setSeenQueryInputs] = useState(queryInputs);
   if (queryInputs !== seenQueryInputs) {
@@ -145,11 +152,12 @@ export function HostWebinarTabs({
       whatsappConnect,
       cloudRecording,
       meeting,
+      ai,
     );
     if (next) setTab(next);
     // A status change (the webinar just ended) can take the open tab away.
     else if (!tabs.includes(tab))
-      setTab(defaultTab(w.status, { whatsapp: whatsappConnect, cloudRecording, meeting }));
+      setTab(defaultTab(w.status, { whatsapp: whatsappConnect, cloudRecording, meeting, ai }));
   }
 
   useLayoutEffect(() => {
@@ -168,6 +176,8 @@ export function HostWebinarTabs({
             People: counts?.total ?? w.registrantCount,
             Recording: recordings.length,
           }}
+          labels={{ AI: "AI insights" }}
+          icons={{ AI: <SparklesIcon className="size-3.5 text-brand" /> }}
         />
       </div>
 
@@ -246,12 +256,26 @@ export function HostWebinarTabs({
       {tab === "Results" && ended && (
         <SimuliveAutopilotCard webinar={w} recordings={recordings} />
       )}
-      {tab === "Results" && ended && (
-        <div className="mb-4">
-          <AIRecapCard slug={w.id} />
-        </div>
+      {/* Mounted only while the tab is open, so nothing AI is fetched (or polled) before. */}
+      {tab === "AI" && ended && ai && (
+        <>
+          <div className="mb-4">
+            <AIRecapCard slug={w.id} />
+          </div>
+          <AILeadsAndFollowups webinar={w} />
+        </>
       )}
-      {tab === "Results" && ended && <AILeadsAndFollowups webinar={w} />}
+      {/* Old recap emails link to ?tab=results: one line pointing at where the recap went. */}
+      {tab === "Results" && ended && ai && (
+        <button
+          type="button"
+          onClick={() => setTab("AI")}
+          className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-brand hover:underline"
+        >
+          <SparklesIcon className="size-3.5" />
+          AI recap, hot leads and follow-up drafts are in AI insights
+        </button>
+      )}
       {tab === "Results" && (
         <EngagementTab
           webinar={w}
