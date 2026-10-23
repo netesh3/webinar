@@ -8,6 +8,8 @@ import {
   boostBlocker,
   boostBlockerText,
   clampBoost,
+  freshLevel,
+  talking,
   isIOSLike,
   judgeBoost,
   rendererVolume,
@@ -61,27 +63,46 @@ ok(boostBlocker({ ...fine, publisher: true, ios: true, failed: true }) === "publ
 ok(boostBlockerText("publisher") === null && boostBlockerText("lock-screen") === null, "silent blockers say nothing");
 ok(typeof boostBlockerText("ios") === "string" && typeof boostBlockerText("failed") === "string", "the others explain");
 
+// ---- freshLevel / talking
+ok(freshLevel({ audioLevel: 0.3, rtpTimestamp: 1000 }, undefined) === 0.3, "first reading counts");
+ok(freshLevel({ audioLevel: 0.3, rtpTimestamp: 1960 }, 1000) === 0.3, "a moving RTP timestamp is fresh");
+ok(freshLevel({ audioLevel: 0.355, rtpTimestamp: 1000 }, 1000) === null, "a stuck RTP timestamp is stale: Chrome's ten-second leftover");
+ok(freshLevel({ rtpTimestamp: 1000 }, undefined) === null, "no level, no reading");
+ok(freshLevel(undefined, 5) === null, "no source, no reading");
+ok(talking(0.3, false) && !talking(0.001, true), "a fresh level decides, whatever the SFU says");
+ok(talking(null, true) && !talking(null, false), "no level: the SFU's speaker detection decides");
+
 // ---- judgeBoost
+const fed = (t: boolean) => ({ talking: t, rms: 0.1 });
+const starved = (t: boolean) => ({ talking: t, rms: 0 });
 {
   let h = HEALTHY;
-  for (let i = 0; i < 20; i++) h = judgeBoost(h, 0, 0);
-  ok(h.verdict === "ok" && h.stalled === 0, "silence on the network and in the graph is just silence");
-  h = judgeBoost(HEALTHY, null, 0);
-  ok(h.verdict === "ok" && h.stalled === 0, "no network reading: nothing judged");
+  for (let i = 0; i < 20; i++) h = judgeBoost(h, [starved(false), starved(false)], true);
+  ok(h.verdict === "ok" && h.stalled === 0, "nobody talking: nothing judged");
+  for (let i = 0; i < 20; i++) h = judgeBoost(h, [starved(true)], false);
+  ok(h.verdict === "ok" && h.stalled === 0, "room not connected (a reconnect): nothing judged");
+  h = judgeBoost(HEALTHY, [], true);
+  ok(h.verdict === "ok", "no streams: nothing judged");
 }
 {
   let h = HEALTHY;
-  for (let i = 0; i < STALLED_CHECKS - 1; i++) h = judgeBoost(h, 0.3, 0);
-  ok(h.verdict === "ok", "speech with nothing in the graph: not yet");
-  h = judgeBoost(h, 0.3, 0);
+  for (let i = 0; i < STALLED_CHECKS - 1; i++) h = judgeBoost(h, [starved(true)], true);
+  ok(h.verdict === "ok", "a talker with nothing in the graph: not yet");
+  h = judgeBoost(h, [starved(true)], true);
   ok(h.verdict === "failed", "…then failed after STALLED_CHECKS");
-  ok(judgeBoost(h, 0.3, 0.2).verdict === "failed", "failed stays failed");
+  ok(judgeBoost(h, [fed(true)], true).verdict === "failed", "failed stays failed");
+}
+{
+  // The masking case: one stream fed (comfort noise), another talking and missing.
+  let h = HEALTHY;
+  for (let i = 0; i < STALLED_CHECKS; i++) h = judgeBoost(h, [fed(false), starved(true)], true);
+  ok(h.verdict === "failed", "a missing talker is not hidden by another stream's audio");
 }
 {
   let h = HEALTHY;
-  h = judgeBoost(h, 0.3, 0);
-  h = judgeBoost(h, 0.3, 0.05);
-  ok(h.stalled === 0, "audio arriving in the graph resets the count");
+  h = judgeBoost(h, [starved(true)], true);
+  h = judgeBoost(h, [fed(true), fed(false)], true);
+  ok(h.stalled === 0, "every talker reaching the graph clears the count");
 }
 
 // ---- rendererVolume

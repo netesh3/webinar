@@ -1,6 +1,6 @@
 "use client";
 
-import { RoomEvent, Track, type RemoteAudioTrack, type Room } from "livekit-client";
+import { ConnectionState, RoomEvent, Track, type RemoteAudioTrack, type RemoteParticipant, type Room } from "livekit-client";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { softLimitCurve } from "./noise-suppression-policy";
 import {
@@ -9,11 +9,14 @@ import {
   HEALTHY,
   boostBlocker,
   clampBoost,
+  freshLevel,
   isIOSLike,
   judgeBoost,
   rendererVolume,
+  talking,
   type BoostBlocker,
   type BoostHealth,
+  type StreamReading,
 } from "./volume-boost-policy";
 
 /* The attendee volume boost: up to 200% on everything the room plays, for somebody whose
@@ -77,7 +80,9 @@ function primeContext(): void {
   if (typeof AudioContext === "undefined") return;
   if (!ctx || ctx.state === "closed") {
     try {
-      ctx = new AudioContext({ latencyHint: "playback" });
+      // The default ("interactive") latency: a larger playback buffer would put the room's
+      // sound behind its video.
+      ctx = new AudioContext();
     } catch {
       ctx = null;
       return;
@@ -129,96 +134,116 @@ export function useVolumeBoost(): BoostState & { setLevel: (v: number) => void }
  *  heard. */
 const SOURCES = new Set<Track.Source>([Track.Source.Microphone, Track.Source.ScreenShareAudio, Track.Source.Unknown]);
 
-function remoteAudioTracks(room: Room): RemoteAudioTrack[] {
-  const out: RemoteAudioTrack[] = [];
-  room.remoteParticipants.forEach((p) => {
-    p.audioTrackPublications.forEach((pub) => {
+type Stream = { track: RemoteAudioTrack; participant: RemoteParticipant };
+
+function remoteAudioStreams(room: Room): Stream[] {
+  const out: Stream[] = [];
+  room.remoteParticipants.forEach((participant) => {
+    participant.audioTrackPublications.forEach((pub) => {
       // Audio publications carry audio tracks; the map is typed with the general RemoteTrack.
-      if (pub.isSubscribed && pub.track && SOURCES.has(pub.source)) out.push(pub.track as RemoteAudioTrack);
+      if (pub.isSubscribed && pub.track && SOURCES.has(pub.source)) {
+        out.push({ track: pub.track as RemoteAudioTrack, participant });
+      }
     });
   });
   return out;
 }
 
+type Input = { node: MediaStreamAudioSourceNode; meter: AnalyserNode; buf: Float32Array<ArrayBuffer> };
+
 /** Exported so the graph can be checked in a real browser against a live WebRTC stream. */
 export class BoostGraph {
   private readonly gain: GainNode;
   private readonly shaper: WaveShaperNode;
-  private readonly meter: AnalyserNode;
-  private readonly buf: Float32Array<ArrayBuffer>;
-  private readonly sources = new Map<MediaStreamTrack, MediaStreamAudioSourceNode>();
+  private readonly inputs = new Map<MediaStreamTrack, Input>();
+  private started = false;
 
   constructor(private readonly context: AudioContext) {
     this.gain = context.createGain();
-    // Silent until the elements have gone down to 0 (see setLevel), so the two never play
-    // at once at full strength.
+    // Silent until setLevel: the elements have gone down to 0 by then.
     this.gain.gain.value = 0;
     this.shaper = context.createWaveShaper();
     // Exactly `gain` below the knee, a soft roll-off above it, never full scale: the same
     // limiter the presenter's own leveller uses (lib/noise-suppression-policy.ts).
     this.shaper.curve = softLimitCurve(BOOST_HEADROOM);
-    this.meter = context.createAnalyser();
-    this.meter.fftSize = 2048;
-    this.buf = new Float32Array(this.meter.fftSize);
     this.gain.connect(this.shaper);
     this.shaper.connect(context.destination);
   }
 
-  /** Makes the graph's inputs exactly these tracks. */
+  /** Makes the graph's inputs exactly these tracks, each with its own meter so the watchdog
+   *  can tell one speaker's missing audio from another's being there. */
   sync(tracks: MediaStreamTrack[]): void {
     const want = new Set(tracks.filter((t) => t.readyState === "live"));
-    for (const [t, node] of this.sources) {
+    for (const [t, input] of this.inputs) {
       if (want.has(t)) continue;
-      node.disconnect();
-      this.sources.delete(t);
+      input.node.disconnect();
+      input.meter.disconnect();
+      this.inputs.delete(t);
     }
     for (const t of want) {
-      if (this.sources.has(t)) continue;
+      if (this.inputs.has(t)) continue;
       try {
         const node = this.context.createMediaStreamSource(new MediaStream([t]));
+        const meter = this.context.createAnalyser();
+        meter.fftSize = 2048;
         node.connect(this.gain);
-        node.connect(this.meter);
-        this.sources.set(t, node);
+        node.connect(meter);
+        this.inputs.set(t, { node, meter, buf: new Float32Array(meter.fftSize) });
       } catch {
-        // A track this browser will not take: the watchdog sees its speech go missing.
+        // A track this browser will not take: the watchdog sees that speaker go missing.
       }
     }
   }
 
-  /** 0 while the elements are still playing; the level once they are at 0. */
+  /** The level: at once the first time (the elements have just gone to 0, and a fade-in would
+   *  be a dip), gliding after that, as the slider moves. */
   setLevel(level: number): void {
     // The curve multiplies by BOOST_HEADROOM back; see softLimitCurve.
-    this.gain.gain.setTargetAtTime(level / BOOST_HEADROOM, this.context.currentTime, 0.05);
+    const value = level / BOOST_HEADROOM;
+    const now = this.context.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    if (this.started) this.gain.gain.setTargetAtTime(value, now, 0.05);
+    else this.gain.gain.setValueAtTime(value, now);
+    this.started = true;
   }
 
-  /** RMS of everything coming into the graph, for the watchdog. */
-  inputRms(): number {
-    this.meter.getFloatTimeDomainData(this.buf);
+  /** Silent at once: the elements are coming back up to 1 in this same commit, and a fade
+   *  here would play both together, louder than either. */
+  cut(): void {
+    const now = this.context.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    this.gain.gain.setValueAtTime(0, now);
+  }
+
+  /** RMS of one track's audio as it reaches the graph; 0 for a track not in it. */
+  inputRms(track: MediaStreamTrack): number {
+    const input = this.inputs.get(track);
+    if (!input) return 0;
+    input.meter.getFloatTimeDomainData(input.buf);
     let sum = 0;
-    for (let i = 0; i < this.buf.length; i++) sum += this.buf[i] * this.buf[i];
-    return Math.sqrt(sum / this.buf.length);
+    for (let i = 0; i < input.buf.length; i++) sum += input.buf[i] * input.buf[i];
+    return Math.sqrt(sum / input.buf.length);
   }
 
   destroy(): void {
-    for (const node of this.sources.values()) node.disconnect();
-    this.sources.clear();
+    for (const input of this.inputs.values()) {
+      input.node.disconnect();
+      input.meter.disconnect();
+    }
+    this.inputs.clear();
     this.gain.disconnect();
     this.shaper.disconnect();
-    this.meter.disconnect();
   }
 }
 
-/** The loudest RTP audio level any received stream reports right now (0..1), or null when
- *  none reports one. */
-export function networkLevel(tracks: Pick<RemoteAudioTrack, "receiver">[]): number | null {
-  let max: number | null = null;
-  for (const t of tracks) {
-    const sources = t.receiver?.getSynchronizationSources?.() ?? [];
-    for (const s of sources) {
-      if (typeof s.audioLevel === "number") max = Math.max(max ?? 0, s.audioLevel);
-    }
+/** The loudest source on a receiver right now, as the browser reports it (see freshLevel for
+ *  why the RTP timestamp comes with it). Exported for the browser check. */
+export function loudestSource(receiver: RTCRtpReceiver | undefined): { audioLevel?: number; rtpTimestamp?: number } | undefined {
+  let best: RTCRtpSynchronizationSource | undefined;
+  for (const s of receiver?.getSynchronizationSources?.() ?? []) {
+    if (typeof s.audioLevel === "number" && (!best || s.audioLevel > (best.audioLevel ?? 0))) best = s;
   }
-  return max;
+  return best;
 }
 
 function boostSupported(): boolean {
@@ -334,7 +359,7 @@ export function useVolumeBoostEngine(
     if (!active || !c) return;
     const g = new BoostGraph(c);
     graph.current = g;
-    const resync = () => g.sync(remoteAudioTracks(room).map((t) => t.mediaStreamTrack));
+    const resync = () => g.sync(remoteAudioStreams(room).map((st) => st.track.mediaStreamTrack));
     resync();
     const events = [
       RoomEvent.TrackSubscribed,
@@ -346,9 +371,23 @@ export function useVolumeBoostEngine(
     for (const e of events) room.on(e, resync);
 
     let health: BoostHealth = HEALTHY;
+    // Each stream's RTP timestamp at the previous check, so a level that stopped updating is
+    // not taken for speech (freshLevel).
+    let lastRtp = new Map<MediaStreamTrack, number>();
     const watch = setInterval(() => {
       resync();
-      health = judgeBoost(health, networkLevel(remoteAudioTracks(room)), g.inputRms());
+      const nextRtp = new Map<MediaStreamTrack, number>();
+      const readings: StreamReading[] = remoteAudioStreams(room).map(({ track, participant }) => {
+        const mst = track.mediaStreamTrack;
+        const src = loudestSource(track.receiver);
+        if (typeof src?.rtpTimestamp === "number") nextRtp.set(mst, src.rtpTimestamp);
+        return {
+          talking: talking(freshLevel(src, lastRtp.get(mst)), participant.isSpeaking),
+          rms: g.inputRms(mst),
+        };
+      });
+      lastRtp = nextRtp;
+      health = judgeBoost(health, readings, room.state === ConnectionState.Connected);
       if (health.verdict === "failed") {
         console.warn("[volume boost] speech on the network but none in the boost; back to normal playback");
         failedThisPage = true;
@@ -360,9 +399,8 @@ export function useVolumeBoostEngine(
       clearInterval(watch);
       for (const e of events) room.off(e, resync);
       if (graph.current === g) graph.current = null;
-      // Faded out rather than cut, while the elements come back up to 1.
-      g.setLevel(0);
-      setTimeout(() => g.destroy(), 300);
+      g.cut();
+      g.destroy();
     };
   }, [active, room]);
 

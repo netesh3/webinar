@@ -85,26 +85,61 @@ export function boostBlockerText(b: BoostBlocker): string | null {
 }
 
 /* The watchdog. The boost's whole risk is silence: the elements turned down to 0 while the
- * graph receives nothing (a browser that does not feed remote WebRTC into Web Audio, a
- * context that stopped). The network says when somebody is speaking — the RTP audio level
- * of each received stream — so the graph's own input can be checked against it, and silence
- * is only blamed on the boost when there was speech to hear. */
+ * graph receives nothing (a browser that does not feed remote WebRTC into Web Audio, a track
+ * that never made it into the graph). So each received stream is checked on its own: is that
+ * speaker talking right now, and is that speaker's own audio reaching the graph? Silence is
+ * only blamed on the boost when a speaker was talking and their audio was not there.
+ *
+ * "Talking right now" needs care. Chrome keeps a source in getSynchronizationSources() for
+ * ten seconds after its last packet, still showing that packet's audioLevel — measured: after
+ * the packets stopped, the graph input was 0 within a second while the source stayed listed
+ * at its old level for ten. Trusting that failed the boost on an ordinary network blip. So a
+ * level only counts when its RTP timestamp has moved since the last check (freshLevel), and
+ * where there is no level at all, livekit's own speaker detection (participant.isSpeaking,
+ * from the SFU) stands in. Nothing is judged while the room itself is not connected: during a
+ * reconnect every stream is silent for a reason that has nothing to do with the boost. */
 
 /** RTP audioLevel (linear 0..1, per RFC 6464 as browsers report it) that counts as speech. */
 export const SPEECH_RTP_LEVEL = 0.02;
-/** Graph input RMS below this is nothing at all. */
+/** A stream's own graph input RMS below this is nothing at all. */
 export const GRAPH_SILENT_RMS = 1e-5;
-/** Consecutive checks with speech on the network and nothing in the graph before giving up. */
+/** Consecutive checks with a speaker talking and their audio missing before giving up. */
 export const STALLED_CHECKS = 3;
+
+/** One synchronization source as the browser reports it. */
+export type SyncSource = { audioLevel?: number; rtpTimestamp?: number };
+
+/** A source's audio level if it is fresh — its RTP timestamp moved since `prevRtp` — or null
+ *  when it is stale or carries no level. */
+export function freshLevel(src: SyncSource | undefined, prevRtp: number | undefined): number | null {
+  if (!src || typeof src.audioLevel !== "number" || typeof src.rtpTimestamp !== "number") return null;
+  if (prevRtp !== undefined && src.rtpTimestamp === prevRtp) return null;
+  return src.audioLevel;
+}
+
+/** Whether a speaker is talking, from the fresh RTP level when there is one, else from the
+ *  SFU's speaker detection. */
+export function talking(level: number | null, sfuSpeaking: boolean): boolean {
+  return level !== null ? level > SPEECH_RTP_LEVEL : sfuSpeaking;
+}
+
+/** One stream at one check. */
+export type StreamReading = { talking: boolean; rms: number };
 
 export type BoostHealth = { stalled: number; verdict: "ok" | "failed" };
 export const HEALTHY: BoostHealth = { stalled: 0, verdict: "ok" };
 
-export function judgeBoost(prev: BoostHealth, rtpLevel: number | null, graphRms: number): BoostHealth {
+/**
+ * One check. A stall is a stream that is talking with nothing of it in the graph; any stall
+ * counts toward failure, and a check where every talking stream is reaching the graph clears
+ * the count. No talking stream, or the room not connected: nothing to judge by.
+ */
+export function judgeBoost(prev: BoostHealth, readings: StreamReading[], connected: boolean): BoostHealth {
   if (prev.verdict === "failed") return prev;
-  // No speech on the network, or no reading: nothing to judge by.
-  if (rtpLevel === null || !(rtpLevel > SPEECH_RTP_LEVEL)) return prev;
-  if (graphRms > GRAPH_SILENT_RMS) return HEALTHY;
+  if (!connected) return prev;
+  const speaking = readings.filter((r) => r.talking);
+  if (speaking.length === 0) return prev;
+  if (speaking.every((r) => r.rms > GRAPH_SILENT_RMS)) return HEALTHY;
   const stalled = prev.stalled + 1;
   return { stalled, verdict: stalled >= STALLED_CHECKS ? "failed" : "ok" };
 }
