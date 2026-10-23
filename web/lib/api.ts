@@ -50,6 +50,7 @@ import type {
   AdminWhatsAppUsage,
   AdminCostsResponse,
   AdminCostHostDetail,
+  AlertsChangedResponse,
   AlertsResponse,
   AppConfig,
   ApprovalsResponse,
@@ -1692,6 +1693,18 @@ export const api = {
   /** An empty list means "all of them", which is what Mark all read sends. */
   readHostAlerts: (ids: string[] = []) =>
     post<MuteAllResponse>("/api/host/alerts/read", { ids }),
+
+  /** "Mark all as read". Replies with the badge count afterwards. */
+  readAllHostAlerts: () =>
+    post<AlertsChangedResponse>("/api/host/alerts/read-all", {}),
+
+  /** The ✕ on one notification: gone from the panel for good (404 if already gone). */
+  dismissHostAlert: (id: string) =>
+    del<AlertsChangedResponse>(`/api/host/alerts/${seg(id)}`),
+
+  /** "Clear all": every notification dismissed. */
+  dismissAllHostAlerts: () =>
+    post<AlertsChangedResponse>("/api/host/alerts/dismiss-all", {}),
 
   addPanelist: (slug: string, email: string) =>
     post<Person>(`/api/host/webinars/${seg(slug)}/panelists`, { email }),

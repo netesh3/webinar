@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/notify"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -341,6 +342,63 @@ func (s *Server) handleReadHostAlerts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, types.MuteAllResponse{Muted: n})
+}
+
+// alertsChanged writes the shared reply of the bulk bell actions: rows touched, new badge.
+func (s *Server) alertsChanged(w http.ResponseWriter, r *http.Request, userID string, n int) {
+	count, err := s.store.UnreadAlertCount(r.Context(), userID)
+	if err != nil {
+		s.fail(w, r, "unread alert count", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, types.AlertsChangedResponse{Changed: n, Unread: count})
+}
+
+// handleReadAllHostAlerts is POST /api/host/alerts/read-all: the "Mark all as read" button.
+func (s *Server) handleReadAllHostAlerts(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	n, err := s.store.MarkAlertsRead(r.Context(), user.ID, nil)
+	if err != nil {
+		s.fail(w, r, "mark alerts read", err)
+		return
+	}
+	s.alertsChanged(w, r, user.ID, n)
+}
+
+// handleDismissAllHostAlerts is POST /api/host/alerts/dismiss-all: "Clear all" in the panel.
+func (s *Server) handleDismissAllHostAlerts(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	n, err := s.store.DismissAlerts(r.Context(), user.ID, nil)
+	if err != nil {
+		s.fail(w, r, "dismiss alerts", err)
+		return
+	}
+	s.alertsChanged(w, r, user.ID, n)
+}
+
+/* handleDismissHostAlert is DELETE /api/host/alerts/{id}: the ✕ on one notification.
+ *
+ * 404 when nothing matched — the id is not the caller's, does not exist, or was already
+ * dismissed. One answer for all three, so the endpoint does not confirm that another host's
+ * alert id exists.
+ */
+func (s *Server) handleDismissHostAlert(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That notification is gone.")
+		return
+	}
+	n, err := s.store.DismissAlerts(r.Context(), user.ID, []string{id})
+	if err != nil {
+		s.fail(w, r, "dismiss alert", err)
+		return
+	}
+	if n == 0 {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That notification is gone.")
+		return
+	}
+	s.alertsChanged(w, r, user.ID, n)
 }
 
 /* whenText formats a webinar's start for a human, in the webinar's own zone.

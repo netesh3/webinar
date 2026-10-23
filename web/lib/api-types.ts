@@ -3207,6 +3207,15 @@ export interface AlertsResponse {
   unread: number /* int */;
 }
 /**
+ *  AlertsChangedResponse answers a bulk change to the bell (dismiss one, dismiss all, read
+ *  * all): how many rows it touched, and the badge count afterwards, so the panel can show the
+ *  * server's number rather than guess at it.
+ */
+export interface AlertsChangedResponse {
+  changed: number /* int */;
+  unread: number /* int */;
+}
+/**
  *  ApprovalsRequest is the batch decision: a set of registrations and one state for all of them.
  *  *
  *  * IDs rather than "everyone pending" because a host reviewing forty strangers approves some and
