@@ -6,6 +6,7 @@ import { Modal, Spinner, Toggle } from "../controls";
 import { useSession } from "../providers";
 import { Button } from "../ui";
 import { RecordingThumb } from "../recordings-tab";
+import { RecordingPreviewPlayer } from "../recording-preview";
 import { api } from "@/lib/api";
 import { FeatureReplayEngage, type Recording } from "@/lib/api-types";
 import { formatClock, formatDuration } from "@/lib/format";
@@ -43,6 +44,10 @@ export function SimuliveSourceSection({
   const [library, setLibrary] = useState<Recording[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [picking, setPicking] = useState(false);
+  /* The chosen recording playing inline, and the one previewed in the picker. Neither player
+   * mounts (so no media is fetched past the thumbnail) until asked for. */
+  const [previewing, setPreviewing] = useState(false);
+  const [previewInPicker, setPreviewInPicker] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -70,6 +75,8 @@ export function SimuliveSourceSection({
     set("durationMin", patch.durationMin);
     if (patch.topic !== form.topic) set("topic", patch.topic);
     setPicking(false);
+    setPreviewInPicker(null);
+    if (next.id !== current?.id) setPreviewing(false);
   }
 
   return (
@@ -83,27 +90,51 @@ export function SimuliveSourceSection({
             <Spinner className="size-4" /> Loading your recordings…
           </div>
         ) : current ? (
-          <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-3 sm:flex-row sm:items-center">
-            <div className="w-full shrink-0 overflow-hidden rounded-lg sm:w-44">
-              <RecordingThumb
-                src={api.recordingFileURL(current.webinar, firstPlayable(current))}
-                durationMs={current.durationMs}
-                parts={current.parts?.length ?? 1}
-              />
+          <>
+            <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => setPreviewing(true)}
+                aria-label={`Play ${current.topic}`}
+                className="group w-full shrink-0 overflow-hidden rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand/40 sm:w-44"
+              >
+                <RecordingThumb
+                  src={api.recordingFileURL(current.webinar, firstPlayable(current))}
+                  durationMs={current.durationMs}
+                  parts={current.parts?.length ?? 1}
+                />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13.5px] font-semibold text-ink">{current.topic}</p>
+                <p className="mt-0.5 text-[12px] text-ink-3">
+                  {formatClock(current.durationMs)} ·{" "}
+                  {hydrated
+                    ? `recorded ${new Date(current.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })}`
+                    : current.createdAt}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPreviewing((v) => !v)}
+                  aria-expanded={previewing}
+                  aria-controls="simulive-recording-preview"
+                >
+                  {previewing ? "Hide preview" : "Play"}
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setPicking(true)}>
+                  Change recording
+                </Button>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13.5px] font-semibold text-ink">{current.topic}</p>
-              <p className="mt-0.5 text-[12px] text-ink-3">
-                {formatClock(current.durationMs)} ·{" "}
-                {hydrated
-                  ? `recorded ${new Date(current.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" })}`
-                  : current.createdAt}
-              </p>
-            </div>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setPicking(true)}>
-              Change recording
-            </Button>
-          </div>
+            {previewing && (
+              <div id="simulive-recording-preview">
+                <RecordingPreviewPlayer key={current.id} rec={current} />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-line-2 bg-surface-2 p-3">
             <p className="text-[12.5px] text-ink-2">
@@ -161,7 +192,10 @@ export function SimuliveSourceSection({
 
       <Modal
         open={picking}
-        onClose={() => setPicking(false)}
+        onClose={() => {
+          setPicking(false);
+          setPreviewInPicker(null);
+        }}
         title="Choose a recording"
         description="Your ready recordings, newest first. Ones still uploading appear once they finish."
         size="lg"
@@ -169,31 +203,45 @@ export function SimuliveSourceSection({
         <ul className="grid gap-2 py-1">
           {(library ?? []).map((rec) => {
             const selected = rec.id === form.simuliveRecordingId;
+            const open = previewInPicker === rec.id;
             return (
-              <li key={rec.id}>
-                <button
-                  type="button"
-                  onClick={() => choose(rec)}
-                  aria-pressed={selected}
-                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${
-                    selected ? "border-brand bg-brand-soft" : "border-line bg-surface hover:border-brand-line"
-                  }`}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-medium text-ink">{rec.topic}</span>
-                    <span className="mt-0.5 block text-[12px] text-ink-3">
-                      {hydrated
-                        ? new Date(rec.createdAt).toLocaleString(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })
-                        : rec.createdAt}
+              <li key={rec.id} className="grid gap-2">
+                <div className="flex items-stretch gap-2">
+                  <button
+                    type="button"
+                    onClick={() => choose(rec)}
+                    aria-pressed={selected}
+                    className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${
+                      selected ? "border-brand bg-brand-soft" : "border-line bg-surface hover:border-brand-line"
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] font-medium text-ink">{rec.topic}</span>
+                      <span className="mt-0.5 block text-[12px] text-ink-3">
+                        {hydrated
+                          ? new Date(rec.createdAt).toLocaleString(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })
+                          : rec.createdAt}
+                      </span>
                     </span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[12px] text-ink-2 tabular-nums">
-                    {formatDuration(Math.max(1, Math.ceil(rec.durationMs / 60_000)))}
-                  </span>
-                </button>
+                    <span className="shrink-0 font-mono text-[12px] text-ink-2 tabular-nums">
+                      {formatDuration(Math.max(1, Math.ceil(rec.durationMs / 60_000)))}
+                    </span>
+                  </button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-auto shrink-0 self-stretch"
+                    onClick={() => setPreviewInPicker(open ? null : rec.id)}
+                    aria-expanded={open}
+                  >
+                    {open ? "Hide" : "Preview"}
+                  </Button>
+                </div>
+                {open && <RecordingPreviewPlayer key={rec.id} rec={rec} />}
               </li>
             );
           })}
