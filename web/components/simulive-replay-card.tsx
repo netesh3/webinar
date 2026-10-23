@@ -27,7 +27,7 @@ const FILTERS: { id: Filter; label: string; count: (c: ReplayCounts) => number }
   { id: "reactions", label: "Reactions", count: (c) => c.reactions },
 ];
 
-const PAGE = 50;
+const PAGE = 10;
 
 /* The host's preview of a simulive's engagement replay (FeatureReplayEngage): the original
  * session's chat, questions, answers, polls and quizzes, and reaction bursts, at the moment
@@ -258,6 +258,9 @@ export function SimuliveReplayCard({ webinar: w }: { webinar: Webinar }) {
           )}
           {(page.prevCursor || page.nextCursor) && (
             <div className="mt-3 flex items-center gap-2">
+              <span className="mr-auto text-[12.5px] text-ink-3 tabular-nums">
+                Page {Math.floor(page.offset / PAGE) + 1} of {Math.max(1, Math.ceil(page.total / PAGE))}
+              </span>
               <Button
                 variant="secondary"
                 size="sm"
