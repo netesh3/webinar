@@ -83,7 +83,7 @@ import {
  * somebody at arm's length from a laptop's — "the host's voice is very low," from
  * exactly those. So it is a leveller now (see nextLevel in lib/noise-suppression-policy.ts):
  * it measures the speaker's speech after RNNoise, brings a quiet one up by as much as
- * 12 dB, never goes below the old 1.5×, and only moves while they are talking, so the
+ * 18 dB, never goes below the old 1.5×, and only moves while they are talking, so the
  * pauses are not turned up. A WaveShaper after it limits (softLimitCurve): a plain gain
  * pushed loud syllables past full scale, and the WebRTC sender hard-clips those.
  *

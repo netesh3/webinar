@@ -174,9 +174,9 @@ const quiet = SOUND_FLOOR / 10;
     return i >= n - 1 ? curve[n - 1] : curve[i] * (1 - f) + curve[i + 1] * f;
   };
   near(through(0.2, MAKEUP_GAIN), 0.3, "at the old 1.5×, ordinary speech is exactly 1.5× louder", 1e-4);
-  near(through(0.1, LEVEL_MAX_GAIN), 0.4, "at the most the leveller adds, quiet speech is exactly 4×", 1e-4);
+  near(through(0.05, LEVEL_MAX_GAIN), 0.05 * LEVEL_MAX_GAIN, `at the most the leveller adds, quiet speech is exactly ${LEVEL_MAX_GAIN}×`, 1e-4);
   const shout = through(0.9, LEVEL_MAX_GAIN);
-  ok(shout > LIMIT_KNEE && shout <= LIMIT_CEILING, "a shout at 4× is rolled off, not clipped", `got ${shout}`);
+  ok(shout > LIMIT_KNEE && shout <= LIMIT_CEILING, `a shout at ${LEVEL_MAX_GAIN}× is rolled off, not clipped`, `got ${shout}`);
   let max = 0;
   for (let i = 0; i < n; i++) max = Math.max(max, Math.abs(curve[i]));
   ok(max <= LIMIT_CEILING && max < 1, "never full scale, however far over", `max ${max}`);
@@ -240,14 +240,16 @@ function drive(readings: number[], start: LevelState = INITIAL_LEVEL) {
 
 {
   // A steady talker does not have their gain wander under them.
-  // At -28 dBFS they need 8 dB to reach the target: between the floor and the ceiling, so
-  // the gain is the leveller's own judgement rather than a limit.
+  // At -28 dBFS they need LEVEL_TARGET_DB + 28 dB to reach the target: between the floor and
+  // the ceiling, so the gain is the leveller's own judgement rather than a limit.
   const { gains } = drive(speech(-28, 40));
   const settled = gains.slice(200);
   const mean = settled.reduce((a, b) => a + b, 0) / settled.length;
   const sd = Math.sqrt(settled.reduce((a, b) => a + (b - mean) ** 2, 0) / settled.length);
   ok(sd < 0.5, "a steady talker's gain holds steady", `standard deviation ${sd.toFixed(2)} dB`);
-  ok(Math.abs(mean - 8) < 2, "at about what brings them to the target", `mean ${mean.toFixed(1)} dB`);
+  const need = LEVEL_TARGET_DB + 28;
+  ok(need > FLOOR_DB && need < MAX_DB, "(the case is between the floor and the ceiling)");
+  ok(Math.abs(mean - need) < 2, "at about what brings them to the target", `mean ${mean.toFixed(1)} dB`);
 }
 
 {
@@ -258,7 +260,7 @@ function drive(readings: number[], start: LevelState = INITIAL_LEVEL) {
 
 {
   // The host talks normally, then listens while a voice across the room or a television
-  // carries on. The reviewer's case: this used to ramp to +12 dB.
+  // carries on. The reviewer's case: this used to ramp to the leveller's maximum.
   const host = drive(speech(-24, 10)).state;
   for (const [what, level] of [["a voice across the room", -46], ["residual echo", -48]] as const) {
     const { state } = drive(steady(level, 40), host);
