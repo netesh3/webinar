@@ -8,7 +8,8 @@ import {
 import { LOW_LIGHT_GLSL, LOW_LIGHT_LIFT } from "./low-light-curve";
 import { HumanSeg, loadHumanSeg, type Matte } from "./humanseg";
 import { PresenterLock, type FaceBox } from "./presenter-lock";
-import { browserNeedsUprightCopy } from "./frame-orientation";
+import { browserUprightPlan, capLongSide, uprightSize } from "./frame-orientation";
+export { needsUprightCopy } from "./frame-orientation";
 
 /* Segmentation and compositing, done ourselves.
  *
@@ -1251,10 +1252,16 @@ class Engine {
 
   /** The frame, uploaded once and sampled by every pass. Mips only when a pass reads them.
    *  `source` is the frame's pixels when they are not the frame itself: a 2D canvas it was
-   *  drawn into, the same size, on WebKit (see lib/frame-orientation.ts). */
-  upload(frame: VideoFrame, mips: boolean, source: TexImageSource = frame): void {
+   *  drawn into on WebKit, `size` big — upright, and smaller on a phone (see
+   *  lib/frame-orientation.ts). */
+  upload(
+    frame: VideoFrame,
+    mips: boolean,
+    source: TexImageSource = frame,
+    size: { w: number; h: number } = { w: frame.displayWidth, h: frame.displayHeight },
+  ): void {
     const gl = this.gl;
-    this.fit(frame.displayWidth, frame.displayHeight);
+    this.fit(size.w, size.h);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.frame);
     upload(gl, source);
@@ -1898,8 +1905,9 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
 
   /* WebKit's GPU hand-offs, routed through 2D canvases so a phone's picture goes out the
    * right way up: see lib/frame-orientation.ts. Decided once; the canvases are made the
-   * first time a frame needs them. */
-  private readonly uprightCopy = browserNeedsUprightCopy();
+   * first time a frame needs them, and resized whenever the picture is (the phone turned). */
+  private readonly upright = browserUprightPlan();
+  private readonly uprightCopy = this.upright.copy;
   private uprightIn: Canvas2D | null = null;
   private uprightOut: Canvas2D | null = null;
 
@@ -2156,11 +2164,18 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       engine.upload(frame, mips);
       return;
     }
-    const w = frame.displayWidth;
-    const h = frame.displayHeight;
-    this.uprightIn = sized(this.uprightIn, w, h);
-    this.uprightIn.ctx.drawImage(frame, 0, 0, w, h);
-    engine.upload(frame, mips, this.uprightIn.canvas as unknown as TexImageSource);
+    /* Sized as shown — a portrait phone's frame can report its landscape buffer's size — and
+     * per frame, so turning the phone mid-call resizes everything on the next one. Smaller on
+     * an iPhone: ProcessorWrapper scales the result back to the camera's size to publish. */
+    const video = this.inputVideo;
+    const shown = video ? { width: video.videoWidth, height: video.videoHeight } : null;
+    const size = capLongSide(
+      uprightSize(frame as VideoFrame & { rotation?: number }, shown),
+      this.upright.longSide,
+    );
+    this.uprightIn = sized(this.uprightIn, size.w, size.h);
+    this.uprightIn.ctx.drawImage(frame, 0, 0, size.w, size.h);
+    engine.upload(frame, mips, this.uprightIn.canvas as unknown as TexImageSource, size);
   }
 
   /* The engine's picture as a frame to send. On WebKit, through a 2D canvas rather than a
