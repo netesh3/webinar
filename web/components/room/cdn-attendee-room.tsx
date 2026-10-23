@@ -17,7 +17,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type RefObject,
 } from "react";
 import { API_BASE, api } from "@/lib/api";
@@ -47,7 +46,7 @@ import { useAvailableTools } from "./tools";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
 import { STAGE_PLAYER_FRAME, stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
-import { canElementFullscreen, useFullscreen } from "@/lib/fullscreen";
+import { useFullscreen } from "@/lib/fullscreen";
 import { playerControls, simuliveCorrection, SIMULIVE_BLOCKED_KEYS } from "@/lib/simulive-clock";
 import { isAutoplayRefusal, tryWithSound } from "@/lib/autoplay-sound";
 import { takePrimedVideo } from "@/lib/media-unlock";
@@ -767,6 +766,8 @@ function HlsPlayer({
     const onTick = () => {
       if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA || video.paused) syncToClock();
     };
+    // "seeking" as well as "seeked": a scrub is put back as it starts, not after it lands.
+    video.addEventListener("seeking", check);
     video.addEventListener("seeked", check);
     video.addEventListener("pause", check);
     video.addEventListener("ratechange", check);
@@ -796,6 +797,7 @@ function HlsPlayer({
       }
     }
     return () => {
+      video.removeEventListener("seeking", check);
       video.removeEventListener("seeked", check);
       video.removeEventListener("pause", check);
       video.removeEventListener("ratechange", check);
@@ -1084,10 +1086,6 @@ function HlsPlayer({
   );
 }
 
-// A browser does not gain or lose the Fullscreen API while the page is open.
-const subscribeNothing = () => () => {};
-const serverCanFullscreen = () => true;
-
 export function StagePlayerChrome({
   videoRef,
   loading,
@@ -1121,15 +1119,12 @@ export function StagePlayerChrome({
    * same eight lines twice. */
   const containerRef = useRef<HTMLDivElement>(null);
   const { notify } = useToast();
-  const { isFullscreen, toggle } = useFullscreen(containerRef, videoRef, { nativeVideo: !simulive });
-  // A capability, read like lib/pip.ts reads one: the server says yes (most browsers can),
-  // the client the truth, so the first client render matches the server HTML.
-  const elementFullscreen = useSyncExternalStore(
-    subscribeNothing,
-    canElementFullscreen,
-    serverCanFullscreen,
-  );
-  const shown = playerControls(simulive ? "simulive" : "live", elementFullscreen);
+  // A simulive never uses the iPhone's native player (its scrubber leaves the shared clock):
+  // where there is no element fullscreen it goes pseudo-fullscreen, fixed over the viewport.
+  const { isFullscreen, pseudo, toggle } = useFullscreen(containerRef, videoRef, {
+    nativeVideo: !simulive,
+  });
+  const shown = playerControls(simulive ? "simulive" : "live");
   // Captions as a native track: they follow the playback position, seeks included.
   const captionTrack = useCaptionTrack(captionsUrl);
   const [ccOn, setCcOn] = useState(true);
@@ -1250,7 +1245,13 @@ export function StagePlayerChrome({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full flex items-center justify-center bg-black"
+      className={
+        pseudo
+          ? // Pseudo-fullscreen (an iPhone in a simulive): the whole viewport, dynamic-height so
+            // Safari's bars do not crop it, letterboxed by object-contain in either orientation.
+            "fixed inset-0 z-[9999] h-[100dvh] w-screen flex items-center justify-center bg-black pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+          : "relative h-full w-full flex items-center justify-center bg-black"
+      }
       onKeyDownCapture={
         simulive
           ? (e) => {

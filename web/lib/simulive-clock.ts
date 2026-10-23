@@ -70,12 +70,11 @@ export type PlayerControls = {
 
 /** Which controls a player shows. A recording replay (components/video-player.tsx) is a
  *  file and keeps every control; a live stage and a simulive are broadcasts and keep only
- *  sound, captions and fullscreen. `elementFullscreen` is whether the browser can make an
- *  element fullscreen: an iPhone cannot, and its only fallback (video.webkitEnterFullscreen)
- *  is the native player, with its own play button and scrubber — fine on a live stream,
- *  which has nowhere to seek, and an escape from the shared clock on a simulive, so a
- *  simulive there has no fullscreen button. */
-export function playerControls(kind: PlayerKind, elementFullscreen: boolean): PlayerControls {
+ *  sound, captions and fullscreen. Every kind has a fullscreen button: our container via the
+ *  Fullscreen API, or where a browser has none (an iPhone) the native player for a live
+ *  stage — nowhere to seek on a live stream — and CSS pseudo-fullscreen for a simulive,
+ *  never the native player and its scrubber (lib/fullscreen.ts). */
+export function playerControls(kind: PlayerKind): PlayerControls {
   const file = kind === "vod";
   return {
     playPause: file,
@@ -85,9 +84,23 @@ export function playerControls(kind: PlayerKind, elementFullscreen: boolean): Pl
     skip: file,
     volume: true,
     captions: true,
-    fullscreen: kind === "simulive" ? elementFullscreen : true,
+    fullscreen: true,
     liveBadge: !file,
   };
+}
+
+/** Whether the <video> itself is in the browser's own fullscreen player, with native controls
+ *  and a scrubber: the iOS player (a pinch out on the picture opens it, no button needed;
+ *  video.webkitDisplayingFullscreen) or the video element as the document's fullscreen
+ *  element (Android Chrome's rotate-to-fullscreen). A simulive leaves it for pseudo-fullscreen.
+ *  Our container being the fullscreen element is fine: that is our chrome, not theirs. */
+export function videoInNativeFullscreen(s: {
+  fullscreenElement: unknown;
+  video: unknown;
+  webkitDisplayingFullscreen?: boolean;
+}): boolean {
+  if (s.video == null) return false;
+  return s.fullscreenElement === s.video || Boolean(s.webkitDisplayingFullscreen);
 }
 
 /** Keys a browser maps to seeking or pausing a media element; a simulive swallows them. */

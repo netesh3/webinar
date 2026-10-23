@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type RefObject } from "react";
+import { videoInNativeFullscreen } from "./simulive-clock";
 
 /* Fullscreen for a video surface, across the three APIs browsers actually ship.
  *
@@ -16,13 +17,20 @@ import { useCallback, useEffect, useState, type RefObject } from "react";
  *     mute button) comes along into fullscreen with the video.
  *  2. The webkit-prefixed container call, for Safari versions that predate the
  *     unprefixed one.
- *  3. `video.webkitEnterFullscreen()` — iPhone only, and the reason this file
- *     exists. iOS Safari does not implement the Fullscreen API on elements at
- *     all; a video can only go fullscreen into the native player. Our overlay
- *     is lost there, which is a real downgrade and still better than a button
- *     that does nothing. Not for a simulive (`nativeVideo: false`): the native
- *     player's scrubber would take an attendee off the shared clock, so there the
- *     button is hidden instead (canElementFullscreen).
+ *  3. iPhone, where iOS Safari does not implement the Fullscreen API on elements
+ *     at all:
+ *     - a live stage: `video.webkitEnterFullscreen()`, the native player. Our
+ *       overlay is lost there, which is a real downgrade and still better than a
+ *       button that does nothing.
+ *     - a simulive (`nativeVideo: false`): never the native player — its scrubber
+ *       and play button take an attendee off the shared clock. The container goes
+ *       pseudo-fullscreen instead (`pseudo`: the caller fixes it over the whole
+ *       viewport with CSS), our chrome and all.
+ *
+ * A simulive also guards against the native player opening without our button:
+ * a pinch out on an iOS video, or Android Chrome's rotate-to-fullscreen making the
+ * <video> itself the fullscreen element. Either is left at once for pseudo-fullscreen
+ * (lib/simulive-clock.ts videoInNativeFullscreen).
  */
 
 type WebkitElement = Element & {
@@ -65,6 +73,20 @@ function readFullscreen(video: HTMLVideoElement | null): boolean {
   );
 }
 
+/** Leaves whatever the browser has fullscreen: the document's element or the iOS player. */
+async function exitBrowserFullscreen(video: WebkitVideo | null): Promise<void> {
+  const doc = document as WebkitDocument;
+  try {
+    if (doc.fullscreenElement && doc.exitFullscreen) await doc.exitFullscreen();
+    else if (doc.webkitFullscreenElement && doc.webkitExitFullscreen)
+      await doc.webkitExitFullscreen();
+    else video?.webkitExitFullscreen?.();
+  } catch {
+    // Leaving fullscreen is not something to report; the browser will have
+    // its own reason and the person can press Escape.
+  }
+}
+
 /**
  * Fullscreen state and a toggle for a player built from a container plus the
  * video inside it.
@@ -72,7 +94,9 @@ function readFullscreen(video: HTMLVideoElement | null): boolean {
  * State is read from the browser rather than tracked by us, because Escape,
  * the iOS "Done" button and the browser's own fullscreen affordance all leave
  * fullscreen without going through our button — an assumed boolean is wrong
- * the first time anyone uses one of them, and then the icon lies.
+ * the first time anyone uses one of them, and then the icon lies. The one
+ * exception is pseudo-fullscreen, which is ours: `pseudo` says the caller should
+ * fix the container over the viewport.
  *
  * Reports whether a request succeeded so a caller can tell the person why
  * nothing happened, rather than leaving them clicking.
@@ -81,16 +105,36 @@ export function useFullscreen(
   containerRef: RefObject<HTMLElement | null>,
   videoRef: RefObject<HTMLVideoElement | null>,
   /** Whether the iPhone fallback, the native video player, is allowed. A simulive says no:
-   *  that player brings its own play button and scrubber (lib/simulive-clock.ts). */
+   *  that player brings its own play button and scrubber (lib/simulive-clock.ts), so it
+   *  gets pseudo-fullscreen instead, and the native player is left if it opens anyway. */
   { nativeVideo = true }: { nativeVideo?: boolean } = {},
-): { isFullscreen: boolean; toggle: () => Promise<boolean> } {
-  const [isFullscreen, setIsFullscreen] = useState(false);
+): { isFullscreen: boolean; pseudo: boolean; toggle: () => Promise<boolean> } {
+  const [browserFullscreen, setBrowserFullscreen] = useState(false);
+  const [pseudo, setPseudo] = useState(false);
 
   useEffect(() => {
-    const sync = () => setIsFullscreen(readFullscreen(videoRef.current));
+    const video = videoRef.current as WebkitVideo | null;
+    const sync = () => {
+      setBrowserFullscreen(readFullscreen(video));
+      if (nativeVideo || !video) return;
+      const doc = document as WebkitDocument;
+      const native = () =>
+        videoInNativeFullscreen({
+          fullscreenElement: doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null,
+          video,
+          webkitDisplayingFullscreen: video.webkitDisplayingFullscreen,
+        });
+      if (!native()) return;
+      // The native player, with its scrubber: out of it, and into ours.
+      setPseudo(true);
+      void exitBrowserFullscreen(video);
+      // iOS can ignore an exit inside webkitbeginfullscreen, before the animation settles.
+      setTimeout(() => {
+        if (native()) void exitBrowserFullscreen(video);
+      }, 300);
+    };
     sync();
 
-    const video = videoRef.current;
     document.addEventListener("fullscreenchange", sync);
     document.addEventListener("webkitfullscreenchange", sync);
     // iOS fires these on the video, not the document.
@@ -102,24 +146,36 @@ export function useFullscreen(
       video?.removeEventListener("webkitbeginfullscreen", sync);
       video?.removeEventListener("webkitendfullscreen", sync);
     };
-  }, [videoRef]);
+  }, [videoRef, nativeVideo]);
+
+  // Pseudo-fullscreen: Escape leaves it, as it would the real thing, and the page behind
+  // it does not scroll.
+  useEffect(() => {
+    if (!pseudo) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPseudo(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [pseudo]);
 
   const toggle = useCallback(async (): Promise<boolean> => {
     const container = containerRef.current;
     const video = videoRef.current as WebkitVideo | null;
     if (!container) return false;
 
+    if (pseudo) {
+      setPseudo(false);
+      return true;
+    }
+
     if (readFullscreen(video)) {
-      const doc = document as WebkitDocument;
-      try {
-        if (doc.fullscreenElement && doc.exitFullscreen) await doc.exitFullscreen();
-        else if (doc.webkitFullscreenElement && doc.webkitExitFullscreen)
-          await doc.webkitExitFullscreen();
-        else video?.webkitExitFullscreen?.();
-      } catch {
-        // Leaving fullscreen is not something to report; the browser will have
-        // its own reason and the person can press Escape.
-      }
+      await exitBrowserFullscreen(video);
       return true;
     }
 
@@ -143,7 +199,13 @@ export function useFullscreen(
       }
     }
 
-    if (nativeVideo && video?.webkitEnterFullscreen) {
+    // A simulive: our own fullscreen, never the native player.
+    if (!nativeVideo) {
+      setPseudo(true);
+      return true;
+    }
+
+    if (video?.webkitEnterFullscreen) {
       try {
         video.webkitEnterFullscreen();
         return true;
@@ -153,7 +215,7 @@ export function useFullscreen(
     }
 
     return false;
-  }, [containerRef, videoRef, nativeVideo]);
+  }, [containerRef, videoRef, nativeVideo, pseudo]);
 
-  return { isFullscreen, toggle };
+  return { isFullscreen: browserFullscreen || pseudo, pseudo, toggle };
 }
