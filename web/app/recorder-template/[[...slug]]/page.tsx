@@ -22,6 +22,7 @@ import {
   type SpeakerCandidate,
 } from "@/lib/speaker-view";
 import { isPrivileged } from "@/lib/share-lock";
+import { setReceiveAv1Excluded } from "@/lib/receive-codecs";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -127,6 +128,12 @@ function RecorderTemplateInner() {
  * to livekit-client's defaults, so a changed default cannot quietly put the mix on a lower
  * layer. */
 const RECORDER_ROOM_OPTIONS = { adaptiveStream: false, dynacast: false } as const;
+
+/* Never AV1 here. The mix runs in headless Chrome on a 4-vCPU box and decodes every tile in
+ * software; AV1 1080p costs several times VP8's decode. Leaving AV1 out of this page's receive
+ * codecs makes the SFU send each AV1 publisher's VP8 / H264 backup (lib/receive-codecs.ts).
+ * Module scope, so it is in place before LiveKitRoom's first negotiation. */
+if (typeof window !== "undefined") setReceiveAv1Excluded(true);
 
 class StageBoundary extends Component<
   { children: React.ReactNode },

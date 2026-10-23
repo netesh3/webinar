@@ -44,6 +44,7 @@ import {
 } from "./network";
 import { currentIsMobile } from "./device";
 import { av1Now, primeAv1Probes } from "./codec-policy";
+import { primeReceivePolicy } from "./receive-codecs";
 
 export { canCaptureCamera1080, cameraCapturePreset } from "./network";
 
@@ -105,8 +106,9 @@ export const CAPTURE = CAMERA_TOP;
  * VP8 by default; AV1 where the publisher's device can afford it (lib/codec-policy.ts),
  * as rid simulcast on the same three layers at ~30% less bitrate (cameraPublishDefaults in
  * network.ts), with a VP8 backup the SFU switches any subscriber to that cannot decode AV1 —
- * Safari, iOS, older Android. Edge webinar audiences watch the mix (HLS), not SFU tracks, so
- * AV1 decode cost lands on the composite's Chrome and on meeting participants and panelists.
+ * Safari, iOS, older Android. The recorder template (the edge mix) and weak subscribers (≤ 4
+ * cores, phones without hardware AV1 decode) leave AV1 out of their receive codecs and get that
+ * backup too (lib/receive-codecs.ts), so AV1 is decoded only where it is cheap.
  */
 export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
 
@@ -388,6 +390,8 @@ export function roomOptions(
   // Usually already answered by the pre-join screen; if not, the room applies it when it is
   // (useCameraCodec in webinar-room.tsx), before or after the first camera publish.
   if (canPublish) primeAv1Probes();
+  // And whether this device should receive AV1 at all, before the Room negotiates anything.
+  void primeReceivePolicy("participant");
   return {
     /* Measured in DEVICE pixels, not CSS pixels.
      *

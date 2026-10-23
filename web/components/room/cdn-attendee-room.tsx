@@ -82,6 +82,7 @@ import { RoomHeader } from "./webinar-room";
 import { useScreenWakeLock } from "@/lib/wake-lock";
 import { CAPTIONS_LABEL, showCaptions } from "@/lib/caption-track";
 import { useCaptionTrack } from "@/lib/use-caption-track";
+import { primeReceivePolicy } from "@/lib/receive-codecs";
 import { CcButton } from "../cc-button";
 
 function resolveBroadcastUrl(path: string): string {
@@ -120,7 +121,11 @@ export function CdnAttendeeRoom({
   // A phone left to watch must not auto-lock mid-webinar (lib/wake-lock.ts).
   useScreenWakeLock();
 
-  const [room] = useState(() => new Room());
+  const [room] = useState(() => {
+    // Weak devices take the VP8 / H264 backup instead of decoding AV1 (lib/receive-codecs.ts).
+    void primeReceivePolicy("participant");
+    return new Room();
+  });
 
   const [failure, setFailure] = useState<string | null>(null);
   const [exit, setExit] = useState<string | null>(null);

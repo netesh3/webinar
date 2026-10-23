@@ -121,6 +121,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# Who publishes AV1: Safari and iPhone/iPad never, whatever they report; the rest only
 	# with an AV1 encoder that MediaCapabilities calls smooth and the cores to run it.
 	cd web && node --experimental-strip-types --no-warnings lib/codec-policy.test.mts
+	# And who must not RECEIVE it: the recorder template (the edge mix) always, ≤ 4-core
+	# devices and phones without hardware AV1 decode — they get the VP8 / H264 backup.
+	cd web && node --experimental-strip-types --no-warnings lib/receive-codecs.test.mts
 	# The adaptation rules against synthetic stat streams: holds, clean windows, hysteresis,
 	# cool-down, the oscillation hold, the CPU ladder's order, and AV1's cheaper rungs.
 	cd web && node --experimental-strip-types --no-warnings lib/adapt-governor.test.mts
