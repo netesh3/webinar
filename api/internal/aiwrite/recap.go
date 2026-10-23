@@ -86,6 +86,10 @@ type RecapInput struct {
 	Questions []RecapQuestionIn
 	Polls     []RecapPollIn
 	Chat      []RecapChatIn
+	/* TranscriptMissing is set when the after-session transcript was expected (server
+	 * captions ran) but the recap was written without it: the wait ran out, or the host
+	 * asked for the recap now. The recap then says so (TranscriptMissingNotice). */
+	TranscriptMissing bool
 }
 
 // HasSpeech reports whether anything said is in the input, and so whether chapters can exist.
@@ -95,6 +99,14 @@ func (in RecapInput) HasSpeech() bool { return len(in.Lines) > 0 }
 func (in RecapInput) HasEngagement() bool {
 	return len(in.Questions) > 0 || len(in.Polls) > 0 || len(in.Chat) > 0
 }
+
+// TranscriptMissingNotice is the recap's note when it was written from the live captions
+// because the after-session transcript was not available.
+const TranscriptMissingNotice = "The full after-session transcript was not available, so this AI recap was written from the live captions, the Q&A, polls and chat."
+
+// TranscriptMissingNoCaptionsNotice is the note when there was neither the transcript nor
+// any live caption line.
+const TranscriptMissingNoCaptionsNotice = "The full after-session transcript was not available and no live captions were saved, so this AI recap was written from the Q&A, polls and chat only."
 
 // NoCaptionsNotice is the recap's note when nothing said could be used.
 const NoCaptionsNotice = "Nothing anyone said was captured, so this AI recap was written from the Q&A, polls and chat only. Keep the room's AI switch on, and speakers' microphones on, for a full one."
@@ -431,7 +443,12 @@ func ParseRecap(raw string, in RecapInput) (types.SessionRecap, error) {
 		}
 	}
 	out.NotableQuotes = quotes
-	if !in.HasSpeech() {
+	switch {
+	case in.TranscriptMissing && in.HasSpeech():
+		out.Notice = TranscriptMissingNotice
+	case in.TranscriptMissing:
+		out.Notice = TranscriptMissingNoCaptionsNotice
+	case !in.HasSpeech():
 		out.Notice = NoCaptionsNotice
 	}
 	return out, nil

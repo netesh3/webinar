@@ -2401,6 +2401,11 @@ export const RecapReasonAIUnavailable = "ai_unavailable";
  */
 export const RecapReasonEmpty = "empty";
 /**
+ * RecapReasonTranscriptUnavailable is a session with server captions whose after-session
+ * transcript never came, with no live caption line, question, poll or chat to write from.
+ */
+export const RecapReasonTranscriptUnavailable = "transcript_unavailable";
+/**
  *  Why a recap is not ready (SessionRecapResponse.Reason). waiting_transcript and
  *  * processing go with pending; the others with skipped, failed or none.
  */
@@ -2479,7 +2484,8 @@ export interface SessionRecap {
 }
 /**
  *  SessionRecapResponse is GET /api/host/webinars/{slug}/recap. The recap is written
- *  * automatically after the session; there is no way to ask for another. Status is none,
+ *  * automatically after the session; there is no way to ask for another (POST …/recap/generate
+ *  * only ends a pending recap's wait for the transcript, and also answers this). Status is none,
  *  * pending, ready, skipped or failed; Reason says why it is not ready.
  */
 export interface SessionRecapResponse {

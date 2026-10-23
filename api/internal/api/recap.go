@@ -24,7 +24,12 @@ import (
  *   wait        when server captions ran, the after-session transcript (the large-model
  *               pass) arrives some minutes later; the row waits up to recapTranscriptWait
  *               for it. Its arrival (POST /api/internal/transcripts) makes the row due at
- *               once, so nothing polls.
+ *               once, so nothing polls. The caption agent posts one even when nobody spoke
+ *               (no lines), so a silent session does not sit out the whole wait. The wait
+ *               always ends: at wait_until, at recapMaxWait after the end, after
+ *               recapMaxDefers deferrals, or when the host presses "Generate recap now"
+ *               (POST …/recap/generate) — the recap is then written from what there is,
+ *               saying the transcript was not available.
  *   write       the recap lane of RunTick claims due rows and writes each from the best
  *               source there is — the transcript, else the live caption lines, else the Q&A,
  *               polls and chat alone (engagement_only, with a note to turn captions on).
@@ -45,6 +50,8 @@ var (
 	recapDelay = time.Minute
 	// recapTranscriptWait is the longest a recap waits for the after-session transcript.
 	recapTranscriptWait = 30 * time.Minute
+	// recapMaxWait bounds the wait from the session's end whatever wait_until says.
+	recapMaxWait = recapTranscriptWait + 5*time.Minute
 )
 
 const (
@@ -58,6 +65,10 @@ const (
 	recapMaxAttempts = 4
 	// recapMaxCaptionLines bounds the live captions read for one recap.
 	recapMaxCaptionLines = 20000
+	// recapMaxDefers caps how often a recap is put back to wait for the transcript. One or
+	// two is normal (the first look, then wait_until); more means something keeps it
+	// coming round, and it is written from what there is instead.
+	recapMaxDefers = 6
 )
 
 /* scheduleRecap writes the pending recap for a session that has just ended. A session whose
@@ -160,14 +171,26 @@ func (s *Server) processRecap(ctx context.Context, job store.RecapJob) {
 		_ = s.store.SettleRecap(bg, job.WebinarID, types.RecapFailed, types.RecapReasonFailed)
 		return
 	}
-	in, source, waitUntil, err := s.recapInput(ctx, wb, job.WaitUntil)
+	wait := job.WaitUntil
+	if wait != nil && job.Defers >= recapMaxDefers && time.Now().Before(*wait) {
+		// Expired rather than dropped: the recap still says the transcript was expected.
+		s.log.Warn("recap: deferral cap reached, not waiting for the transcript any longer",
+			"slug", job.Slug, "defers", job.Defers, "waitUntil", wait.UTC().Format(time.RFC3339))
+		now := time.Now()
+		wait = &now
+	}
+	in, source, waitUntil, err := s.recapInput(ctx, wb, wait)
 	if err != nil {
 		s.log.Warn("recap: read the session", "slug", job.Slug, "error", err)
 		s.retryRecap(bg, job, types.RecapReasonFailed)
 		return
 	}
 	if !waitUntil.IsZero() {
-		_ = s.store.DeferRecap(bg, job.WebinarID, waitUntil, job.Attempts, types.RecapReasonWaitingTranscript)
+		s.log.Info("recap deferred: waiting for the after-session transcript",
+			"slug", job.Slug, "until", waitUntil.UTC().Format(time.RFC3339), "defers", job.Defers+1)
+		if err := s.store.WaitRecap(bg, job.WebinarID, waitUntil); err != nil {
+			s.log.Warn("recap: could not defer", "slug", job.Slug, "error", err)
+		}
 		return
 	}
 	_, out := s.writeAndSaveRecap(ctx, wb, in, source)
@@ -175,8 +198,10 @@ func (s *Server) processRecap(ctx context.Context, job store.RecapJob) {
 	case out == nil:
 		s.emailRecap(bg, wb)
 	case out.retry:
+		s.log.Warn("recap: will retry", "slug", job.Slug, "reason", out.reason, "attempt", job.Attempts+1)
 		s.retryRecap(bg, job, out.reason)
 	default:
+		s.log.Info("recap not written", "slug", job.Slug, "status", out.status, "reason", out.reason, "source", source)
 		_ = s.store.SettleRecap(bg, job.WebinarID, out.status, out.reason)
 	}
 }
@@ -210,6 +235,10 @@ func (s *Server) writeAndSaveRecap(ctx context.Context, wb types.Webinar, in aiw
 		return types.SessionRecap{}, &recapOutcome{status: types.RecapSkipped, reason: types.RecapReasonAIUnavailable}
 	}
 	if !in.HasSpeech() && !in.HasEngagement() {
+		if in.TranscriptMissing {
+			// Not "nothing was said": the transcript that would say what was never came.
+			return types.SessionRecap{}, &recapOutcome{status: types.RecapSkipped, reason: types.RecapReasonTranscriptUnavailable}
+		}
 		return types.SessionRecap{}, &recapOutcome{status: types.RecapSkipped, reason: types.RecapReasonEmpty}
 	}
 	recap, model, err := s.writeRecap(ctx, host.ID, in)
@@ -279,7 +308,13 @@ func (s *Server) writeRecap(ctx context.Context, hostID string, in aiwrite.Recap
 
 /* recapInput reads everything a recap is written from, and which source it is. waitUntil
  * comes back non-zero when the after-session transcript is still expected: the caller
- * defers to then rather than settling for the caption lines. */
+ * defers to then rather than settling for the caption lines.
+ *
+ * wait non-nil means server captions ran, so a transcript was expected. It is waited for
+ * until wait, and never past recapMaxWait after the end. A transcript stored after the end
+ * (even one with no lines: nobody spoke) ends the wait. When the wait ends without one, the
+ * recap is written from the live caption lines, else the Q&A, polls and chat, and says the
+ * transcript was not available (RecapInput.TranscriptMissing). */
 func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Time) (in aiwrite.RecapInput, source string, waitUntil time.Time, err error) {
 	slug := wb.ID
 	var started, ended time.Time
@@ -306,17 +341,27 @@ func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Ti
 	}
 	/* A transcript posted while live is the agent leaving on an AI pause; the one it posts on
 	 * leaving at the end is still to come, so it is waited for as if there were none. */
-	if found && wait != nil && time.Now().Before(*wait) && !ended.IsZero() {
-		final, err := s.store.TranscriptAfterEnd(ctx, slug)
-		if err != nil {
+	final := false
+	if wait != nil && !ended.IsZero() {
+		if final, err = s.store.TranscriptAfterEnd(ctx, slug); err != nil {
 			return in, "", time.Time{}, err
 		}
-		if !final {
+	}
+	if wait != nil && !final {
+		switch {
+		case !ended.IsZero() && time.Since(ended) > recapMaxWait:
+			s.log.Warn("recap fallback: the after-session transcript never came", "slug", slug, "reason", "max_wait", "endedAt", ended.UTC().Format(time.RFC3339))
+		case time.Now().Before(*wait):
 			return in, "", *wait, nil
+		default:
+			s.log.Warn("recap fallback: the after-session transcript never came", "slug", slug, "reason", "wait_expired", "waitUntil", wait.UTC().Format(time.RFC3339))
 		}
+		in.TranscriptMissing = true
 	}
 	switch {
 	case found && len(segs) > 0:
+		// What the agent posted when it left on a pause: not missing, only shorter.
+		in.TranscriptMissing = false
 		source = types.RecapSourceServerTranscript
 		for _, sg := range segs {
 			name := sg.Name
@@ -325,8 +370,6 @@ func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Ti
 			}
 			in.Lines = append(in.Lines, aiwrite.RecapLine{AtSec: sinceStart(time.UnixMilli(sg.Start)), Speaker: name, Text: sg.Text})
 		}
-	case wait != nil && time.Now().Before(*wait):
-		return in, "", *wait, nil
 	default:
 		lines, err := s.store.RecapCaptions(ctx, slug, started, recapMaxCaptionLines)
 		if err != nil {
@@ -342,6 +385,9 @@ func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Ti
 		source = types.RecapSourceCaptions
 		if len(in.Lines) == 0 {
 			source = types.RecapSourceEngagementOnly
+		}
+		if in.TranscriptMissing {
+			s.log.Info("recap fallback source", "slug", slug, "source", source, "captionLines", len(in.Lines))
 		}
 	}
 
@@ -504,6 +550,35 @@ func (s *Server) handleGetRecap(w http.ResponseWriter, r *http.Request) {
 	// The transcript has settled: the answered-aloud past answers, once (knowledge_answers.go).
 	if row.Status != types.RecapPending {
 		s.harvestAloudForSlug(r.Context(), slug)
+	}
+	out := recapResponse(row)
+	out.AIPausedMin = s.aiPausedMin(r.Context(), slug)
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+/* handleGenerateRecapNow is POST /api/host/webinars/{slug}/recap/generate: the host's
+ * "Generate recap now" while the recap waits for the after-session transcript. The wait ends
+ * and the recap is written at once, inside this request, from what there is (the transcript if
+ * it came, else the live captions, else the Q&A, polls and chat). Only a pending recap: a
+ * written one is never written again, so this is not a Regenerate. */
+func (s *Server) handleGenerateRecapNow(w http.ResponseWriter, r *http.Request) {
+	slug := slugFromContext(r.Context())
+	ok, err := s.store.ExpireRecapWait(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "recap generate: expire wait", err)
+		return
+	}
+	if !ok {
+		httpx.Error(w, http.StatusConflict, "not_pending", "This session's recap is not waiting to be written.")
+		return
+	}
+	s.log.Info("recap: host asked to generate it now", "slug", slug)
+	// Claimed by the tick already: that runner is writing it, and the poll shows the result.
+	s.recapNow(r.Context(), slug)
+	row, err := s.store.SessionRecap(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "recap generate: read", err)
+		return
 	}
 	out := recapResponse(row)
 	out.AIPausedMin = s.aiPausedMin(r.Context(), slug)

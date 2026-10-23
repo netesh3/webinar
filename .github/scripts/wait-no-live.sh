@@ -8,7 +8,8 @@
 #
 # Environment:
 #   GUARD_SCOPE        "any" (API / Web deploys: any session anywhere) or a LiveKit project id
-#                      (a video-server box deploy: only sessions on that box, e.g. do-blr)
+#                      (a video-server box deploy: only sessions on that box, e.g. do-blr,
+#                      including ones still "finalizing" their after-session transcript there)
 #   GUARD_MODE         "api"  — the API is what is being deployed: when the API itself is down
 #                               (/readyz fails) or does not have the endpoint yet (404, i.e. an
 #                               older build), proceed with a warning: the deploy is the fix.
@@ -71,8 +72,12 @@ while :; do
     if [ "$SCOPE" = "any" ]; then
       filter='.live'
     else
+      # A box deploy also waits for post-session work on that box: sessions that ended in the
+      # last 35 min whose after-session transcript the box's caption agent is still making
+      # (state "finalizing"). Replacing the captions container then would cut it off, and the
+      # AI recap waits for it. An older API has no .finalizing: treated as none.
       # shellcheck disable=SC2016 # $p is a jq variable, not a shell one
-      filter='[.live[] | select(.project == $p)]'
+      filter='[(.live + (.finalizing // []))[] | select(.project == $p)]'
     fi
     blocking="$(jq -r --arg p "$SCOPE" "${filter} | .[] | \"  \\(.slug)  \\(.kind)/\\(.state)  on \\(.project)\"" "$body_file")"
     total="$(jq -r '.count' "$body_file")"
@@ -82,7 +87,7 @@ while :; do
     fi
     n="$(printf '%s\n' "$blocking" | wc -l | tr -d ' ')"
     waited=$(((now - start) / 60))
-    echo "Deploy guard: ${n} session(s) live in scope '${SCOPE}', waiting (${waited}/${WAIT_TIMEOUT_MIN} min):"
+    echo "Deploy guard: ${n} session(s) live or finalizing in scope '${SCOPE}', waiting (${waited}/${WAIT_TIMEOUT_MIN} min):"
     printf '%s\n' "$blocking"
   else
     # The question could not be answered.

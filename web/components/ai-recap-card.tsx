@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Spinner } from "./controls";
 import { CopyIcon, SparklesIcon } from "./icons";
 import { useToast } from "./providers";
-import { Badge, Card, SectionTitle } from "./ui";
+import { Badge, Button, Card, SectionTitle } from "./ui";
 import { aiPausedResultsNote } from "@/lib/ai-session";
 import { api } from "@/lib/api";
 import type { SessionRecapResponse } from "@/lib/api-types";
@@ -12,6 +12,7 @@ import { useDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import {
   actionItemsText,
   formatChapterTime,
+  recapCanGenerateNow,
   recapEmptyState,
   recapSourceLabel,
 } from "@/lib/recap";
@@ -21,13 +22,15 @@ const PENDING_POLL_MS = 30_000;
 
 /* The AI insights tab's recap card, for an ended session: what was covered, what the host
  * promised, what the audience asked. Written automatically when the session ends (and
- * emailed to the host); there is nothing to press. The empty states are lib/recap.ts. */
+ * emailed to the host). While it waits for the full transcript the host can press "Generate
+ * recap now" to have it written at once from what there is. The empty states are lib/recap.ts. */
 export function AIRecapCard({ slug }: { slug: string }) {
   const bypass = useDevAuthBypassActive();
   const { notify } = useToast();
   const [data, setData] = useState<SessionRecapResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [poll, setPoll] = useState(0);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (bypass) return;
@@ -59,6 +62,18 @@ export function AIRecapCard({ slug }: { slug: string }) {
       notify(`${what} copied.`, "ok");
     } catch {
       notify("Couldn't reach the clipboard.", "info");
+    }
+  };
+
+  const generateNow = async () => {
+    setGenerating(true);
+    try {
+      setData(await api.generateRecapNow(slug));
+    } catch {
+      notify("Couldn't write the recap just now. It will still be written automatically.", "info");
+      setPoll((n) => n + 1);
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -100,6 +115,16 @@ export function AIRecapCard({ slug }: { slug: string }) {
           {state.pending && <Spinner />} {state.title}
         </p>
         <p className="mt-1 text-[13px] text-ink-2">{state.detail}</p>
+        {recapCanGenerateNow(data) && (
+          <div className="mt-3">
+            <Button size="sm" variant="secondary" onClick={generateNow} disabled={generating}>
+              {generating ? "Writing the recap…" : "Generate recap now"}
+            </Button>
+            <p className="mt-1 text-[12px] text-ink-3">
+              Writes it now from the live captions, Q&amp;A, polls and chat, without waiting for the full transcript.
+            </p>
+          </div>
+        )}
       </Card>
     );
   }

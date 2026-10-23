@@ -108,13 +108,57 @@ def test_finalizer_waits_for_an_idle_host(tmp_path):
     assert sp.dir.exists() and not api.transcripts
 
 
-def test_room_where_nobody_spoke_is_just_removed(tmp_path):
+def test_room_where_nobody_spoke_posts_an_empty_transcript(tmp_path):
+    # The API's recap waits for this post; without it a silent session sat "processing"
+    # for the whole 30-minute wait (instant-webinar-0273).
     sp = spool.RoomSpool(tmp_path, "webinar_quiet", "AJ_2", 10**9)
     sp.mark_done()
     api = FakeApi()
+    t = FakeTranscriber("large-v3-turbo")
+    fin = Finalizer(cfg(tmp_path), api, t, wait_until_idle=lambda stop: True)
+    assert fin.run_once() == 1
+    assert api.transcripts == [("webinar_quiet", "large-v3-turbo", [])]
+    assert not t.calls and not sp.dir.exists()
+
+
+def test_empty_transcript_is_kept_for_a_retry_on_server_error(tmp_path):
+    sp = spool.RoomSpool(tmp_path, "webinar_quiet", "AJ_2", 10**9)
+    sp.mark_done()
+    fin = Finalizer(cfg(tmp_path), FakeApi(transcript_status=503), FakeTranscriber(), wait_until_idle=lambda stop: True)
+    assert fin.run_once() == 0
+    assert sp.dir.exists() and spool.read_manifest(sp.dir)["attempts"] == 1
+
+
+def test_resume_takes_up_rooms_a_replaced_container_left(tmp_path):
+    # A deploy replaced the container: one room was cut off mid-session (never marked done),
+    # another had ended and was waiting for its final pass. Both are on the spool volume.
+    cut = write_room(tmp_path)
+    waiting = spool.RoomSpool(tmp_path, "webinar_other", "AJ_9", 10**9)
+    waiting.write("user_3", "Mira", np.full(SR, 0.1, np.float32), 2_000_000)
+    waiting.mark_done()
+
+    # A new container: a fresh Finalizer over the same directory.
+    api = FakeApi()
     fin = Finalizer(cfg(tmp_path), api, FakeTranscriber(), wait_until_idle=lambda stop: True)
-    fin.run_once()
-    assert not api.transcripts and not sp.dir.exists()
+    assert fin.resume() == 2
+    assert spool.live_rooms(tmp_path) == 0  # the cut-off room no longer blocks the pass
+    assert fin.run_once() == 2
+    assert sorted(r for r, _, _ in api.transcripts) == ["webinar_abc", "webinar_other"]
+    assert not cut.dir.exists() and not waiting.dir.exists()
+    # Idempotent: nothing is posted twice.
+    assert fin.resume() == 0 and fin.run_once() == 0 and len(api.transcripts) == 2
+
+
+def test_resume_after_a_kill_mid_pass_posts_once(tmp_path):
+    # Killed while transcribing (wait_ok said stop): the audio stays, and the next start posts it.
+    sp = write_room(tmp_path)
+    sp.mark_done()
+    api = FakeApi()
+    first = Finalizer(cfg(tmp_path), api, FakeTranscriber(), wait_until_idle=lambda stop: False)
+    assert first.run_once() == 0 and sp.dir.exists() and not api.transcripts
+    second = Finalizer(cfg(tmp_path), api, FakeTranscriber(), wait_until_idle=lambda stop: True)
+    assert second.resume() == 1
+    assert second.run_once() == 1 and len(api.transcripts) == 1 and not sp.dir.exists()
 
 
 def test_spool_respects_its_size_cap(tmp_path):

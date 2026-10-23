@@ -34,7 +34,7 @@ from .live import LiveCaptioner
 from .poster import ApiClient, captions_shown, sender_for
 from .segmenter import Segmenter, pcm16_to_float
 from .selection import FrameWatch, LineGate, SpeakerSelector, main_source, pipeline_key, wants_key
-from .spool import RoomSpool, close_orphans, live_rooms
+from .spool import RoomSpool, live_rooms
 from .transcriber import WhisperTranscriber
 
 log = logging.getLogger("captions.agent")
@@ -362,8 +362,6 @@ def build_server(cfg: Config) -> AgentServer:
 def _start_finalizer(cfg: Config) -> None:
     if not cfg.final_enabled:
         return
-    if (n := close_orphans(cfg.spool_dir)) > 0:
-        log.info("final transcript: %d room(s) left by a previous run", n)
     monitor = GuardMonitor(_guard(cfg), cfg.cpu_sample_s).start()
     final = WhisperTranscriber(cfg.final_model, cfg.cpu_threads, cfg.model_dir)
 
@@ -382,6 +380,7 @@ def _start_finalizer(cfg: Config) -> None:
         wait_until_idle=idle,
         unload=final.unload,
     )
+    fin.resume()  # rooms a previous container left (the spool is a volume)
     threading.Thread(target=fin.loop, name="finalizer", daemon=True).start()
 
 

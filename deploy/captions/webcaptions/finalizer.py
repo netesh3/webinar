@@ -128,15 +128,18 @@ class Finalizer:
             spool.remove(d)
             return True
         if not spool.read_index(d):
-            log.info("final transcript: nobody spoke in %s", room)
-            spool.remove(d)
-            return True
-        lines = transcribe_room(
-            d, self.transcriber, self.cfg.script, self.cfg.whisper_language,
-            wait_ok=lambda: self.wait_until_idle(self.stop),
-        )
-        if lines is None:
-            return False  # shutting down; try again next start
+            # Still posted, with no lines: the API's AI recap is waiting for this transcript,
+            # and without it would sit "processing" for its whole wait (30 min).
+            log.info("final transcript: nobody spoke in %s; posting an empty transcript", room)
+            lines: list[TranscriptLine] = []
+        else:
+            got = transcribe_room(
+                d, self.transcriber, self.cfg.script, self.cfg.whisper_language,
+                wait_ok=lambda: self.wait_until_idle(self.stop),
+            )
+            if got is None:
+                return False  # shutting down; try again next start
+            lines = got
         status = self.api.transcript(room, self.transcriber.name, lines)
         if 200 <= status < 300 or status in (400, 404, 413):
             # Posted, or the API will never take it (webinar deleted, malformed): either
@@ -152,6 +155,25 @@ class Finalizer:
         manifest["attempts"] = attempts
         spool.write_manifest(d, manifest)
         return False
+
+    def resume(self) -> int:
+        """At process start: every room a previous run left behind is taken up again.
+
+        The spool is a docker volume, so a room whose transcript was being made (or not yet
+        started) when the container was replaced is still on disk. No room job can be running
+        this early, so one not marked done was cut off mid-session: it is marked done, and
+        the loop transcribes and posts it like any other. A room whose post went through but
+        whose audio was not yet deleted is posted again; the API merges a repeated transcript
+        (store.TranscriptSince), so that is harmless. Returns how many rooms are pending."""
+        if (n := spool.close_orphans(self.cfg.spool_dir)) > 0:
+            log.info("final transcript: %d room(s) left mid-session by a previous run", n)
+        pending = spool.pending_dirs(self.cfg.spool_dir)
+        if pending:
+            log.info(
+                "final transcript: resuming %d room(s): %s",
+                len(pending), ", ".join(str((spool.read_manifest(d) or {}).get("room", d.name)) for d in pending),
+            )
+        return len(pending)
 
     def run_once(self) -> int:
         done = 0

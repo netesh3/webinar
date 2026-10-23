@@ -109,7 +109,8 @@ export type RecapEmptyState = {
 /* What the recap card says when there is no recap to show. Null when there is one.
  *
  * The recap is written automatically when a session ends; there is no button to ask for
- * another, so none of these tells the host to generate or regenerate anything. */
+ * another, so none of these tells the host to generate or regenerate anything. (While it
+ * waits for the transcript the card adds "Generate recap now": recapCanGenerateNow.) */
 export function recapEmptyState(r: SessionRecapResponse): RecapEmptyState | null {
   if (r.status === "ready" && r.recap) return null;
   switch (r.reason) {
@@ -149,6 +150,12 @@ export function recapEmptyState(r: SessionRecapResponse): RecapEmptyState | null
         detail: "Nothing was said, asked, polled or chatted in this session, so there was nothing for an AI recap.",
         pending: false,
       };
+    case "transcript_unavailable":
+      return {
+        title: "No transcript to recap",
+        detail: "The full transcript of this session didn't come through, and no live captions, questions, polls or chat were saved, so there was nothing for an AI recap.",
+        pending: false,
+      };
     case "ai_unavailable":
     case "failed":
       return {
@@ -169,6 +176,13 @@ export function recapEmptyState(r: SessionRecapResponse): RecapEmptyState | null
     detail: "AI recaps are written automatically after every session that ends with AI on. This one ended before they were.",
     pending: false,
   };
+}
+
+/* Whether the card offers "Generate recap now": only while the recap waits for the full
+ * transcript. Pressing it stops the wait and writes the recap from what there is (the live
+ * captions, else the Q&A, polls and chat); a recap already written is never written again. */
+export function recapCanGenerateNow(r: SessionRecapResponse): boolean {
+  return r.status === "pending" && r.reason === "waiting_transcript";
 }
 
 /** The line under the recap: where it came from. */

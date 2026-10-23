@@ -19,6 +19,8 @@ type RecapJob struct {
 	Slug      string
 	WaitUntil *time.Time
 	Attempts  int
+	// Defers is how often the recap has been put back to wait for the transcript (WaitRecap).
+	Defers int
 }
 
 // RecapRow is a recap as stored.
@@ -89,8 +91,8 @@ func (s *Store) ClaimDueRecap(ctx context.Context, claimFor time.Duration) (Reca
 		      ORDER BY due_at
 		      LIMIT 1
 		      FOR UPDATE SKIP LOCKED)
-		RETURNING r.webinar_id::text, w.slug, r.wait_until, r.attempts`, claimFor.Seconds()).
-		Scan(&j.WebinarID, &j.Slug, &j.WaitUntil, &j.Attempts)
+		RETURNING r.webinar_id::text, w.slug, r.wait_until, r.attempts, r.defers`, claimFor.Seconds()).
+		Scan(&j.WebinarID, &j.Slug, &j.WaitUntil, &j.Attempts, &j.Defers)
 	if noRows(err) {
 		return RecapJob{}, false, nil
 	}
@@ -111,8 +113,8 @@ func (s *Store) ClaimRecapForSlug(ctx context.Context, slug string, claimFor tim
 		 WHERE w.id = r.webinar_id AND w.slug = $1
 		   AND r.status = 'pending' AND r.due_at <= now()
 		   AND (r.claimed_until IS NULL OR r.claimed_until < now())
-		RETURNING r.webinar_id::text, w.slug, r.wait_until, r.attempts`, slug, claimFor.Seconds()).
-		Scan(&j.WebinarID, &j.Slug, &j.WaitUntil, &j.Attempts)
+		RETURNING r.webinar_id::text, w.slug, r.wait_until, r.attempts, r.defers`, slug, claimFor.Seconds()).
+		Scan(&j.WebinarID, &j.Slug, &j.WaitUntil, &j.Attempts, &j.Defers)
 	if noRows(err) {
 		return RecapJob{}, false, nil
 	}
@@ -129,6 +131,32 @@ func (s *Store) DeferRecap(ctx context.Context, webinarID string, due time.Time,
 		   SET due_at = $2, attempts = $3, reason = $4, claimed_until = NULL
 		 WHERE webinar_id = $1::uuid AND status = 'pending'`, webinarID, due, attempts, reason)
 	return err
+}
+
+/* WaitRecap releases a claimed recap to wait for the after-session transcript until due,
+ * counting the deferral (session_recaps.defers, migration 0149). */
+func (s *Store) WaitRecap(ctx context.Context, webinarID string, due time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE session_recaps
+		   SET due_at = LEAST($2, COALESCE(wait_until, $2)), defers = defers + 1, reason = 'waiting_transcript', claimed_until = NULL
+		 WHERE webinar_id = $1::uuid AND status = 'pending'`, webinarID, due)
+	return err
+}
+
+/* ExpireRecapWait is the host's "Generate recap now": a pending recap stops waiting for the
+ * after-session transcript and is due at once, to be written from what there is. wait_until
+ * is moved to now rather than cleared, so the recap still knows the transcript was expected
+ * (and says it was not available). Reports whether a pending row was there. */
+func (s *Store) ExpireRecapWait(ctx context.Context, slug string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE session_recaps r
+		   SET wait_until = CASE WHEN r.wait_until > now() THEN now() ELSE r.wait_until END, due_at = now()
+		  FROM webinars w
+		 WHERE r.webinar_id = w.id AND w.slug = $1 AND r.status = 'pending'`, slug)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 /* SettleRecap ends a recap without one: status skipped or failed, with the reason. Only
