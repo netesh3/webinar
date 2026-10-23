@@ -3,7 +3,7 @@
  * (components/room/qa-assist.tsx). The server is api/internal/api/knowledge.go and
  * qa_drafts.go; it checks everything again. */
 
-import type { KnowledgeLimits, PastAnswer, QADraft } from "./api-types.ts";
+import { KnowledgeMaxTitleRunes, type KnowledgeLimits, type PastAnswer, type QADraft } from "./api-types.ts";
 
 /** The upload types the server reads, by extension. */
 export const KNOWLEDGE_EXTENSIONS = [
@@ -87,6 +87,27 @@ export function draftSourceChips(
   if (!draft.grounded) return [];
   if (draft.sources.length === 0) return ["From: this session"];
   return draft.sources.map((s) => `From: ${s}`);
+}
+
+/** What the Q&A panel says when the assistant declines (the suggest call's noConfidentAnswer):
+ *  it writes no general answers, so a question the knowledge does not clearly answer has no
+ *  draft and stays open for the host. */
+export const NO_CONFIDENT_ANSWER = "No confident answer in your knowledge";
+
+/** The library, opened to add what a question needed: /host/knowledge?add=<question>. */
+export function knowledgeAddHref(question: string): string {
+  const q = question.trim();
+  return q ? `/host/knowledge?add=${encodeURIComponent(q)}` : "/host/knowledge";
+}
+
+/** The library's paste form, prefilled from knowledgeAddHref's ?add=: the question as the
+ *  title (within the server's title limit) and a Q/A skeleton for the host to finish. Null
+ *  without one. */
+export function addPrefill(search: string): { title: string; text: string } | null {
+  const q = (new URLSearchParams(search).get("add") ?? "").replace(/\s+/g, " ").trim();
+  if (!q) return null;
+  const title = [...q].slice(0, KnowledgeMaxTitleRunes).join("");
+  return { title, text: `Q: ${q}\nA: ` };
 }
 
 /** The most a posted answer may be: what the room's answer packet carries. */

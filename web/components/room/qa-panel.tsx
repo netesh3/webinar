@@ -168,6 +168,7 @@ export function QAPanel() {
                         <SuggestAnswer
                           slug={slug}
                           clusterId={clusterIdFor(item.question.id, assist?.clusters ?? [])}
+                          question={item.question.text}
                           draft={draftFor(clusterIdFor(item.question.id, assist?.clusters ?? []), assist?.clusters ?? [])}
                           onAnswered={() => markAnswered([item.question.id])}
                           onPosted={posted}

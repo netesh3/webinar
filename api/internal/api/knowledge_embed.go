@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/ai"
+	"github.com/netkumar/webcast/api/internal/aiwrite"
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/knowledge"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -151,19 +152,40 @@ func (s *Server) backfillEmbeddings(ctx context.Context, hostID string) {
 }
 
 // retrieveKnowledge is the session's best chunks (and past answers) for a question.
-func (s *Server) retrieveKnowledge(ctx context.Context, wb types.Webinar, question string, n, budget int) ([]store.KnowledgeHit, error) {
+func (s *Server) retrieveKnowledge(ctx context.Context, wb types.Webinar, question string, n, budget int) (retrieval, error) {
 	return s.retrieveWith(ctx, wb.ID, question, s.queryVectors(ctx, wb.Host.ID, []string{question})[0], n, budget)
+}
+
+/* retrieval is what a search found for a question: the hits a call would be given, and the
+ * best vector similarity among them (0 when none came from the vector side), for the Q&A
+ * assistant's retrieval evidence (aiwrite.Policy.Retrieved). */
+type retrieval struct {
+	hits   []store.KnowledgeHit
+	topSim float64
+}
+
+/* evidence is how well the hits match the question: the best similarity, and the best
+ * full-text coverage (knowledge.Coverage) of any of its phrasings by any hit. Phrasings are
+ * taken one at a time, so a cluster asked five ways is not diluted by the words of all five. */
+func (r retrieval) evidence(phrasings ...string) aiwrite.Evidence {
+	e := aiwrite.Evidence{TopSimilarity: r.topSim}
+	for _, h := range r.hits {
+		for _, q := range phrasings {
+			e.TopCoverage = max(e.TopCoverage, knowledge.Coverage(q, h.Text))
+		}
+	}
+	return e
 }
 
 /* retrieveWith ranks the session's knowledge for a question both ways and fuses the two;
  * vec nil (or a vector search that fails) is full-text alone. */
-func (s *Server) retrieveWith(ctx context.Context, slug, question string, vec []float32, n, budget int) ([]store.KnowledgeHit, error) {
+func (s *Server) retrieveWith(ctx context.Context, slug, question string, vec []float32, n, budget int) (retrieval, error) {
 	q := knowledge.TSQuery(question)
 	fts := []store.KnowledgeHit{}
 	if q != "" {
 		var err error
 		if fts, err = s.store.SearchKnowledge(ctx, slug, q, knowledgeSearchLimit); err != nil {
-			return nil, err
+			return retrieval{}, err
 		}
 	}
 	var near []store.KnowledgeHit
@@ -174,7 +196,15 @@ func (s *Server) retrieveWith(ctx context.Context, slug, question string, vec []
 			near = nil
 		}
 	}
-	return pickKnowledge(fuseHits(fts, near), n, budget), nil
+	out := retrieval{hits: pickKnowledge(fuseHits(fts, near), n, budget)}
+	sim := map[string]float64{}
+	for _, h := range near { // a vector hit's Rank is its cosine similarity
+		sim[h.DocID+"#"+strconv.Itoa(h.Seq)] = h.Rank
+	}
+	for _, h := range out.hits {
+		out.topSim = max(out.topSim, sim[h.DocID+"#"+strconv.Itoa(h.Seq)])
+	}
+	return out, nil
 }
 
 // fuseHits is the hits of several rankings, each once, in reciprocal-rank-fused order.

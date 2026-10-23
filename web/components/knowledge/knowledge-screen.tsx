@@ -14,6 +14,7 @@ import {
   type KnowledgeLibrary,
 } from "@/lib/api-types";
 import {
+  addPrefill,
   folderTag,
   KNOWLEDGE_ACCEPT,
   knowledgeError,
@@ -213,8 +214,11 @@ function AddDocument({
   onImported: (notes: number) => void;
 }) {
   const [mode, setMode] = useState<AddMode>("paste");
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
+  // Opened from the Q&A panel's "Add to knowledge" (?add=<question>): the paste form starts
+  // with that question. Mounted only once the library has loaded, so after hydration.
+  const [prefill] = useState(() => (typeof window === "undefined" ? null : addPrefill(window.location.search)));
+  const [title, setTitle] = useState(prefill?.title ?? "");
+  const [text, setText] = useState(prefill?.text ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

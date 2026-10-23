@@ -16,16 +16,17 @@ import (
  * pass, several questions in one call. Either way the model is given excerpts of the host's
  * documents under labels (k1, k2, …) and says which it used; the server maps those to document
  * titles, so a source the model was not given cannot be cited. A draft is never shown to the
- * audience: a host reads it, may edit it, and posts it or not. */
+ * audience: a host reads it, may edit it, and posts it or not.
+ *
+ * There is no general answer: when the excerpts (or, for a suggestion, what the host said)
+ * do not clearly answer the question, the model returns grounded:false and an empty answer,
+ * and the gate in qa_policy.go drops anything not grounded, confident and checked. */
 
 // MaxAnswerTranscriptRunes bounds the recent transcript a suggested answer is given.
 const MaxAnswerTranscriptRunes = 8000
 
 // MaxDraftRunes bounds a draft: what a posted answer may be (types.QAAnswerMaxRunes).
 const MaxDraftRunes = 600
-
-// NotInKnowledge opens a draft the knowledge did not cover, when the session has knowledge.
-const NotInKnowledge = "Not in your knowledge — general answer:"
 
 // QAExcerpt is one piece of a knowledge document, as the model is shown it.
 type QAExcerpt struct {
@@ -48,9 +49,11 @@ type QAAnswerInput struct {
 	HasKnowledge bool
 }
 
-const qaGrounding = `Ground the answer strictly in what you are given. Use the knowledge excerpts (the host's own documents) and what the host said in the transcript, and nothing else, for every fact: prices, dates, links, names, policies, promises. When they answer the question, set grounded to true and list in sources the labels of the excerpts you used (e.g. ["k1","k3"]; empty when it came from the transcript alone).
+const qaGrounding = `Answer ONLY from the excerpts (the host's own documents and past answers), and from the transcript labelled t1 when there is one. Every fact must be stated there: prices, numbers, dates, links, names, policies, timings, promises. Copy every number exactly as the source writes it; never round, convert or calculate.
 
-When they do not cover it, set grounded to false and sources to [], and give a short, careful general answer that invents no specifics and says the host may want to add them. Never present a general answer as the host's policy.
+When they explicitly answer the question, set grounded to true, list in sources the labels you used (e.g. ["k1","k3"], or ["t1"] for the transcript), and set confidence to how sure you are, from 0 to 1, that the answer is fully supported by those sources.
+
+When they do not explicitly answer it, or only part of it, or you would have to guess, set grounded to false, answer to "", sources to [] and confidence to 0, and say in missing, in a few words, what the host's material lacks (e.g. "certificate policy"). Never give a general answer, advice from general knowledge, a guess, or a partial answer with invented details. The host will answer it.
 
 If the question is in Hinglish (Hindi written in Roman letters, mixed with English), answer in Hinglish in Roman script, never Devanagari. Otherwise answer in simple English.
 
@@ -58,23 +61,25 @@ Plain text in the answer: no markdown, no lists, no emojis, no greeting, no sign
 
 const qaAnswerPrompt = `You draft an answer to one audience question for the host of a live webinar, who will review it privately, may edit it, and decides whether to post it. You are not talking to the audience.
 
-You are given the session's topic and description, the question (and how people asked it), excerpts from the host's knowledge documents found for it (labelled k1, k2, …) when there are any, and what was said in the last few minutes when there is a transcript.
+You are given the session's topic and description, the question (and how people asked it), excerpts from the host's knowledge documents found for it (labelled k1, k2, …) when there are any, and what was said in the last few minutes (labelled t1) when there is a transcript.
 
-Write 2 to 4 short, plain sentences (under 90 words) the host could post as the answer.
+When your sources answer it, write 2 to 4 short, plain sentences (under 90 words) the host could post as the answer.
 
 ` + qaGrounding + `
 
-Return (as JSON) answer, grounded and sources.`
+Return (as JSON) answer, grounded, confidence, sources and missing ("" when grounded).`
 
 // QAAnswerSchema is a suggested answer's reply.
 var QAAnswerSchema = ai.NewSchema("qa_answer", `{
   "type": "object",
   "additionalProperties": false,
-  "required": ["answer", "grounded", "sources"],
+  "required": ["answer", "grounded", "confidence", "sources", "missing"],
   "properties": {
     "answer": {"type": "string"},
     "grounded": {"type": "boolean"},
-    "sources": {"type": "array", "maxItems": 8, "items": {"type": "string"}}
+    "confidence": {"type": "number"},
+    "sources": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+    "missing": {"type": "string"}
   }
 }`)
 
@@ -125,7 +130,7 @@ func QAAnswerMessages(in QAAnswerInput) []ai.Message {
 			}
 			lines = append(lines, l)
 		}
-		b.WriteString("\nWhat was said in the last few minutes:\n<<<\n")
+		b.WriteString("\n[t1] What was said in the last few minutes:\n<<<\n")
 		for i := len(lines) - 1; i >= 0; i-- {
 			b.WriteString(lines[i] + "\n")
 		}
@@ -139,70 +144,62 @@ func QAAnswerMessages(in QAAnswerInput) []ai.Message {
 	}
 }
 
-// QAAnswer is a parsed draft: Sources are indexes into the excerpts the call was given.
+/* QAAnswer is a parsed draft: Sources are indexes into the excerpts the call was given, and
+ * Transcript is whether it cited the transcript (t1) it was given. Confidence is the model's
+ * own, 0-1. Policy.Decide says whether it may be used at all. */
 type QAAnswer struct {
-	Answer   string
-	Grounded bool
-	Sources  []int
+	Answer     string
+	Grounded   bool
+	Confidence float64
+	Sources    []int
+	Transcript bool
 }
 
 type rawAnswer struct {
-	Question string   `json:"question"`
-	Answer   string   `json:"answer"`
-	Grounded bool     `json:"grounded"`
-	Sources  []string `json:"sources"`
+	Question   string   `json:"question"`
+	Answer     string   `json:"answer"`
+	Grounded   bool     `json:"grounded"`
+	Confidence float64  `json:"confidence"`
+	Sources    []string `json:"sources"`
 }
 
 /* resolve checks a reply against what the call was given: source labels it was not given
- * are dropped, and an answer claiming to be grounded with no excerpt behind it is grounded
- * only when there was a transcript it could have come from. */
+ * are dropped (t1 only when there was a transcript), and an answer that is not grounded keeps
+ * no text and no sources. */
 func (r rawAnswer) resolve(excerpts int, transcript bool) QAAnswer {
-	out := QAAnswer{Answer: CleanQAAnswer(r.Answer), Grounded: r.Grounded}
+	if !r.Grounded {
+		return QAAnswer{}
+	}
+	out := QAAnswer{Answer: CleanQAAnswer(r.Answer), Grounded: true, Confidence: min(max(r.Confidence, 0), 1)}
 	seen := map[int]bool{}
 	for _, l := range r.Sources {
+		if transcript && strings.EqualFold(strings.TrimSpace(l), "t1") {
+			out.Transcript = true
+			continue
+		}
 		if i := qaLabel(l, "k", excerpts); i >= 0 && !seen[i] {
 			seen[i] = true
 			out.Sources = append(out.Sources, i)
 		}
 	}
-	if !out.Grounded {
-		out.Sources = nil
-	}
-	if out.Grounded && len(out.Sources) == 0 && !transcript {
-		out.Grounded = false
-	}
 	return out
 }
 
-/* ParseQAAnswer reads a suggested answer's reply. A provider without structured output may
- * answer in plain text: that is taken as the answer, not grounded (nothing says it is). */
+/* ParseQAAnswer reads a suggested answer's reply. Anything that is not the JSON asked for (a
+ * provider without structured output answering in plain text) is no answer: nothing says it
+ * is grounded. */
 func ParseQAAnswer(text string, excerpts int, transcript bool) QAAnswer {
 	var raw rawAnswer
 	t := strings.TrimSpace(text)
-	if strings.HasPrefix(t, "{") && json.Unmarshal([]byte(t), &raw) == nil && strings.TrimSpace(raw.Answer) != "" {
+	if strings.HasPrefix(t, "{") && json.Unmarshal([]byte(t), &raw) == nil {
 		return raw.resolve(excerpts, transcript)
 	}
-	return QAAnswer{Answer: CleanQAAnswer(text)}
+	return QAAnswer{}
 }
 
-/* FinishQAAnswer is the draft as the host sees it: one plain paragraph within MaxDraftRunes,
- * opening with NotInKnowledge when it is a general answer in a session that has knowledge (a
- * model's own copy of that opening is replaced, never doubled). */
-func FinishQAAnswer(a QAAnswer, hasKnowledge bool) string {
-	s := strings.TrimSpace(a.Answer)
-	for _, p := range []string{NotInKnowledge, "Not in your knowledge - general answer:", "Not in your knowledge – general answer:", "Not in your knowledge:"} {
-		if len(s) >= len(p) && strings.EqualFold(s[:len(p)], p) {
-			s = strings.TrimSpace(s[len(p):])
-			break
-		}
-	}
-	if s == "" {
-		return ""
-	}
-	if !a.Grounded && hasKnowledge {
-		s = NotInKnowledge + " " + s
-	}
-	return clip(s, MaxDraftRunes)
+// FinishQAAnswer is the draft as the host sees it: one plain paragraph within MaxDraftRunes.
+func FinishQAAnswer(a QAAnswer) string {
+	return clip(strings.TrimSpace(a.Answer), MaxDraftRunes)
 }
 
 // CleanQAAnswer makes the reply one plain paragraph: markdown emphasis and bullets removed.
@@ -230,11 +227,11 @@ type QADraftItem struct {
 
 const qaDraftBatchPrompt = `You draft answers to audience questions for the host of a live webinar, who will review each one privately, may edit it, and decides whether to post it. You are not talking to the audience.
 
-You are given the session's topic, excerpts from the host's knowledge documents (labelled k1, k2, …), and new questions (labelled n1, n2, …), each with the excerpts that were found for it. Answer every question in 2 to 4 short, plain sentences (under 90 words each). An excerpt found for one question may also help another.
+You are given the session's topic, excerpts from the host's knowledge documents (labelled k1, k2, …), and new questions (labelled n1, n2, …), each with the excerpts that were found for it. Answer each question the excerpts explicitly answer in 2 to 4 short, plain sentences (under 90 words each); for any other, return grounded false and an empty answer. An excerpt found for one question may also help another.
 
 ` + qaGrounding + `
 
-Return (as JSON) answers: one per question, each with question (its label, e.g. "n2"), answer, grounded and sources.`
+Return (as JSON) answers: one per question, each with question (its label, e.g. "n2"), answer, grounded, confidence, sources and missing.`
 
 // QADraftBatchSchema is an automatic-draft call's reply.
 var QADraftBatchSchema = ai.NewSchema("qa_drafts", `{
@@ -244,12 +241,14 @@ var QADraftBatchSchema = ai.NewSchema("qa_drafts", `{
   "properties": {
     "answers": {"type": "array", "maxItems": 20, "items": {
       "type": "object", "additionalProperties": false,
-      "required": ["question", "answer", "grounded", "sources"],
+      "required": ["question", "answer", "grounded", "confidence", "sources", "missing"],
       "properties": {
         "question": {"type": "string"},
         "answer": {"type": "string"},
         "grounded": {"type": "boolean"},
-        "sources": {"type": "array", "maxItems": 8, "items": {"type": "string"}}
+        "confidence": {"type": "number"},
+        "sources": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+        "missing": {"type": "string"}
       }}}
   }
 }`)
@@ -283,8 +282,8 @@ func QADraftBatchMessages(topic, description string, excerpts []QAExcerpt, items
 }
 
 /* ParseQADraftBatch reads an automatic-draft reply: one answer per question index, at most;
- * an unknown label, a second answer to a question, or an empty answer is dropped, so a
- * question the reply skipped simply gets no draft. */
+ * an unknown label or a second answer to a question is dropped. An answer not grounded is kept
+ * empty (resolve), for Policy.Decide to say so; a question the reply skipped is not in the map. */
 func ParseQADraftBatch(text string, items, excerpts int) (map[int]QAAnswer, error) {
 	var raw struct {
 		Answers []rawAnswer `json:"answers"`
@@ -295,7 +294,7 @@ func ParseQADraftBatch(text string, items, excerpts int) (map[int]QAAnswer, erro
 	out := map[int]QAAnswer{}
 	for _, a := range raw.Answers {
 		i := qaLabel(a.Question, "n", items)
-		if i < 0 || strings.TrimSpace(a.Answer) == "" {
+		if i < 0 {
 			continue
 		}
 		if _, dup := out[i]; dup {

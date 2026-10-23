@@ -25,9 +25,11 @@ import (
  *              account feature simulive_auto (in effect only with ai, replay_engage and
  *              simulive), and only while sessionAIAllowed (the
  *              room's AI switch). Q&A questions only: chat is never auto-answered.
- *   grounded   only an answer the knowledge covers is posted (aiwrite.ParseQAAuto: grounded
- *              AND citing an excerpt it was given). Anything else stays open for the host, and
- *              the audience sees nothing about it. A question with no knowledge hits costs no call.
+ *   grounded   only an answer the knowledge clearly covers is posted (aiwrite.AutoPolicy, stricter
+ *              than a draft's: retrieval close enough before any call, then grounded, confidence
+ *              at least 0.85, citing an excerpt it was given, every number in what it cited).
+ *              Anything else stays open for the host, and the audience sees nothing about it. A
+ *              question without close enough knowledge costs no call.
  *   signed     "✨ <First name>'s assistant" (assistantLabel), on the answer as everyone sees it
  *              (session_questions.answer_by, the qmod packet's answerBy). Never the host's name
  *              or avatar as the author, and there is no option to hide that it is an assistant.
@@ -231,27 +233,32 @@ func (s *Server) qaAutoAnswer(ctx context.Context, wb types.Webinar, qs []store.
 	}
 	vecs := s.queryVectors(ctx, wb.Host.ID, texts)
 	var (
-		pool    excerptPool
-		items   []aiwrite.AutoAnswerItem
-		targets []store.AutoQuestion
-		none    []store.AutoQuestion
+		pool     excerptPool
+		items    []aiwrite.AutoAnswerItem
+		targets  []store.AutoQuestion
+		evidence []aiwrite.Evidence
+		none     []store.AutoQuestion
 	)
 	for i, q := range eligible {
-		hits, err := s.retrieveWith(ctx, slug, texts[i], vecs[i], autoDraftTopChunks, autoDraftTokenBudget)
+		found, err := s.retrieveWith(ctx, slug, texts[i], vecs[i], autoDraftTopChunks, autoDraftTokenBudget)
 		if err != nil {
 			settle(eligible, store.AutoFailed)
 			return 0, err
 		}
-		if len(hits) == 0 {
+		// Nothing close enough for Auto mode's stricter bar: open for the host, no call.
+		ev := found.evidence(texts[i])
+		if !aiwrite.AutoPolicy.Retrieved(ev) {
+			s.logQADecision("auto_mode", slug, aiwrite.VerdictNoEvidence, 0, ev)
 			none = append(none, q)
 			continue
 		}
 		it := aiwrite.AutoAnswerItem{Question: texts[i]}
-		for _, h := range hits {
+		for _, h := range found.hits {
 			it.Excerpts = append(it.Excerpts, pool.add(h))
 		}
 		items = append(items, it)
 		targets = append(targets, q)
+		evidence = append(evidence, ev)
 	}
 	settle(none, store.AutoUngrounded)
 	if len(items) == 0 {
@@ -277,7 +284,7 @@ func (s *Server) qaAutoAnswer(ctx context.Context, wb types.Webinar, qs []store.
 		settle(targets, store.AutoFailed)
 		return 0, err
 	}
-	answers, err := aiwrite.ParseQAAuto(reply.Text, len(items), len(pool.hits))
+	answers, verdicts, err := aiwrite.ParseQAAuto(reply.Text, len(items), pool.excerpts())
 	if err != nil {
 		settle(targets, store.AutoFailed)
 		return 0, err
@@ -289,6 +296,11 @@ func (s *Server) qaAutoAnswer(ctx context.Context, wb types.Webinar, qs []store.
 	var posted []string
 	for i, q := range targets {
 		a, ok := answers[i]
+		verdict, replied := verdicts[i]
+		if !replied {
+			verdict = aiwrite.VerdictEmpty
+		}
+		s.logQADecision("auto_mode", slug, verdict, a.Confidence, evidence[i])
 		if !ok {
 			ungrounded = append(ungrounded, q)
 			continue

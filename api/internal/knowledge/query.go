@@ -76,3 +76,37 @@ func singular(t string) string {
 	}
 	return t
 }
+
+/* Coverage is the share of a question's searchable words (Terms) that a text contains, a word
+ * matching as the full-text search matches it: the question word's singular as a prefix of a
+ * word of the text ("fees" is found in "fee", "record" in "recorded"). 0 when the question
+ * has no searchable word. It is the full-text side of the Q&A assistant's retrieval evidence
+ * (aiwrite.Policy): ts_rank orders hits, but its scale depends on the chunk's length. */
+func Coverage(question, text string) float64 {
+	// A scrubbed contact detail is not something the question asks about.
+	terms := Terms(strings.NewReplacer(EmailPlaceholder, " ", PhonePlaceholder, " ").Replace(question))
+	if len(terms) == 0 {
+		return 0
+	}
+	words := map[string]bool{}
+	for _, f := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r))
+	}) {
+		words[f] = true
+	}
+	found := 0
+	for _, t := range terms {
+		p := singular(t)
+		if words[p] {
+			found++
+			continue
+		}
+		for w := range words {
+			if strings.HasPrefix(w, p) {
+				found++
+				break
+			}
+		}
+	}
+	return float64(found) / float64(len(terms))
+}

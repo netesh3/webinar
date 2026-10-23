@@ -50,7 +50,8 @@ func SetEmbedder(s *Server, e ai.Embedder) { s.embedder = e }
 
 // RetrieveKnowledge is the hybrid retrieval a suggested answer uses, for a session.
 func RetrieveKnowledge(s *Server, ctx context.Context, wb types.Webinar, question string) ([]store.KnowledgeHit, error) {
-	return s.retrieveKnowledge(ctx, wb, question, knowledgeTopChunks, knowledgeTokenBudget)
+	r, err := s.retrieveKnowledge(ctx, wb, question, knowledgeTopChunks, knowledgeTokenBudget)
+	return r.hits, err
 }
 
 // IsAILimit reports whether err is a monthly AI cap.

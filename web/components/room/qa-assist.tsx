@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { QAClustersResponse, QADraft } from "@/lib/api-types";
-import { answerProblem, draftSourceChips, MAX_ANSWER_CHARS } from "@/lib/knowledge";
+import { answerProblem, draftSourceChips, knowledgeAddHref, MAX_ANSWER_CHARS, NO_CONFIDENT_ANSWER } from "@/lib/knowledge";
 import { useCoalescingReader } from "@/lib/polls";
 import { askedLabel, draftFor, pickDraft, suggestError, type QAItem, type TopQuestion } from "@/lib/qa-clusters";
 import type { Question } from "@/lib/realtime";
@@ -93,6 +93,7 @@ export function TopQuestionsStrip({ items, slug, clusters, onAnswered, onPosted 
                 <SuggestAnswer
                   slug={slug}
                   clusterId={t.id}
+                  question={t.text}
                   onAnswered={() => onAnswered(t.questionIds)}
                   onPosted={onPosted}
                 />
@@ -156,6 +157,7 @@ export function ClusterCard({ item, slug, draft, renderQuestion, onAnswered, onP
       <SuggestAnswer
         slug={slug}
         clusterId={item.id}
+        question={item.canonical}
         draft={draft}
         onAnswered={() => onAnswered(ids)}
         onPosted={onPosted}
@@ -169,10 +171,16 @@ export function ClusterCard({ item, slug, draft, renderQuestion, onAnswered, onP
  *  from the AI knowledge when the question arrived, or by "✨ Suggest an answer"), with where
  *  it came from, Edit, Post answer and Discard. Post is the only way it reaches the audience:
  *  the server records it as the host's answer on each open question, and onPosted sends the
- *  room's usual answer packets. Never posted by itself. */
-export function SuggestAnswer({ slug, clusterId, draft, onAnswered, onPosted }: {
+ *  room's usual answer packets. Never posted by itself.
+ *
+ *  The assistant answers only from the host's knowledge (or what the host just said), and only
+ *  when it is confident: otherwise a suggestion comes back with no draft, and the card says
+ *  NO_CONFIDENT_ANSWER with a link to add the answer to the library. The question stays open. */
+export function SuggestAnswer({ slug, clusterId, question, draft, onAnswered, onPosted }: {
   slug: string;
   clusterId: string;
+  /** The question as the card shows it, for "Add to knowledge". */
+  question: string;
   /** The server's open draft for this cluster, if any. */
   draft?: QADraft;
   onAnswered: () => void;
@@ -184,6 +192,8 @@ export function SuggestAnswer({ slug, clusterId, draft, onAnswered, onPosted }: 
   const [gone, setGone] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The last suggestion came back with no confident answer.
+  const [declined, setDeclined] = useState(false);
 
   // The newer of this host's own suggestion and the server's (a co-host's, or an automatic one).
   const shown = pickDraft(mine, draft, gone);
@@ -193,8 +203,13 @@ export function SuggestAnswer({ slug, clusterId, draft, onAnswered, onPosted }: 
     if (busy) return;
     setBusy("suggest");
     setError(null);
+    setDeclined(false);
     try {
       const out = await api.suggestQAAnswer(slug, clusterId);
+      if (out.noConfidentAnswer || !out.draft) {
+        setDeclined(true);
+        return;
+      }
       setMine(out.draft);
       setEditing(null);
     } catch (err) {
@@ -251,8 +266,21 @@ export function SuggestAnswer({ slug, clusterId, draft, onAnswered, onPosted }: 
           className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11.5px] font-medium text-brand transition-colors outline-none hover:bg-brand-soft focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-60 md:min-h-7"
         >
           <SparklesIcon className="size-3.5" />
-          {busy === "suggest" ? "Drafting…" : "Suggest an answer"}
+          {busy === "suggest" ? "Drafting…" : declined ? "Try again" : "Suggest an answer"}
         </button>
+        {declined && busy === null && (
+          <p role="status" className="px-2 text-[11px] leading-snug text-ink-3">
+            {NO_CONFIDENT_ANSWER}.{" "}
+            <a
+              href={knowledgeAddHref(question)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-brand hover:underline"
+            >
+              Add to knowledge
+            </a>
+          </p>
+        )}
         {error && <p className="px-2 text-[11px] text-live">{error}</p>}
       </div>
     );
@@ -285,16 +313,13 @@ export function SuggestAnswer({ slug, clusterId, draft, onAnswered, onPosted }: 
       ) : (
         <p className="mt-1 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap text-ink wrap-anywhere">{text}</p>
       )}
-      {(chips.length > 0 || !shown.grounded) && (
+      {chips.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {chips.map((c) => (
             <span key={c} className="rounded-full bg-surface-2 px-2 text-[10.5px] leading-5 text-ink-2">
               {c}
             </span>
           ))}
-          {!shown.grounded && (
-            <span className="rounded-full bg-warn-soft px-2 text-[10.5px] leading-5 text-ink-2">General answer: check it</span>
-          )}
         </div>
       )}
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
@@ -324,6 +349,11 @@ export function SuggestAnswer({ slug, clusterId, draft, onAnswered, onPosted }: 
           Discard
         </DraftAction>
       </div>
+      {declined && busy === null && (
+        <p role="status" className="text-[11px] text-ink-3">
+          {NO_CONFIDENT_ANSWER}: the draft above is unchanged.
+        </p>
+      )}
       {error && <p className="text-[11px] text-live">{error}</p>}
     </div>
   );

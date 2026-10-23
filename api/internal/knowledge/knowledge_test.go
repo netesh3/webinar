@@ -193,6 +193,25 @@ func TestEstimateTokens(t *testing.T) {
 	}
 }
 
+func TestCoverage(t *testing.T) {
+	faq := "The fee for the Money Basics course is 499 rupees. Every live class is recorded."
+	for _, c := range []struct {
+		q    string
+		want float64
+	}{
+		{"What is the fee?", 1},
+		{"Fees kitni hai?", 1},               // "fees" found as "fee", the Hinglish words are stop words
+		{"Is every live class recorded?", 1}, // every, live, class, recorded
+		{"Do we get a certificate for the course?", 0.5},
+		{"Certificate milega?", 0},
+		{"what is it", 0}, // no searchable word
+	} {
+		if got := Coverage(c.q, faq); got != c.want {
+			t.Errorf("Coverage(%q) = %v, want %v", c.q, got, c.want)
+		}
+	}
+}
+
 func TestTSQuery(t *testing.T) {
 	if q := TSQuery("What is the fee for the course??"); q != "fee:* | course:*" {
 		t.Fatalf("english = %q", q)

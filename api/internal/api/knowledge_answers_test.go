@@ -185,7 +185,7 @@ func TestPastAnswersTypedHarvestIsIdempotentScrubbedAndBackfilled(t *testing.T) 
 	}
 }
 
-const harvestReply = `{"answers":[{"question":"h1","answer":"Haan, har class ki recording 24 ghante mein milegi. Doubts ho to 98765 43210 par call karo."},{"question":"h2","answer":"The weekend batch starts this Saturday at 10."},{"question":"h9","answer":"made up"}]}`
+const harvestReply = `{"answers":[{"question":"h1","answer":"Haan, har class ki recording 24 ghante mein milegi. Doubts ho to 98765 43210 par call karo.","confidence":0.9},{"question":"h2","answer":"The weekend batch starts this Saturday at 10.","confidence":0.9},{"question":"h9","answer":"made up","confidence":0.9}]}`
 
 func TestPastAnswersAloudDraftsArePendingUntilApproved(t *testing.T) {
 	h, model := aiHarness(t, "{}", nil)
@@ -201,7 +201,7 @@ func TestPastAnswersAloudDraftsArePendingUntilApproved(t *testing.T) {
 	h.question(wb.ID, "q-al-2", "When does the weekend batch start?", 2)
 	h.question(wb.ID, "q-al-3", "What is the fee?", 1)
 	h.answerQuestion(wb.ID, "q-al-3", "499 rupees.")
-	h.caption(wb.ID, "user_"+host.ID, "Recording ka sawaal: haan, har class ki recording 24 ghante mein milegi.")
+	h.caption(wb.ID, "user_"+host.ID, "Recording ka sawaal: haan, har class ki recording 24 ghante mein milegi. Doubts ho to 98765 43210 par call karo.")
 	h.caption(wb.ID, "user_"+host.ID, "Weekend batch is Saturday at 10.")
 	h.endSession(wb.ID)
 	// Before the transcript has settled (the recap is still due), no pass runs.
