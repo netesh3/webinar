@@ -36,7 +36,8 @@ import {
   showEntryPreview,
   type CameraStart,
 } from "@/lib/entry-publish";
-import { describeMediaError } from "@/lib/media-errors";
+import { describeMediaError, mediaErrorKind } from "@/lib/media-errors";
+import { reportError, reportEvent } from "@/lib/observability";
 import {
   PRESENCE_HEARTBEAT_MS,
   isScheduledPresenter as scheduledPresenter,
@@ -1147,6 +1148,17 @@ function ConnectedRoom({
   // the room in a state where neither has really happened.
   const { connect, disconnect } = useSequentialRoomConnectDisconnect(room);
 
+  // A camera or microphone LiveKit could not open or lost (Grafana Faro, lib/observability.ts).
+  useEffect(() => {
+    const onMediaDevicesError = (err: Error, kind?: MediaDeviceKind) => {
+      reportError("media_device_error", err, { device: kind ?? "unknown", kind: mediaErrorKind(err) });
+    };
+    room.on(RoomEvent.MediaDevicesError, onMediaDevicesError);
+    return () => {
+      room.off(RoomEvent.MediaDevicesError, onMediaDevicesError);
+    };
+  }, [room]);
+
   useEffect(() => {
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -1171,10 +1183,12 @@ function ConnectedRoom({
       const plan = planRecovery(exitReason, attempts.current);
       if (plan.action === "retry") {
         attempts.current = plan.attempt;
+        reportEvent("room_reconnecting", { attempt: plan.attempt, reason: exitReason, role: join.role });
         setRecovering(plan.attempt);
         retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
         return;
       }
+      reportEvent("room_exit", { reason: exitReason, role: join.role });
       stopLocalCapture(room, captured.current);
       setExit(exitReason);
     };
@@ -1229,6 +1243,13 @@ function ConnectedRoom({
         // without join_success says it happened, not why.
         reportConnectFailure.current(attempts.current, err);
         const plan = planRecovery("lost", attempts.current);
+        // Grafana Faro (lib/observability.ts): every failed connect, and whether it was the last.
+        reportError("room_connect_failed", err, {
+          attempt: attempts.current,
+          final: plan.action !== "retry",
+          role: join.role,
+          meeting: Boolean(join.meeting),
+        });
         if (plan.action === "retry") {
           attempts.current = plan.attempt;
           setRecovering(plan.attempt);
@@ -1359,9 +1380,11 @@ function ConnectedRoom({
       ]);
       if (micResult.status === "rejected") {
         failures.mic = publishFailureMessage("microphone", detail(micResult.reason));
+        reportError("media_publish_failed", micResult.reason, { device: "microphone" });
       }
       if (cameraResult.status === "rejected") {
         failures.camera = publishFailureMessage("camera", detail(cameraResult.reason));
+        reportError("media_publish_failed", cameraResult.reason, { device: "camera" });
       }
 
       // An attendee promoted mid-session, anyone whose pre-join handed over nothing, or a
@@ -1373,6 +1396,7 @@ function ConnectedRoom({
           await lp.setMicrophoneEnabled(true);
         } catch (err) {
           failures.mic = describeMediaError(err, "microphone");
+          reportError("media_open_failed", err, { device: "microphone", kind: mediaErrorKind(err) });
         }
       }
       if (cameraPlan === "open-device") {
@@ -1381,6 +1405,7 @@ function ConnectedRoom({
           await enableCamera(lp, background, lowLight, backgroundEngine);
         } catch (err) {
           failures.camera = describeMediaError(err, "camera");
+          reportError("media_open_failed", err, { device: "camera", kind: mediaErrorKind(err) });
         }
       }
       publishingEntry.current = false;
