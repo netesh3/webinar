@@ -20,10 +20,9 @@ import {
   type RefObject,
 } from "react";
 import { API_BASE, ApiError, api } from "@/lib/api";
-import { classifyDisconnect } from "@/lib/disconnect-reason";
+import { disconnectVerdict } from "@/lib/disconnect-reason";
 import {
   planRecovery,
-  RECOVERY_IDLE_RETRY_MS,
   type LostReason,
   type Reach,
   type Recovery,
@@ -155,6 +154,8 @@ export function CdnAttendeeRoom({
   const [recovering, setRecovering] = useState<number | null>(null);
   const attempts = useRef(0);
   const connectedOnce = useRef(false);
+  // Set by Leave, before it disconnects: the one disconnect that is the person leaving.
+  const leaving = useRef(false);
   const returnQuiet = useReturnQuiet();
 
   const onLeaveRef = useRef(onLeave);
@@ -270,6 +271,8 @@ export function CdnAttendeeRoom({
     const mint = (async () => {
       try {
         const fresh = presenter ? await api.hostJoin(slug) : await api.join(slug, joinKey);
+        // A response without a credential is no better than none: go ahead with the old one.
+        if (!fresh.url || !fresh.token) return null;
         return { url: fresh.url, token: fresh.token };
       } catch (e) {
         if (e instanceof ApiError && (e.code === "ended" || e.code === "not_joinable")) return "ended" as const;
@@ -285,6 +288,11 @@ export function CdnAttendeeRoom({
     let retry: ReturnType<typeof setTimeout> | undefined;
     let settle: ReturnType<typeof setTimeout> | undefined;
     let stopWaiting: (() => void) | undefined;
+    /* True while room.connect() is in flight: a failed connect emits Disconnected itself before
+     * it rejects, and the catch below — not onDisconnected — owns that failure. Without this
+     * a first join that failed started the ladder behind the "Couldn't connect" screen, and
+     * every failed retry spent two attempts. Same as the live room. */
+    let connecting = false;
 
     const reach = (): Reach => ({
       hidden: document.visibilityState === "hidden",
@@ -296,11 +304,11 @@ export function CdnAttendeeRoom({
       retry = setTimeout(() => setAttempt((n) => n + 1), plan.delayMs);
     };
     /* Out of attempts while hidden or offline: wait, and start again from the first rung when
-     * the page is looked at, the network returns, or every RECOVERY_IDLE_RETRY_MS. See "wait"
-     * in lib/recovery.ts — the same as the live room. */
+     * the page is looked at or the network returns. See "wait" in lib/recovery.ts — the same
+     * as the live room. Nothing of this viewer's is captured, so there is no time limit. */
     const waitForReturn = () => {
       if (stopWaiting) return;
-      const wake = (trigger: "visible" | "online" | "idle") => {
+      const wake = (trigger: "visible" | "online") => {
         if (cancelled) return;
         if (trigger === "visible" && document.visibilityState !== "visible") return;
         if (navigator.onLine === false) return;
@@ -311,11 +319,9 @@ export function CdnAttendeeRoom({
       };
       const onVisible = () => wake("visible");
       const onOnline = () => wake("online");
-      const idle = setInterval(() => wake("idle"), RECOVERY_IDLE_RETRY_MS);
       document.addEventListener("visibilitychange", onVisible);
       window.addEventListener("online", onOnline);
       stopWaiting = () => {
-        clearInterval(idle);
         document.removeEventListener("visibilitychange", onVisible);
         window.removeEventListener("online", onOnline);
         stopWaiting = undefined;
@@ -338,11 +344,10 @@ export function CdnAttendeeRoom({
 
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
-      if (reason === DisconnectReason.CLIENT_INITIATED) {
-        onLeaveRef.current();
-        return;
-      }
-      lost(classifyDisconnect(reason) ?? "lost");
+      // See disconnectVerdict (lib/disconnect-reason.ts). "left": Leave already called onLeave.
+      const verdict = disconnectVerdict({ reason, connecting, leaving: leaving.current });
+      if (verdict === "ignore" || verdict === "left") return;
+      lost(verdict);
     };
 
     room.on(RoomEvent.Disconnected, onDisconnected);
@@ -361,11 +366,16 @@ export function CdnAttendeeRoom({
           }
           if (fresh) ({ url, token } = fresh);
         }
-        await connect(url, token, {
-          peerConnectionTimeout: 15_000,
-          websocketTimeout: 15_000,
-          autoSubscribe: false,
-        });
+        connecting = true;
+        try {
+          await connect(url, token, {
+            peerConnectionTimeout: 15_000,
+            websocketTimeout: 15_000,
+            autoSubscribe: false,
+          });
+        } finally {
+          connecting = false;
+        }
         if (cancelled) return;
         connectedOnce.current = true;
         setRecovering(null);
@@ -518,6 +528,7 @@ export function CdnAttendeeRoom({
   );
 
   const leave = useCallback(() => {
+    leaving.current = true;
     void disconnect();
     onLeaveRef.current();
   }, [disconnect]);

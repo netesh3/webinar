@@ -45,8 +45,18 @@ export type Reach = {
  * network does), the room starts the ladder again from the first rung.
  *
  * Offline with the page in view waits too: there is nothing a Rejoin could do before the
- * network is back, and the moment it is, reconnecting by itself is what the person wants. */
-export const RECOVERY_IDLE_RETRY_MS = 30_000;
+ * network is back, and the moment it is, reconnecting by itself is what the person wants.
+ *
+ * Only those two wake it — the page being looked at, the network coming back — never a timer.
+ * A timer retrying a hidden tab in the background is what let an old, forgotten tab reconnect
+ * and take the identity back from a newer one (DUPLICATE_IDENTITY ends the newer tab), and
+ * every retry asks the API for a credential, which announces the attendee to the host again. */
+
+/** How long a presenter may wait like this before giving up. Their camera and microphone stay
+ *  open while the room waits (publishers keep their tracks across an unpublish), and that is
+ *  not something to leave running for ever in a tab nobody is looking at. An attendee has no
+ *  capture open and waits as long as it takes. */
+export const RECOVERY_WAIT_MAX_MS = 10 * 60_000;
 
 /** Whether out-of-attempts should wait rather than give up. */
 export function shouldWait(reach: Reach | undefined): boolean {

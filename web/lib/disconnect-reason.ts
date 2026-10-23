@@ -26,3 +26,31 @@ export function classifyDisconnect(reason?: DisconnectReason): LostReason | null
       return "lost";
   }
 }
+
+/** What a room does with livekit's Disconnected event. */
+export type DisconnectVerdict = "ignore" | "left" | LostReason;
+
+/**
+ * One decision for both rooms, from what this page knows rather than from the reason alone:
+ *
+ *   connecting  room.connect() is in flight. A failed connect emits Disconnected before its
+ *               promise rejects, and the caller's catch owns that failure — handling it here
+ *               too spent two attempts per failure and, on a first join, started the ladder
+ *               behind the failure screen.
+ *   leaving     the page asked to leave (Leave was pressed). The only disconnect that is the
+ *               person leaving: livekit also says CLIENT_INITIATED for its own disconnects
+ *               (Chrome freezing a background tab, pagehide), and nothing at all when its
+ *               reconnect gives up after a network loss. Both of those are the network.
+ *   over        the session has ended (or is being ended): the closing is the point.
+ */
+export function disconnectVerdict(o: {
+  reason?: DisconnectReason;
+  connecting: boolean;
+  leaving: boolean;
+  over?: boolean;
+}): DisconnectVerdict {
+  if (o.connecting) return "ignore";
+  if (o.leaving) return "left";
+  if (o.over) return "ended";
+  return classifyDisconnect(o.reason) ?? "lost";
+}

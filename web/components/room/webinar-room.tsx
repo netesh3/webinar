@@ -82,10 +82,10 @@ import { ControlBar } from "./control-bar";
 import {
   planRecovery,
   RECOVERY_BACKOFF_MS,
-  RECOVERY_IDLE_RETRY_MS,
+  RECOVERY_WAIT_MAX_MS,
   type Reach,
 } from "@/lib/recovery";
-import { classifyDisconnect } from "@/lib/disconnect-reason";
+import { disconnectVerdict } from "@/lib/disconnect-reason";
 import { usePresenceFallback } from "@/lib/presence";
 import { ActiveSpeakerProvider } from "./active-speaker";
 import { AIToggle } from "./ai-toggle";
@@ -1171,6 +1171,12 @@ function ConnectedRoom({
     let retry: ReturnType<typeof setTimeout> | undefined;
     let settle: ReturnType<typeof setTimeout> | undefined;
     let stopWaiting: (() => void) | undefined;
+    /* True while room.connect() is in flight. A connect that fails emits Disconnected itself,
+     * synchronously, before its promise rejects — so without this both onDisconnected and the
+     * catch below took the failure, each spending an attempt and scheduling a retry (the
+     * ladder ran 250 ms, 1 s, 4 s: three rungs, not five). The catch alone owns a failed
+     * connect; onDisconnected is for a connection that was up. */
+    let connecting = false;
 
     const reach = (): Reach => ({
       hidden: typeof document !== "undefined" && document.visibilityState === "hidden",
@@ -1179,10 +1185,10 @@ function ConnectedRoom({
 
     /* Out of attempts while the page was hidden or offline. Instead of the "Connection lost"
      * dead end, wait — and start the ladder again from the first rung as soon as the page is
-     * looked at again or the network comes back. A slow retry runs meanwhile too, for a
-     * laptop's background tab whose network came back without an `online` event; a phone
-     * that froze the page runs none of this until it is unfrozen, which is the point of
-     * waking on visibility. The devices stay open, exactly as they do between rungs. */
+     * looked at again or the network comes back (see "wait" in lib/recovery.ts for why
+     * nothing else wakes it). The devices stay open, exactly as they do between rungs, but
+     * not for ever: a presenter still waiting after RECOVERY_WAIT_MAX_MS gets the old
+     * terminal screen, with their camera and microphone released. */
     const waitForReturn = () => {
       if (stopWaiting) return;
       const waitedSince = Date.now();
@@ -1201,11 +1207,19 @@ function ConnectedRoom({
       };
       const onVisible = () => wake("visible");
       const onOnline = () => wake("online");
-      const idle = setInterval(() => wake("idle"), RECOVERY_IDLE_RETRY_MS);
+      const cap = join.canPublish
+        ? setTimeout(() => {
+            if (cancelled) return;
+            stopWaiting?.();
+            setRecovering(null);
+            stopLocalCapture(room, captured.current);
+            setExit("lost");
+          }, RECOVERY_WAIT_MAX_MS)
+        : undefined;
       document.addEventListener("visibilitychange", onVisible);
       window.addEventListener("online", onOnline);
       stopWaiting = () => {
-        clearInterval(idle);
+        clearTimeout(cap);
         document.removeEventListener("visibilitychange", onVisible);
         window.removeEventListener("online", onOnline);
         stopWaiting = undefined;
@@ -1214,7 +1228,18 @@ function ConnectedRoom({
 
     const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
-      const exitReason = overRef.current && !leaving.current ? "ended" : classifyDisconnect(reason);
+      /* See disconnectVerdict (lib/disconnect-reason.ts). Leaving is decided by this page, not
+       * by the reason: livekit's own CLIENT_INITIATED (Chrome freezing a background tab) and
+       * its reason-less give-up after a network loss used to be ignored here, leaving the room
+       * disconnected with nothing trying to bring it back. Both are retried now. */
+      const verdict = disconnectVerdict({
+        reason,
+        connecting,
+        leaving: leaving.current,
+        over: overRef.current,
+      });
+      if (verdict === "ignore") return;
+      const exitReason = verdict === "left" ? null : verdict;
       if (!exitReason) {
         // Pressing Leave is as terminal for this browser's devices as being
         // thrown out is; only a retryable drop keeps them open.
@@ -1268,7 +1293,12 @@ function ConnectedRoom({
           return;
         }
         const credential = fresh ?? join;
-        await connect(credential.url, credential.token, CONNECT_OPTIONS);
+        connecting = true;
+        try {
+          await connect(credential.url, credential.token, CONNECT_OPTIONS);
+        } finally {
+          connecting = false;
+        }
         if (cancelled) return;
         setRecovering(null);
         const resumed = resuming.current;
@@ -2387,9 +2417,6 @@ function stopLocalCapture(room: Room, published: Set<LocalTrack>) {
   published.forEach(release);
 }
 
-/** Maps LiveKit's disconnect reason onto something worth telling a person.
- *
- *  Returns null when they disconnected themselves, which needs no explanation. */
 /** The host's way out of a session that ended without them pressing End here. */
 function HostResultsRedirect({ href }: { href: string }) {
   const router = useRouter();
