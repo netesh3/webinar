@@ -127,7 +127,8 @@ const CASES: TestCase[] = [
       {
         file: "b-webinar-page.png",
         alt: "The host page of the scheduled webinar Zoom review — test session. It says This session runs in Zoom. Go live opens Zoom as the host. It ends in Zoom. It shows the share link, a Go live button and a Webinar scheduled message.",
-        caption: "The webinar in Webinar Liv.",
+        caption:
+          "The webinar in Webinar Liv. The ID on the host page is Webinar Liv's webinar ID; the Zoom meeting number is shown in Zoom.",
         width: W,
         height: 923,
       },
@@ -274,7 +275,8 @@ const CASES: TestCase[] = [
       {
         file: "f-results.png",
         alt: "Webinar Liv Results for Zoom review — test session after the meeting ended in Zoom. Status Completed, 2 registered, 1 attended, 5 minute average watch time.",
-        caption: "Results after the meeting ended in Zoom.",
+        caption:
+          "Results after the meeting ended in Zoom. On this free account the attendee joined through the meeting's shared link without an email, so Zoom reported them as a walk-in and they were not matched to their registration: 1 attended, while the 2 registrants show as didn't join. With a paid account's personal links, attendees are matched to their registration. The ID on the host page is Webinar Liv's webinar ID; the Zoom meeting number is shown in Zoom.",
         width: W,
         height: 839,
       },
@@ -372,16 +374,16 @@ const CASES: TestCase[] = [
     scopes: [],
     shots: [
       {
-        file: "i-before.png",
-        alt: "Webinar Liv Settings, Integrations, before disconnecting: the sidebar lists Zoom and Email under Integrations, 2 connected.",
-        caption: "Before: Zoom listed as connected.",
+        file: "a-zoom-connected.png",
+        alt: "Settings, Integrations tab before disconnecting. The Zoom card says Connected, shows the Zoom account webinarliv@gmail.com and a Disconnect button.",
+        caption: "Before: Zoom connected (as in case A).",
         width: W,
-        height: 839,
+        height: 923,
       },
       {
         file: "i-after.png",
-        alt: "Webinar Liv Settings, Integrations, after disconnecting: the sidebar lists only Email under Integrations, 1 connected.",
-        caption: "After: Zoom no longer connected.",
+        alt: "Settings, Integrations tab after disconnecting. The Zoom card says Not connected and shows the Connect Zoom button again; the sidebar lists only Email, 1 connected.",
+        caption: "After: the card shows Connect Zoom again.",
         width: W,
         height: 839,
       },
@@ -511,10 +513,15 @@ export default function ZoomTestPlanPage() {
       <ul>
         <li>The Webinar Liv test account (see Test credentials).</li>
         <li>
-          A Zoom test account on Pro or above. Registration, which gives each
-          registrant a personal join link, needs a paid Zoom plan.
+          A Zoom test account. A paid Zoom account (Pro or above) is needed
+          for personal per-registrant join links and the attendance report. A
+          Basic account works for meetings, with the meeting&apos;s shared join
+          link (see <a href="#free-zoom">Free (Basic) Zoom accounts</a>).
         </li>
-        <li>For case G only: the Zoom Webinars add-on on that Zoom account.</li>
+        <li>
+          For case G only: Zoom Webinars need the Webinar add-on on that Zoom
+          account.
+        </li>
         <li>A second browser or a private window to act as the attendee.</li>
       </ul>
 
