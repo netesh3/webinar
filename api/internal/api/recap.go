@@ -430,7 +430,7 @@ func (s *Server) emailRecap(ctx context.Context, wb types.Webinar) {
 	n := notify.RecapNotice{
 		Product: s.cfg.AppName, HostName: host.Name, Topic: wb.Topic,
 		Meeting: wb.Kind == types.KindMeeting, Recap: *row.Recap,
-		ResultsURL: base + "/host/" + wb.ID + "?tab=results",
+		RecapURL: base + "/host/" + wb.ID + "?tab=ai",
 	}
 	if recs, err := s.store.Recordings(ctx, wb.ID); err == nil {
 		for _, r := range recs {
