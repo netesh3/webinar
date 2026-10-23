@@ -68,3 +68,11 @@ assert.equal(sameTitle.action, "retry");
 const removed = attendeeJoinRefusal("removed", "The host removed you from this session.");
 assert.equal(removed.title, "You were removed from this session");
 assert.equal(removed.action, "none");
+
+// The on-demand video server: both waits retry by themselves, so no button.
+const starting = attendeeJoinRefusal("sfu_starting", "Starting servers… (about 2 minutes).");
+assert.equal(starting.title, "Starting servers…");
+assert.equal(starting.action, "none");
+const failed = attendeeJoinRefusal("sfu_failed", "The video server could not be started.");
+assert.equal(failed.title, "The video server couldn't start");
+assert.equal(failed.action, "none");

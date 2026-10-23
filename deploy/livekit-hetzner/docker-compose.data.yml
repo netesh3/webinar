@@ -1,0 +1,23 @@
+# The on-demand DigitalOcean box (deploy/digitalocean/README.md): the state that has to outlive
+# a droplet lives on the sfu-data volume, mounted at ${SFU_DATA_DIR} (/mnt/sfu-data). redeploy.sh
+# adds this file when SFU_DATA_DIR is set in .env, and creates the directories first.
+#
+#   caddy_data / caddy_config   TLS certificates (no new ACME order on every boot)
+#   captions_models             the caption models (~2.7 GB, downloaded once)
+#   captions_spool              the after-session transcript spool (survives a delete mid-job)
+#
+# Mix-recording staging (./recordings) needs nothing here: /opt/livekit itself is the volume's
+# livekit/ directory on these boxes. Prometheus and Grafana stay on the droplet's own disk.
+volumes:
+  caddy_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: "${SFU_DATA_DIR:?set SFU_DATA_DIR}/docker/caddy_data" }
+  caddy_config:
+    driver: local
+    driver_opts: { type: none, o: bind, device: "${SFU_DATA_DIR:?set SFU_DATA_DIR}/docker/caddy_config" }
+  captions_models:
+    driver: local
+    driver_opts: { type: none, o: bind, device: "${SFU_DATA_DIR:?set SFU_DATA_DIR}/docker/captions_models" }
+  captions_spool:
+    driver: local
+    driver_opts: { type: none, o: bind, device: "${SFU_DATA_DIR:?set SFU_DATA_DIR}/docker/captions_spool" }

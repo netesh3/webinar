@@ -11,6 +11,8 @@
  * Pure: no React, no fetch. The components own the polling; this only says whether to.
  */
 
+import { SERVER_FAILED_TITLE, SERVER_STARTING_TITLE, serverWaitCopy } from "./video-server.ts";
+
 /** How often the waiting screen asks POST /join whether the host has let them in. The host's
  *  lobby list polls on its own clock; three seconds is a wait nobody notices on admission and
  *  a load the join limiter does not either, for a room of at most fifty. */
@@ -92,6 +94,10 @@ export function lobbyScreen(code: string, message: string): LobbyScreen {
     // The video server waking up, or the host not having opened the room yet: from the
     // guest's side both are still "wait", and the next poll finds out.
     case "sfu_starting":
+      return screen("waiting", SERVER_STARTING_TITLE, serverWaitCopy("starting", false, 0).body, { poll: true });
+    // Failed to start: admins are told and it keeps retrying, so the guest keeps waiting too.
+    case "sfu_failed":
+      return screen("waiting", SERVER_FAILED_TITLE, serverWaitCopy("failed", false, 0).body, { poll: true });
     case "not_started":
       return screen("waiting", "Getting the meeting ready…", WAITING_BODY, { poll: true });
     case "lobby_denied":

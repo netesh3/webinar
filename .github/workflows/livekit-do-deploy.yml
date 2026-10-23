@@ -22,6 +22,12 @@
 # job waits while a session is live on project do-blr (.github/scripts/wait-no-live.sh, secret
 # TICK_SECRET; project overridable with repo variable DO_LIVEKIT_PROJECT), and FAILS if the API
 # cannot say. Run workflow with "force" to skip it.
+#
+# On-demand box (deploy/digitalocean/README.md): when the API reports the box down (live-status
+# "boxes"), the job skips: the next droplet syncs deploy files from main at boot. The SSH host
+# key changes with every droplet; ssh-keyscan below reads the current one each run. The deploy
+# key must be in /mnt/sfu-data/ssh/authorized_keys on the volume so new droplets accept it.
+# A successful run triggers "Video server image (DigitalOcean snapshot)".
 
 name: Deploy LiveKit (DigitalOcean)
 
@@ -61,6 +67,37 @@ jobs:
             echo "::notice::DO_SSH_HOST / DO_SSH_PRIVATE_KEY not set: skipping the DigitalOcean deploy (see this workflow's header)."
             echo "SKIP=true" >> "$GITHUB_ENV"
           fi
+
+      # The box is created on demand (api/internal/api/sfu_box.go). DOWN: there is nothing to
+      # deploy to, and the next droplet syncs these files from main at boot
+      # (deploy/digitalocean/sfu-boot.sh), so skip. Starting: wait for it to be ready (its boot
+      # already took main as it was), then deploy as usual. An API without the field (older
+      # build) or no answer: carry on to the deploy guard, which decides as before.
+      - name: Is the box up?
+        if: env.SKIP != 'true'
+        env:
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+          API_BASE: ${{ vars.LIVE_STATUS_API_BASE || 'https://webcast-api-65278594492.asia-south1.run.app' }}
+          PROJECT: ${{ vars.DO_LIVEKIT_PROJECT || 'do-blr' }}
+        run: |
+          [ -n "${TICK_SECRET}" ] || exit 0
+          for i in $(seq 1 30); do
+            actual="$(curl -fsS -m 20 -H "X-Tick-Secret: ${TICK_SECRET}" "${API_BASE%/}/api/internal/live-status" 2>/dev/null |
+              jq -r --arg p "$PROJECT" '.boxes[$p].actual // "unmanaged"' 2>/dev/null || echo unknown)"
+            case "$actual" in
+              down|deleting|failed)
+                echo "::notice::The ${PROJECT} video server is ${actual}: nothing to deploy. The next droplet syncs deploy files from main when it boots."
+                echo "SKIP=true" >> "$GITHUB_ENV"
+                exit 0 ;;
+              creating|booting)
+                echo "The ${PROJECT} video server is ${actual}; waiting for it to be ready ($i/30)"
+                sleep 30 ;;
+              *)
+                echo "Video server ${PROJECT}: ${actual}"
+                exit 0 ;;
+            esac
+          done
+          echo "::warning::The ${PROJECT} video server did not become ready in 15 minutes; continuing to the deploy guard."
 
       # Before the first step that touches the box.
       - name: Deploy guard (wait while a session is live on this box)

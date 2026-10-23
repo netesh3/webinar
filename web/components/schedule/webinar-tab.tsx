@@ -206,7 +206,7 @@ function WhenSection({
       title="When"
       description={
         meeting
-          ? "The meeting has to start at least 15 minutes from now. To meet now, use Start a meeting."
+          ? "The meeting has to start at least 15 minutes from now, which gives the video server time to start."
           : form.kind === "recurring" || form.seriesId
             ? "The first session uses this start time. It has to be at least 15 minutes from now."
             : form.kind === "simulive"

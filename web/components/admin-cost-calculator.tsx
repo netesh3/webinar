@@ -25,6 +25,7 @@ import {
   type RecordingStore,
 } from "@/lib/cost-calculator";
 import { Disclosure, Toggle } from "./controls";
+import { api } from "@/lib/api";
 import { Card, SectionTitle, Stat } from "./ui";
 
 /* The admin Cost calculator, around one question: if every coach gets these features and
@@ -68,6 +69,21 @@ export function AdminCostCalculator() {
       // Private mode or a full quota: the calculator still works, it just forgets.
     }
   }, [inputs]);
+  /* The on-demand video server's measured hours (GET /api/admin/sfu-box), shown beside the
+   * estimate. Null until known, and when the box is not managed. */
+  const [boxMeasured, setBoxMeasured] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    api
+      .adminSfuBox()
+      .then((b) => {
+        if (live && b.enabled) setBoxMeasured(b.hoursLast30d);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const set = <K extends keyof CostInputs>(key: K, value: CostInputs[K]) =>
     setInputs((prev) => ({ ...prev, [key]: value }));
@@ -616,7 +632,7 @@ export function AdminCostCalculator() {
                 <Card className="p-4">
                   <SectionTitle>{name} rates</SectionTitle>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {rateNum("boxMonthlyUsd", "Always-on SFU box", {
+                    {rateNum("boxMonthlyUsd", "SFU box, a full month", {
                       suffix: "$/mo",
                       hint: "0 when the SFU starts per session.",
                     })}
@@ -653,7 +669,24 @@ export function AdminCostCalculator() {
                       onChange={(v) => setRate("compositeOnBox", v)}
                       label="Composite recordings run on the box"
                     />
+                    <Toggle
+                      checked={rates.boxOnDemand}
+                      onChange={(v) => setRate("boxOnDemand", v)}
+                      label="Box created on demand (billed for the hours it runs)"
+                    />
                   </div>
+                  {rates.boxOnDemand && rates.boxMonthlyUsd > 0 ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {rateNum("boxHoursPerMonth", "Box hours a month", {
+                        suffix: "h",
+                        hint:
+                          boxMeasured !== null
+                            ? `0 estimates from the sessions. Measured: ${Math.round(boxMeasured)} h in the last 30 days.`
+                            : "0 estimates from the sessions.",
+                      })}
+                      {rateNum("boxOverheadMinutes", "Warm-up + idle grace per session", { suffix: "min" })}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() =>

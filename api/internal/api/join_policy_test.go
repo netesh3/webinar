@@ -165,7 +165,7 @@ func TestInstantWebinarIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 		t.Fatalf("instant create: status %d code %q, want 403 feature_off\n  body: %s",
 			res.StatusCode, errorCode(t, raw), raw)
 	}
-	if !strings.Contains(string(raw), "Instant webinar") || !strings.Contains(string(raw), "isn't switched on") {
+	if !strings.Contains(string(raw), "Instant meetings/webinars") || !strings.Contains(string(raw), "isn't switched on") {
 		t.Errorf("instant refusal is not clear: %s", raw)
 	}
 	if got := hostWebinarCount(t, h, host.ID); got != before {

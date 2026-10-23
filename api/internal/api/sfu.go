@@ -157,7 +157,12 @@ func (s *Server) failSFU(w http.ResponseWriter, r *http.Request, wb types.Webina
 	case errors.Is(err, errSFUStarting):
 		w.Header().Set("Retry-After", "5")
 		httpx.Error(w, http.StatusServiceUnavailable, sfuStarting,
-			"Getting the video server ready. This takes about a minute, and this page keeps trying.")
+			"Starting servers… (about 2 minutes). This page keeps trying and joins by itself.")
+	case errors.Is(err, errSFUFailed):
+		// The on-demand box failed to start (sfu_box.go). Admins are alerted; it keeps retrying.
+		w.Header().Set("Retry-After", "30")
+		httpx.Error(w, http.StatusServiceUnavailable, sfuFailed,
+			"The video server could not be started. We've told the team and it keeps retrying; try again in a minute.")
 	case errors.Is(err, lk.ErrUnknownProject):
 		httpx.Error(w, http.StatusServiceUnavailable, sfuUnavailable,
 			"This webinar's media server is no longer available. Please tell the organiser.")

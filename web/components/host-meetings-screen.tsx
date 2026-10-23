@@ -12,7 +12,7 @@ import { ButtonLink, Card } from "./ui";
 import { api } from "@/lib/api";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { localTimeZone } from "@/lib/format";
-import { meetingsOffered } from "@/lib/host-features";
+import { instantOffered, meetingsOffered } from "@/lib/host-features";
 import { instantMeetingInput } from "@/lib/meeting-create";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 
@@ -34,10 +34,11 @@ export function HostMeetingsScreen() {
     if (status === "signed-in" && !canHost) router.replace("/host");
   }, [status, canHost, router]);
 
-  /* "Start a meeting": the instant webinar's flow with a meeting's request. Not behind the
-   * instant-webinar switch — the server does not gate an instant meeting either, because
-   * "meet now" is the ordinary way a meeting begins. The invite link goes to the clipboard
-   * because the people to invite are elsewhere. */
+  /* "Start a meeting": the instant webinar's flow with a meeting's request. Behind the same
+   * admin switch as Instant webinar (instantOffered): the video server is started on demand
+   * and needs a few minutes' warning, so meeting now is for testing; everyone else schedules.
+   * The invite link goes to the clipboard because the people to invite are elsewhere. */
+  const instant = bypass || instantOffered(account);
   async function startMeeting() {
     if (bypass) {
       openRoomTab("/preview/room");
@@ -105,20 +106,22 @@ export function HostMeetingsScreen() {
           </p>
         </Card>
       ) : (
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={startMeeting}
-          disabled={starting}
-          aria-busy={starting}
-          className={actionCardClass}
-        >
-          <ActionCardBody
-            icon={starting ? <Spinner className="size-4" /> : <UsersIcon className="size-4" />}
-            title={starting ? "Starting…" : "Start a meeting"}
-            subtitle="Everyone on camera; you let people in"
-          />
-        </button>
+      <div className={`mb-6 grid grid-cols-1 gap-3 ${instant ? "sm:grid-cols-2" : ""}`}>
+        {instant ? (
+          <button
+            type="button"
+            onClick={startMeeting}
+            disabled={starting}
+            aria-busy={starting}
+            className={actionCardClass}
+          >
+            <ActionCardBody
+              icon={starting ? <Spinner className="size-4" /> : <UsersIcon className="size-4" />}
+              title={starting ? "Starting…" : "Start a meeting"}
+              subtitle="Everyone on camera; the video server may take a couple of minutes"
+            />
+          </button>
+        ) : null}
         <Link href="/host/new/meeting" className={actionCardClass}>
           <ActionCardBody
             icon={<CalendarIcon className="size-4" />}

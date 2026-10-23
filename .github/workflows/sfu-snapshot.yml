@@ -1,0 +1,137 @@
+# Build or refresh the on-demand video server's image: the 'webinar-sfu-image' DigitalOcean
+# snapshot the API creates every droplet from (api/internal/api/sfu_box.go,
+# deploy/digitalocean/README.md, "The image").
+#
+# The stack is synced from the repo at every boot (deploy/digitalocean/sfu-boot.sh), so the
+# image mainly saves time: Docker, the host firewall and every image pulled or built in
+# advance. It holds no keys or state (those are on the sfu-data volume).
+#
+#   1. a throwaway c-4 builder (same disk size as the box: a snapshot cannot go onto a smaller
+#      disk) runs deploy/digitalocean/build-image.sh as its user data and powers itself off;
+#   2. the builder is snapshotted as webinar-sfu-image-<date>-<sha> and tagged webinar-sfu-image;
+#   3. older webinar-sfu-image-* snapshots beyond KEEP (2) are deleted, then the builder.
+# Cost per run: ~20 minutes of a c-4 (~$0.04); each snapshot ~$0.06/GB-month (~$0.60).
+#
+# Triggers: manual, and after a successful "Deploy LiveKit (DigitalOcean)" run on main (new
+# images in the compose files should be in the next image).
+#
+# Repository secret: DO_API_TOKEN (read/write droplets, snapshots, tags). Without it the job
+# skips with a notice.
+
+name: "Video server image (DigitalOcean snapshot)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "How many webinar-sfu-image snapshots to keep"
+        type: number
+        default: 2
+  workflow_run:
+    workflows: ["Deploy LiveKit (DigitalOcean)"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: sfu-snapshot
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      REGION: blr1
+      SIZE: c-4
+      TAG: webinar-sfu-image
+      KEEP: ${{ inputs.keep || 2 }}
+      REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+      SSH_KEYS: ${{ vars.SFU_BOX_SSH_KEYS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+
+      - name: Check the DigitalOcean token
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          if [ -z "${DO_API_TOKEN}" ]; then
+            echo "::notice::DO_API_TOKEN is not set: skipping the image build (see this workflow's header)."
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
+
+      - uses: digitalocean/action-doctl@v2
+        if: env.SKIP != 'true'
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+
+      - name: Create the builder
+        if: env.SKIP != 'true'
+        run: |
+          set -euo pipefail
+          name="sfu-image-builder-${GITHUB_RUN_ID}"
+          {
+            echo '#!/bin/bash'
+            echo "export SFU_REPO=${GITHUB_REPOSITORY} SFU_REF=${REF}"
+            tail -n +2 deploy/digitalocean/build-image.sh
+          } > builder-user-data.sh
+          # Optional repo variable SFU_BOX_SSH_KEYS (key ids): lets you SSH in to read the build
+          # log; without it DigitalOcean mails a root password instead.
+          ssh_args=()
+          if [ -n "${SSH_KEYS}" ]; then ssh_args=(--ssh-keys "${SSH_KEYS}"); fi
+          id="$(doctl compute droplet create "$name" --region "$REGION" --size "$SIZE" \
+            --image ubuntu-24-04-x64 --user-data-file builder-user-data.sh "${ssh_args[@]}" \
+            --tag-name sfu-image-builder --wait --format ID --no-header)"
+          echo "BUILDER_ID=${id}" >> "$GITHUB_ENV"
+          echo "Builder ${name} (${id}) is building ${GITHUB_REPOSITORY}@${REF}"
+
+      - name: Wait for the build (the builder powers off when done)
+        if: env.SKIP != 'true'
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            status="$(doctl compute droplet get "$BUILDER_ID" --format Status --no-header)"
+            if [ "$status" = "off" ]; then
+              echo "Built after ~$((i * 30 / 60)) min"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::The builder did not finish in 45 minutes (see /var/log/webinarliv-build.log on it)."
+          exit 1
+
+      - name: Snapshot and tag
+        if: env.SKIP != 'true'
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          snap="${TAG}-$(date -u +%Y%m%d-%H%M)-${REF::7}"
+          doctl compute droplet-action snapshot "$BUILDER_ID" --snapshot-name "$snap" --wait
+          img="$(doctl compute snapshot list --resource droplet --format ID,Name --no-header | awk -v n="$snap" '$2 == n {print $1}')"
+          [ -n "$img" ] || { echo "::error::snapshot $snap not found"; exit 1; }
+          doctl compute tag create "$TAG" >/dev/null 2>&1 || true
+          curl -fsS -X POST -H "Authorization: Bearer ${DO_API_TOKEN}" -H "Content-Type: application/json" \
+            -d "{\"resources\":[{\"resource_id\":\"${img}\",\"resource_type\":\"image\"}]}" \
+            "https://api.digitalocean.com/v2/tags/${TAG}/resources"
+          echo "Snapshot ${snap} (${img}) tagged ${TAG}"
+
+      - name: Prune old snapshots (keep KEEP)
+        if: env.SKIP != 'true'
+        run: |
+          set -euo pipefail
+          doctl compute snapshot list --resource droplet --format ID,Name,CreatedAt --no-header |
+            awk -v p="${TAG}-" 'index($2, p) == 1' | sort -k3 -r | tail -n +"$((KEEP + 1))" |
+            while read -r id name _; do
+              echo "Deleting old snapshot ${name} (${id})"
+              doctl compute snapshot delete "$id" --force
+            done
+
+      - name: Delete the builder
+        if: always() && env.BUILDER_ID != ''
+        run: doctl compute droplet delete "$BUILDER_ID" --force

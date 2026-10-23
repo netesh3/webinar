@@ -85,6 +85,10 @@ func (s *Server) sfuVMFor(ctx context.Context, projectID string) (*egresspool.Po
  * returns errSFUStarting. A failure to read the VM's state is let through, so a Compute API
  * blip never blocks a join the server could have taken. */
 func (s *Server) sfuReady(ctx context.Context, projectID string) error {
+	// The on-demand DigitalOcean box (sfu_box.go): created and deleted, not started and stopped.
+	if s.managesProject(projectID) {
+		return s.boxReady(ctx)
+	}
 	pool, name := s.sfuVMFor(ctx, projectID)
 	if pool == nil {
 		return nil

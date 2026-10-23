@@ -454,6 +454,10 @@ type Config struct {
 	 * (text-embedding-3-small): OpenAI's, from OPENAI_API_KEY or the AI_PROVIDERS entry on
 	 * api.openai.com. Nil means no embeddings: retrieval is full-text search alone. */
 	AIEmbeddings *AIProvider
+
+	/* SFUBox is the on-demand DigitalOcean video server (sfu_box.go in this package): off
+	 * unless SFU_BOX_PROJECT and DO_API_TOKEN are set. */
+	SFUBox SFUBox
 }
 
 // httpFromWS converts the browser-facing ws(s) URL into the http(s) form the
@@ -600,6 +604,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	c.LiveKitProjects = normaliseLiveKitProjects(projects)
+	c.SFUBox = loadSFUBox()
 
 	// The AI providers, parsed here for the same reason: a malformed list is a boot error.
 	aiProviders, err := loadAIProviders()
@@ -863,6 +868,7 @@ func (c Config) validate() error {
 	if c.AIHostMonthlyUSD < 0 {
 		errs = append(errs, errors.New("AI_HOST_MONTHLY_USD must be a number of US dollars, >= 0"))
 	}
+	errs = append(errs, c.validateSFUBox()...)
 
 	return errors.Join(errs...)
 }

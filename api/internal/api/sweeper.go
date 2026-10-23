@@ -209,6 +209,8 @@ func (s *Server) runRealtime(ctx context.Context) bool {
 	s.sweepBroadcasts(ctx)
 	s.sweepEgressPools(ctx)
 	s.sweepSFUVMs(ctx)
+	// The on-demand DigitalOcean box: one step of its state machine (sfu_box.go).
+	s.sweepSFUBox(ctx)
 	s.sweepSimulive(ctx)
 	s.sweepDueSurveys(ctx)
 	mailCtx, mailCancel := context.WithTimeout(ctx, mailFlushBudget)

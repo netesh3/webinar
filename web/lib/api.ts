@@ -1,4 +1,6 @@
 import type {
+  AdminSFUBox,
+  VideoServerStatus,
   FollowupPlanRequest,
   FollowupPlanResponse,
   FollowupSendItem,
@@ -958,6 +960,12 @@ export const api = {
     post<JoinResponse>(
       `/api/host/webinars/${seg(slug)}/join${opts?.rejoin ? "?rejoin=1" : ""}`,
     ),
+  /** "Try again" after the on-demand video server failed to start (lib/video-server.ts). */
+  retryVideoServer: (slug: string) =>
+    post<VideoServerStatus>(`/api/host/webinars/${seg(slug)}/server/retry`),
+  /** Whether the session's video server is up, for the waiting screen. Read-only. */
+  videoServerStatus: (slug: string) =>
+    request<VideoServerStatus>(`/api/webinars/${seg(slug)}/server`, fresh),
 
   // ------------------------------------------------------- in-session controls
 
@@ -1529,6 +1537,8 @@ export const api = {
   /** One host's usage and their sessions, for the drill-down. */
   adminCostHost: (id: string, q: { from?: string; to?: string; provider?: string; fresh?: boolean }) =>
     request<AdminCostHostDetail>(`/api/admin/costs/hosts/${seg(id)}?${costQuery(q)}`, fresh),
+  /** The on-demand video server: its state, recent droplets and hours in the last 30 days. */
+  adminSfuBox: () => request<AdminSFUBox>("/api/admin/sfu-box", fresh),
   /** The report's ignore list (test and staff accounts), with rules worth adding. */
   costIgnoreList: () => request<CostIgnoreList>("/api/admin/costs/ignore", fresh),
   addCostIgnoreRule: (rule: CostIgnoreRuleInput) => post<CostIgnoreRule>("/api/admin/costs/ignore", rule),

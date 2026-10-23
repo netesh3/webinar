@@ -1,0 +1,13 @@
+#cloud-config
+# The ops droplet's user data (deploy/ops-box/README.md): fetches deploy/ops-box from the repo
+# and installs the packages. No secrets here (user data is readable from the droplet's metadata
+# service): the tick URL and secret are set afterwards over SSH, with install.sh.
+package_update: true
+packages: [ca-certificates, curl, cron, ufw]
+runcmd:
+  - mkdir -p /opt/ops-box
+  - curl -fsSL https://raw.githubusercontent.com/netesh3/webinar/main/deploy/ops-box/install.sh -o /opt/ops-box/install.sh
+  - curl -fsSL https://raw.githubusercontent.com/netesh3/webinar/main/deploy/ops-box/tick.sh -o /opt/ops-box/tick.sh
+  - chmod 700 /opt/ops-box/install.sh /opt/ops-box/tick.sh
+  - ufw allow OpenSSH
+  - ufw --force enable

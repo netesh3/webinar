@@ -139,6 +139,24 @@ const i = withDefaults({ ...DEFAULT_INPUTS, sharePercent: 0, features: { ...DEFA
   assert.ok(csv[1].startsWith("a@x,a@x,30.0000,"));
 }
 
+// ---- An on-demand box (platform.boxHours): billed for the hours it ran, not since the first session.
+{
+  const platform: AdminCostPlatform = {
+    byProvider: { do: usage({ boxShareHours: 30 }) },
+    firstSessionAt: { do: "2026-09-16T05:00:00Z" },
+    boxHours: { do: 50 },
+    sessionHours: 40,
+    unattributedAiUsd: 0,
+    unattributedRecordingGbDays: 0, ignoredSessionHours: 0,
+  };
+  const pc = platformCost(platform, START, END, i);
+  // 50 hours up, 30 of them busy: 20 idle hours, at the same hourly rate.
+  near(line(pc.lines, "idle-do"), (20 * i.providers.do.boxMonthlyUsd) / 730);
+  // The box's transfer allowance follows the hours too.
+  const always = poolRates({ ...platform, boxHours: undefined }, START, END, i).do.includedGb;
+  near(always - poolRates(platform, START, END, i).do.includedGb, (i.providers.do.boxIncludedTb * (365 - 50) * 1000) / 730);
+}
+
 // ---- The ignore list: hidden hosts leave the totals and the share's denominator.
 {
   // 40 session-hours: a real host's 30 and a test account's 10.

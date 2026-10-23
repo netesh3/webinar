@@ -35,6 +35,10 @@
 #   MIXREC_SECRET — optional, >= 32 chars. Edge cloud recordings record the running mix
 #     through the SFU box's mix recorder (deploy/livekit-hetzner/mixrec). Same value in the
 #     box's /opt/livekit/.env.
+#   DO_API_TOKEN — optional, with repo variable SFU_BOX_PROJECT (e.g. do-blr): the API creates
+#     and deletes the DigitalOcean video server on demand (deploy/digitalocean/README.md).
+#     Variables SFU_BOX_ALWAYS_ON (true = keep it up, the rollback), SFU_BOX_WARM_LEAD,
+#     SFU_BOX_IDLE_GRACE, SFU_BOX_SSH_KEYS, SFU_BOX_PARK_DROPLET override the defaults.
 #   VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT — optional; Web Push (install the app,
 #     "notify me when it starts"). All three or none: the API refuses a partial set. Generate the
 #     pair with `npx web-push generate-vapid-keys`; the subject is mailto:you@domain.
@@ -151,6 +155,15 @@ jobs:
       CAPTIONS_SECRET: ${{ secrets.CAPTIONS_SECRET }}
       # Cloud recording from the edge mix (deploy/livekit-hetzner/mixrec). Optional.
       MIXREC_SECRET: ${{ secrets.MIXREC_SECRET }}
+      # The on-demand DigitalOcean video server (deploy/digitalocean/README.md). SFU_BOX_PROJECT
+      # turns it on (and needs the token); the token alone leaves the box unmanaged.
+      DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+      SFU_BOX_PROJECT: ${{ vars.SFU_BOX_PROJECT }}
+      SFU_BOX_ALWAYS_ON: ${{ vars.SFU_BOX_ALWAYS_ON }}
+      SFU_BOX_WARM_LEAD: ${{ vars.SFU_BOX_WARM_LEAD }}
+      SFU_BOX_IDLE_GRACE: ${{ vars.SFU_BOX_IDLE_GRACE }}
+      SFU_BOX_SSH_KEYS: ${{ vars.SFU_BOX_SSH_KEYS }}
+      SFU_BOX_PARK_DROPLET: ${{ vars.SFU_BOX_PARK_DROPLET }}
       # Web Push (api/internal/push). Optional; unset, the app offers no notifications.
       VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
       VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}

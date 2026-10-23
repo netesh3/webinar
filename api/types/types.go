@@ -163,6 +163,10 @@ const (
 	 * every recording reaching a stage; recording_expiry_reminders (migration 0148) keeps
 	 * each recording's reminder to once per expiry per stage. */
 	NotifyRecordingExpiring NotificationKind = "recording_expiring"
+	/* NotifyOpsAlert is an operator alert in an admin's bell (the email goes beside it): today
+	 * the on-demand video server failing to start or not being ready at a session's start
+	 * (api/internal/api/sfu_box.go). */
+	NotifyOpsAlert NotificationKind = "ops_alert"
 )
 
 /* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they
@@ -1306,10 +1310,12 @@ const (
 	 * everyone who joins registers. See migrations/0073. */
 	FeatureJoinWithoutRegistration = "join_without_registration"
 	/* FeatureInstantWebinar lets a host go live without scheduling: the
-	 * "Instant webinar" card, and a create that sets Instant.
+	 * "Instant webinar" card, "Meet now", and any create that sets Instant
+	 * (meetings too, since migrations/0152: the on-demand video server needs a
+	 * few minutes' warning, so instant sessions are an admin's per-host switch).
 	 *
-	 * Off — the default — means every webinar is scheduled first. See
-	 * migrations/0073. */
+	 * Off — the default, in every plan — means every session is scheduled first.
+	 * See migrations/0073 and 0152. */
 	FeatureInstantWebinar = "instant_webinar"
 	/* FeatureZoom lets a host connect Zoom and run a session there.
 	 *
@@ -1455,8 +1461,8 @@ var Features = []Feature{
 	},
 	{
 		Key:         FeatureInstantWebinar,
-		Label:       "Instant webinar",
-		Description: "Let this host go live immediately, without scheduling a webinar. Off means every webinar is scheduled first.",
+		Label:       "Instant meetings/webinars (warm-up)",
+		Description: "Let this host start a meeting or webinar immediately, without scheduling it. For testing: on an on-demand video server the room waits a couple of minutes while the server starts. Off means every session is scheduled first.",
 		Group:       FeatureGroupSessions,
 	},
 	{

@@ -115,7 +115,11 @@ type AdminCostPlatform struct {
 	ByProvider map[string]AdminCostUsage `json:"byProvider"`
 	// FirstSessionAt is each provider's first session ever (RFC 3339): a box is counted from then.
 	FirstSessionAt map[string]string `json:"firstSessionAt"`
-	SessionHours   float64           `json:"sessionHours"`
+	/* BoxHours is, for a provider whose box is created on demand (api/internal/api/sfu_box.go),
+	 * the hours it existed in the range: measured droplet lifetimes, plus the around-the-clock
+	 * hours before it was managed. Absent: the box is counted from FirstSessionAt, 24/7. */
+	BoxHours     map[string]float64 `json:"boxHours,omitempty"`
+	SessionHours float64            `json:"sessionHours"`
 	// UnattributedAIUSD is AI spent with no host (the sales chat, platform jobs).
 	UnattributedAIUSD float64 `json:"unattributedAiUsd"`
 	// UnattributedRecordingGBDays is storage of deleted recordings whose host is unknown.

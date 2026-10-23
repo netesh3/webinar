@@ -392,6 +392,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/cost-calculator.test.mts
 	# Cost by host: recorded usage priced at those rates, the pool shared by GB, the platform share.
 	cd web && node --experimental-strip-types --no-warnings lib/host-costs.test.mts
+	# The on-demand video server's waiting screen: which codes wait, how often, what it says.
+	cd web && node --experimental-strip-types --no-warnings lib/video-server.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

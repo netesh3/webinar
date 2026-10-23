@@ -236,6 +236,37 @@ if [[ "$EGRESS_REMOTE" == "true" ]]; then
   docker ps -aq --filter label=com.docker.compose.service=egress | xargs -r docker rm -f >/dev/null
 fi
 
+# The on-demand DigitalOcean box (deploy/digitalocean/README.md): SFU_DATA_DIR=/mnt/sfu-data in
+# .env puts Caddy's certificates and the caption models and spool on the sfu-data volume
+# (docker-compose.data.yml), so a new droplet starts with them. A named volume made before the
+# switch (on the droplet's own disk) is replaced by the bind to the volume, once. Unset: as before.
+SFU_DATA_DIR="$(env_value SFU_DATA_DIR)"
+if [[ -n "$SFU_DATA_DIR" ]]; then
+  [[ "$SFU_DATA_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "SFU_DATA_DIR must be an absolute path, got $SFU_DATA_DIR" >&2; exit 1; }
+  if ! mountpoint -q "$SFU_DATA_DIR"; then
+    echo "SFU_DATA_DIR=$SFU_DATA_DIR is not a mounted volume; refusing to put the box's state on the droplet's disk" >&2
+    exit 1
+  fi
+  [[ -f docker-compose.data.yml ]] || { echo "SFU_DATA_DIR set but docker-compose.data.yml is missing; sync deploy files" >&2; exit 1; }
+  export SFU_DATA_DIR
+  project="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
+  for v in caddy_data caddy_config captions_models captions_spool; do
+    mkdir -p "${SFU_DATA_DIR}/docker/${v}"
+    if docker volume inspect "${project}_${v}" >/dev/null 2>&1; then
+      dev="$(docker volume inspect -f '{{ index .Options "device" }}' "${project}_${v}" 2>/dev/null || true)"
+      if [[ "$dev" != "${SFU_DATA_DIR}/docker/${v}" ]]; then
+        echo "Moving ${project}_${v} onto ${SFU_DATA_DIR}/docker/${v}"
+        docker ps -aq --filter "volume=${project}_${v}" | xargs -r docker rm -f >/dev/null
+        docker volume rm "${project}_${v}" >/dev/null
+      fi
+    fi
+  done
+  # The caption agent runs as uid 10001 (deploy/captions/Dockerfile).
+  chown 10001:10001 "${SFU_DATA_DIR}/docker/captions_models" "${SFU_DATA_DIR}/docker/captions_spool"
+  # Added last (below), after docker-compose.captions.yml, so its definitions win.
+  DATA_COMPOSE=1
+fi
+
 # Server-side live captions (deploy/captions, synced to ./captions). Opt-in with
 # CAPTIONS_ENABLED=true and CAPTIONS_SECRET (the API's, 32+ chars) in .env; every other
 # CAPTIONS_* line in .env is passed to the agent as is. A missing secret skips captions
@@ -301,6 +332,10 @@ if [[ "$TURN_TLS_443" == "true" ]]; then
   COMPOSE_ARGS+=("-f" "docker-compose.turn443.yml")
   export TURN_TLS_DOMAIN
   TURN443=1
+fi
+
+if [[ "${DATA_COMPOSE:-0}" == 1 ]]; then
+  COMPOSE_ARGS+=("-f" "docker-compose.data.yml")
 fi
 
 BUILD_SERVICES=()
@@ -373,8 +408,14 @@ fi
 # stays in .env (read by the script at run time), never in the world-readable cron file. A
 # second box doing the same is harmless: the API takes a lease, and the loser answers "busy".
 # Either value unset: no cron, and an old one is removed.
+#
+# OPS_BOX=true in .env: the always-on ops droplet (deploy/ops-box) runs the tick instead, and
+# this box does not, which is what an on-demand box (deleted when idle) needs.
 TICK_URL="$(env_value TICK_URL)"
-if [[ -n "$TICK_URL" && -n "$(env_value TICK_SECRET)" ]]; then
+if [[ "$(env_value OPS_BOX)" == "true" ]]; then
+  rm -f /etc/cron.d/webinarliv-tick "${TARGET}/tick.sh"
+  echo "API tick: run by the ops box (OPS_BOX=true), not here"
+elif [[ -n "$TICK_URL" && -n "$(env_value TICK_SECRET)" ]]; then
   cat >"${TARGET}/tick.sh" <<'TICK'
 #!/usr/bin/env bash
 # One background pass of the API (see redeploy.sh). Quiet unless it fails.

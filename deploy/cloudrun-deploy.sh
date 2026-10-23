@@ -203,6 +203,15 @@ ENV_VARS=(
 # secret. Unset, an edge recording starts a compositor of its own, as before.
 [[ -n "${MIXREC_SECRET:-}" ]] && ENV_VARS+=("MIXREC_SECRET=${MIXREC_SECRET}")
 [[ -n "${MIXREC_URL:-}" ]] && ENV_VARS+=("MIXREC_URL=${MIXREC_URL}")
+# The on-demand DigitalOcean video server (deploy/digitalocean/README.md). DO_API_TOKEN is a
+# secret; SFU_BOX_PROJECT turns the manager on; the rest override its defaults.
+[[ -n "${DO_API_TOKEN:-}" ]] && ENV_VARS+=("DO_API_TOKEN=${DO_API_TOKEN}")
+for v in SFU_BOX_PROJECT SFU_BOX_ALWAYS_ON SFU_BOX_WARM_LEAD SFU_BOX_IDLE_GRACE SFU_BOX_BOOT_TIMEOUT \
+  SFU_BOX_MAX_FAILURES SFU_BOX_NAME SFU_BOX_REGION SFU_BOX_SIZE SFU_BOX_SNAPSHOT_TAG SFU_BOX_VOLUME \
+  SFU_BOX_RESERVED_IP SFU_BOX_TAGS SFU_BOX_SSH_KEYS SFU_BOX_VPC_UUID SFU_BOX_PARK_DROPLET \
+  SFU_BOX_REPO SFU_BOX_REF SFU_BOX_TURN_HOST; do
+  if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
+done
 # Web Push (api/internal/push): the VAPID pair and contact. All three or none — the API refuses
 # to boot on a partial set. Unset, no notifications are offered or sent.
 [[ -n "${VAPID_PUBLIC_KEY:-}" ]] && ENV_VARS+=("VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}")

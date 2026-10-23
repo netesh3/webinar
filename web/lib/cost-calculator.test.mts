@@ -11,6 +11,7 @@ import {
   DEFAULT_PROVIDERS,
   DEFAULT_FEATURES,
   av1Saving,
+  boxRunHours,
   edgeGbPerViewerHour,
   edgeVideoKbps,
   featureRows,
@@ -51,8 +52,29 @@ assert.ok(coachInr > 1700 && coachInr < 2100, `₹${coachInr} a coach`);
 near(d.platformMonthUsd, d.monthUsd * 20, 1e-6);
 near(d.monthUsd, d.lines.reduce((t, l) => t + l.usd, 0));
 near(line(d, "cdn"), 2520 * 0.5228 * 0.005, 0.02);
+// 20 coaches' 33 sessions each keep the on-demand box up all month (the 730 h cap).
 near(line(d, "box"), 84 / 20);
 near(line(d, "supabase"), 25 / 20);
+
+// The on-demand box (api/internal/api/sfu_box.go): billed for the hours it runs.
+{
+  const do_ = DEFAULT_PROVIDERS.do;
+  assert.equal(boxRunHours(do_, 100, 60), 100 + 55); // 60 sessions × 55 min warm-up and grace
+  assert.equal(boxRunHours(do_, 2000, 600), 730);
+  assert.equal(boxRunHours({ ...do_, boxHoursPerMonth: 120 }, 100, 60), 120); // measured, set by hand
+  assert.equal(boxRunHours({ ...do_, boxOnDemand: false }, 1, 1), 730);
+  assert.equal(boxRunHours(DEFAULT_PROVIDERS.gcp, 100, 60), 0);
+  // Two coaches: 2 × (8 × 1.5 h + 25 × 1 h) = 74 session-hours, 66 sessions → 74 + 60.5 h.
+  const two = calculateCost({ ...DEFAULT_INPUTS, coaches: 2 });
+  near(line(two, "box"), (84 * (74 + 60.5)) / 730 / 2);
+  // Always on again: the full month.
+  const allMonth = calculateCost({
+    ...DEFAULT_INPUTS,
+    coaches: 2,
+    providers: { ...DEFAULT_PROVIDERS, do: { ...DEFAULT_PROVIDERS.do, boxOnDemand: false } },
+  });
+  near(line(allMonth, "box"), 84 / 2);
+}
 // ₹4,999 incl. GST, 2% fee, ₹100/$.
 near(d.netRevenueUsd!, ((4999 / 1.18) * 0.98) / 100);
 assert.ok(d.marginPercent! > 40, `margin ${d.marginPercent}`);
