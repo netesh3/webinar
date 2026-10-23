@@ -31,8 +31,10 @@ import type {
 import { GB_PER_MBPS_HOUR, stageMbps } from "./admin-costs.ts";
 import {
   edgeGbPerViewerHour,
+  edgeVideoKbps,
   PROVIDERS,
   RECORDING_STORES,
+  sfuAdjust,
   type CostInputs,
   type Provider,
 } from "./cost-calculator.ts";
@@ -82,7 +84,8 @@ export function isProvider(p: string): p is Provider {
 
 /** The GB a usage moves out of the video server, by what for. */
 export function usageGb(u: AdminCostUsage, i: CostInputs) {
-  const perViewerHour = edgeGbPerViewerHour(nn(i.edgeVideoKbps), nn(i.edgeAudioKbps));
+  // The 1080p share profile, when on, raises the mix's average bitrate (edgeVideoKbps).
+  const perViewerHour = edgeGbPerViewerHour(edgeVideoKbps(i), nn(i.edgeAudioKbps));
   // Stage traffic is linear in the pairs: stageMbps(2) is one pair each way.
   const [lo, hi] = stageMbps(2);
   const perPairMbps = (lo + hi) / 2 / 2;
@@ -92,7 +95,18 @@ export function usageGb(u: AdminCostUsage, i: CostInputs) {
   const stage = nn(u.stagePairHours) * perPairMbps * GB_PER_MBPS_HOUR;
   const meeting = nn(u.meetingParticipantHours) * nn(i.meetingGbPerParticipantHour);
   const upload = nn(u.recordedGb);
-  return { perViewerHour, cdn, origin, webrtc, stage, meeting, upload, pooled: origin + webrtc + stage + meeting + upload };
+  // Screen share, AV1 and TURN at the calculator's assumptions (lib/cost-calculator.ts
+  // sfuAdjust). Meetings: every participant publishes and receives shares. Webinars: WebRTC
+  // viewers receive shares; the stage's publishers and share receivers are not in the usage.
+  const m = sfuAdjust(i, { camGb: meeting, shareReceiverHours: nn(u.meetingParticipantHours), publisherHours: nn(u.meetingParticipantHours) });
+  const w = sfuAdjust(i, { camGb: webrtc + stage, shareReceiverHours: nn(u.webrtcViewerHours), publisherHours: 0 });
+  const share = m.shareGb + w.shareGb;
+  const turn = m.turnGb + w.turnGb;
+  const av1 = m.av1Gb + w.av1Gb;
+  return {
+    perViewerHour, cdn, origin, webrtc, stage, meeting, upload, share, turn, av1,
+    pooled: Math.max(0, origin + webrtc + stage + meeting + upload + share + turn + av1),
+  };
 }
 
 /** Worker hours a usage needs on a provider: Edge renders and composite recordings. */
@@ -178,6 +192,12 @@ export function priceUsage(
   add("delivery", "webrtc", "WebRTC viewers (SFU egress)", gb.webrtc * pool.perGb,
     `${fmt(u.webrtcViewerHours)} viewer-hours × ${nn(i.webrtcViewerMbps)} Mbps = ${fmt(gb.webrtc)} GB, ${poolNote}`);
   add("delivery", "stage", "Stage traffic", gb.stage * pool.perGb, `${fmt(gb.stage)} GB, ${poolNote}`);
+  // Screen share, TURN and AV1 (a saving), at the calculator's assumptions.
+  add("delivery", "share", "Screen share (SFU)", gb.share * pool.perGb, `${fmt(gb.share)} GB, ${poolNote}`);
+  add("delivery", "turn", "TURN relay", gb.turn * pool.perGb, `${fmt(gb.turn)} GB relayed once more, ${poolNote}`);
+  if (gb.av1 * pool.perGb < 0) {
+    lines.push({ key: "av1", column: "delivery", label: "AV1 saving", usd: gb.av1 * pool.perGb, note: `${fmt(-gb.av1)} GB less camera downlink, ${poolNote}` });
+  }
   if ((gb.origin + gb.webrtc + gb.stage) > 0 && pool.perGb === 0) {
     info("delivery", "in-pool", "Video server transfer", `${fmt(gb.origin + gb.webrtc + gb.stage)} GB, within the pool`);
   }
@@ -207,9 +227,11 @@ export function priceUsage(
   add("recording", "upload", "Recording upload", gb.upload * pool.perGb, `${fmt(gb.upload, 2)} GB, ${poolNote}`);
 
   // Captions: CPU on the box, already paid for in the video server line.
-  const coreHours =
+  let coreHours =
     nn(u.captionLiveHours) * nn(i.liveCaptionCores) +
     nn(u.captionFinalHours) * nn(i.finalCaptionFactor) * nn(i.finalCaptionCores);
+  // English-only models (small.en / base.en) run at ~captionsModelFactor of the measured cores.
+  coreHours *= nn(i.captionsModelFactor) || 1;
   if (coreHours > 0) {
     info("video", "captions", "Captions", `${fmt(coreHours)} box CPU-hours: $0, the box's time is in Video server`);
   }
