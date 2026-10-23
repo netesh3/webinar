@@ -709,6 +709,9 @@ func (s *Server) Routes() http.Handler {
 				// "Write with AI": a draft title, description and promotion copy from
 				// one line. Saves nothing. See ai_webinar_setup.go.
 				r.Post("/ai/webinar-setup", s.handleAIWebinarSetup)
+				// The host's brand voice for repurposed drafts. See repurpose.go.
+				r.Get("/brand-voice", s.handleGetBrandVoice)
+				r.Put("/brand-voice", s.handlePutBrandVoice)
 
 				// The AI knowledge library: documents that ground the Q&A
 				// assistant's draft answers. See knowledge.go.
@@ -857,6 +860,10 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/leads", s.handleGetLeads)
 				r.Get("/followups", s.handleGetFollowups)
 				r.Put("/followups/{group}", s.handlePutFollowup)
+				// Content repurposing: drafts for elsewhere from the transcript. See repurpose.go.
+				r.Get("/repurpose", s.handleGetRepurpose)
+				r.Post("/repurpose", s.handlePostRepurpose)
+				r.Put("/repurpose/{format}", s.handlePutRepurpose)
 				// Sending them: the review screen, then the host's Send. Host only:
 				// it goes from the host's own number and in their name. See followup_send.go.
 				r.Group(func(r chi.Router) {

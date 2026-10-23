@@ -1,5 +1,9 @@
 import type {
   AdminSFUBox,
+  BrandVoice,
+  RepurposeEditRequest,
+  RepurposeRequest,
+  RepurposeResponse,
   VideoServerStatus,
   FollowupPlanRequest,
   FollowupPlanResponse,
@@ -1445,6 +1449,29 @@ export const api = {
       `/api/host/webinars/${seg(slug)}/followups/${seg(group)}?lang=${encodeURIComponent(lang)}`,
       { draft },
     ),
+
+  /** Content repurposing: the session's drafts (blog, newsletter, whitepaper, social posts).
+   *  A poll also writes anything queued. 403 feature_off without the repurpose switch. */
+  repurposeDrafts: (slug: string, signal?: AbortSignal) =>
+    request<RepurposeResponse>(`/api/host/webinars/${seg(slug)}/repurpose`, { ...fresh, signal }),
+
+  /** Write (or rewrite) these formats. 409 with the reason (not_ended, no_transcript,
+   *  ai_session_off …), 429 ai_limit. */
+  generateRepurpose: (slug: string, formats: string[]) =>
+    post<RepurposeResponse>(`/api/host/webinars/${seg(slug)}/repurpose`, {
+      formats,
+    } satisfies RepurposeRequest),
+
+  /** The host's edit of one draft, and whether they have reviewed it. 409 no_draft. */
+  saveRepurpose: (slug: string, format: string, markdown: string, reviewed: boolean) =>
+    put<RepurposeResponse>(`/api/host/webinars/${seg(slug)}/repurpose/${seg(format)}`, {
+      markdown,
+      reviewed,
+    } satisfies RepurposeEditRequest),
+
+  /** The host's brand voice for repurposed drafts. */
+  brandVoice: () => request<BrandVoice>("/api/host/brand-voice", fresh),
+  saveBrandVoice: (voice: BrandVoice) => put<BrandVoice>("/api/host/brand-voice", voice),
 
   hostSurvey: (slug: string) =>
     request<HostSurvey>(`/api/host/webinars/${seg(slug)}/survey`, fresh),
