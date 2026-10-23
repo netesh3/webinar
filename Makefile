@@ -290,6 +290,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# own End request is still the one sending the survey.
 	cd web && node --experimental-strip-types --no-warnings lib/host-results.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/tab.test.mts
+	# The Results tab's attendee list export link.
+	cd web && node --experimental-strip-types --no-warnings lib/attendee-export.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/engagement/folds.test.mts
 	# And table header sorting: numbers and dates must not sort as text, empty
 	# cells stay last, and a third click returns to the list's own order.
