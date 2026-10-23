@@ -16,11 +16,22 @@
 # main is not red while the box is being set up. Box settings (CAPTIONS_*, HLS_PART_DURATION, …)
 # live in /opt/livekit/.env on the box and are never overwritten, nor are .env.keys and the
 # generated livekit.yaml.
+#
+# Deploy guard (docs/DEPLOYMENT-TOPOLOGY.md): a redeploy restarts LiveKit, egress, captions,
+# MediaMTX and Caddy, cutting off every session on the box. So before anything touches it, the
+# job waits while a session is live on project do-blr (.github/scripts/wait-no-live.sh, secret
+# TICK_SECRET; project overridable with repo variable DO_LIVEKIT_PROJECT), and FAILS if the API
+# cannot say. Run workflow with "force" to skip it.
 
 name: Deploy LiveKit (DigitalOcean)
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Deploy even if a session is live on this box (skips the deploy guard)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -50,6 +61,17 @@ jobs:
             echo "::notice::DO_SSH_HOST / DO_SSH_PRIVATE_KEY not set: skipping the DigitalOcean deploy (see this workflow's header)."
             echo "SKIP=true" >> "$GITHUB_ENV"
           fi
+
+      # Before the first step that touches the box.
+      - name: Deploy guard (wait while a session is live on this box)
+        if: env.SKIP != 'true'
+        env:
+          GUARD_SCOPE: ${{ vars.DO_LIVEKIT_PROJECT || 'do-blr' }}
+          GUARD_MODE: strict
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+          API_BASE: ${{ vars.LIVE_STATUS_API_BASE }}
+          FORCE: ${{ inputs.force }}
+        run: bash .github/scripts/wait-no-live.sh
 
       - name: Configure SSH
         if: env.SKIP != 'true'

@@ -18,11 +18,21 @@
 #     via SSH: /opt/livekit/.env.keys).
 #
 # On the server: files live in /opt/livekit. .env.keys and .env are never overwritten.
+#
+# Deploy guard (docs/DEPLOYMENT-TOPOLOGY.md): the first step waits while a session is live on
+# this box's LiveKit project ("default"; repo variable HETZNER_LIVEKIT_PROJECT overrides) via
+# .github/scripts/wait-no-live.sh (secret TICK_SECRET), and FAILS if the API cannot say.
+# Run workflow with "force" to skip it.
 
 name: Deploy LiveKit (Hetzner)
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Deploy even if a session is live on this box (skips the deploy guard)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -42,6 +52,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deploy guard (wait while a session is live on this box)
+        env:
+          GUARD_SCOPE: ${{ vars.HETZNER_LIVEKIT_PROJECT || 'default' }}
+          GUARD_MODE: strict
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+          API_BASE: ${{ vars.LIVE_STATUS_API_BASE }}
+          FORCE: ${{ inputs.force }}
+        run: bash .github/scripts/wait-no-live.sh
 
       - name: Require Hetzner SSH secrets
         env:

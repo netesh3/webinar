@@ -24,11 +24,20 @@
 #   OPEN_NEXT=1
 #
 # The runtime API target stays in web/wrangler.jsonc vars (API_INTERNAL_URL).
+#
+# Deploy guard (docs/DEPLOYMENT-TOPOLOGY.md): the first step waits while ANY session is live
+# (.github/scripts/wait-no-live.sh, secret TICK_SECRET). If the API cannot answer, the deploy
+# fails rather than guessing. Run workflow with "force" to skip it.
 
 name: Deploy Web (Cloudflare Workers)
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Deploy even if a webinar or meeting is live (skips the deploy guard)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -60,6 +69,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deploy guard (wait while anything is live)
+        working-directory: .
+        env:
+          GUARD_SCOPE: any
+          GUARD_MODE: strict
+          TICK_SECRET: ${{ secrets.TICK_SECRET }}
+          API_BASE: ${{ vars.LIVE_STATUS_API_BASE }}
+          FORCE: ${{ inputs.force }}
+        run: bash .github/scripts/wait-no-live.sh
 
       # Catch a missing, revoked, or wrongly-scoped token in seconds rather than
       # after a full Next.js build. Network trouble only warns, so a Cloudflare

@@ -81,11 +81,20 @@
 #     egress encoding; each unset keeps its default. See docs/edge-delivery.md.
 #   EMPTY_ROOM_CLOSE_MIN — minutes an empty live room may run past its scheduled
 #     start before the server ends it (default 10; 0 = never).
+#
+# Deploy guard (docs/DEPLOYMENT-TOPOLOGY.md): the first step waits while ANY session is live
+# (.github/scripts/wait-no-live.sh, GUARD_MODE=api: proceeds if the API is down or predates the
+# endpoint, since this deploy is the fix). Run workflow with "force" to skip it.
 
 name: Deploy API (Cloud Run)
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Deploy even if a webinar or meeting is live (skips the deploy guard)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -217,6 +226,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deploy guard (wait while anything is live)
+        env:
+          GUARD_SCOPE: any
+          GUARD_MODE: api
+          API_BASE: ${{ vars.LIVE_STATUS_API_BASE }}
+          FORCE: ${{ inputs.force }}
+        run: bash .github/scripts/wait-no-live.sh
 
       - name: Require DATABASE_URL (Supabase)
         run: |
