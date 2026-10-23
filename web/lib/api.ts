@@ -149,6 +149,7 @@ import type {
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 import { captionsURL } from "./caption-track";
+import { attendeesCsvPath, type AttendeeScope } from "./attendee-export";
 
 /* Typed fetch client for the Go API.
  *
@@ -1347,6 +1348,11 @@ export const api = {
    *  download machinery handles it. */
   registrantsCsvUrl: (slug: string) =>
     `${API_BASE}/api/host/webinars/${seg(slug)}/registrants.csv`,
+
+  /** The attendee list of an ended session (host and co-hosts only), a plain link like
+   *  the one above. See lib/attendee-export.ts. */
+  attendeesCsvUrl: (slug: string, scope: AttendeeScope) =>
+    `${API_BASE}${attendeesCsvPath(slug, scope)}`,
 
   /** The attendance report, now read only for the stage's own rows (the Engagement tab's
    *  "Hosts & panelists" list); its CSV twin is the Export menu's attendance log. */

@@ -13,6 +13,7 @@ import { SimuliveAutoCard } from "./simulive-auto-card";
 import { SimuliveAutopilotCard } from "./simulive-discover";
 import { SimuliveStartCard } from "./schedule/simulive-start";
 import { EngagementTab } from "./engagement/engagement-tab";
+import { AttendeeExportCard } from "./attendee-export-card";
 import { CalendarIcon, PlusIcon, SparklesIcon, TrashIcon } from "./icons";
 import { useAppConfig, useSession, useShareOrigin, useToast } from "./providers";
 import { SortHeader, useSort } from "./sort-header";
@@ -256,6 +257,7 @@ export function HostWebinarTabs({
       {tab === "Results" && ended && (
         <SimuliveAutopilotCard webinar={w} recordings={recordings} />
       )}
+      {tab === "Results" && ended && <AttendeeExportCard slug={w.id} />}
       {/* Mounted only while the tab is open, so nothing AI is fetched (or polled) before. */}
       {tab === "AI" && ended && ai && (
         <>

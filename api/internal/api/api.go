@@ -825,6 +825,8 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/registrants.csv", s.handleExportRegistrants)
 					r.Get("/report", s.handleSessionReport)
 					r.Get("/report.csv", s.handleExportReport)
+					// The attendee list of an ended session; host and co-hosts only. See attendee_export.go.
+					r.Get("/attendees.csv", s.handleAttendeesCSV)
 					r.Get("/engagement", s.handleEngagementSummary)
 					r.Post("/engagement/recompute", s.handleRecomputeEngagement)
 					r.Get("/engagement/attendees", s.handleEngagementAttendees)
