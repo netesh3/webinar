@@ -560,6 +560,10 @@ export const api = {
     del<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/start-at`),
   simuliveOpenDoors: (slug: string) =>
     post<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/open-doors`),
+  /** End the replay early and carry on live with the audience (simulive_host.go). The room
+   *  is told, and every browser in it re-joins for the live part. */
+  simuliveGoLive: (slug: string) =>
+    post<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/go-live`),
   simuliveEnd: async (slug: string) => {
     const webinar = await post<Webinar>(`/api/host/webinars/${seg(slug)}/simulive/end`);
     dropHostWebinarLists();

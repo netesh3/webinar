@@ -244,6 +244,20 @@ func (s *Store) GoSimuliveLiveIfOver(ctx context.Context, slug string) (bool, er
 	return tag.RowsAffected() == 1, nil
 }
 
+/* GoSimuliveLiveNow is the host team ending the replay early to carry on live with the
+ * audience (handleSimuliveGoLive): the same live-after state the recording's end reaches,
+ * without waiting for it. Only a simulive whose recording is playing — live, not already live
+ * after; true when this call made the change. */
+func (s *Store) GoSimuliveLiveNow(ctx context.Context, slug string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE webinars SET simulive_live_at = now(), simulive_host_gone_at = NULL, updated_at = now()
+		 WHERE slug = $1 AND kind = 'simulive' AND status = 'live' AND simulive_live_at IS NULL`, slug)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // simuliveLiveAfterSQL: a simulive live with its host team after the recording.
 const simuliveLiveAfterSQL = `kind = 'simulive' AND status = 'live' AND simulive_live_at IS NOT NULL`
 

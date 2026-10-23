@@ -25,6 +25,7 @@ import { IconButton, Menu, Spinner } from "../controls";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ChatIcon,
   CloseIcon,
   EyeOffIcon,
   HandIcon,
@@ -40,6 +41,7 @@ import { Pill, RoleBadge } from "./chat-badges";
 import { useRoomUI } from "./context";
 import { ShareLinkFooter } from "./invite-panel";
 import { LobbySection } from "./meeting-lobby";
+import { useRaisedHandsPanel } from "./raised-hands-panel";
 
 /* The participants panel.
  *
@@ -231,6 +233,12 @@ function HostRoster() {
    * list of who is in, the lobby above it, and no hands — the raise-hand tool is not offered,
    * and a stage action would only be refused (422 not_in_meeting). */
   const meeting = join.meeting === true;
+  /* A simulive while its recording plays: the host team moderates the room, but nobody can be
+   * brought on stage over the recording (the API refuses it — refuseInSimulive) and nobody has
+   * a microphone to mute. Message, co-host and remove are what make sense here. */
+  const replaying = join.simulive === true;
+  const stageless = meeting || replaying;
+  const { messagePerson } = useRaisedHandsPanel();
   const { localParticipant } = useLocalParticipant();
   const { notify } = useToast();
   // From the context rather than a poll of its own: the control bar needs the same
@@ -323,6 +331,7 @@ function HostRoster() {
       participant={p}
       isMe={p.identity === join.identity}
       meeting={meeting}
+      stageless={stageless}
       handRaised={handIdentities.has(p.identity)}
       handRaisedAt={handIdentities.get(p.identity)}
       now={now}
@@ -387,6 +396,7 @@ function HostRoster() {
           realtime.lowerHand(p.identity, "dismissed"),
         )
       }
+      onMessage={() => messagePerson(p.identity, p.name || p.identity)}
       onRemove={() =>
         act(p.identity, `Removed ${p.name}`, async () => {
           await api.removeParticipant(slug, p.identity);
@@ -424,6 +434,7 @@ function HostRoster() {
           ) : (
             <RosterStats onStage={live?.onStage ?? 0} attending={live?.attendees ?? 0} faces={stageFaces} />
           )}
+          {!replaying && (
           <button
             type="button"
             onClick={() => {
@@ -461,6 +472,7 @@ function HostRoster() {
             {/* Icon-only when the row is too narrow for the words. */}
             <span className="hidden @[17rem]:inline">Mute all</span>
           </button>
+          )}
         </div>
 
         {/* The queue, and the one action that clears it.
@@ -592,6 +604,7 @@ function HostRosterRow({
   participant: p,
   isMe,
   meeting = false,
+  stageless = meeting,
   handRaised,
   handRaisedAt,
   now,
@@ -601,6 +614,7 @@ function HostRosterRow({
   onStage,
   onDismissHand,
   onRemove,
+  onMessage,
   onSetCoHost,
 }: {
   participant: LiveParticipant;
@@ -608,6 +622,9 @@ function HostRosterRow({
   /** In a meeting nobody moves between a stage and an audience, so none of the stage
    *  actions are offered; mute, co-host and remove are. */
   meeting?: boolean;
+  /** Nobody moves on or off a stage here: a meeting, or a simulive while its recording plays.
+   *  The stage actions and the "Allow to speak" on a raised hand are not offered. */
+  stageless?: boolean;
   handRaised: boolean;
   /** When the hand went up, for the queue's "waiting 3 min". */
   handRaisedAt?: number;
@@ -618,6 +635,8 @@ function HostRosterRow({
   onStage: (role: Role, audioOnly: boolean) => void;
   onDismissHand: () => void;
   onRemove: () => void;
+  /** Open the chat with this person @mentioned (there is no private thread). */
+  onMessage?: () => void;
   onSetCoHost: (coHost: boolean) => void;
 }) {
   const isHost = p.role === "host";
@@ -633,7 +652,7 @@ function HostRosterRow({
   // publishing, which would call a panelist with their camera off "audio only".
   const speakingOnly = p.role === "panelist" && !isHost && p.audioOnly;
   // Never "on stage" in a meeting: there is nowhere else to be, so nothing to take back.
-  const onStageNow = p.role === "panelist" && !isHost && !meeting;
+  const onStageNow = p.role === "panelist" && !isHost && !stageless;
   // Co-host needs an account behind the identity (see handleSetCoHost on the
   // API side) — a panelist invited from the panelist list has one ("user_"
   // identity); an attendee the host brought up on stage does not ("att_"
@@ -691,7 +710,7 @@ function HostRosterRow({
             panel. Attendee-only: a panelist/co-host raising a hand (rare, but the
             control isn't role-gated) still gets "Lower Hand" from the menu below,
             since "Allow to speak" makes no sense for someone already on stage. */}
-        {!busy && handRaised && p.role === "attendee" && (
+        {!busy && handRaised && p.role === "attendee" && !stageless && (
           <span className="mt-1.5 flex flex-wrap gap-1.5">
             <button
               type="button"
@@ -770,7 +789,7 @@ function HostRosterRow({
               </span>
             }
             items={[
-              ...(p.role === "attendee" && !meeting
+              ...(p.role === "attendee" && !stageless
                 ? [
                     // Suppressed when handRaised: the row already has this as a
                     // prominent button above, and offering the same action twice
@@ -801,7 +820,7 @@ function HostRosterRow({
               // prominent "Lower Hand" button above instead — this menu item is
               // the fallback for the rare non-attendee hand-raise (role isn't
               // gated on the control), so it isn't offered twice for the same row.
-              ...(handRaised && p.role !== "attendee"
+              ...(handRaised && (p.role !== "attendee" || stageless)
                 ? [
                     {
                       kind: "action" as const,
@@ -870,6 +889,17 @@ function HostRosterRow({
                         : "full control, same as you",
                       icon: <ArrowUpIcon className="size-4" />,
                       onSelect: () => onSetCoHost(!p.coHost),
+                    },
+                  ]
+                : []),
+              ...(onMessage && !isMe
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "Message",
+                      hint: "in the chat, @mentioned",
+                      icon: <ChatIcon className="size-4" />,
+                      onSelect: onMessage,
                     },
                   ]
                 : []),

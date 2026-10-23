@@ -575,7 +575,7 @@ export function PreJoin({
  * device that opens successfully and delivers pure silence looks identical to a good one
  * until somebody tells you they cannot hear you.
  */
-function MicMeter({ track }: { track: LocalAudioTrack | null }) {
+export function MicMeter({ track }: { track: LocalAudioTrack | null }) {
   const [level, setLevel] = useState(0);
   /* Sticky hearing state with hysteresis. A single 0.04 threshold flipped the label on every
    * breath near the noise floor ("Hearing you" / "Say something"), which presenters read as

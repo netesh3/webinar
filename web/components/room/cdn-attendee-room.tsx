@@ -85,6 +85,9 @@ import { useCaptionTrack } from "@/lib/use-caption-track";
 import { primeReceivePolicy } from "@/lib/receive-codecs";
 import { CcButton } from "../cc-button";
 
+/** What the host team keeps in a simulive's room that a viewer of the recording does not. */
+const HOST_STREAMING_TOOLS: readonly ToolId[] = ["participants"];
+
 function resolveBroadcastUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const base = API_BASE.replace(/\/+$/, "");
@@ -272,7 +275,15 @@ export function CdnAttendeeRoom({
   }, [room, connect, disconnect, join.url, join.token]);
 
   // Tools & layout
-  const availableTools = useAvailableTools({ isHost, controls, streaming: true });
+  /* A viewer of the recording has no roster; the host team in a simulive does — the same
+   * Participants panel as a live webinar (stream-only viewers included), with what makes
+   * sense while a recording plays: message, make co-host, remove (participants.tsx). */
+  const availableTools = useAvailableTools({
+    isHost,
+    controls,
+    streaming: true,
+    keepWhenStreaming: isHost ? HOST_STREAMING_TOOLS : undefined,
+  });
   const tools = useToolLayout(availableTools);
   const raisedHands = useRaisedHandsController(tools);
   const compact = useCompact();
@@ -547,6 +558,7 @@ export function CdnAttendeeRoom({
                           doorsOpen={simuliveMeta?.doorsOpen}
                           waiting={roster.live?.attendees ?? waitingCount(roster.live?.participants)}
                           onStarted={setPolledStart}
+                          onLive={simuliveGoLive}
                         />
                       )}
                       {waiting ? (

@@ -2975,6 +2975,12 @@ func (s *Server) ownsWebinar(w http.ResponseWriter, r *http.Request, slug string
 		return false
 	}
 	if hostID == user.ID {
+		// The owner needs the hosting capability, the same as requireOwnership asks.
+		if !user.CanHost {
+			httpx.Error(w, http.StatusForbidden, "not_a_host",
+				"This account can't host webinars. An administrator has to grant hosting access.")
+			return false
+		}
 		return true
 	}
 	grant, err := s.store.StageGrant(r.Context(), slug, hostIdentity(user.ID))

@@ -82,9 +82,20 @@ export type HostControls = {
   cancel: boolean;
   openDoors: boolean;
   end: boolean;
+  /** "End replay early and go live": while the recording plays. At its end the session goes
+   *  live by itself with the host team there, so there is nothing to press then. */
+  goLive: boolean;
 };
 
-const NONE: HostControls = { startNow: false, startIn: [], delay: false, cancel: false, openDoors: false, end: false };
+const NONE: HostControls = {
+  startNow: false,
+  startIn: [],
+  delay: false,
+  cancel: false,
+  openDoors: false,
+  end: false,
+  goLive: false,
+};
 
 /** Which of the host bar's controls show in this state. */
 export function hostControls(s: {
@@ -96,7 +107,8 @@ export function hostControls(s: {
   doorsOpen?: boolean;
   nowMs: number;
 }): HostControls {
-  if (s.view === "playing" || s.view === "finished") return { ...NONE, end: true };
+  if (s.view === "playing") return { ...NONE, end: true, goLive: true };
+  if (s.view === "finished") return { ...NONE, end: true };
   if (s.view !== "waiting") return NONE;
   const pending = Boolean(s.pendingStartAt);
   const startsAt = s.startsAt ? Date.parse(s.startsAt) : Number.NaN;
@@ -109,6 +121,7 @@ export function hostControls(s: {
     cancel: pending && !autoPastDue,
     openDoors: opens != null && s.nowMs < opens,
     end: false,
+    goLive: false,
   };
 }
 

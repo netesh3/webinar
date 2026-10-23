@@ -386,6 +386,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# A simulive's room states: the countdown's target, the view per state, the doors, and
 	# which host controls show (start now / in N / delay / cancel / open doors / end).
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-host.test.mts
+	# The host team's camera choice for a simulive's live part: kept per tab, taken once.
+	cd web && node --experimental-strip-types --no-warnings lib/simulive-golive.test.mts
 	# Scheduling a simulive from a recording: which recordings qualify, and the form's prefill.
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-create.test.mts
 	# Simulive Auto mode: the follow-up call's timing and the assistant's signature.

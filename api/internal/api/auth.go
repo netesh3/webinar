@@ -283,6 +283,15 @@ func (s *Server) requireOwnership(next http.Handler) http.Handler {
 			return
 		}
 		trueOwner := hostID == user.ID
+		/* The owner still needs the hosting capability, as when this subtree sat behind
+		 * requireHost: an account an admin took hosting away from does not keep running its
+		 * webinars. A co-host is not asked (see the route comment in api.go), and an admin
+		 * reads through on a GET either way. */
+		if trueOwner && !user.CanHost && !(user.IsAdmin && r.Method == http.MethodGet) {
+			httpx.Error(w, http.StatusForbidden, "not_a_host",
+				"This account can't host webinars. An administrator has to grant hosting access.")
+			return
+		}
 		if !trueOwner {
 			grant, err := s.store.StageGrant(r.Context(), slug, hostIdentity(user.ID))
 			if err != nil {
@@ -290,6 +299,13 @@ func (s *Server) requireOwnership(next http.Handler) http.Handler {
 				return
 			}
 			if !grant.CoHost && !(user.IsAdmin && r.Method == http.MethodGet) {
+				// An account that cannot host is told so, as requireHost told it
+				// before this subtree moved out from behind it.
+				if !user.CanHost {
+					httpx.Error(w, http.StatusForbidden, "not_a_host",
+						"This account can't host webinars. An administrator has to grant hosting access.")
+					return
+				}
 				// 404 rather than 403: don't confirm the webinar exists to
 				// someone who has no business knowing.
 				httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")

@@ -21,10 +21,15 @@ export const STREAMING_AUDIENCE_HIDDEN_TOOLS: readonly ToolId[] = [
 ];
 
 /** The tools for this person, narrowed for a streaming viewer. Anyone else's list is
- *  returned as it came, order and all. */
-export function streamingAudienceTools(tools: readonly ToolId[], streaming: boolean): ToolId[] {
+ *  returned as it came, order and all. `keep` survives the narrowing: the host team in a
+ *  simulive's streaming room keeps Participants (a roster they moderate from). */
+export function streamingAudienceTools(
+  tools: readonly ToolId[],
+  streaming: boolean,
+  keep: readonly ToolId[] = [],
+): ToolId[] {
   if (!streaming) return [...tools];
-  return tools.filter((t) => !STREAMING_AUDIENCE_HIDDEN_TOOLS.includes(t));
+  return tools.filter((t) => keep.includes(t) || !STREAMING_AUDIENCE_HIDDEN_TOOLS.includes(t));
 }
 
 /** Whether the header shows the meeting-info card (title, ID, invite link).
