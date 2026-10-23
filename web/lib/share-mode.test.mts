@@ -7,6 +7,13 @@ import {
   shareContentHint,
   shareDegradation,
   shareModeOfHint,
+  SHARE_KEEP_RESOLUTION,
+  liveShareMode,
+  noteShareMode,
+  shareEncoderHint,
+  shareLayout,
+  shareLayoutOfEncodings,
+  shareScalabilityMode,
 } from "./share-mode.ts";
 import {
   SHARE_1080_BITRATE,
@@ -18,6 +25,7 @@ import {
   SHARE_LAYERS,
   SHARE_TOP,
   shareCodecOfTrack,
+  shareEncodingPlan,
   shareLadder,
   shareLayers,
   shareNeedKbps,
@@ -164,6 +172,102 @@ assert.equal(shareCodecOfTrack(undefined), "h264");
   assert.equal(s.frameHeight, undefined, "an inactive encoding is not being sent");
   assert.equal(s.layers, "");
   assert.equal(summariseOutbound([]).qualityLimitationReason, "none");
+}
+
+// Keep resolution, drop frame rate: the sharp share's encoding plan, per browser.
+assert.equal(SHARE_KEEP_RESOLUTION, true, "on by default");
+assert.equal(shareLayout("sharp"), "single");
+assert.equal(shareLayout("video"), "simulcast", "video mode keeps simulcast");
+assert.equal(shareLayout("sharp", false), "simulcast", "the switch puts sharp back on simulcast");
+assert.equal(shareLayoutOfEncodings(1), "single");
+assert.equal(shareLayoutOfEncodings(2), "simulcast");
+assert.equal(shareLayoutOfEncodings(undefined), "simulcast");
+{
+  // Desktop Chromium: one VP9 SVC encoding, temporal layers only, full resolution.
+  const p = shareEncodingPlan("sharp", shareCodec(UA.chromeMac));
+  assert.equal(p.videoCodec, "vp9");
+  assert.equal(p.layout, "single");
+  assert.equal(p.simulcast, false, "no simulcast: livekit then publishes one SVC encoding");
+  assert.equal(p.scalabilityMode, "L1T3", "temporal layers for the SFU to drop per viewer");
+  assert.deepEqual(p.screenShareSimulcastLayers, [], "no 720p layer to fall back onto");
+  assert.equal(p.degradationPreference, "maintain-resolution");
+  assert.equal(p.encoderHint, "motion", "detail would cap VP9 L1T3 at 5 fps and one temporal layer");
+  assert.equal(p.screenShareEncoding.maxBitrate, 2_500_000, "the 1080p cap");
+  assert.equal(p.screenShareEncoding.maxFramerate, 15);
+  assert.equal(p.backupCodec, "h264");
+}
+for (const ua of [UA.safariMac, UA.firefox, UA.chromeAndroid]) {
+  // H264 browsers: one encoding at the capture's size, maintain-resolution, still "detail".
+  const p = shareEncodingPlan("sharp", shareCodec(ua));
+  assert.equal(p.videoCodec, "h264", ua);
+  assert.equal(p.layout, "single", ua);
+  assert.equal(p.simulcast, false, ua);
+  assert.equal(p.scalabilityMode, undefined, ua);
+  assert.deepEqual(p.screenShareSimulcastLayers, [], ua);
+  assert.equal(p.degradationPreference, "maintain-resolution", ua);
+  assert.equal(p.encoderHint, "detail", ua);
+  assert.equal(p.screenShareEncoding.maxBitrate, SHARE_1080_BITRATE, ua);
+  assert.equal(p.backupCodec, "vp8", ua);
+}
+for (const codec of ["vp9", "h264"] as const) {
+  // Video mode and the switched-off flag are what shipped before: 720p + 1080p simulcast.
+  for (const [mode, keep] of [["video", true], ["sharp", false]] as const) {
+    const p = shareEncodingPlan(mode, codec, keep);
+    assert.equal(p.layout, "simulcast", `${codec} ${mode} keep=${keep}`);
+    assert.equal(p.screenShareSimulcastLayers.length, 1, `${codec} ${mode}: the 720p layer`);
+    assert.equal(p.screenShareSimulcastLayers[0].height, SHARE_FLOOR_DESKTOP.height);
+    assert.equal(p.simulcast, codec === "vp9" ? true : undefined);
+    assert.equal(p.scalabilityMode, codec === "vp9" ? "L1T1" : undefined);
+    assert.equal(p.encoderHint, shareContentHint(mode));
+    assert.equal(p.degradationPreference, shareDegradation(mode));
+  }
+}
+assert.equal(shareScalabilityMode("h264", "single"), undefined);
+assert.equal(shareEncoderHint("sharp", "h264", "single"), "detail");
+assert.equal(shareEncoderHint("video", "vp9", "single"), "motion");
+
+// The single layout's ladder: one rung, never off, fps falls under pressure, bitrate follows.
+for (const codec of ["vp9", "h264"] as const) {
+  const top = SHARE_BITRATES[codec].sharp.top;
+  const sharp = shareLadder(codec, "sharp", "single");
+  for (const tier of ["full", "reduced", "minimal"] as const) {
+    assert.equal(sharp[tier].length, 1, `${codec} ${tier}: one encoding`);
+    assert.ok(sharp[tier][0].maxBitrate > 0, `${codec} ${tier}: never switched off`);
+  }
+  assert.deepEqual(sharp.full, [{ maxBitrate: top }], `${codec}: full is the mode's fps`);
+  assert.equal(sharp.reduced[0].maxFramerate, 8);
+  assert.equal(sharp.minimal[0].maxFramerate, 4);
+  assert.ok(sharp.reduced[0].maxBitrate < top && sharp.minimal[0].maxBitrate < sharp.reduced[0].maxBitrate);
+  // Switched to video mid-share: keeps its frame rate, gives up bitrate.
+  const video = shareLadder(codec, "video", "single");
+  assert.equal(video.reduced[0].maxFramerate, undefined);
+  assert.equal(video.minimal[0].maxFramerate, undefined);
+}
+assert.deepEqual(shareLayers("sharp", "vp9", "single"), []);
+
+// The live mode: remembered per track, since VP9 L1T3 is "motion" in both modes.
+{
+  const a = { contentHint: "motion" };
+  assert.equal(liveShareMode(a), "video", "unknown track: read off the hint");
+  assert.equal(liveShareMode(a, true), "sharp", "unknown single VP9 share: only sharp publishes it");
+  noteShareMode(a, "video");
+  assert.equal(liveShareMode(a, true), "video", "a remembered mode wins");
+  noteShareMode(a, "sharp");
+  assert.equal(liveShareMode(a), "sharp");
+  assert.equal(liveShareMode({ contentHint: "detail" }), "sharp");
+  assert.equal(liveShareMode(undefined), "sharp");
+}
+
+// Telemetry: the top encoding's scalabilityMode and how many encodings there are.
+{
+  const s = summariseOutbound([
+    { frameWidth: 1920, frameHeight: 1080, framesPerSecond: 4, qualityLimitationReason: "bandwidth", scalabilityMode: "L1T3" },
+  ]);
+  assert.equal(s.frameHeight, 1080, "resolution held");
+  assert.equal(s.framesPerSecond, 4, "fps given up");
+  assert.equal(s.qualityLimitationReason, "bandwidth");
+  assert.equal(s.scalabilityMode, "L1T3");
+  assert.equal(s.encodings, 1);
 }
 
 console.log("PASS share-mode");

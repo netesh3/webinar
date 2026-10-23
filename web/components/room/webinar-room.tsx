@@ -26,7 +26,7 @@ import { withAutoAnswer } from "@/lib/qa-auto";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
 import { roomOptions, sharePublishOptions, useMediaPreferences } from "@/lib/media";
-import { shareModeOfHint } from "@/lib/share-mode";
+import { liveShareMode } from "@/lib/share-mode";
 import { publishLedger } from "@/lib/republish";
 import {
   afterFailure,
@@ -2228,7 +2228,8 @@ function isCapturing(track: LocalTrack): boolean {
  * played file, both with sharePublishOptions — so the path that puts one BACK has to say
  * the same thing, or a reconnection would quietly downgrade a working share to the camera
  * settings and reintroduce a bug that has already been fixed once. In the same mode, too:
- * read back off the track's contentHint, so a share switched to "video" stays smooth.
+ * the mode applied to the track (liveShareMode — a VP9 L1T3 share's contentHint is "motion"
+ * in both modes), so a share switched to "video" stays smooth.
  *
  * The source is restated in the options because publishTrack is being called directly here
  * rather than through setScreenShareEnabled, which is what would otherwise set it.
@@ -2236,7 +2237,7 @@ function isCapturing(track: LocalTrack): boolean {
 function publishOptionsFor(source: Track.Source, track: LocalTrack): TrackPublishOptions | undefined {
   if (source === Track.Source.ScreenShare || source === Track.Source.ScreenShareAudio) {
     return {
-      ...sharePublishOptions(shareModeOfHint(track.mediaStreamTrack?.contentHint)),
+      ...sharePublishOptions(liveShareMode(track.mediaStreamTrack)),
       source,
     };
   }

@@ -99,3 +99,85 @@ export function shareCaptureResolution(
   }
   return { ...SHARE_CAPTURE_MAX, frameRate };
 }
+
+/* Keep resolution, drop frame rate: how a sharp share is laid out on the wire.
+ *
+ * The blur that came and went was not the encoder, it was the 1080p simulcast layer. Under
+ * uplink pressure the browser switched that layer off and every viewer fell to 720p; on a weak
+ * downlink the SFU moved that one viewer to 720p. Either way text went soft to hold the frame
+ * rate — the opposite of what a slide wants.
+ *
+ * So a sharp share now goes out as ONE encoding at the capture's full resolution, with
+ * degradationPreference "maintain-resolution": a thin uplink costs frames, not pixels.
+ *   VP9 (desktop Chromium)   L1T3 SVC: one spatial layer, three temporal layers (15 / 7.5 /
+ *                            3.75 fps). The SFU (dependency descriptor) moves a congested
+ *                            viewer to a lower TEMPORAL layer — fewer fps, same 1080p —
+ *                            instead of to a 720p layer, because there is none.
+ *   H264 (Safari, Firefox,   one encoding, full resolution, no 720p layer. No temporal layers
+ *         phones)            for the SFU to pick between, so a congested viewer gets the same
+ *                            1080p stream at whatever rate the encoder manages.
+ *
+ * contentHint on VP9 L1T3 has to be "motion", not "detail". libwebrtc's VP9 screen-content
+ * config (svc_config.cc, ConfigureSvcScreenSharing) caps a single spatial layer at 5 fps with
+ * ONE temporal layer — it would undo the temporal layers this is for. livekit-client forces
+ * "motion" on SVC screen shares for the same reason (LocalParticipant: "forcing contentHint to
+ * motion for screenshare with SVC codecs"). Resolution is still held: that is the
+ * degradationPreference's job, and it is "maintain-resolution". H264 keeps "detail".
+ *
+ * Video mode (a played clip, file shares) is unchanged: 720p + 1080p simulcast, motion,
+ * maintain-framerate. A share published sharp that later switches to video keeps its single
+ * encoding and changes hint, degradation, fps and bitrate on it.
+ *
+ * NEXT_PUBLIC_SHARE_KEEP_RESOLUTION=0 at build time puts sharp shares back on simulcast. */
+export const SHARE_KEEP_RESOLUTION: boolean =
+  (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_SHARE_KEEP_RESOLUTION) !== "0";
+
+/** "single": one full-resolution encoding. "simulcast": the 720p floor plus the capture. */
+export type ShareLayout = "single" | "simulcast";
+
+export function shareLayout(mode: ShareMode, keepResolution: boolean = SHARE_KEEP_RESOLUTION): ShareLayout {
+  return keepResolution && mode === "sharp" ? "single" : "simulcast";
+}
+
+/** The layout a live share was published with, read off its sender: one encoding is single. */
+export function shareLayoutOfEncodings(count: number | undefined): ShareLayout {
+  return count === 1 ? "single" : "simulcast";
+}
+
+/** VP9's scalabilityMode for a layout; H264 takes none. */
+export function shareScalabilityMode(codec: ShareCodec, layout: ShareLayout): "L1T3" | "L1T1" | undefined {
+  if (codec !== "vp9") return undefined;
+  return layout === "single" ? "L1T3" : "L1T1";
+}
+
+/** What the encoder is told the content is. VP9 L1T3 needs "motion" (see above). */
+export function shareEncoderHint(
+  mode: ShareMode,
+  codec: ShareCodec,
+  layout: ShareLayout,
+): "detail" | "motion" {
+  if (codec === "vp9" && layout === "single") return "motion";
+  return shareContentHint(mode);
+}
+
+/* Which mode a live share is in.
+ *
+ * contentHint used to say, but a VP9 L1T3 share is "motion" in both modes. So the mode is
+ * remembered per track when it is applied (applyShareMode), and a track nobody has applied a
+ * mode to yet is read off its hint — except a single-layout VP9 one, which only sharp
+ * publishes. Keyed by the MediaStreamTrack, which survives a republish. */
+const liveModes = new WeakMap<object, ShareMode>();
+
+export function noteShareMode(track: object | undefined, mode: ShareMode): void {
+  if (track) liveModes.set(track, mode);
+}
+
+export function liveShareMode(
+  track: { contentHint?: string } | undefined,
+  singleVp9 = false,
+): ShareMode {
+  const known = track ? liveModes.get(track) : undefined;
+  if (known) return known;
+  if (singleVp9) return "sharp";
+  return shareModeOfHint(track?.contentHint);
+}
