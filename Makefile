@@ -153,6 +153,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# when your own share stops. The API runs the same rule (share_lock.go), so a
 	# disagreement here is two people each told they won.
 	cd web && node --experimental-strip-types --no-warnings lib/share-lock.test.mts
+	# Stopping a screen share stops every captured track (video AND tab audio), so the
+	# browser's "Sharing this tab" bar goes away (lib/share-stop.ts).
+	cd web && node --experimental-strip-types --no-warnings lib/share-stop.test.mts
 	# And the presenter's own-share view: which surface a capture is, and that the entire
 	# screen is never played back to itself (the audience would get the mirror too).
 	cd web && node --experimental-strip-types --no-warnings lib/own-share.test.mts
