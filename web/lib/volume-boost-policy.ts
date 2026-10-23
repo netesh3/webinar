@@ -94,10 +94,12 @@ export function boostBlockerText(b: BoostBlocker): string | null {
  * ten seconds after its last packet, still showing that packet's audioLevel — measured: after
  * the packets stopped, the graph input was 0 within a second while the source stayed listed
  * at its old level for ten. Trusting that failed the boost on an ordinary network blip. So a
- * level only counts when its RTP timestamp has moved since the last check (freshLevel), and
- * where there is no level at all, livekit's own speaker detection (participant.isSpeaking,
- * from the SFU) stands in. Nothing is judged while the room itself is not connected: during a
- * reconnect every stream is silent for a reason that has nothing to do with the boost. */
+ * stream only counts while its RTP timestamp is still moving (readSource). A stale stream is
+ * "can't tell", never "talking" — and in particular it does not fall back to livekit's speaker
+ * detection (participant.isSpeaking): that comes from SFU messages, which stop arriving in
+ * exactly the same blip, leaving whoever was talking flagged as talking. The SFU's word is
+ * only taken for a stream whose audio is still arriving but carries no level at all. Nothing
+ * is judged while the room itself is not connected either. */
 
 /** RTP audioLevel (linear 0..1, per RFC 6464 as browsers report it) that counts as speech. */
 export const SPEECH_RTP_LEVEL = 0.02;
@@ -109,18 +111,24 @@ export const STALLED_CHECKS = 3;
 /** One synchronization source as the browser reports it. */
 export type SyncSource = { audioLevel?: number; rtpTimestamp?: number };
 
-/** A source's audio level if it is fresh — its RTP timestamp moved since `prevRtp` — or null
- *  when it is stale or carries no level. */
-export function freshLevel(src: SyncSource | undefined, prevRtp: number | undefined): number | null {
-  if (!src || typeof src.audioLevel !== "number" || typeof src.rtpTimestamp !== "number") return null;
-  if (prevRtp !== undefined && src.rtpTimestamp === prevRtp) return null;
-  return src.audioLevel;
+/** What one stream's synchronization source says at a check:
+ *    level   audio is arriving (RTP timestamp moved since the last check) and carries a level;
+ *    moving  audio is arriving but carries no level;
+ *    stale   nothing has arrived since the last check, or there is no source to read. */
+export type SourceReading = { kind: "level"; level: number } | { kind: "moving" } | { kind: "stale" };
+
+export function readSource(src: SyncSource | undefined, prevRtp: number | undefined): SourceReading {
+  if (!src || typeof src.rtpTimestamp !== "number") return { kind: "stale" };
+  if (prevRtp !== undefined && src.rtpTimestamp === prevRtp) return { kind: "stale" };
+  return typeof src.audioLevel === "number" ? { kind: "level", level: src.audioLevel } : { kind: "moving" };
 }
 
-/** Whether a speaker is talking, from the fresh RTP level when there is one, else from the
- *  SFU's speaker detection. */
-export function talking(level: number | null, sfuSpeaking: boolean): boolean {
-  return level !== null ? level > SPEECH_RTP_LEVEL : sfuSpeaking;
+/** Whether a speaker is talking: from the level when audio is arriving with one; from the SFU's
+ *  speaker detection only when audio is arriving without one; never from a stale stream. */
+export function talking(r: SourceReading, sfuSpeaking: boolean): boolean {
+  if (r.kind === "level") return r.level > SPEECH_RTP_LEVEL;
+  if (r.kind === "moving") return sfuSpeaking;
+  return false;
 }
 
 /** One stream at one check. */

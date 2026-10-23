@@ -8,7 +8,7 @@ import {
   boostBlocker,
   boostBlockerText,
   clampBoost,
-  freshLevel,
+  readSource,
   talking,
   isIOSLike,
   judgeBoost,
@@ -63,14 +63,37 @@ ok(boostBlocker({ ...fine, publisher: true, ios: true, failed: true }) === "publ
 ok(boostBlockerText("publisher") === null && boostBlockerText("lock-screen") === null, "silent blockers say nothing");
 ok(typeof boostBlockerText("ios") === "string" && typeof boostBlockerText("failed") === "string", "the others explain");
 
-// ---- freshLevel / talking
-ok(freshLevel({ audioLevel: 0.3, rtpTimestamp: 1000 }, undefined) === 0.3, "first reading counts");
-ok(freshLevel({ audioLevel: 0.3, rtpTimestamp: 1960 }, 1000) === 0.3, "a moving RTP timestamp is fresh");
-ok(freshLevel({ audioLevel: 0.355, rtpTimestamp: 1000 }, 1000) === null, "a stuck RTP timestamp is stale: Chrome's ten-second leftover");
-ok(freshLevel({ rtpTimestamp: 1000 }, undefined) === null, "no level, no reading");
-ok(freshLevel(undefined, 5) === null, "no source, no reading");
-ok(talking(0.3, false) && !talking(0.001, true), "a fresh level decides, whatever the SFU says");
-ok(talking(null, true) && !talking(null, false), "no level: the SFU's speaker detection decides");
+// ---- readSource / talking
+{
+  const r1 = readSource({ audioLevel: 0.3, rtpTimestamp: 1000 }, undefined);
+  ok(r1.kind === "level" && r1.level === 0.3, "first reading counts");
+  const r2 = readSource({ audioLevel: 0.3, rtpTimestamp: 1960 }, 1000);
+  ok(r2.kind === "level", "a moving RTP timestamp is fresh");
+  ok(readSource({ audioLevel: 0.355, rtpTimestamp: 1000 }, 1000).kind === "stale", "a stuck RTP timestamp is stale: Chrome's ten-second leftover");
+  ok(readSource({ rtpTimestamp: 1960 }, 1000).kind === "moving", "arriving without a level");
+  ok(readSource({ rtpTimestamp: 1000 }, 1000).kind === "stale", "no level and stuck: stale");
+  ok(readSource(undefined, 5).kind === "stale", "no source: stale");
+  ok(talking({ kind: "level", level: 0.3 }, false), "a fresh level above the threshold is talking");
+  ok(!talking({ kind: "level", level: 0.001 }, true), "a fresh level decides, whatever the SFU says");
+  ok(talking({ kind: "moving" }, true) && !talking({ kind: "moving" }, false), "arriving without a level: the SFU decides");
+  ok(!talking({ kind: "stale" }, true), "stale is never talking — not even with the SFU's (equally stale) flag set");
+}
+{
+  // The reviewer's trail: the host talking, then the viewer's network blips. isSpeaking stays
+  // true (no SFU messages arrive) and the room still reads connected for a few seconds.
+  let h = HEALTHY;
+  let prev: number | undefined;
+  const check = (src: { audioLevel?: number; rtpTimestamp?: number }, rms: number) => {
+    const r = readSource(src, prev);
+    prev = src.rtpTimestamp;
+    h = judgeBoost(h, [{ talking: talking(r, true), rms }], true);
+  };
+  check({ audioLevel: 0.3, rtpTimestamp: 1000 }, 0.1);
+  check({ audioLevel: 0.3, rtpTimestamp: 49000 }, 0.1);
+  check({ audioLevel: 0.3, rtpTimestamp: 60000 }, 0); // packets stopped mid-second
+  for (let i = 0; i < 8; i++) check({ audioLevel: 0.3, rtpTimestamp: 60000 }, 0); // stuck
+  ok(h.verdict === "ok", "a blip with a stale level and a stale isSpeaking does not fail the boost", `${h.verdict}/${h.stalled}`);
+}
 
 // ---- judgeBoost
 const fed = (t: boolean) => ({ talking: t, rms: 0.1 });

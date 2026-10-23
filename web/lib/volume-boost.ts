@@ -9,9 +9,9 @@ import {
   HEALTHY,
   boostBlocker,
   clampBoost,
-  freshLevel,
   isIOSLike,
   judgeBoost,
+  readSource,
   rendererVolume,
   talking,
   type BoostBlocker,
@@ -236,12 +236,14 @@ export class BoostGraph {
   }
 }
 
-/** The loudest source on a receiver right now, as the browser reports it (see freshLevel for
- *  why the RTP timestamp comes with it). Exported for the browser check. */
+/** The loudest source on a receiver right now, as the browser reports it — or, where none
+ *  carries a level, any source, for its RTP timestamp (see readSource). Exported for the browser
+ *  check. */
 export function loudestSource(receiver: RTCRtpReceiver | undefined): { audioLevel?: number; rtpTimestamp?: number } | undefined {
   let best: RTCRtpSynchronizationSource | undefined;
   for (const s of receiver?.getSynchronizationSources?.() ?? []) {
-    if (typeof s.audioLevel === "number" && (!best || s.audioLevel > (best.audioLevel ?? 0))) best = s;
+    if (!best) best = s;
+    else if (typeof s.audioLevel === "number" && s.audioLevel > (best.audioLevel ?? -1)) best = s;
   }
   return best;
 }
@@ -371,8 +373,8 @@ export function useVolumeBoostEngine(
     for (const e of events) room.on(e, resync);
 
     let health: BoostHealth = HEALTHY;
-    // Each stream's RTP timestamp at the previous check, so a level that stopped updating is
-    // not taken for speech (freshLevel).
+    // Each stream's RTP timestamp at the previous check, so a stream that stopped arriving is
+    // "can't tell", not speech (readSource).
     let lastRtp = new Map<MediaStreamTrack, number>();
     const watch = setInterval(() => {
       resync();
@@ -382,7 +384,7 @@ export function useVolumeBoostEngine(
         const src = loudestSource(track.receiver);
         if (typeof src?.rtpTimestamp === "number") nextRtp.set(mst, src.rtpTimestamp);
         return {
-          talking: talking(freshLevel(src, lastRtp.get(mst)), participant.isSpeaking),
+          talking: talking(readSource(src, lastRtp.get(mst)), participant.isSpeaking),
           rms: g.inputRms(mst),
         };
       });
