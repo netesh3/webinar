@@ -35,6 +35,7 @@ export function PreJoin({
   topic,
   displayName,
   role,
+  meeting = false,
   prefs,
   onUpdatePrefs,
   onJoin,
@@ -43,6 +44,9 @@ export function PreJoin({
   topic: string;
   displayName: string;
   role: string;
+  /** A meeting rather than a webinar, for the join button's wording. Not read from `role`:
+   *  a meeting's host is labelled "Host" there, the same as a webinar's. */
+  meeting?: boolean;
   prefs: MediaPreferences;
   onUpdatePrefs: (patch: Partial<MediaPreferences>) => void;
   /* Where the mic and camera toggles start, when that is the room's decision rather than
@@ -544,7 +548,7 @@ export function PreJoin({
             )}
 
             <Button onClick={join} size="lg" className="w-full">
-              Join the webinar
+              {meeting ? "Join the meeting" : "Join the webinar"}
             </Button>
             <p className="text-center text-[11.5px] leading-relaxed text-ink-3">
               {noCamera && !starting

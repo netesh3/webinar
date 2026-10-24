@@ -1294,7 +1294,11 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	 * so this does not wait for a sweeper — and a session that is live is not
 	 * marked, so this never closes one that is on the air. */
 	if existing.DidntGoLive {
-		httpx.Error(w, http.StatusForbidden, "ended", "This webinar's scheduled time has passed.")
+		msg := "This webinar's scheduled time has passed."
+		if isMeeting(existing) {
+			msg = "This meeting's scheduled time has passed."
+		}
+		httpx.Error(w, http.StatusForbidden, "ended", msg)
 		return
 	}
 	/* Already live is a rejoin, not a new start. Ended is left to SetStatus.
@@ -1414,7 +1418,12 @@ func goLiveClosed(wb types.Webinar) (string, bool) {
 	}
 	/* The minute count is hostStartLead, so the sentence and the check cannot drift. */
 	leadMin := int(hostStartLead / time.Minute)
-	return fmt.Sprintf("Go live opens %d minutes before the start, at %s.", leadMin, localTime(opens, wb.TimeZone)), true
+	/* Named after the button the host pressed: a meeting's is "Start meeting", not "Go live". */
+	button := "Go live"
+	if isMeeting(wb) {
+		button = "Start meeting"
+	}
+	return fmt.Sprintf("%s opens %d minutes before the start, at %s.", button, leadMin, localTime(opens, wb.TimeZone)), true
 }
 
 // handleTransferHost hands a live session to another panelist already in the room.
