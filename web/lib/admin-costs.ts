@@ -12,6 +12,7 @@ import {
   FeatureEdgeDelivery,
   FeatureInstantWebinar,
   FeatureJoinWithoutRegistration,
+  FeatureRepurpose,
   FeatureWhatsAppCRM,
   FeatureWhiteboard,
   FeatureZoom,
@@ -78,4 +79,7 @@ export const FEATURE_COSTS: Record<string, string> = {
   [FeatureAI]:
     "OpenAI gpt-5-nano ≈ $0.05 in / $0.40 out per million tokens: a fraction of a cent per " +
     "draft. Capped per host (AI_HOST_MONTHLY_USD, default $2) and in all (AI_MONTHLY_USD, $20).",
+  [FeatureRepurpose]:
+    "gpt-5-nano again, inside the same AI caps: about $0.002–0.005 per draft for an hour's " +
+    "session (the transcript read once per draft); a long session is summarised once first.",
 };

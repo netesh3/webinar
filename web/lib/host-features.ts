@@ -3,6 +3,7 @@ import {
   FeatureFollowupSend,
   FeatureInstantWebinar,
   FeatureMeetings,
+  FeatureRepurpose,
   FeatureSimulive,
 } from "./api-types.ts";
 
@@ -42,6 +43,12 @@ export function meetingsOffered(account: WithFeatures): boolean {
  *  because the video server is started on demand and needs a few minutes' warning. */
 export function instantOffered(account: WithFeatures): boolean {
   return hasFeature(account, FeatureInstantWebinar);
+}
+
+/** The Repurpose card in AI insights and the brand voice (repurpose, which needs ai). Off by
+ *  default: an admin's per-host switch. */
+export function repurposeOffered(account: WithFeatures): boolean {
+  return hasFeature(account, FeatureRepurpose);
 }
 
 /** Sending the AI follow-up drafts from Results (followup_send, which needs ai). */

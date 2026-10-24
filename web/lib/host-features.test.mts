@@ -8,6 +8,7 @@ import {
   hasFeature,
   instantOffered,
   meetingsOffered,
+  repurposeOffered,
   simuliveAllowed,
   simuliveCardOffered,
 } from "./host-features.ts";
@@ -33,5 +34,9 @@ assert.equal(instantOffered({ features: ["meetings", "instant_webinar"] }), true
 
 assert.equal(followupSendOffered({ features: ["ai", "followup_send"] }), true);
 assert.equal(followupSendOffered({ features: ["ai"] }), false);
+
+// Repurposing: an admin's per-host switch, off by default. The server drops it without ai.
+assert.equal(repurposeOffered({ features: ["ai"] }), false);
+assert.equal(repurposeOffered({ features: ["ai", "repurpose"] }), true);
 
 console.log("host-features: ok");

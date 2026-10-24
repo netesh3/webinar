@@ -7,6 +7,7 @@ import { ApprovalQueue } from "./approval-queue";
 import { AIRecapCard } from "./ai-recap-card";
 import { SessionKnowledgeCard } from "./knowledge/session-knowledge-card";
 import { AILeadsAndFollowups } from "./ai-leads-followups";
+import { RepurposeCard } from "./repurpose-card";
 import { RecordingsTab } from "./recordings-tab";
 import { SimuliveReplayCard } from "./simulive-replay-card";
 import { SimuliveAutoCard } from "./simulive-auto-card";
@@ -42,6 +43,7 @@ import {
 } from "@/lib/api-types";
 import { answerText } from "@/lib/registration-questions";
 import { isMeetingKind } from "@/lib/meeting-create";
+import { repurposeOffered } from "@/lib/host-features";
 import { DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import {
@@ -117,6 +119,8 @@ export function HostWebinarTabs({
   // The AI tab (recap, hot leads, follow-up writer) after the end. Without AI it is not
   // offered and Results shows nothing AI.
   const ai = (account?.features ?? []).includes(FeatureAI);
+  // Repurposing the session into drafts (the repurpose switch, which needs ai), in AI insights.
+  const repurpose = repurposeOffered(account);
   /* A meeting has no People and no Follow up (lib/host-tabs.ts meetingTabs), and its Overview
    * and Setup leave out what is about registrants. Recording, chat, Q&A, polls and Results are
    * the webinar's own, because a meeting's room has all of them. */
@@ -265,6 +269,7 @@ export function HostWebinarTabs({
             <AIRecapCard slug={w.id} />
           </div>
           <AILeadsAndFollowups webinar={w} />
+          {repurpose && <RepurposeCard webinar={w} />}
         </>
       )}
       {/* Old recap emails link to ?tab=results: one line pointing at where the recap went. */}

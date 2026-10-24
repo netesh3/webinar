@@ -2740,6 +2740,124 @@ export interface SessionRecapResponse {
 }
 
 //////////
+// source: repurpose.go
+
+/**
+ *  FeatureRepurpose is the switch: the Repurpose card in AI insights and the brand voice.
+ *  * Needs FeatureAI (every call counts against the monthly AI caps). Off for every account
+ *  * until an admin turns it on for a host (Admin -> Accounts), because absent means off.
+ */
+export const FeatureRepurpose = "repurpose";
+/**
+ * AIFeatureRepurpose is the ai_usage feature name for every repurposing call.
+ */
+export const AIFeatureRepurpose = "repurpose";
+/**
+ * Repurpose formats (RepurposeDraft.Format), in the order the card offers them.
+ */
+export const RepurposeBlog = "blog";
+/**
+ * Repurpose formats (RepurposeDraft.Format), in the order the card offers them.
+ */
+export const RepurposeNewsletter = "newsletter";
+/**
+ * Repurpose formats (RepurposeDraft.Format), in the order the card offers them.
+ */
+export const RepurposeWhitepaper = "whitepaper";
+/**
+ * Repurpose formats (RepurposeDraft.Format), in the order the card offers them.
+ */
+export const RepurposeLinkedIn = "linkedin";
+/**
+ * Repurpose formats (RepurposeDraft.Format), in the order the card offers them.
+ */
+export const RepurposeXThread = "x_thread";
+/**
+ * Repurpose formats (RepurposeDraft.Format), in the order the card offers them.
+ */
+export const RepurposeInstagram = "instagram";
+/**
+ *  Draft states (RepurposeDraft.Status). queued is waiting for a request to write it (the
+ *  * next poll does), writing is a model call in flight, failed carries a Reason.
+ */
+export const RepurposeQueued = "queued";
+/**
+ *  Draft states (RepurposeDraft.Status). queued is waiting for a request to write it (the
+ *  * next poll does), writing is a model call in flight, failed carries a Reason.
+ */
+export const RepurposeWriting = "writing";
+/**
+ *  Draft states (RepurposeDraft.Status). queued is waiting for a request to write it (the
+ *  * next poll does), writing is a model call in flight, failed carries a Reason.
+ */
+export const RepurposeReady = "ready";
+/**
+ *  Draft states (RepurposeDraft.Status). queued is waiting for a request to write it (the
+ *  * next poll does), writing is a model call in flight, failed carries a Reason.
+ */
+export const RepurposeFailed = "failed";
+/**
+ *  RepurposeReasonNoTranscript is why nothing can be written: nothing anyone said was kept
+ *  * (captions and the room's AI switch were off, or nobody spoke). The other reasons are the
+ *  * recap's (ai_off, ai_session_off, ai_limit, ai_unavailable, not_ended, failed).
+ */
+export const RepurposeReasonNoTranscript = "no_transcript";
+/**
+ *  RepurposeDraft is one format's draft. Markdown is the host's edit when Edited, else what
+ *  * the model wrote; empty until the first one is ready. A regenerate keeps the old draft
+ *  * readable while the new one is written (Status queued or writing, Markdown the old one).
+ *  * Reviewed is the host's "I've read it": copy and download wait for it.
+ */
+export interface RepurposeDraft {
+  format: string;
+  status: string;
+  reason?: string;
+  markdown: string;
+  edited: boolean;
+  reviewed: boolean;
+  generatedAt?: string;
+}
+/**
+ *  RepurposeResponse is GET /api/host/webinars/{slug}/repurpose. Status is ready when drafts
+ *  * may be written, else why not (RepurposeReasonNoTranscript or one of the recap's reasons);
+ *  * drafts already written stay readable either way. Source says what they are written from:
+ *  * the after-session transcript, the live captions, or notes on a long one ("notes").
+ */
+export interface RepurposeResponse {
+  status: string;
+  source?: string;
+  drafts: RepurposeDraft[];
+  brandVoiceSet: boolean;
+}
+/**
+ * RepurposeRequest is POST /api/host/webinars/{slug}/repurpose: write (or rewrite) these.
+ */
+export interface RepurposeRequest {
+  formats: string[];
+}
+/**
+ *  RepurposeEditRequest is PUT /api/host/webinars/{slug}/repurpose/{format}: the host's
+ *  * text, and whether they have reviewed it. Reviewed false on an edit takes the mark back.
+ */
+export interface RepurposeEditRequest {
+  markdown: string;
+  reviewed: boolean;
+}
+/**
+ *  BrandVoice is the host's voice for every draft (GET/PUT /api/host/brand-voice): how they
+ *  * sound, who they write for, words to use and to avoid, and a sample of their own writing
+ *  * for style only. Every field is optional; all empty means a plain, warm default.
+ */
+export interface BrandVoice {
+  tone: string;
+  audience: string;
+  doWords: string;
+  dontWords: string;
+  sample: string;
+  updatedAt?: string;
+}
+
+//////////
 // source: sales.go
 
 /**

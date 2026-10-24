@@ -1285,7 +1285,8 @@ type Account struct {
  * that already had one), and meetings, server captions and the AI sub-switches ai_knowledge,
  * simulive_auto and followup_send, all on in every tier. A switch with Requires is in effect
  * only with all of them (EffectiveFeatures), so a sub-switch on by default does nothing for
- * an account without AI.
+ * an account without AI. FeatureRepurpose (repurpose.go) is an AI sub-switch that is OFF by
+ * default, in no plan tier: an admin turns it on per host.
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1509,6 +1510,13 @@ var Features = []Feature{
 		Key:         FeatureFollowupSend,
 		Label:       "Send follow-ups",
 		Description: "Let this host send the AI follow-up drafts by email or WhatsApp from Results. On by default, in effect only with AI. Off leaves the drafts to copy or export.",
+		Group:       FeatureGroupAI,
+		Requires:    []string{FeatureAI},
+	},
+	{
+		Key:         FeatureRepurpose,
+		Label:       "Repurpose content",
+		Description: "Let this host turn an ended session's transcript into draft blog posts, newsletters, a long-form whitepaper draft and LinkedIn, X and Instagram posts, in a brand voice they set. Drafts for the host to review. Counts against the monthly AI limit; in effect only with AI. Off by default.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI},
 	},

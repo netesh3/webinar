@@ -338,6 +338,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# their empty states, and a draft turned into WhatsApp template wording.
 	cd web && node --experimental-strip-types --no-warnings lib/leads.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/host-features.test.mts
+	# Content repurposing: the formats, each draft's state in words, the download's name,
+	# the character counts a post has to fit, and the Markdown preview.
+	cd web && node --experimental-strip-types --no-warnings lib/repurpose.test.mts
 	# Sending the follow-ups: which channel each person starts on (WhatsApp, else email),
 	# the reasons in words, the chunks, and the template preview the server mirrors.
 	cd web && node --experimental-strip-types --no-warnings lib/followup-send.test.mts

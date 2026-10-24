@@ -80,6 +80,13 @@ func SetRecapDelay(d time.Duration) func() {
 	return func() { recapDelay = old }
 }
 
+// SetRepurposeRetryAfter sets how long a failed draft waits; the returned func restores it.
+func SetRepurposeRetryAfter(d time.Duration) func() {
+	old := repurposeRetryAfter
+	repurposeRetryAfter = d
+	return func() { repurposeRetryAfter = old }
+}
+
 // SetQAAutoDraftCap sets the most automatic drafts a session gets; the returned func restores it.
 func SetQAAutoDraftCap(n int) func() {
 	old := qaAutoDraftCap
