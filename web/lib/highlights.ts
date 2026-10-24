@@ -3,7 +3,7 @@
  * status says. The picking is the server's (api/internal/api/highlights.go).
  *
  *   node --experimental-strip-types --no-warnings lib/highlights.test.mts */
-import { HighlightMaxSec, HighlightMinSec } from "./api-types.ts";
+import { HighlightMaxSec, HighlightMinSec, HighlightsNotStarted } from "./api-types.ts";
 import type { HighlightSignals } from "./api-types.ts";
 
 /** Seconds as m:ss, or h:mm:ss from an hour; tenths dropped. */
@@ -65,11 +65,21 @@ export function signalChips(s: HighlightSignals): string[] {
   return out;
 }
 
-/** What the highlights panel says instead of a list; null when the list is there. */
-export function highlightsStatusText(status: string): { text: string; pending?: boolean } | null {
+/** What the highlights panel says instead of a list; null when the list is there. pending: being
+ *  picked (look again shortly). start: never asked for, so the panel offers the button that
+ *  starts the pick (looking never does: it spends the host's AI allowance). retry: the last
+ *  try failed in a way another may mend, so the button is offered again. */
+export function highlightsStatusText(
+  status: string,
+): { text: string; pending?: boolean; start?: boolean; retry?: boolean } | null {
   switch (status) {
     case "ready":
       return null;
+    case HighlightsNotStarted:
+      return {
+        text: "AI reads the transcript and the audience's reactions to pick the best moments. Uses your AI allowance.",
+        start: true,
+      };
     case "processing":
       return { text: "Finding the best moments… this takes up to a minute.", pending: true };
     case "not_ended":
@@ -81,11 +91,11 @@ export function highlightsStatusText(status: string): { text: string; pending?: 
     case "ai_limit":
       return { text: "This month's AI allowance is used up. Highlights can be found again next month." };
     case "ai_unavailable":
-      return { text: "The AI didn't answer. Try again in a minute." };
+      return { text: "The AI didn't answer. Try again in a minute.", retry: true };
     case "no_transcript":
       return { text: "Nothing said in this recording was captioned, so there are no moments to pick from. Keep the room's AI switch on next time." };
     case "not_ready":
       return { text: "Highlights are found once the recording is ready to play." };
   }
-  return { text: "The highlights couldn't be found. Try again in a minute." };
+  return { text: "The highlights couldn't be found. Try again in a minute.", retry: true };
 }

@@ -86,6 +86,18 @@ func (f highlightFixture) get() types.HighlightsResponse {
 	return out
 }
 
+// find is the host's "Find highlights" (and "Find them again"): the POST that makes the calls.
+func (f highlightFixture) find() types.HighlightsResponse {
+	f.h.t.Helper()
+	res, raw := f.h.do(http.MethodPost, f.path, nil)
+	if res.StatusCode != http.StatusOK {
+		f.h.t.Fatalf("find highlights: %d %s", res.StatusCode, raw)
+	}
+	var out types.HighlightsResponse
+	f.h.decode(raw, &out)
+	return out
+}
+
 func TestHighlightsAreOffByDefaultAndNeedTheirParents(t *testing.T) {
 	f := highlightSession(t, false)
 	if hasFeature(meAccount(t, f.h).Features, types.FeatureClips) {
@@ -106,7 +118,16 @@ func TestHighlightsAreOffByDefaultAndNeedTheirParents(t *testing.T) {
 
 func TestHighlightsArePickedSnappedAndKept(t *testing.T) {
 	f := highlightSession(t, true)
-	got := f.get()
+	// Looking never starts the pick: it spends the host's AI allowance, so the host asks.
+	for range 2 {
+		if got := f.get(); got.Status != types.HighlightsNotStarted || len(got.Highlights) != 0 || got.GeneratedAt != "" {
+			t.Fatalf("before asking = %+v", got)
+		}
+	}
+	if f.model.callCount() != 0 {
+		t.Fatalf("a look called the model %d times", f.model.callCount())
+	}
+	got := f.find()
 	if got.Status != types.AIStatusReady || len(got.Highlights) != 2 || got.GeneratedAt == "" {
 		t.Fatalf("highlights = %+v", got)
 	}
@@ -141,7 +162,9 @@ func TestHighlightsArePickedSnappedAndKept(t *testing.T) {
 	}
 
 	// Kept: looking again (by either take's id) asks nobody.
-	f.get()
+	if again := f.get(); again.Status != types.AIStatusReady || len(again.Highlights) != 2 || again.GeneratedAt != got.GeneratedAt {
+		t.Fatalf("looked at again = %+v", again)
+	}
 	res, raw := f.h.do(http.MethodGet, "/api/host/webinars/"+f.wb.ID+"/recordings/"+f.take2+"/highlights", nil)
 	if res.StatusCode != http.StatusOK || f.model.callsFor("highlights") != 1 {
 		t.Fatalf("by the second take: %d %s, calls %d", res.StatusCode, raw, f.model.callsFor("highlights"))
@@ -173,13 +196,36 @@ func TestHighlightsFailInPlainWords(t *testing.T) {
 	f.model.mu.Lock()
 	f.model.reply = `not json`
 	f.model.mu.Unlock()
-	if got := f.get(); got.Status != types.RecapReasonAIUnavailable {
+	if got := f.find(); got.Status != types.RecapReasonAIUnavailable {
 		t.Fatalf("failed = %+v", got)
+	}
+	// The failure is kept for the page to say, and a look does not retry it.
+	calls := f.model.callCount()
+	if got := f.get(); got.Status != types.RecapReasonAIUnavailable || f.model.callCount() != calls {
+		t.Fatalf("looked at after failing = %+v, calls %d → %d", got, calls, f.model.callCount())
 	}
 	f.model.mu.Lock()
 	f.model.reply = highlightsReply
 	f.model.mu.Unlock()
-	if got := f.get(); got.Status != types.AIStatusReady || len(got.Highlights) != 2 {
+	if got := f.find(); got.Status != types.AIStatusReady || len(got.Highlights) != 2 {
 		t.Fatalf("after the retry = %+v", got)
+	}
+}
+
+// A pick whose claim ran out with no outcome (its instance went away) reads as failed, so the
+// page offers the button again rather than polling a pick nobody is making.
+func TestHighlightsAbandonedPickReadsAsFailed(t *testing.T) {
+	f := highlightSession(t, true)
+	f.h.exec(`INSERT INTO recording_highlights (recording_id, status, claimed_until)
+	          VALUES ($1::uuid, 'pending', now() - interval '1 minute')`, f.rec)
+	if got := f.get(); got.Status != types.RecapReasonFailed {
+		t.Fatalf("abandoned = %+v", got)
+	}
+	f.h.exec(`UPDATE recording_highlights SET claimed_until = now() + interval '1 minute' WHERE recording_id = $1::uuid`, f.rec)
+	if got := f.get(); got.Status != types.RecapReasonProcessing {
+		t.Fatalf("being picked = %+v", got)
+	}
+	if f.model.callCount() != 0 {
+		t.Fatalf("model calls = %d", f.model.callCount())
 	}
 }

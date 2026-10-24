@@ -182,12 +182,16 @@ function SuggestedReels({
     };
   }, [slug, recording.id, poll]);
 
-  const findAgain = async () => {
+  // Planned only when the host asks (it spends their AI allowance), inside the POST. The reels
+  // are planned from the transcript, not from the highlights, so this needs nothing found first.
+  const find = async () => {
     setFinding(true);
     try {
-      setData(await api.findReels(slug, recording.id));
+      const res = await api.findReels(slug, recording.id);
+      setData(res);
+      if (res.status === "processing") setPoll((n) => n + 1);
     } catch (err) {
-      notify(err instanceof ApiError ? err.message : "Couldn't suggest reels again.", "error");
+      notify(err instanceof ApiError ? err.message : "Couldn't suggest reels.", "error");
     } finally {
       setFinding(false);
     }
@@ -195,8 +199,9 @@ function SuggestedReels({
 
   const state = data ? highlightsStatusText(data.status) : null;
   const reels = data?.reels ?? [];
+  const offer = !!state && (state.start || state.retry) && reels.length === 0;
   // Nothing to say when the highlights above already say why (AI off, no transcript…).
-  if (data && data.status !== "ready" && data.status !== "processing" && reels.length === 0) return null;
+  if (data && data.status !== "ready" && data.status !== "processing" && reels.length === 0 && !offer) return null;
   return (
     <div className="border-t border-line px-4 py-3">
       <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
@@ -207,16 +212,43 @@ function SuggestedReels({
           </span>
         </p>
         {data?.status === "ready" && (
-          <Button type="button" variant="ghost" size="sm" disabled={finding} onClick={() => void findAgain()}>
+          <Button type="button" variant="ghost" size="sm" disabled={finding} onClick={() => void find()}>
             {finding && <Spinner className="size-3.5" />}
             Suggest again
           </Button>
         )}
       </div>
-      {!data || data.status === "processing" ? (
+      {!data ? (
+        <p className="text-[12.5px] text-ink-3">
+          <Spinner className="size-3.5" /> Loading the suggested reels…
+        </p>
+      ) : data.status === "processing" ? (
         <p className="text-[12.5px] text-ink-3">
           <Spinner className="size-3.5" /> Planning reels from the best short moments…
         </p>
+      ) : offer ? (
+        <>
+          <p className="mb-2 text-[12.5px] text-ink-2">
+            {state?.start
+              ? "AI picks a few short moments on one theme to stitch into a 30–60 second vertical reel. Uses your AI allowance."
+              : data.status === "ai_unavailable"
+                ? state?.text
+                : "The reels couldn't be suggested. Try again in a minute."}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant={state?.start ? "primary" : "secondary"}
+              size="sm"
+              disabled={finding}
+              onClick={() => void find()}
+            >
+              {finding && <Spinner className="size-3.5" />}
+              {state?.start ? "Suggest reels" : "Try again"}
+            </Button>
+            {finding && <span className="text-[12.5px] text-ink-3">Suggesting reels… this takes up to a minute.</span>}
+          </div>
+        </>
       ) : reels.length === 0 ? (
         <p className="text-[12.5px] text-ink-2">
           {state?.text ?? "No set of short moments made a good reel in this recording."}

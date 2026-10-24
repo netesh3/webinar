@@ -41,5 +41,14 @@ assert.equal(highlightsStatusText("ready"), null);
 assert.equal(highlightsStatusText("processing")!.pending, true);
 assert.match(highlightsStatusText("no_transcript")!.text, /captioned/);
 assert.match(highlightsStatusText("something_else")!.text, /Try again/);
+// Never asked for: the button that starts the pick, saying what it spends.
+assert.equal(highlightsStatusText("not_started")!.start, true);
+assert.match(highlightsStatusText("not_started")!.text, /AI allowance/);
+// Failures another try may mend offer the button again; refusals and the used-up allowance do not.
+assert.equal(highlightsStatusText("failed")!.retry, true);
+assert.equal(highlightsStatusText("ai_unavailable")!.retry, true);
+for (const s of ["processing", "ai_limit", "ai_off", "ai_session_off", "no_transcript", "not_ready", "not_ended"]) {
+  assert.ok(!highlightsStatusText(s)!.retry && !highlightsStatusText(s)!.start, s);
+}
 
 console.log("highlights: ok");

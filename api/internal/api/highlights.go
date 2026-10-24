@@ -33,9 +33,12 @@ import (
  *   snap      every pick starts and ends on a sentence, lasts 20–90 s and lies inside one take
  *             (highlights.Snap), then the picks are ranked together on the model's interest and
  *             the counted engagement (highlights.Rank).
- *   cache     written once, lazily, on the first look after the session ends, inside that
- *             request (Cloud Run has CPU only during one), and kept per recording
- *             (recording_highlights). "Find them again" (POST) rewrites them.
+ *   cache     written only when the host asks: POST ("Find highlights", then "Find them
+ *             again") makes the calls inside that request (Cloud Run has CPU only during one)
+ *             and keeps the result per recording (recording_highlights). GET never calls the
+ *             AI, as each pick spends the host's AI allowance: it reads what is kept, or says
+ *             not_started, or why it cannot be asked for (not ended, AI off, no transcript…)
+ *             so the page explains rather than offering a button that would be refused.
  *
  * Under requireOwnership: the host and co-hosts, as the rest of the session's AI. The host's
  * switch decides, whoever looks.
@@ -222,7 +225,13 @@ func highlightsResponse(row store.HighlightsRow) types.HighlightsResponse {
 			out.Status = aiStatusFailed
 		}
 	default:
+		// Pending: being picked while the claim is held. A claim that ran out without an
+		// outcome (the instance went away mid-pick) is a failure the host can retry, not a
+		// pick still running that the page would poll forever.
 		out.Status = aiStatusProcessing
+		if !row.Claimed {
+			out.Status = aiStatusFailed
+		}
 	}
 	if row.GeneratedAt != nil {
 		out.GeneratedAt = row.GeneratedAt.UTC().Format(time.RFC3339)
@@ -231,12 +240,13 @@ func highlightsResponse(row store.HighlightsRow) types.HighlightsResponse {
 }
 
 // handleGetHighlights is GET /api/host/webinars/{slug}/recordings/{id}/highlights: the
-// suggestions, written inside this request the first time.
+// suggestions kept, not_started, or why there can be none. It never calls the AI.
 func (s *Server) handleGetHighlights(w http.ResponseWriter, r *http.Request) {
 	s.serveHighlights(w, r, false)
 }
 
-// handleFindHighlights is POST …/highlights: "Find them again", rewriting the suggestions.
+// handleFindHighlights is POST …/highlights: "Find highlights" the first time, "Find them
+// again" after, writing the suggestions inside this request.
 func (s *Server) handleFindHighlights(w http.ResponseWriter, r *http.Request) {
 	s.serveHighlights(w, r, true)
 }
@@ -308,16 +318,25 @@ func (s *Server) serveHighlights(w http.ResponseWriter, r *http.Request, rewrite
 		refuse(types.HighlightsNoTranscript)
 		return
 	}
-	if rewrite {
-		if err := s.aiCapCheck(ctx, types.AIFeatureHighlights, wb.Host.ID); errors.Is(err, errAILimit) {
-			httpx.Error(w, http.StatusTooManyRequests, "ai_limit", aiLimitMessage)
-			return
-		} else if err != nil {
-			s.fail(w, r, "highlights: cap", err)
+	if !rewrite {
+		// A look: what is kept (being picked, or failed), or not_started. Never a call.
+		if !found {
+			reply(http.StatusOK, types.HighlightsResponse{Status: types.HighlightsNotStarted, Highlights: []types.Highlight{}})
 			return
 		}
+		reply(http.StatusOK, highlightsResponse(row))
+		return
 	}
-	claimed, err := s.store.ClaimRecordingHighlights(ctx, sessionID, rewrite, highlightsClaimFor)
+	if err := s.aiCapCheck(ctx, types.AIFeatureHighlights, wb.Host.ID); errors.Is(err, errAILimit) {
+		httpx.Error(w, http.StatusTooManyRequests, "ai_limit", aiLimitMessage)
+		return
+	} else if err != nil {
+		s.fail(w, r, "highlights: cap", err)
+		return
+	}
+	// Not won while another request holds the claim (it is picking them now, or a failure is
+	// waiting out highlightsRetryAfter): the row read back below says which.
+	claimed, err := s.store.ClaimRecordingHighlights(ctx, sessionID, true, highlightsClaimFor)
 	if err != nil {
 		s.fail(w, r, "highlights: claim", err)
 		return
@@ -359,7 +378,7 @@ func (s *Server) pickHighlights(parent context.Context, wb types.Webinar, sessio
 	}
 }
 
-// highlightRefusals is the plain sentence for each reason "Find them again" is refused.
+// highlightRefusals is the plain sentence for each reason the POST is refused.
 var highlightRefusals = map[string]string{
 	aiStatusNotEnded:             "Highlights can be found once the session has ended.",
 	aiStatusOff:                  "AI isn't switched on for this account.",

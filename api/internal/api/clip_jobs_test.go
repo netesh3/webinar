@@ -289,9 +289,26 @@ func TestClipsRefuseWhatCannotBeCut(t *testing.T) {
 
 func TestReelsAreSuggestedAndSnapped(t *testing.T) {
 	f := clipSession(t)
-	res, raw := f.h.do(http.MethodGet, f.path+"/reels", nil)
+	look := func() types.ReelsResponse {
+		t.Helper()
+		res, raw := f.h.do(http.MethodGet, f.path+"/reels", nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("reels: %d %s", res.StatusCode, raw)
+		}
+		var out types.ReelsResponse
+		f.h.decode(raw, &out)
+		return out
+	}
+	// A look never plans them, and they do not wait on the highlights (none were found).
+	if got := look(); got.Status != types.HighlightsNotStarted || len(got.Reels) != 0 {
+		t.Fatalf("before asking = %+v", got)
+	}
+	if f.model.callCount() != 0 {
+		t.Fatalf("a look called the model %d times", f.model.callCount())
+	}
+	res, raw := f.h.do(http.MethodPost, f.path+"/reels", nil)
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("reels: %d %s", res.StatusCode, raw)
+		t.Fatalf("suggest reels: %d %s", res.StatusCode, raw)
 	}
 	var got types.ReelsResponse
 	f.h.decode(raw, &got)
@@ -311,9 +328,11 @@ func TestReelsAreSuggestedAndSnapped(t *testing.T) {
 	if f.model.callsFor("reels") != 1 {
 		t.Fatalf("calls = %d", f.model.callsFor("reels"))
 	}
-	f.h.do(http.MethodGet, f.path+"/reels", nil)
-	if f.model.callsFor("reels") != 1 {
-		t.Fatal("asked again for kept reels")
+	if again := look(); again.Status != types.AIStatusReady || len(again.Reels) != 1 || f.model.callsFor("reels") != 1 {
+		t.Fatalf("kept reels = %+v, calls %d", again, f.model.callsFor("reels"))
+	}
+	if f.model.callsFor("highlights") != 0 {
+		t.Fatalf("reels asked for highlights %d times", f.model.callsFor("highlights"))
 	}
 }
 

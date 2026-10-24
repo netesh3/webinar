@@ -29,7 +29,9 @@ function partBounds(rec: Recording): Map<string, { start: number; end: number }>
  * AI picked as the best short clips, from the transcript and where the audience reacted. Each
  * can be previewed (the player plays just that stretch), its start and end adjusted (the
  * times are the player's own) and made into a clip (onMakeClip, with the adjusted times).
- * Found the first time this opens, then kept. */
+ * Found only when the host presses "Find highlights" (it spends their AI allowance), then
+ * kept; "Find them again" rewrites them. The POST does the work inside the request, so the
+ * button spins until the result is back. */
 export function RecordingHighlights({
   slug,
   recording,
@@ -67,12 +69,15 @@ export function RecordingHighlights({
     };
   }, [slug, recording.id, poll]);
 
-  const findAgain = async () => {
+  const find = async () => {
     setFinding(true);
     try {
-      setData(await api.findHighlights(slug, recording.id));
+      const res = await api.findHighlights(slug, recording.id);
+      setData(res);
+      // Another tab or co-host is already picking them: look again until they are in.
+      if (res.status === "processing") setPoll((n) => n + 1);
     } catch (err) {
-      notify(err instanceof ApiError ? err.message : "Couldn't find the highlights again.", "error");
+      notify(err instanceof ApiError ? err.message : "Couldn't find the highlights.", "error");
     } finally {
       setFinding(false);
     }
@@ -91,7 +96,7 @@ export function RecordingHighlights({
           </span>
         </p>
         {data && (data.status === "ready" || list.length > 0) && (
-          <Button type="button" variant="ghost" size="sm" disabled={finding} onClick={() => void findAgain()}>
+          <Button type="button" variant="ghost" size="sm" disabled={finding} onClick={() => void find()}>
             {finding && <Spinner className="size-3.5" />}
             Find them again
           </Button>
@@ -103,7 +108,7 @@ export function RecordingHighlights({
             "Couldn't load the highlights. Reload the page to try again."
           ) : (
             <>
-              <Spinner className="size-3.5" /> Finding the best moments… this takes up to a minute.
+              <Spinner className="size-3.5" /> Loading the highlights…
             </>
           )}
         </p>
@@ -113,6 +118,21 @@ export function RecordingHighlights({
             <p className="mb-2 text-[12.5px] text-ink-2">
               {state.pending && <Spinner className="size-3.5" />} {state.text}
             </p>
+          )}
+          {state && (state.start || state.retry) && list.length === 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant={state.start ? "primary" : "secondary"}
+                size="sm"
+                disabled={finding}
+                onClick={() => void find()}
+              >
+                {finding && <Spinner className="size-3.5" />}
+                {state.start ? "Find highlights" : "Try again"}
+              </Button>
+              {finding && <span className="text-[12.5px] text-ink-3">Finding highlights… this takes up to a minute.</span>}
+            </div>
           )}
           {data.status === "ready" && list.length === 0 && (
             <p className="text-[12.5px] text-ink-2">No moment stood out as a short clip in this recording.</p>
