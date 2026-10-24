@@ -41,6 +41,8 @@ export function LegalFooterNav() {
       <span aria-hidden>·</span>
       <Link href="/terms">Terms of Service</Link>
       <span aria-hidden>·</span>
+      <Link href="/blog">Blog</Link>
+      <span aria-hidden>·</span>
       <Link href="/">Home</Link>
       <span aria-hidden>·</span>
       <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
@@ -53,7 +55,9 @@ export function HomeLegalFooter() {
     <footer className="home-legal-footer">
       <div className="home-section-inner home-legal-footer-inner">
         <p className="home-legal-footer-brand">Webinar Liv</p>
-        <nav className="home-legal-footer-links" aria-label="Legal">
+        <nav className="home-legal-footer-links" aria-label="Site">
+          <Link href="/blog">Blog</Link>
+          <Link href="/blog/category/tutorials">Tutorials</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <a href={`mailto:${SUPPORT_EMAIL}`}>Contact</a>

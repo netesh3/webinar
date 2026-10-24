@@ -48,16 +48,19 @@ function linksFor(signedIn: boolean, canHost: boolean) {
   // label as the tab, since it is the same list; the /my-webinars path stays as it
   // is, because renaming a URL breaks the links already sent out to it.
   if (canHost) return [];
-  // Pricing for everyone who cannot host yet: it is where hosting is bought.
+  // Pricing for everyone who cannot host yet: it is where hosting is bought. Blog for the
+  // same people, who are still deciding; a host reaches it from the account menu.
   return signedIn
     ? [
         { href: "/my-webinars", label: "WatchList" },
         { href: "/pricing", label: "Pricing" },
+        { href: "/blog", label: "Blog" },
       ]
     : [
         // Features carries the proposed prices, so it is linked once they are live (lib/plans.ts).
         ...(indexable() ? [{ href: "/features", label: "Features" }] : []),
         { href: "/pricing", label: "Pricing" },
+        { href: "/blog", label: "Blog" },
       ];
 }
 
@@ -158,6 +161,11 @@ export function TopNav() {
                   kind: "action",
                   label: "Settings",
                   onSelect: () => router.push("/settings#integrations"),
+                },
+                {
+                  kind: "action",
+                  label: "Guides & blog",
+                  onSelect: () => router.push("/blog"),
                 },
                 ...(install.action
                   ? [{ kind: "action" as const, label: "Install app", onSelect: install.action }]
