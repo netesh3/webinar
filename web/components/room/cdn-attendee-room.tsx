@@ -67,6 +67,7 @@ import { ControlBar } from "./control-bar";
 import { ChatNotifications } from "./chat-notifications";
 import { RoomUIProvider, type RoomUI } from "./context";
 import { PollPopup } from "./poll-popup";
+import { ReactionOverlay } from "./reactions";
 import { SimuliveWaiting } from "./simulive-waiting";
 import { SimuliveHostBar } from "./simulive-host-bar";
 import { SimuliveFinished, useSimuliveFinished } from "./simulive-finished";
@@ -735,6 +736,10 @@ export function CdnAttendeeRoom({
                         }
                       />
                       )}
+                      {/* Reactions — the audience's live ones and a simulive's replayed ones — float
+                          over the player as they do over the stage. This room renders no Stage, so
+                          without it they were received and never shown. */}
+                      <ReactionOverlay />
                       {recovering !== null && !returnQuiet && (
                         <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full bg-black/60 px-3 py-1 text-[11.5px] text-white/80">
                           Reconnecting chat…
