@@ -32,7 +32,6 @@ import {
   FeatureAI,
   FeatureAIKnowledge,
   FeatureCloudRecording,
-  FeatureJoinWithoutRegistration,
   type CustomQuestion,
   type EngagementTierCounts,
   type Recording,
@@ -40,6 +39,7 @@ import {
   type RegistrantRow,
   type Webinar,
 } from "@/lib/api-types";
+import { offersJoinWithoutRegistration } from "@/lib/join-without-registration";
 import { answerText } from "@/lib/registration-questions";
 import { isMeetingKind } from "@/lib/meeting-create";
 import { repurposeOffered } from "@/lib/host-features";
@@ -1164,9 +1164,7 @@ function StageTab({
 function SettingsTab({ webinar: w }: { webinar: Webinar }) {
   const { account } = useSession();
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
-  const openJoin = (account?.features ?? []).includes(
-    FeatureJoinWithoutRegistration,
-  );
+  const openJoin = offersJoinWithoutRegistration(account?.features);
   const meeting = isMeetingKind(w);
   /* A meeting's list is the room's switches that mean something in it. Hidden attendees,
    * registration, raise hand and the attendee limit are a webinar's: a meeting forces the

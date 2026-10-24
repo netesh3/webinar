@@ -8459,6 +8459,27 @@ export interface LobbyAdmitAllResponse {
   admitted: number /* int */;
   left: number /* int */;
 }
+/**
+ *  OfferJoinWithoutRegistration is the product-wide switch for "Join without registration" on
+ *  * webinars: turning registration off so the shared link opens a name-only guest door.
+ *  *
+ *  * PAUSED (2026-10): false. We do not offer that option for webinars right now, so every
+ *  * webinar is registration-required whatever an account's FeatureJoinWithoutRegistration
+ *  * says: create and edit save registration required (host.go), the guest endpoint answers
+ *  * 403 registration_required (guest.go), and GuestJoinAllowed is false, so the landing page
+ *  * shows only the registration form. A webinar saved earlier with registration off is
+ *  * treated as registration-required from now on; its row is left as it was.
+ *  *
+ *  * Meetings are unaffected: they have no registration and their door is the lobby.
+ *  *
+ *  * The web app reads the same constant from the generated web/lib/api-types.ts, so the
+ *  * schedule form, the edit form, the settings tab and the guest button on the landing page
+ *  * hide with it (lib/join-without-registration.ts).
+ *  *
+ *  * TO RESTORE: set this to true and run `make types`. The per-account switch
+ *  * (Admin -> Accounts) then works as before, and the skipped guest-door tests run again.
+ */
+export const OfferJoinWithoutRegistration = false;
 export interface JoinRequest {
   /**
    * JoinKey is optional for a signed-in account: the server finds the

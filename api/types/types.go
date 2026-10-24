@@ -1467,9 +1467,11 @@ var Features = []Feature{
 		Group:       FeatureGroupSessions,
 	},
 	{
-		Key:         FeatureJoinWithoutRegistration,
-		Label:       "Join without registration",
-		Description: "Let this host turn registration off so people can join with a name and no form. Off means everyone registers.",
+		Key:   FeatureJoinWithoutRegistration,
+		Label: "Join without registration",
+		// Paused for every account while OfferJoinWithoutRegistration is false: the switch is kept
+		// so grants survive, and takes effect again when the constant is restored.
+		Description: "Paused: not offered for webinars right now, so everyone registers whatever this says. When restored, lets this host turn registration off so people can join with a name and no form.",
 		Group:       FeatureGroupSessions,
 	},
 	{
@@ -3815,10 +3817,38 @@ type LobbyAdmitAllResponse struct {
  * the webinar plus one decision.
  */
 func GuestJoinAllowedFor(w Webinar, hostOpenJoin bool) bool {
-	if !hostOpenJoin || w.RegistrationRequired {
+	if !JoinWithoutRegistrationOpen(hostOpenJoin) || w.RegistrationRequired {
 		return false
 	}
 	return w.Approval != ApprovalManual && strings.TrimSpace(w.Passcode) == ""
+}
+
+/* OfferJoinWithoutRegistration is the product-wide switch for "Join without registration" on
+ * webinars: turning registration off so the shared link opens a name-only guest door.
+ *
+ * PAUSED (2026-10): false. We do not offer that option for webinars right now, so every
+ * webinar is registration-required whatever an account's FeatureJoinWithoutRegistration
+ * says: create and edit save registration required (host.go), the guest endpoint answers
+ * 403 registration_required (guest.go), and GuestJoinAllowed is false, so the landing page
+ * shows only the registration form. A webinar saved earlier with registration off is
+ * treated as registration-required from now on; its row is left as it was.
+ *
+ * Meetings are unaffected: they have no registration and their door is the lobby.
+ *
+ * The web app reads the same constant from the generated web/lib/api-types.ts, so the
+ * schedule form, the edit form, the settings tab and the guest button on the landing page
+ * hide with it (lib/join-without-registration.ts).
+ *
+ * TO RESTORE: set this to true and run `make types`. The per-account switch
+ * (Admin -> Accounts) then works as before, and the skipped guest-door tests run again. */
+const OfferJoinWithoutRegistration = false
+
+/* JoinWithoutRegistrationOpen is whether a host whose account has
+ * FeatureJoinWithoutRegistration (hasSwitch) may actually leave a webinar's registration
+ * off: the account switch AND the product-wide OfferJoinWithoutRegistration. Every
+ * reader of the switch goes through here, so the pause is one constant. */
+func JoinWithoutRegistrationOpen(hasSwitch bool) bool {
+	return OfferJoinWithoutRegistration && hasSwitch
 }
 
 type JoinRequest struct {

@@ -5,9 +5,9 @@ import { PlusIcon, TrashIcon } from "../icons";
 import { useAppConfig, useSession } from "../providers";
 import { Button } from "../ui";
 import {
-  FeatureJoinWithoutRegistration,
   type CustomQuestion,
 } from "@/lib/api-types";
+import { offersJoinWithoutRegistration } from "@/lib/join-without-registration";
 import {
   MIN_OPTIONS,
   QUESTION_TYPES,
@@ -32,11 +32,10 @@ export function RegistrationSection({
   const planCap = account?.attendeeCap ?? 0;
   const planCapped = planCap > 0 && (!config.maxAttendees || planCap < config.maxAttendees);
   const seatCeiling = planCapped ? planCap : config.maxAttendees;
-  /* Off for every account until an admin turns it on. Hiding the switch is
-   * the courtesy; the server still refuses a save that turns registration off. */
-  const openJoin = (account?.features ?? []).includes(
-    FeatureJoinWithoutRegistration,
-  );
+  /* Off for every account until an admin turns it on, and paused for everyone
+   * (OfferJoinWithoutRegistration, lib/join-without-registration.ts). Hiding the switch
+   * is the courtesy; the server still refuses a save that turns registration off. */
+  const openJoin = offersJoinWithoutRegistration(account?.features);
   return (
     <FormGroup label="Registration">
       <FormSection

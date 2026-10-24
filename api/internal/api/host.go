@@ -313,7 +313,8 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	 * the switch was on and an administrator has since turned it off. */
 	// Not for a meeting, which has no registration at all: its door is the lobby, which
 	// the host controls one knock at a time, and no switch is needed to open it.
-	if !meeting && !user.HasFeature(types.FeatureJoinWithoutRegistration) {
+	// types.OfferJoinWithoutRegistration pauses this for every account (false for now).
+	if !meeting && !types.JoinWithoutRegistrationOpen(user.HasFeature(types.FeatureJoinWithoutRegistration)) {
 		in.RegistrationRequired = true
 	}
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
@@ -505,7 +506,8 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, "update webinar: host features", err)
 			return
 		}
-		if !host.HasFeature(types.FeatureJoinWithoutRegistration) {
+		// types.OfferJoinWithoutRegistration pauses this for every account (false for now).
+		if !types.JoinWithoutRegistrationOpen(host.HasFeature(types.FeatureJoinWithoutRegistration)) {
 			in.RegistrationRequired = true
 		}
 	}
