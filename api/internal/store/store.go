@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -64,77 +64,143 @@ var (
 type Store struct {
 	pool *pgxpool.Pool
 	log  *slog.Logger
+	// listenCfg is the session-mode connection for LISTEN and migrations (DBOptions.ListenURL).
+	listenCfg *pgx.ConnConfig
+	opts      DBOptions
 }
 
+/* Open connects using dsn for queries and the environment for everything else (see
+ * DBOptionsFromEnv). Kept with this signature because every caller, tests included, has a
+ * single URL in hand. */
 func Open(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
-	cfg, err := pgxpool.ParseConfig(dsn)
+	opts, err := DBOptionsFromEnv(dsn, os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	return OpenWith(ctx, opts, log)
+}
+
+/* OpenWith connects with resolved options.
+ *
+ * Sized to the database's ceiling, not to one node's appetite. Production runs on Supabase's
+ * Supavisor, whose session pooler caps the project at pool_size clients (15 on 24 Oct 2026,
+ * now 30), idle ones included. The
+ * pool therefore keeps nothing it is not using: MinConns 0 and a one-minute idle timeout mean
+ * an instance that served a load test gives its connections back a minute later, instead of
+ * holding the whole allowance until the next deploy needs it (24 Oct 2026). Lifetimes are
+ * jittered so a fleet started together does not reconnect together.
+ *
+ * The query pool should point at the transaction pooler (see dbconfig.go), where idle clients
+ * cost no server connection; LISTEN and migrations keep a session connection of their own.
+ *
+ * The first connection is retried for DB_CONNECT_TIMEOUT: a pooler that is full for the minute
+ * it takes the old revision to drain is a reason to wait, not to exit and be restarted into the
+ * same wall. */
+func OpenWith(ctx context.Context, opts DBOptions, log *slog.Logger) (*Store, error) {
+	cfg, err := pgxpool.ParseConfig(opts.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
-	/* Sized to the database's ceiling, not to one node's appetite.
-	 *
-	 * This used to ask for 20, reasoning about a single API node in front of a
-	 * 500-attendee join burst. But the connections are not this node's to spend:
-	 * production runs on Supabase's session-mode pooler, which caps the whole
-	 * project at 15 clients, and every pooled connection is one of those 15. One
-	 * node at 20 could hold the entire allowance, so when Cloud Run started a
-	 * second instance — a deploy rolling over, or a scale-up under load — the new
-	 * one's very first ping came back "max clients reached" and the container
-	 * exited on boot. That is what made deploys fail and, with a warm instance
-	 * always holding connections, what min-instances exposed.
-	 *
-	 * The default now fits max-instances (3) inside the 15: 4 each leaves room
-	 * for a fourth instance's boot ping during a rollover. Each query is a single
-	 * indexed lookup measured in milliseconds, so four in flight per node clears
-	 * the burst without trouble. DB_MAX_CONNS / DB_MIN_CONNS override it for a
-	 * database with a different ceiling — a dedicated Postgres, or Supabase's
-	 * transaction pooler, where the old 20 would be fine again. */
-	cfg.MaxConns = int32(envInt("DB_MAX_CONNS", 4)) // #nosec G115 -- operator-set pool size, a small positive int
-	cfg.MinConns = int32(envInt("DB_MIN_CONNS", 1)) // #nosec G115 -- operator-set pool size, a small positive int
-	cfg.MaxConnLifetime = time.Hour
-	cfg.MaxConnIdleTime = 10 * time.Minute
-	cfg.HealthCheckPeriod = 30 * time.Second
+	cfg.MaxConns = opts.MaxConns
+	cfg.MinConns = opts.MinConns
+	cfg.MaxConnLifetime = opts.MaxConnLifetime
+	cfg.MaxConnLifetimeJitter = opts.MaxConnLifetimeJitter
+	cfg.MaxConnIdleTime = opts.MaxConnIdleTime
+	cfg.HealthCheckPeriod = opts.HealthCheckPeriod
+	if !opts.ExecModeFromURL {
+		cfg.ConnConfig.DefaultQueryExecMode = opts.ExecMode
+	}
+
+	listenCfg := cfg.ConnConfig.Copy()
+	if opts.SeparateListen() {
+		listenCfg, err = pgx.ParseConfig(opts.ListenURL)
+		if err != nil {
+			return nil, fmt.Errorf("parse listen dsn: %w", err)
+		}
+	}
 	// Queries as child spans of the request that made them; nil (no tracer) when
 	// telemetry is off. See observe.QueryTracer for what is and is not recorded.
 	if t := observe.QueryTracer(); t != nil {
 		cfg.ConnConfig.Tracer = t
+		listenCfg.Tracer = t
 	}
+
+	for _, n := range opts.Notes {
+		if strings.HasPrefix(n, "WARNING") {
+			log.Warn(n)
+		} else {
+			log.Info(n)
+		}
+	}
+	b := opts.SessionBudget()
+	log.Info("database pool",
+		"mode", opts.PoolMode, "separate_listen", opts.SeparateListen(),
+		"max_conns", opts.MaxConns, "min_conns", opts.MinConns,
+		"idle_timeout", opts.MaxConnIdleTime.String(), "exec_mode", cfg.ConnConfig.DefaultQueryExecMode.String(),
+		"session_per_instance", b.PerInstance, "session_deploy_peak", b.Peak, "session_limit", b.Limit)
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
-
-	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if err := pool.Ping(pingCtx); err != nil {
+	err = retryConnect(ctx, log, opts.ConnectTimeout, realSleep, func(ctx context.Context) error {
+		pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return pool.Ping(pingCtx)
+	})
+	if err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("ping: %w", err)
 	}
-	return &Store{pool: pool, log: log}, nil
-}
-
-// envInt reads a positive integer from the environment, falling back to def
-// when the variable is unset, empty, unparseable, or not positive. Pool sizes
-// are the only knobs here and a zero or negative one is never what was meant.
-func envInt(key string, def int) int {
-	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
-		return v
-	}
-	return def
+	return &Store{pool: pool, log: log, listenCfg: listenCfg, opts: opts}, nil
 }
 
 func (s *Store) Close() { s.pool.Close() }
 
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
+// migrator is what Migrate needs; both *pgxpool.Pool and *pgx.Conn have it.
+type migrator interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
 // Migrate applies any unapplied migration files inside a transaction each.
 //
 // Deliberately hand-rolled rather than pulling in golang-migrate: the whole
 // mechanism is 40 lines, needs no extra binary in the image, and the files are
 // embedded so a deployed binary can never disagree with its schema.
+//
+// When a separate session URL is configured (DATABASE_LISTEN_URL, or derived), migrations
+// run on one connection of their own there rather than through the query pool: DDL is the
+// one place a session pooler is the safe choice, and the connection is closed straight after.
 func (s *Store) Migrate(ctx context.Context) error {
-	if _, err := s.pool.Exec(ctx, `
+	if !s.opts.SeparateListen() {
+		return s.migrate(ctx, s.pool)
+	}
+	var conn *pgx.Conn
+	err := retryConnect(ctx, s.log, s.opts.ConnectTimeout, realSleep, func(ctx context.Context) error {
+		c, err := pgx.ConnectConfig(ctx, s.listenCfg.Copy())
+		if err != nil {
+			return err
+		}
+		conn = c
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("migrations connection: %w", err)
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = conn.Close(closeCtx)
+	}()
+	return s.migrate(ctx, conn)
+}
+
+func (s *Store) migrate(ctx context.Context, db migrator) error {
+	if _, err := db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    text PRIMARY KEY,
 			applied_at timestamptz NOT NULL DEFAULT now()
@@ -150,7 +216,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 
 	for _, path := range entries {
 		var exists bool
-		if err := s.pool.QueryRow(ctx,
+		if err := db.QueryRow(ctx,
 			`SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, path,
 		).Scan(&exists); err != nil {
 			return err
@@ -165,7 +231,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		}
 
 		// One transaction per file: a failed migration leaves no partial schema.
-		tx, err := s.pool.Begin(ctx)
+		tx, err := db.Begin(ctx)
 		if err != nil {
 			return err
 		}

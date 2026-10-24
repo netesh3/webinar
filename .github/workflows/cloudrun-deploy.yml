@@ -11,7 +11,11 @@
 #
 # Required repository secrets:
 #   GCP_SA_KEY           — JSON key for a deploy SA (Artifact Registry + Cloud Run + Cloud Build)
-#   DATABASE_URL         — prefer Supabase direct URI with sslmode=require (deploy/SUPABASE.md)
+#   DATABASE_URL         — Supabase TRANSACTION pooler :6543 with sslmode=require (recommended),
+#                          or the session pooler :5432 (works, but see the budget in
+#                          deploy/SUPABASE.md "Connection budget")
+#   DATABASE_LISTEN_URL  — optional: session-mode URL (:5432) for LISTEN + migrations; derived
+#                          from a Supabase :6543 DATABASE_URL when unset
 #   SESSION_SECRET
 #   LIVEKIT_URL          — e.g. wss://YOUR_PROJECT.livekit.cloud
 #   LIVEKIT_API_KEY
@@ -90,6 +94,9 @@
 #   RECORDINGS_RETENTION_DAYS — days to keep cloud recordings (default 30; 0 = keep until deleted).
 #
 # Repository variables (vars.*, not secrets):
+#   DATABASE_POOL_MODE / DB_MAX_CONNS / DB_CONNECT_TIMEOUT / DB_POOLER_POOL_SIZE — database pool
+#     knobs (api/internal/store/dbconfig.go). DATABASE_POOL_MODE=transaction with a Supabase
+#     :5432 DATABASE_URL moves queries to :6543 without touching the secret.
 #   EDGE_PLAYBACK_BASE / EDGE_PLAYBACK_LOW_LATENCY / EDGE_DEBUG_CLOCK /
 #     EDGE_ENCODING_WIDTH / EDGE_ENCODING_HEIGHT / EDGE_ENCODING_FPS /
 #     EDGE_VIDEO_BITRATE_KBPS / EDGE_AUDIO_BITRATE_KBPS / EDGE_H264_PROFILE — Edge delivery playback and
@@ -142,6 +149,13 @@ jobs:
       GCP_PROJECT: ${{ vars.GCP_PROJECT }}
       GCP_REGION: ${{ vars.GCP_REGION }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Optional session-mode URL for LISTEN + migrations when DATABASE_URL is the
+      # transaction pooler (:6543). Unset: derived for a Supabase pooler host.
+      DATABASE_LISTEN_URL: ${{ secrets.DATABASE_LISTEN_URL }}
+      DATABASE_POOL_MODE: ${{ vars.DATABASE_POOL_MODE }}
+      DB_MAX_CONNS: ${{ vars.DB_MAX_CONNS }}
+      DB_CONNECT_TIMEOUT: ${{ vars.DB_CONNECT_TIMEOUT }}
+      DB_POOLER_POOL_SIZE: ${{ vars.DB_POOLER_POOL_SIZE }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
       LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
       LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}

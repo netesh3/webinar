@@ -50,9 +50,9 @@ Project → **Settings → Database → Connection string**.
 
 | Use | Host / port | Notes |
 |---|---|---|
-| **Preferred for this app (IPv4)** | Session pooler: `aws-0-<REGION>.pooler.supabase.com:5432` | Full Postgres session. User is `postgres.<PROJECT_REF>`. Use for `make migrate` and Cloud Run. |
+| **Cloud Run queries (`DATABASE_URL`)** | Transaction pooler: `aws-0-<REGION>.pooler.supabase.com:6543` | Multiplexed; idle clients cost nothing. The API detects `:6543` and turns off named prepared statements itself. See "Connection budget" below. |
+| **LISTEN + migrations (`DATABASE_LISTEN_URL`), `make migrate`** | Session pooler: `aws-0-<REGION>.pooler.supabase.com:5432` | Full Postgres session (IPv4). User is `postgres.<PROJECT_REF>`. `pool_size` (30) clients for the whole project. |
 | Direct | `db.<PROJECT_REF>.supabase.co:5432` | Often **IPv6-only** on newer projects — fails on IPv4-only networks (many laptops / default Cloud Run egress). |
-| Transaction pooler | `:6543` | Add `sslmode=require` and `default_query_exec_mode=simple_protocol` (pgx prepared statements break under transaction pooling). |
 
 Always include **`sslmode=require`**. Supabase rejects non-TLS clients.
 
@@ -65,8 +65,8 @@ postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:5432
 # Direct (IPv6 on many projects — prefer only if your runtime has IPv6 egress)
 postgres://postgres:SECRET@db.<PROJECT_REF>.supabase.co:5432/postgres?sslmode=require
 
-# Transaction pooler (scale-out / many short-lived Cloud Run instances)
-postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:6543/postgres?sslmode=require&default_query_exec_mode=simple_protocol
+# Transaction pooler :6543 (Cloud Run DATABASE_URL; exec mode is set by the API)
+postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:6543/postgres?sslmode=require
 ```
 
 Database name is usually `postgres`. That is fine for a dedicated project; the
@@ -125,12 +125,66 @@ After any incident where PostgREST was open, **rotate operator passwords**
 
 ### pgx / pool behaviour
 
-- `store.Open` uses a `pgxpool` (MaxConns=20). Session pooler `:5432` is enough for
-  Cloud Run `--max-instances 3`.
+- `store.Open` uses a `pgxpool` (`DB_MAX_CONNS`, default 4 in session mode, 6 in
+  transaction mode), `MinConns` 0, idle connections closed after 60 s, lifetime 30 min
+  plus jitter. Knobs and defaults: `api/internal/store/dbconfig.go`.
+- Boot retries a refused connection (a full pooler logs `database pooler full,
+  retrying`) for `DB_CONNECT_TIMEOUT` (90 s) instead of exiting and crash-looping.
 - Migrations wrap each file in a transaction and record versions in
-  `schema_migrations`. Prefer the **session pooler** URL (or direct if IPv6 works).
-- Avoid the **transaction** pooler for migrate unless you also set
-  `default_query_exec_mode=simple_protocol` for runtime.
+  `schema_migrations`. They run on the **session** URL (`DATABASE_LISTEN_URL`, or
+  `DATABASE_URL` when there is only one).
+
+### Connection budget (incident 24 Oct 2026)
+
+The session pooler (`:5432`) allows **pool_size** clients for the whole project (15 on
+24 Oct 2026; raised to 30 since, Dashboard → Database → Connection pooling), and an idle
+client still holds one. During a deploy Cloud Run runs the old and the new revision side
+by side, so the worst case is twice `--max-instances` (3):
+
+```
+peak session clients = 2 revisions × max-instances × per-instance
+  session mode:      per-instance = DB_MAX_CONNS + 1 LISTEN = 4 + 1 = 5  →  2 × 3 × 5 = 30
+  transaction mode:  per-instance = 1 LISTEN (queries are on :6543)      →  2 × 3 × 1 = 6
+```
+
+| Queries via | Session clients per instance | Steady (3 instances) | During a deploy (2 × 3) | vs pool_size 15 | vs pool_size 30 |
+|---|---|---|---|---|---|
+| Session pooler `:5432` (today) | 4 + 1 LISTEN = 5 | 15 | 30 | **fails** (24 Oct) | fits, zero headroom |
+| Transaction pooler `:6543` | 1 LISTEN | 3 | 6 | fits | fits, 24 spare |
+
+`pool_size` is also the number of Postgres server connections Supavisor keeps for the
+project; session clients pin one each, and transaction-mode traffic shares the rest (24 at a
+deploy peak with pool_size 30). The transaction pooler's own client limit is the plan's
+"max client connections" (200 on Micro), against which 2 × 3 × `DB_MAX_CONNS` 6 = 36. So in
+transaction mode `DB_MAX_CONNS` only bounds concurrency; an idle client holds no server
+connection.
+
+The API logs this arithmetic at boot (`database pool ... session_per_instance=...
+session_deploy_peak=... session_limit=...`) and warns when the peak reaches
+`DB_POOLER_POOL_SIZE` (default 30; set it as a repository variable if you change
+pool_size). `DB_BUDGET_MAX_INSTANCES` is set from `MAX_INSTANCES` by the deploy script.
+
+**Recommended production setting** (repository secrets):
+
+```bash
+# Queries: transaction pooler. pgx is switched to QueryExecModeCacheDescribe automatically
+# (no named prepared statements). Do NOT add default_query_exec_mode=simple_protocol:
+# it sends []byte arguments as bytea and breaks json writes.
+DATABASE_URL='postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:6543/postgres?sslmode=require'
+# LISTEN/NOTIFY + migrations: session pooler. Optional for a *.pooler.supabase.com
+# host — derived from DATABASE_URL by switching the port to 5432 — but explicit is clearer.
+DATABASE_LISTEN_URL='postgres://postgres.<PROJECT_REF>:SECRET@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require'
+```
+
+Alternative without touching the `DATABASE_URL` secret: keep it on `:5432` and set the
+repository variable `DATABASE_POOL_MODE=transaction`; queries then go to `:6543` on the
+same host and LISTEN stays on `:5432`. Changing nothing keeps the old single-URL
+behaviour (with the idle-timeout and boot-retry fixes).
+
+What runs where under transaction pooling: every statement in the store is either a
+single statement or inside one transaction; advisory locks are `pg_advisory_xact_lock`
+and `SET LOCAL` only, so they end with the transaction. Session-scoped state —
+`LISTEN` (realtime bus) and migrations — uses the session URL.
 
 ## Wire local env (optional)
 
@@ -155,7 +209,8 @@ DATABASE_URL='postgres://webcast:webcast@localhost:5432/webcast?sslmode=disable'
 
    ```bash
    cp deploy/cloudrun.env.example deploy/cloudrun.env
-   # set DATABASE_URL to the Supabase session-pooler URI (sslmode=require)
+   # DATABASE_URL = Supabase transaction pooler :6543, DATABASE_LISTEN_URL = session pooler :5432
+   # (sslmode=require on both; see "Connection budget")
    ```
 
 2. Deploy:
@@ -197,7 +252,7 @@ boot if anything is pending.
 
 - [ ] `supabase login` (or Dashboard project exists)
 - [ ] Project created / reused (`webcast-in` / `webinar`)
-- [ ] `DATABASE_URL` with `sslmode=require` (session pooler for Cloud Run)
+- [ ] `DATABASE_URL` with `sslmode=require` (transaction pooler :6543 for Cloud Run) and `DATABASE_LISTEN_URL` (session pooler :5432)
 - [ ] `make migrate` succeeds against Supabase
 - [ ] `deploy/cloudrun.env` or GitHub secret `DATABASE_URL` set
 - [ ] Cloud Run deploy; API healthy; tables visible in Supabase Table Editor

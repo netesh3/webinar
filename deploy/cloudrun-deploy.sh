@@ -127,7 +127,19 @@ ENV_VARS=(
   "TELEMETRY_ENABLED=${TELEMETRY_ENABLED:-false}"
   "DATABASE_URL=${DATABASE_URL}"
   "SESSION_SECRET=${SESSION_SECRET}"
+  # The boot budget check (api/internal/store/dbconfig.go) needs to know how many
+  # instances can exist; same number as --max-instances below.
+  "DB_BUDGET_MAX_INSTANCES=${MAX_INSTANCES:-3}"
 )
+
+# Database connection routing and pool knobs. All optional; unset keeps the
+# defaults in api/internal/store/dbconfig.go. DATABASE_LISTEN_URL is the
+# session-mode URL for LISTEN + migrations when DATABASE_URL is the transaction
+# pooler (see deploy/SUPABASE.md "Connection budget").
+for v in DATABASE_LISTEN_URL DATABASE_POOL_MODE DB_QUERY_EXEC_MODE DB_MAX_CONNS DB_MIN_CONNS \
+  DB_MAX_CONN_IDLE_TIME DB_MAX_CONN_LIFETIME DB_HEALTH_CHECK_PERIOD DB_CONNECT_TIMEOUT DB_POOLER_POOL_SIZE; do
+  if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
+done
 
 # The legacy trio goes through whenever it is set, LIVEKIT_PROJECTS or not: a "default" entry
 # in the list that leaves out url/key/secret takes them from these (api/internal/config).
@@ -320,9 +332,13 @@ DEPLOY_ARGS=(
   # bounced to login on the first hit after idle. Override with MIN_INSTANCES=1
   # if you need always-warm.
   #
-  # DB pool is sized to share Supabase's 15-client ceiling across instances
-  # (see store.Open). Raising max-instances means revisiting DB_MAX_CONNS so
-  # instances * DB_MAX_CONNS stays under that ceiling.
+  # Supabase's session pooler allows pool_size clients (15 on 24 Oct 2026, now 30),
+  # and during a deploy the old and new revisions overlap: 2 x max-instances x
+  # (DB_MAX_CONNS + 1 LISTEN) must fit when queries use the session pooler
+  # (2 x 3 x 5 = 30: failed against 15, exactly fills 30).
+  # With DATABASE_URL on the transaction pooler (:6543) only the LISTEN
+  # connections count: 2 x 3 x 1 = 6. The API logs this arithmetic at boot and
+  # warns when it does not fit. See deploy/SUPABASE.md "Connection budget".
   --min-instances "${MIN_INSTANCES:-0}"
   --max-instances "${MAX_INSTANCES:-3}"
   # 500 requests at once per instance, not Cloud Run's default 80. Every Edge viewer holds
@@ -330,8 +346,8 @@ DEPLOY_ARGS=(
   # the three instances above stopped at ~240 viewers and everything after — their streams
   # and every other API call — queued. An open stream is an idle goroutine, so one instance
   # holds hundreds; 3 × 500 is room for 1,500 viewers. Concurrency, not instances: more
-  # instances would need more of Supabase's 15 database clients, which these 3 already use
-  # (4 pooled + 1 LISTEN each).
+  # instances would need more of Supabase's session-pooler clients, which these 3 fill at a
+  # deploy (2 x 3 x (4 pooled + 1 LISTEN) = 30) unless DATABASE_URL is the transaction pooler.
   --concurrency "${CONCURRENCY:-500}"
   --env-vars-file "$ENV_YAML"
 )
