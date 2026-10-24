@@ -209,6 +209,17 @@ func (s *Server) joinAsAttendee(
 	} else if grant.Granted {
 		role = types.RolePanelist
 	}
+	/* Somebody handed the host role on this identity (handleTransferHost), back from a
+	 * reconnect signed in as that account: the host again, on the stage. host_id is what
+	 * says so, so the hand-over's previous host coming back this way is not. */
+	isHost := s.attendeeIsHost(r, wb, reg.JoinKey)
+	if isHost {
+		role = types.RoleHost
+		grant.Granted = true
+		grant.CoHost = false
+		grant.MutedByHost = false
+		grant.AudioOnly = false
+	}
 
 	/* Edge delivery: no LiveKit token at all for the audience, only the LL-HLS playlist and
 	 * the event-stream token (edge.go). Someone the host has put on the stage falls through

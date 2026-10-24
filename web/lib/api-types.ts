@@ -9444,11 +9444,14 @@ export interface CoHostPatch {
   coHost: boolean;
 }
 /**
- * TransferHostRequest hands the webinar to another panelist already in the room.
- * Identity is their LiveKit identity (user_<id>). The caller remains a panelist so
- * they can rejoin the stage later; the target becomes the owner for every host
- * endpoint that checks ownership. Publish grants are restored on handoff, so a
- * muted panelist (CanPublish false) is still a valid target.
+ * TransferHostRequest hands the webinar or meeting to a co-host already in the room.
+ * Identity is their LiveKit identity: an invited panelist (user_<id>), or an attendee
+ * on stage / meeting guest (att_<joinKey>) whose registration is linked to a confirmed
+ * account, which becomes the owner. Only a co-host can take over (422 not_a_cohost
+ * otherwise), and two racing hand-overs cannot both win (409 host_changed). The caller
+ * remains an ordinary panelist so they can rejoin the stage later; the target is no
+ * longer a co-host but the host. Publish grants are restored on handoff, so a muted
+ * co-host (CanPublish false) is still a valid target.
  */
 export interface TransferHostRequest {
   identity: string;

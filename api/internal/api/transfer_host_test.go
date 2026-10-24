@@ -7,7 +7,7 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-// Handing the session to a panelist must move ownership and LiveKit roles so the
+// Handing the session to a co-host must move ownership and LiveKit roles so the
 // new host can end the webinar and everyone else sees the right labels.
 func TestTransferHostAndEnd(t *testing.T) {
 	h := newHarness(t)
@@ -28,6 +28,8 @@ func TestTransferHostAndEnd(t *testing.T) {
 
 	hostIdentity := "user_" + owner.ID
 	panelIdentity := "user_" + panelist.ID
+	// Only a co-host can take over.
+	h.makeCoHost(wb.ID, panelIdentity)
 	h.rooms.setRoster(
 		types.LiveParticipant{Identity: hostIdentity, Name: "Owner", Role: types.RoleHost, CanPublish: true, CanSpeak: true},
 		types.LiveParticipant{Identity: panelIdentity, Name: "Panelist", Role: types.RolePanelist, CanPublish: true, CanSpeak: true},
@@ -110,7 +112,7 @@ func TestTransferHostRejectsAudienceAndMissingPanelist(t *testing.T) {
 	}
 }
 
-// A muted panelist must still be eligible: publish grants are restored when they
+// A muted co-host must still be eligible: publish grants are restored when they
 // become host. Refusing CanPublish=false made Leave → Assign look empty.
 func TestTransferHostAllowsMutedPanelist(t *testing.T) {
 	h := newHarness(t)
@@ -130,6 +132,7 @@ func TestTransferHostAllowsMutedPanelist(t *testing.T) {
 	}
 
 	panelIdentity := "user_" + panelist.ID
+	h.makeCoHost(wb.ID, panelIdentity)
 	h.rooms.setRoster(
 		types.LiveParticipant{Identity: "user_" + owner.ID, Name: "Owner", Role: types.RoleHost, CanPublish: true},
 		types.LiveParticipant{

@@ -55,7 +55,7 @@ export function CoHostLeaveMenu({
       aria-label="Leave options"
       className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
     >
-      {items.includes("leave") && (
+      {items.some((i) => i.kind === "leave") && (
         <button
           type="button"
           role="menuitem"
@@ -75,7 +75,7 @@ export function CoHostLeaveMenu({
           </span>
         </button>
       )}
-      {items.includes("end") && (
+      {items.some((i) => i.kind === "end") && (
         <button
           type="button"
           role="menuitem"

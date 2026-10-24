@@ -9,6 +9,8 @@ import {
   COHOST_NEEDS_ACCOUNT,
   coHostGrantedMessage,
   coHostNeedsAccountMessage,
+  handoverLabel,
+  HOST_LEAVE_NO_COHOST_NOTE,
   isScheduledPanelist,
   leaveMenuItems,
   panelistBox,
@@ -84,9 +86,25 @@ assert.deepEqual(
   { audioOnly: false, alsoVideo: false, removeSpeaker: false },
 );
 
-// The owner may hand over; a co-host gets a plain Leave instead (transfer is owner-only).
-assert.deepEqual(leaveMenuItems(true), ["assign", "end"]);
-assert.deepEqual(leaveMenuItems(false), ["leave", "end"]);
+// The host with co-hosts in the room: one hand-over line per co-host, then End. No plain Leave.
+assert.deepEqual(
+  leaveMenuItems(true, [
+    { identity: "user_1", name: "Ravi" },
+    { identity: "att_K", name: " " },
+  ]),
+  [
+    { kind: "handover", identity: "user_1", name: "Ravi" },
+    { kind: "handover", identity: "att_K", name: "Co-host" },
+    { kind: "end" },
+  ],
+);
+assert.equal(handoverLabel("Ravi"), "Make Ravi the host and leave");
+// The host with nobody to hand over to: a plain Leave and End, with the way to hand over said.
+assert.deepEqual(leaveMenuItems(true, []), [{ kind: "leave" }, { kind: "end" }]);
+assert.deepEqual(leaveMenuItems(true), [{ kind: "leave" }, { kind: "end" }]);
+assert.match(HOST_LEAVE_NO_COHOST_NOTE, /co-host first/);
+// A co-host: Leave and End, never a hand-over, whoever else is a co-host.
+assert.deepEqual(leaveMenuItems(false, [{ identity: "user_2", name: "Mira" }]), [{ kind: "leave" }, { kind: "end" }]);
 
 // The co-host note says what stays with the owner rather than "full control".
 const note = coHostGrantedMessage("Ravi", false);
@@ -97,14 +115,19 @@ assert.match(coHostGrantedMessage("Ravi", true), /lobby/);
 
 // "Make co-host" is for anybody on the stage but the host: an invited panelist, an attendee
 // brought up, a meeting guest. The server decides whether an "att_" has the account for it.
-assert.equal(canMakeCoHost({ identity: "user_1", role: "panelist", isHost: false }), true);
-assert.equal(canMakeCoHost({ identity: "att_ABC", role: "panelist", isHost: false }), true);
+assert.equal(canMakeCoHost({ identity: "user_1", role: "panelist", isHost: false }, true), true);
+assert.equal(canMakeCoHost({ identity: "att_ABC", role: "panelist", isHost: false }, true), true);
 // Never the host, nobody in the audience, and no identity that is not a person.
-assert.equal(canMakeCoHost({ identity: "user_9", role: "host", isHost: true }), false);
-assert.equal(canMakeCoHost({ identity: "user_9", role: "panelist", isHost: true }), false);
-assert.equal(canMakeCoHost({ identity: "att_ABC", role: "attendee", isHost: false }), false);
-assert.equal(canMakeCoHost({ identity: "EG_recorder", role: "panelist", isHost: false }), false);
-assert.equal(canMakeCoHost({ identity: "att_", role: "panelist", isHost: false }), false);
+assert.equal(canMakeCoHost({ identity: "user_9", role: "host", isHost: true }, true), false);
+assert.equal(canMakeCoHost({ identity: "user_9", role: "panelist", isHost: true }, true), false);
+assert.equal(canMakeCoHost({ identity: "att_ABC", role: "attendee", isHost: false }, true), false);
+assert.equal(canMakeCoHost({ identity: "EG_recorder", role: "panelist", isHost: false }, true), false);
+assert.equal(canMakeCoHost({ identity: "att_", role: "panelist", isHost: false }, true), false);
+// Only the host is offered it: a co-host sees neither "Make co-host" nor "Remove co-host".
+assert.equal(canMakeCoHost({ identity: "user_1", role: "panelist", isHost: false }, false), false);
+assert.equal(canMakeCoHost({ identity: "att_ABC", role: "panelist", isHost: false }, false), false);
+assert.match(coHostGrantedMessage("Ravi", false), /Making co-hosts/);
+assert.match(coHostGrantedMessage("Ravi", false), /make them the host/);
 
 // The server's code for "no account behind this attendee", and what the host is told.
 assert.equal(COHOST_NEEDS_ACCOUNT, "cohost_needs_account");

@@ -6,34 +6,29 @@ export type HostCandidateSource = {
   name?: string;
   role?: string;
   canPublish?: boolean;
+  /** A co-host right now: LiveParticipant.coHost, or the coHost in LiveKit metadata. */
+  coHost?: boolean;
 };
 
 /**
- * Who may take over as host from Leave → Assign host.
+ * Who the host may hand the session to from Leave: a co-host in the room, and nobody else
+ * (api handleTransferHost answers not_a_cohost otherwise). Webinars and meetings alike.
  *
- * Must be a signed-in stage seat (`user_*`): TransferHost looks up that account and
- * requires them on the webinar's panelist list. Audience (`att_*`) and promoted
- * attendees keep an attendee identity even when they publish, so they cannot own
- * the webinar.
+ * Either kind of identity: an invited panelist (`user_*`), or an attendee brought on stage /
+ * a meeting guest (`att_*`) — the server resolves an `att_` to the confirmed account behind
+ * it, the same account "Make co-host" required, and that account becomes the host.
  *
- * `canPublish` is NOT required. A panelist the host muted (or whose permission
- * record has not arrived yet) still has role `panelist` and must appear in the
- * picker — requiring publish was why the list looked empty with a panelist in
- * the room. The transfer API re-grants host publish rights on success.
+ * `canPublish` is NOT required. A co-host the host muted still has role `panelist` and must
+ * appear in the list; the transfer re-grants host publish rights on success.
  */
-export function isEligibleHostCandidate(
-  p: HostCandidateSource,
-  selfIdentity: string,
-): boolean {
+export function isEligibleHostCandidate(p: HostCandidateSource, selfIdentity: string): boolean {
   if (!p.identity || p.identity === selfIdentity) return false;
-  if (!p.identity.startsWith("user_")) return false;
-  if (p.role === "host") return false;
-  if (p.role === "panelist") return true;
-  // Metadata missing or stale: a publishing signed-in seat is still on stage.
-  return !!p.canPublish;
+  if (!/^(user|att)_./.test(p.identity)) return false;
+  if (p.role === "host" || p.role === "attendee") return false;
+  return p.coHost === true;
 }
 
-/** Panelists (signed-in stage seats) who can take over as host. */
+/** The co-hosts who can take over as host, each once. */
 export function eligibleHostCandidates(
   participants: HostCandidateSource[] | null | undefined,
   selfIdentity: string,
@@ -46,7 +41,7 @@ export function eligibleHostCandidates(
     seen.add(p.identity);
     out.push({
       identity: p.identity,
-      name: p.name || "Panelist",
+      name: p.name || "Co-host",
       role: "panelist",
       joinedAt: "",
       publishing: [],
@@ -56,10 +51,7 @@ export function eligibleHostCandidates(
       canSpeak: true,
       audioOnly: false,
       mutedByHost: false,
-      // A co-host is still eligible to take over as host outright — being the
-      // host's equal is not the same as being the host — but this picker has
-      // no use for the distinction, so it is not threaded through here.
-      coHost: false,
+      coHost: true,
     });
   }
   return out;
@@ -72,4 +64,14 @@ export function mergeHostCandidates(
   selfIdentity: string,
 ): LiveParticipant[] {
   return eligibleHostCandidates([...(roster ?? []), ...remotes], selfIdentity);
+}
+
+/** The coHost flag in a participant's LiveKit metadata (lk.Metadata), false if unreadable. */
+export function metadataCoHost(raw: string | undefined): boolean {
+  if (!raw) return false;
+  try {
+    return (JSON.parse(raw) as { coHost?: unknown }).coHost === true;
+  } catch {
+    return false;
+  }
 }

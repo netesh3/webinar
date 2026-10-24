@@ -482,7 +482,7 @@ func (s *Server) pushLobbyKnock(ctx context.Context, wb types.Webinar, name stri
 		if sfu, err := s.sfuFor(ctx, wb); err == nil {
 			if parts, err := sfu.Participants(ctx, lk.RoomName(wb.ID)); err == nil {
 				for _, p := range parts {
-					if p.Identity == hostIdentity(wb.Host.ID) {
+					if p.Identity == hostIdentity(wb.Host.ID) || p.Role == types.RoleHost {
 						return
 					}
 				}

@@ -107,10 +107,7 @@ import { describeMediaError, isScreenShareCancel } from "@/lib/media-errors";
 import { badgeText } from "@/lib/mentions";
 import { MediaToggle } from "./media-toggle";
 import { displayMediaOptions, SharePicker } from "./share-picker";
-import {
-  HostAssignDialog,
-  HostLeaveMenu,
-} from "./host-leave-dialog";
+import { HostLeaveMenu } from "./host-leave-dialog";
 import { CoHostLeaveMenu } from "./cohost-leave-menu";
 import { EndWebinarDialog, SendSurveyButton } from "./host-survey";
 import { LeaveConfirm } from "./leave-confirm";
@@ -236,9 +233,8 @@ export function ControlBar() {
   const [previewSharing, setPreviewSharing] = useState(false);
   /** The Layout popover, anchored to whichever slot holds it. */
   const [layoutOpen, setLayoutOpen] = useState(false);
-  /** Host-only Leave menu (Zoom-style), then assign dialog or end confirm. */
+  /** Host-only Leave menu (Zoom-style): hand over to a co-host, leave, or end (confirmed). */
   const [leaveMenuOpen, setLeaveMenuOpen] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   /** Everybody else's Leave confirmation, in the same place the host's menu appears. */
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
@@ -1733,12 +1729,12 @@ export function ControlBar() {
           </button>
           {isHost ? (
             /* A co-host has isHost too, but the live role of a panelist: they get a plain
-               Leave instead of the hand-over only the owner may do (cohost-leave-menu.tsx). */
+               Leave instead of the hand-over only the owner may do (cohost-leave-menu.tsx).
+               The host's menu hands over to a co-host from the menu itself. */
             me.role === "host" ? (
               <HostLeaveMenu
                 open={leaveMenuOpen}
                 onClose={() => setLeaveMenuOpen(false)}
-                onAssign={() => setAssignOpen(true)}
                 onEnd={() => setEndConfirmOpen(true)}
               />
             ) : (
@@ -1766,11 +1762,6 @@ export function ControlBar() {
 
       {isHost && (
         <>
-          <HostAssignDialog
-            open={assignOpen}
-            onClose={() => setAssignOpen(false)}
-            onLeave={leave}
-          />
           <EndWebinarDialog
             open={endConfirmOpen}
             onClose={() => setEndConfirmOpen(false)}

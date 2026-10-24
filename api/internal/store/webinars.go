@@ -1378,15 +1378,25 @@ func (s *Store) RemovePanelist(ctx context.Context, slug, userID string) error {
 	return err
 }
 
-// TransferHost moves ownership from fromID to toID.
+// TransferHost moves ownership from fromID to the co-host toID, who is on the stage as
+// toIdentity: their invited-panelist seat ("user_<toID>"), or an attendee identity
+// ("att_<joinKey>") whose registration on THIS webinar is linked to toID's confirmed
+// account (RegistrantAccount, the same resolution co-host uses).
 //
-// The new owner is removed from the panelist list (they are the host now), and the
-// previous owner is added as a panelist so leaving the room does not strand them
-// off-stage if they rejoin. toID must already be a scheduled panelist — transferring
-// to an audience identity is rejected here so the handler cannot paper over a bad
-// LiveKit roster with a silent ownership change.
-func (s *Store) TransferHost(ctx context.Context, slug, fromID, toID string) error {
-	if fromID == "" || toID == "" || fromID == toID {
+// Exactly one host at a time. webinars.host_id is a single column, so the database never
+// holds more than one owner; what this guards is the hand-over itself:
+//   - the webinar row is locked FOR UPDATE, the caller must still be its host, and the
+//     update is conditional on that too — so of two transfers racing from the same host
+//     only the first moves anything, and the second is ErrConflict (the host changed);
+//   - the target must be a co-host right now (their own grant row's co_host), the only
+//     way into the host role: a plain panelist, an audience seat, an account from
+//     another session or an unconfirmed account is ErrInvalid;
+//   - the new host's co-host flags are cleared in the same transaction (they are the
+//     host now, not the host's equal), and they are taken off the panelist list;
+//   - the previous host is added to the panelist list, so leaving does not strand them
+//     off the stage if they rejoin. An ordinary panelist, not a co-host.
+func (s *Store) TransferHost(ctx context.Context, slug, fromID, toID, toIdentity string) error {
+	if fromID == "" || toID == "" || fromID == toID || toIdentity == "" {
 		return ErrInvalid
 	}
 
@@ -1407,27 +1417,71 @@ func (s *Store) TransferHost(ctx context.Context, slug, fromID, toID string) err
 		return err
 	}
 	if hostID != fromID {
-		return ErrInvalid
+		// Somebody else is the host by now: a second transfer racing the first.
+		return ErrConflict
 	}
 
-	var isPanelist bool
+	// A co-host right now, by this identity's own grant row.
+	var coHost bool
 	err = tx.QueryRow(ctx, `
 		SELECT EXISTS(
-			SELECT 1 FROM webinar_panelists WHERE webinar_id = $1::uuid AND user_id = $2::uuid
-		)`, webinarID, toID).Scan(&isPanelist)
+			SELECT 1 FROM webinar_stage_grants
+			 WHERE webinar_id = $1::uuid AND identity = $2 AND co_host
+		)`, webinarID, toIdentity).Scan(&coHost)
 	if err != nil {
 		return err
 	}
-	if !isPanelist {
+	if !coHost {
 		return ErrInvalid
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE webinars SET host_id = $2::uuid WHERE id = $1::uuid`, webinarID, toID); err != nil {
+	// And the identity is the account's: their panelist seat, or their registration here.
+	var theirs bool
+	if strings.HasPrefix(toIdentity, "user_") {
+		err = tx.QueryRow(ctx, `
+			SELECT $3::text = 'user_' || $2::text AND EXISTS(
+				SELECT 1 FROM webinar_panelists WHERE webinar_id = $1::uuid AND user_id = $2::uuid
+			)`, webinarID, toID, toIdentity).Scan(&theirs)
+	} else {
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM registrations r
+				  JOIN users u ON u.id = COALESCE(r.user_id, r.knock_user_id)
+				 WHERE r.webinar_id = $1::uuid AND 'att_' || r.join_key = $3::text
+				   AND u.id = $2::uuid AND u.email_verified_at IS NOT NULL
+			)`, webinarID, toID, toIdentity).Scan(&theirs)
+	}
+	if err != nil {
 		return err
+	}
+	if !theirs {
+		return ErrInvalid
+	}
+
+	// Conditional on the host read above as well as the lock: never a second owner.
+	tag, err := tx.Exec(ctx, `
+		UPDATE webinars SET host_id = $2::uuid WHERE id = $1::uuid AND host_id = $3::uuid`,
+		webinarID, toID, fromID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrConflict
 	}
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM webinar_panelists WHERE webinar_id = $1::uuid AND user_id = $2::uuid`,
+		webinarID, toID); err != nil {
+		return err
+	}
+	// The host is not also a co-host, under any identity of theirs on this webinar.
+	if _, err := tx.Exec(ctx, `
+		UPDATE webinar_stage_grants g SET co_host = false
+		 WHERE g.webinar_id = $1::uuid AND g.co_host
+		   AND (g.identity = 'user_' || $2::text
+		        OR g.identity IN (
+		            SELECT 'att_' || r.join_key FROM registrations r
+		             WHERE r.webinar_id = $1::uuid
+		               AND COALESCE(r.user_id, r.knock_user_id) = $2::uuid))`,
 		webinarID, toID); err != nil {
 		return err
 	}

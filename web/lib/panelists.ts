@@ -100,27 +100,69 @@ export function stageActions(p: {
   };
 }
 
+/** One line of a Leave menu, in order. "handover" is "Make <name> the host and leave". */
+export type LeaveMenuItem =
+  | { kind: "handover"; identity: string; name: string }
+  | { kind: "leave" }
+  | { kind: "end" };
+
 /**
- * What the Leave menu offers somebody who runs the room.
+ * What the Leave menu offers somebody who runs the room (api host_transfer.go).
  *
- * Handing the host role over is the owner's alone (requireTrueOwner on /transfer-host), so a
- * co-host is offered a plain Leave instead, and ending the session for everyone, which a
- * co-host may do.
+ * The host, with co-hosts in the room: "Make <co-host> the host and leave", one line per
+ * co-host, and "End for everyone". No plain Leave: a host with somebody to hand over to
+ * hands over, so the room is never left with co-hosts and no host by accident.
+ *
+ * The host with no co-host in the room: a plain Leave and "End for everyone". A webinar's
+ * stage carries on without them, as when their tab closes; a meeting carries on too, but
+ * nobody can be let in from the lobby. The menu says that making somebody co-host first is
+ * what lets them hand over (HOST_LEAVE_NO_COHOST_NOTE).
+ *
+ * A co-host: a plain Leave (the session carries on with the host) and End. Handing over is
+ * the host's alone (requireTrueOwner on /transfer-host).
  */
-export function leaveMenuItems(owner: boolean): ("assign" | "leave" | "end")[] {
-  return owner ? ["assign", "end"] : ["leave", "end"];
+export function leaveMenuItems(
+  owner: boolean,
+  coHosts: readonly { identity: string; name?: string }[] = [],
+): LeaveMenuItem[] {
+  if (owner && coHosts.length > 0) {
+    return [
+      ...coHosts.map((c) => ({
+        kind: "handover" as const,
+        identity: c.identity,
+        name: c.name?.trim() || "Co-host",
+      })),
+      { kind: "end" },
+    ];
+  }
+  return [{ kind: "leave" }, { kind: "end" }];
 }
+
+/** The label of a hand-over line in the host's Leave menu. */
+export function handoverLabel(name: string): string {
+  return `Make ${name.trim() || "Co-host"} the host and leave`;
+}
+
+/** Under the host's plain Leave, when there is nobody to hand over to. */
+export const HOST_LEAVE_NO_COHOST_NOTE =
+  "To hand over instead, make someone a co-host first (Participants → Make co-host).";
 
 /**
  * Whether a roster row offers "Make co-host" / "Remove co-host".
  *
- * Anybody on the stage but the host: an invited panelist ("user_"), and an attendee brought
- * up on stage or a meeting guest ("att_"). The server decides the rest by the account behind
- * the identity (handleSetParticipantCoHost) — an "att_" with no account answers
- * cohost_needs_account, which the roster explains with coHostNeedsAccountMessage. Never
- * anybody in the audience, and never an identity that is neither (an egress, a recorder).
+ * Only to the host (`viewerIsOwner`): a co-host cannot make or unmake a co-host
+ * (requireTrueOwner on both co-host routes). Then anybody on the stage but the host: an
+ * invited panelist ("user_"), and an attendee brought up on stage or a meeting guest ("att_").
+ * The server decides the rest by the account behind the identity (handleSetParticipantCoHost)
+ * — an "att_" with no account answers cohost_needs_account, which the roster explains with
+ * coHostNeedsAccountMessage. Never anybody in the audience, and never an identity that is
+ * neither (an egress, a recorder).
  */
-export function canMakeCoHost(p: { identity: string; role: string; isHost: boolean }): boolean {
+export function canMakeCoHost(
+  p: { identity: string; role: string; isHost: boolean },
+  viewerIsOwner: boolean,
+): boolean {
+  if (!viewerIsOwner) return false;
   if (p.role !== "panelist" || p.isHost) return false;
   return /^(user|att)_./.test(p.identity);
 }
@@ -141,7 +183,7 @@ export function coHostGrantedMessage(name: string, meeting: boolean): string {
   const what = meeting ? "meeting" : "webinar";
   return (
     `${name} is now a co-host for this session. They can mute, manage the ${meeting ? "lobby" : "stage"}, run polls and Q&A, ` +
-    `remove people and end the ${what}. Deleting or copying the ${what}, handing over the host role, ` +
-    `sending follow-ups and deleting recordings stay with you.`
+    `remove people and end the ${what}. Making co-hosts, deleting or copying the ${what}, handing over the host role, ` +
+    `sending follow-ups and deleting recordings stay with you. When you leave, you can make them the host.`
   );
 }
