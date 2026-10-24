@@ -454,6 +454,7 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
         recordings={recordings}
         onChanged={load}
         initialTab={initialTab}
+        initialRecording={search.get("recording")}
       />
 
       <CopyWebinarDialog

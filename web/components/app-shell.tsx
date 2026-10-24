@@ -19,12 +19,12 @@ import {
   type IntegrationCard,
 } from "@/lib/api-types";
 import { appHome } from "@/lib/access";
-import { meetingsOffered } from "@/lib/host-features";
+import { clipsOffered, meetingsOffered } from "@/lib/host-features";
 import { noteAttendeeVisit } from "@/lib/host-welcome";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
-import { BookmarkIcon, CalendarIcon, CameraIcon, MaterialIcon, MenuIcon, SettingsIcon, SparklesIcon, UsersIcon, WhatsAppIcon } from "./icons";
+import { BookmarkIcon, CalendarIcon, CameraIcon, ClapperIcon, MaterialIcon, MenuIcon, SettingsIcon, SparklesIcon, UsersIcon, WhatsAppIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { useTheme } from "./theme";
@@ -336,9 +336,13 @@ function HostPrimaryNav() {
   // Meetings: on for every host unless an admin turned them off (the server refuses a create).
   const hasMeetings = meetingsOffered(account);
   const onKnowledge = pathname === "/host/knowledge" || pathname.startsWith("/host/knowledge/");
+  // The Studio (recordings, clips and their plan): only for an account with the clips switch.
+  const hasStudio = clipsOffered(account);
+  const onStudio = pathname === "/host/studio" || pathname.startsWith("/host/studio/");
   const onWebinars =
     !onMeetings &&
     !onKnowledge &&
+    !onStudio &&
     !onPeople &&
     !onWhatsApp &&
     !onEmail &&
@@ -377,6 +381,14 @@ function HostPrimaryNav() {
         active={onPeople}
         icon={<UsersIcon />}
       />
+      {hasStudio && (
+        <Item
+          href="/host/studio"
+          label="Studio"
+          active={onStudio}
+          icon={<ClapperIcon />}
+        />
+      )}
       {hasAI && (
         <Item
           href="/host/knowledge"

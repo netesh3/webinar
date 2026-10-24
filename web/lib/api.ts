@@ -209,6 +209,15 @@ import {
   TTL_SESSION,
   writeCache,
 } from "./http";
+import type { ClipPlan, ClipPlanInput, StudioClipsResponse, StudioRecordingsResponse } from "./api-types";
+
+/** "?a=1&b=2" from the set values, or "". */
+function query(opts: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(opts)) if (v !== undefined && v !== "") qs.set(k, String(v));
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
 
 const ME_KEY = "/api/auth/me";
 const INTEGRATIONS_KEY = "/api/host/integrations";
@@ -826,6 +835,18 @@ export const api = {
 
   hostRecordingLibrary: () =>
     request<Recording[]>("/api/host/recordings", fresh),
+
+  /** The Studio (the clips switch): the host's own recordings with where their highlights,
+   *  reels and clips stand, newest first. Never asks the AI: "Find highlights" is
+   *  findHighlights. 403 feature_off without the switch. */
+  studioRecordings: (opts: { q?: string; cursor?: string; limit?: number } = {}, signal?: AbortSignal) =>
+    request<StudioRecordingsResponse>(`/api/host/studio/recordings${query(opts)}`, { ...fresh, signal }),
+  /** Every clip and reel made from them, with its plan. status: ready, pending or failed. */
+  studioClips: (opts: { status?: string; cursor?: string; limit?: number } = {}, signal?: AbortSignal) =>
+    request<StudioClipsResponse>(`/api/host/studio/clips${query(opts)}`, { ...fresh, signal }),
+  /** A clip's plan, the whole of it: platforms, day, status and note. Planning only. */
+  saveClipPlan: (slug: string, id: string, clipId: string, plan: ClipPlanInput) =>
+    patch<ClipPlan>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/clips/${seg(clipId)}/plan`, plan),
 
   /** Topic tags THIS host has already used, for the schedule form's
    *  suggestions. Scoped to the signed-in coach — another coach's tags are

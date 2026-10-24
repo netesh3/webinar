@@ -94,6 +94,7 @@ export function HostWebinarTabs({
   recordings,
   onChanged,
   initialTab,
+  initialRecording,
   onTabChange,
 }: {
   webinar: Webinar;
@@ -105,6 +106,8 @@ export function HostWebinarTabs({
   onChanged: () => void | Promise<void>;
   /** Deep-link from Host list: people | setup | results | follow-up | … (old names too) */
   initialTab?: string | null;
+  /** ?recording=: the recording the Recording tab opens in its player (the Studio's links). */
+  initialRecording?: string | null;
   /** Tells the page header which tab is open. A layout effect, so the header never paints
    *  a stale button first. */
   onTabChange?: (tab: HostTab) => void;
@@ -255,6 +258,7 @@ export function HostWebinarTabs({
           webinar={w}
           recordings={recordings}
           onChanged={onChanged}
+          initialRecording={initialRecording}
         />
       )}
       {tab === "Results" && ended && (

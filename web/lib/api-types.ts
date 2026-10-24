@@ -3625,6 +3625,129 @@ export interface SpamActionRequest {
 }
 
 //////////
+// source: studio.go
+
+/**
+ *  StudioNotStarted is a recording nobody has asked to find highlights (or reels) for yet: the
+ *  * same word the recording's own highlights endpoint uses for it.
+ */
+export const StudioNotStarted = "not_started";
+/**
+ * Plan statuses (ClipPlan.Status): an idea, a day set, done.
+ */
+export const ClipPlanIdea = "idea";
+/**
+ * Plan statuses (ClipPlan.Status): an idea, a day set, done.
+ */
+export const ClipPlanScheduled = "scheduled";
+/**
+ * Plan statuses (ClipPlan.Status): an idea, a day set, done.
+ */
+export const ClipPlanPosted = "posted";
+/**
+ * ClipPlanNoteMaxRunes is the longest note on a plan.
+ */
+export const ClipPlanNoteMaxRunes = 500;
+/**
+ * StudioPageSize and StudioMaxPage bound a page of the Studio's lists.
+ */
+export const StudioPageSize = 24;
+/**
+ * StudioPageSize and StudioMaxPage bound a page of the Studio's lists.
+ */
+export const StudioMaxPage = 100;
+/**
+ * Studio clip filters (GET /api/host/studio/clips?status=).
+ */
+export const StudioClipsReady = "ready";
+/**
+ * Studio clip filters (GET /api/host/studio/clips?status=).
+ */
+export const StudioClipsPending = "pending"; // waiting or being made
+/**
+ * Studio clip filters (GET /api/host/studio/clips?status=).
+ */
+export const StudioClipsFailed = "failed";
+/**
+ *  StudioRecording is one recording session of the host's ended sessions, with where its
+ *  * highlights, suggested reels and clips stand.
+ *  *
+ *  *   HighlightsStatus  as HighlightsResponse.Status, or StudioNotStarted
+ *  *   ReelsStatus       likewise for the suggested reels
+ *  *   ThumbPartID       the first take with a file, for the thumbnail (…/recordings/{id}/file)
+ */
+export interface StudioRecording {
+  id: string;
+  slug: string;
+  topic: string;
+  kind: string;
+  sessionAt: string;
+  createdAt: string;
+  durationMs: number /* int64 */;
+  takes: number /* int */;
+  thumbPartId: string;
+  highlightsStatus: string;
+  highlights: number /* int */;
+  reelsStatus: string;
+  reels: number /* int */;
+  clipsReady: number /* int */;
+  clipsPending: number /* int */;
+  clipsFailed: number /* int */;
+}
+/**
+ * StudioRecordingsResponse is GET /api/host/studio/recordings?q=&cursor=, newest first.
+ */
+export interface StudioRecordingsResponse {
+  recordings: StudioRecording[];
+  /**
+   * NextCursor resumes after the last item, and is empty on the last page.
+   */
+  nextCursor?: string;
+}
+/**
+ *  ClipPlan is where and when the host means to post a clip, and how far they got. PlannedOn
+ *  * is a day (YYYY-MM-DD) or empty for unplanned.
+ */
+export interface ClipPlan {
+  platforms: string[];
+  plannedOn?: string;
+  status: string;
+  note: string;
+  updatedAt?: string;
+}
+/**
+ *  ClipPlanInput is PATCH /api/host/webinars/{slug}/recordings/{id}/clips/{clipId}/plan, the
+ *  * whole plan as the host left it. A scheduled clip has a day.
+ */
+export interface ClipPlanInput {
+  platforms: string[];
+  plannedOn: string;
+  status: string;
+  note: string;
+}
+/**
+ *  StudioClip is one clip or reel with the session it came from (Slug and RecordingID are what
+ *  * its own endpoints are under) and its plan, when it has one.
+ */
+export interface StudioClip {
+  clip: Clip;
+  slug: string;
+  recordingId: string;
+  topic: string;
+  sessionAt: string;
+  plan?: ClipPlan;
+}
+/**
+ *  StudioClipsResponse is GET /api/host/studio/clips?status=&cursor=, newest first, with the
+ *  * video server's state for the line over clips that are waiting.
+ */
+export interface StudioClipsResponse {
+  clips: StudioClip[];
+  server: ClipServer;
+  nextCursor?: string;
+}
+
+//////////
 // source: survey.go
 
 /**
