@@ -628,6 +628,11 @@ func (s *Server) Routes() http.Handler {
 			// End a live session, or move one between draft and scheduled (admin_sessions.go).
 			r.Post("/webinars/{slug}/end", s.handleAdminEndWebinar)
 			r.Patch("/webinars/{slug}/status", s.handleAdminSetWebinarStatus)
+			// Load tests (admin_loadtest.go, docs/LOAD-TESTING.md): test accounts only, off by default.
+			r.Post("/users/{id}/verify-email", s.handleAdminVerifyTestEmail)
+			r.Put("/webinars/{slug}/load-test", s.handleAdminSetLoadTest)
+			r.Delete("/webinars/{slug}/load-test", s.handleAdminClearLoadTest)
+			r.Post("/webinars/{slug}/load-test/seats", s.handleAdminLoadTestSeats)
 
 			r.Get("/ai", s.handleAdminAIStatus)
 
