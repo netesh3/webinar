@@ -17,7 +17,11 @@
 #                               landing), then the job FAILS. Never deploy blind onto a box.
 #   TICK_SECRET        required (the same repo secret the API deploy ships)
 #   API_BASE           default https://webcast-api-65278594492.asia-south1.run.app
-#   FORCE              "true" skips the guard entirely (workflow_dispatch input), with a warning
+#   FORCE              "true" skips the guard entirely, with a warning. Set by the workflows when
+#                      any of: the workflow_dispatch "force" input; repo variable
+#                      DEPLOY_GUARD_SKIP=true (every deploy until it is removed); or
+#                      "[skip guard]" in the pushed commit's message (a PR title shows up in
+#                      its merge commit, so a PR titled "... [skip guard]" deploys unguarded).
 #   WAIT_TIMEOUT_MIN   default 180 (well inside GitHub's 6 h job limit)
 #   POLL_SEC           default 60
 #   UNREACHABLE_GRACE_MIN default 10
