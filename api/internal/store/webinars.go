@@ -656,9 +656,11 @@ type AdminWebinarFilter struct {
 	// end means unbounded in that direction, so a host picking only an end
 	// date gets "everything up to here" rather than an empty result.
 	From, To time.Time
-	// Search matches the topic, case-insensitively — the one thing an admin
-	// scanning hundreds of sessions actually remembers about one of them.
+	// Search matches the topic or the host's email, case-insensitively — the
+	// two things an admin scanning hundreds of sessions remembers about one.
 	Search string
+	// Kind is AdminKindWebinar, AdminKindMeeting, AdminKindSimulive, or empty for all.
+	Kind string
 }
 
 /* AdminWebinars lists every webinar on the instance regardless of host, for
@@ -692,12 +694,60 @@ func (s *Store) AdminWebinars(ctx context.Context, f AdminWebinarFilter) ([]type
 	if !f.To.IsZero() {
 		where += " AND w.starts_at <= " + arg(f.To)
 	}
+	switch f.Kind {
+	case AdminKindWebinar:
+		where += " AND w.kind NOT IN ('meeting', 'simulive')"
+	case AdminKindMeeting:
+		where += " AND w.kind = 'meeting'"
+	case AdminKindSimulive:
+		where += " AND w.kind = 'simulive'"
+	}
 	if q := strings.TrimSpace(f.Search); q != "" {
-		where += " AND w.topic ILIKE " + arg("%"+q+"%")
+		p := arg("%" + q + "%")
+		where += " AND (w.topic ILIKE " + p + " OR h.email ILIKE " + p + ")"
 	}
 	where += " ORDER BY w.starts_at DESC"
 
 	return s.queryWebinars(ctx, where, args...)
+}
+
+// The admin list's kind chips. A recurring session is a webinar here: the chip is about
+// what kind of room it is, not how it repeats.
+const (
+	AdminKindWebinar  = "webinar"
+	AdminKindMeeting  = "meeting"
+	AdminKindSimulive = "simulive"
+)
+
+/* SetPlannedStatus moves a webinar between draft and scheduled, and only from the state
+ * the caller saw: the update is guarded on status = from, so a session that went live (or
+ * ended) between the admin's read and this write is left alone and ErrConflict comes back.
+ * Clears the same per-run columns SetStatus does for these two states. */
+func (s *Store) SetPlannedStatus(ctx context.Context, slug string, from, to types.WebinarStatus) (types.Webinar, error) {
+	planned := func(st types.WebinarStatus) bool {
+		return st == types.StatusDraft || st == types.StatusScheduled
+	}
+	if !planned(from) || !planned(to) {
+		return types.Webinar{}, fmt.Errorf("%w: only draft and scheduled", ErrInvalid)
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE webinars SET status = $3,
+		       started_at = NULL, ended_at = NULL, empty_since = NULL,
+		       simulive_start_at = NULL, simulive_doors_open = false,
+		       simulive_live_at = NULL, simulive_host_gone_at = NULL,
+		       updated_at = now()
+		 WHERE slug = $1 AND status = $2`,
+		slug, string(from), string(to))
+	if err != nil {
+		return types.Webinar{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		if _, err := s.HostIDFor(ctx, slug); err != nil {
+			return types.Webinar{}, err
+		}
+		return types.Webinar{}, ErrConflict
+	}
+	return s.WebinarBySlug(ctx, slug)
 }
 
 // OnStageFor returns webinars where this account is a panelist rather than the

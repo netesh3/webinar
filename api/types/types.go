@@ -3346,6 +3346,13 @@ type HostGrant struct {
 	CanHost bool `json:"canHost"`
 }
 
+/* AdminWebinarStatus is PATCH /api/admin/webinars/{slug}/status: an admin publishing a
+ * draft (to scheduled) or taking a scheduled session back to a draft. Those are the only
+ * two moves it accepts — live is reached through the host's room, ended through End. */
+type AdminWebinarStatus struct {
+	Status WebinarStatus `json:"status"`
+}
+
 /* FeatureGrant switches one feature on or off for one account.
  *
  * One feature per request, with the state it should end in rather than a verb, for the

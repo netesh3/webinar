@@ -410,7 +410,7 @@ func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.PlanFeaturesBody{Tiers: tiers})
 }
 
-/* handleAdminWebinars is GET /api/admin/webinars?status=&from=&to=&q=.
+/* handleAdminWebinars is GET /api/admin/webinars?status=&kind=&from=&to=&q=.
  *
  * The only place in the app that lists webinars across every host: every
  * other listing (VisibleTo, ByHost) is deliberately scoped to one account,
@@ -435,6 +435,15 @@ func (s *Server) handleAdminWebinars(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpx.Error(w, http.StatusUnprocessableEntity, "bad_status",
 			"status must be draft, scheduled, live, or ended.")
+		return
+	}
+
+	switch kind := q.Get("kind"); kind {
+	case "", store.AdminKindWebinar, store.AdminKindMeeting, store.AdminKindSimulive:
+		filter.Kind = kind
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_kind",
+			"kind must be webinar, meeting, or simulive.")
 		return
 	}
 
@@ -521,7 +530,7 @@ func (s *Server) handleAdminDeleteWebinar(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	s.log.Info("webinar deleted by admin", "admin", admin.ID, "slug", slug)
+	s.logAdminAction(admin.ID, "delete", slug, "was", deleted.Status)
 	s.logWebinarDeleted(slug, deleted)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
 }

@@ -52,6 +52,15 @@ const PLAN_LABEL: Record<Plan, string> = {
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { paginate } from "@/lib/paginate";
 import {
+  adminActionCopy,
+  adminSessionActions,
+  deleteConfirmMatches,
+  KIND_FILTERS,
+  sessionNoun,
+  type AdminSessionAction,
+  type AdminSessionKindFilter,
+} from "@/lib/admin-session-actions";
+import {
   ACCOUNT_ROLE_FILTERS,
   ACCOUNT_ROLE_LABEL,
   countAccountRoles,
@@ -63,6 +72,7 @@ import {
   Alert,
   ConfirmModal,
   Disclosure,
+  Modal,
   Spinner,
   Tabs,
   Toggle,
@@ -1376,9 +1386,12 @@ function PlanMatrix() {
   );
 }
 
-/* Every webinar on the instance — completed and upcoming, filterable by
- * status and by date — with the one action an admin has here that a host
- * does not: deleting a webinar that isn't theirs.
+/* Every session on the instance — webinars, meetings and simulives, completed
+ * and upcoming, filterable by kind, status and date, searchable by topic or the
+ * host's email — with what an admin can do that a host can't: end, publish or
+ * unpublish, and delete a session that isn't theirs. Which buttons a row offers,
+ * and what each confirm says, is lib/admin-session-actions.ts; the server
+ * (admin_sessions.go) is what actually enforces it.
  *
  * A separate component, and a separate fetch, from the accounts list above:
  * the two lists have nothing in common and a host running a hundred webinars
@@ -1387,10 +1400,10 @@ function PlanMatrix() {
  */
 const STATUSES = [
   { value: "", label: "All" },
-  { value: "scheduled", label: "Upcoming" },
   { value: "live", label: "Live" },
-  { value: "ended", label: "Completed" },
+  { value: "scheduled", label: "Scheduled" },
   { value: "draft", label: "Draft" },
+  { value: "ended", label: "Ended" },
 ] as const;
 
 function statusTone(status: string): "neutral" | "brand" | "ok" | "live" {
@@ -1406,6 +1419,36 @@ function statusTone(status: string): "neutral" | "brand" | "ok" | "live" {
   }
 }
 
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+        active ? "bg-brand-soft text-brand" : "text-ink-2 hover:bg-surface-2"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+const ACTION_LABEL: Record<AdminSessionAction, string> = {
+  end: "End now",
+  publish: "Publish",
+  unpublish: "Move to draft",
+  delete: "Delete",
+};
+
 function AdminWebinars({
   initialStatus = "",
 }: {
@@ -1418,14 +1461,19 @@ function AdminWebinars({
   const [rows, setRows] = useState<Webinar[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<WebinarStatusFilter>(initialStatus);
+  const [kind, setKind] = useState<AdminSessionKindFilter>("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [query, setQuery] = useState("");
-  const [confirmSlug, setConfirmSlug] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  /* Reset with the filter. Each status chip, date range and search is its own
-   * list: staying on page 3 of All and then opening Live should not come back
-   * to page 3. A delete that only shortens the current list is left to
+  /* The action waiting on its confirm, and the row it is for. One at a time:
+   * every action has a dialog, so two can never be in flight from this list. */
+  const [pending, setPending] = useState<{ action: AdminSessionAction; slug: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  // What the admin typed into the delete confirm. Cleared with each new dialog.
+  const [typed, setTyped] = useState("");
+  /* Reset with the filter. Each chip, date range and search is its own list:
+   * staying on page 3 of All and then opening Live should not come back to
+   * page 3. A delete that only shortens the current list is left to
    * paginate(), which clamps. */
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -1433,6 +1481,7 @@ function AdminWebinars({
     api
       .adminWebinars({
         status: status || undefined,
+        kind: kind || undefined,
         from: from || undefined,
         to: to || undefined,
         q: query || undefined,
@@ -1442,9 +1491,9 @@ function AdminWebinars({
         setError(null);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : "Could not load webinars.");
+        setError(e instanceof Error ? e.message : "Could not load sessions.");
       });
-  }, [status, from, to, query]);
+  }, [status, kind, from, to, query]);
 
   useEffect(load, [load]);
 
@@ -1453,58 +1502,95 @@ function AdminWebinars({
     [rows, pageIndex],
   );
 
-  async function remove(slug: string) {
-    setDeleting(true);
+  function ask(action: AdminSessionAction, slug: string) {
+    setTyped("");
+    setPending({ action, slug });
+  }
+
+  async function run(action: AdminSessionAction, slug: string) {
+    setBusy(true);
     try {
-      await api.adminDeleteWebinar(slug);
-      setRows((prev) => (prev ?? []).filter((w) => w.id !== slug));
-      setConfirmSlug(null);
-      notify("Webinar deleted.", "ok");
+      if (action === "delete") {
+        await api.adminDeleteWebinar(slug);
+        setRows((prev) => (prev ?? []).filter((w) => w.id !== slug));
+        notify("Deleted.", "ok");
+      } else {
+        const updated =
+          action === "end"
+            ? await api.adminEndWebinar(slug)
+            : await api.adminSetWebinarStatus(
+                slug,
+                action === "publish" ? "scheduled" : "draft",
+              );
+        /* Replaced in place rather than refetched, so the row stays where the
+         * admin was looking even when it no longer matches the status chip;
+         * the next filter change drops it. */
+        setRows((prev) => (prev ?? []).map((w) => (w.id === slug ? updated : w)));
+        notify(
+          action === "end"
+            ? "Ended."
+            : action === "publish"
+              ? "Published."
+              : "Moved to draft.",
+          "ok",
+        );
+      }
+      setPending(null);
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Could not delete that webinar.", "error");
+      notify(e instanceof Error ? e.message : "That didn't work.", "error");
     } finally {
-      setDeleting(false);
+      setBusy(false);
     }
   }
 
-  const target = rows?.find((w) => w.id === confirmSlug) ?? null;
+  const target = rows?.find((w) => w.id === pending?.slug) ?? null;
+  const copy = pending && target ? adminActionCopy(pending.action, target) : null;
+  const deleteArmed = target ? deleteConfirmMatches(typed, target.topic) : false;
 
   return (
     <div>
       <div className="mb-3">
-        <SectionTitle>Webinars</SectionTitle>
+        <SectionTitle>Webinars and meetings</SectionTitle>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
-          Every webinar on this instance, across every host. Filter by status
-          or by date to find completed sessions or what&apos;s coming up.
+          Every session on this instance, across every host. End one that is
+          live, publish or unpublish one that hasn&apos;t started, or delete it.
         </p>
       </div>
 
       <Card className="p-4">
+        <div className="mb-2 flex flex-wrap gap-1.5" role="group" aria-label="Filter by kind">
+          {KIND_FILTERS.map((k) => (
+            <FilterChip
+              key={k.value}
+              active={kind === k.value}
+              onClick={() => {
+                if (k.value !== kind) setPageIndex(0);
+                setKind(k.value);
+              }}
+            >
+              {k.label}
+            </FilterChip>
+          ))}
+        </div>
         <div className="mb-3 flex flex-wrap items-end gap-3">
-          <div className="flex flex-1 flex-wrap gap-1.5">
+          <div className="flex flex-1 flex-wrap gap-1.5" role="group" aria-label="Filter by status">
             {STATUSES.map((s) => (
-              <button
+              <FilterChip
                 key={s.value}
-                type="button"
+                active={status === s.value}
                 onClick={() => {
                   if (s.value !== status) setPageIndex(0);
                   setStatus(s.value);
                 }}
-                aria-pressed={status === s.value}
-                className={`rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                  status === s.value
-                    ? "bg-brand-soft text-brand"
-                    : "text-ink-2 hover:bg-surface-2"
-                }`}
               >
                 {s.label}
-              </button>
+              </FilterChip>
             ))}
           </div>
           <DateRangeField
             from={from}
             to={to}
-            ariaLabel="Filter webinars by date"
+            ariaLabel="Filter sessions by date"
             onChange={(nextFrom, nextTo) => {
               setFrom(nextFrom);
               setTo(nextTo);
@@ -1515,13 +1601,13 @@ function AdminWebinars({
 
         <input
           className="field mb-3 w-full max-w-sm"
-          placeholder="Search by topic…"
+          placeholder="Search by topic or host email…"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setPageIndex(0);
           }}
-          aria-label="Search webinars"
+          aria-label="Search sessions"
         />
 
         {error && <Alert tone="error">{error}</Alert>}
@@ -1533,8 +1619,8 @@ function AdminWebinars({
           </div>
         ) : rows.length === 0 ? (
           <Empty
-            title="No webinars match"
-            hint="Try a wider date range or a different status."
+            title="Nothing matches"
+            hint="Try a wider date range, a different kind or status."
           />
         ) : (
           <div className="grid gap-2">
@@ -1551,6 +1637,9 @@ function AdminWebinars({
                     <Badge tone={statusTone(w.status)} dot={w.status === "live"}>
                       {w.status}
                     </Badge>
+                    {(w.kind === "meeting" || w.kind === "simulive") && (
+                      <Badge tone="neutral">{sessionNoun(w.kind)}</Badge>
+                    )}
                   </div>
                   <div className="truncate text-[12px] text-ink-3">
                     {formatDay(w.startsAt, w.timeZone)} ·{" "}
@@ -1562,27 +1651,31 @@ function AdminWebinars({
                   </div>
                 </div>
 
-                {deleting && confirmSlug === w.id ? (
+                {busy && pending?.slug === w.id ? (
                   <Spinner className="size-4" />
                 ) : (
-                  <div className="flex items-center gap-1.5">
-                    {/* Read-only: the host detail page itself still gates every
-                        action (mute, end, remove a participant, …) on being the
-                        true host or a co-host — see requireOwnership's admin
-                        branch in api/internal/api/auth.go. An admin lands on the
-                        same page a host would, sees the same details, recordings
-                        and transcripts, but every button that changes a live
-                        session simply won't work for them. */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* The host page is read-only for an admin: its own buttons
+                        still gate on being the host or a co-host (requireOwnership
+                        in api/internal/api/auth.go). What an admin can change is
+                        here, beside it. */}
                     <ButtonLink href={`/host/${w.id}`} variant="secondary" size="sm">
                       View
                     </ButtonLink>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmSlug(w.id)}
-                      className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-live transition-colors hover:bg-live-soft outline-none focus-visible:ring-2 focus-visible:ring-live/40"
-                    >
-                      Delete
-                    </button>
+                    {adminSessionActions(w).map((action) => (
+                      <button
+                        key={action}
+                        type="button"
+                        onClick={() => ask(action, w.id)}
+                        className={`rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors outline-none focus-visible:ring-2 ${
+                          action === "end" || action === "delete"
+                            ? "text-live hover:bg-live-soft focus-visible:ring-live/40"
+                            : "text-ink-2 hover:bg-surface-2 focus-visible:ring-brand/40"
+                        }`}
+                      >
+                        {ACTION_LABEL[action]}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1592,15 +1685,62 @@ function AdminWebinars({
         )}
       </Card>
 
+      {/* End and the status moves: a plain confirm that says what happens. */}
       <ConfirmModal
-        open={confirmSlug !== null}
-        busy={deleting}
-        onClose={() => setConfirmSlug(null)}
-        onConfirm={() => confirmSlug && void remove(confirmSlug)}
-        title={`Delete "${target?.topic ?? "this webinar"}"?`}
-        body="This permanently removes the webinar, every registration, chat message, poll, recording and question attached to it. If it's live right now, the room is closed too."
-        confirmLabel="Delete webinar"
+        open={pending !== null && pending.action !== "delete" && copy !== null}
+        busy={busy}
+        onClose={() => setPending(null)}
+        onConfirm={() => pending && void run(pending.action, pending.slug)}
+        title={copy?.title ?? ""}
+        body={copy?.body ?? ""}
+        confirmLabel={copy?.confirm ?? "Confirm"}
       />
+
+      {/* Delete has no way back, so it is armed by typing the topic or DELETE. */}
+      <Modal
+        open={pending?.action === "delete" && copy !== null}
+        onClose={() => setPending(null)}
+        title={copy?.title ?? ""}
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setPending(null)}
+              disabled={busy}
+              className="h-9 rounded-lg border border-line-2 px-3.5 text-[13px] font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => pending && void run("delete", pending.slug)}
+              disabled={busy || !deleteArmed}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-live px-3.5 text-[13px] font-medium text-on-live hover:bg-live/90 disabled:opacity-50"
+            >
+              {busy && <Spinner className="size-3.5" />}
+              {copy?.confirm ?? "Delete"}
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13.5px] leading-relaxed text-ink-2">{copy?.body}</p>
+        <label className="mt-3 block text-[12.5px] font-medium text-ink-2">
+          Type the topic or DELETE to confirm
+          <input
+            className="field mt-1.5 w-full"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && deleteArmed && pending && !busy) {
+                void run("delete", pending.slug);
+              }
+            }}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+      </Modal>
     </div>
   );
 }
