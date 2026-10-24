@@ -119,7 +119,8 @@ func (s *Server) handleGuestJoin(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, "guest join: host", err)
 			return
 		}
-		open = host.HasFeature(types.FeatureJoinWithoutRegistration)
+		// Closed for every webinar while types.OfferJoinWithoutRegistration is false.
+		open = types.JoinWithoutRegistrationOpen(host.HasFeature(types.FeatureJoinWithoutRegistration))
 	}
 	if !open || wb.RegistrationRequired {
 		httpx.Error(w, http.StatusForbidden, "registration_required",

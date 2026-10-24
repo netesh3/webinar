@@ -154,6 +154,7 @@ func TestRegistrantWhatsAppAgreesWithTheCRM(t *testing.T) {
  * fourth answer rather than a false.
  */
 func TestGuestRegistrantHasNoWhatsAppState(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")

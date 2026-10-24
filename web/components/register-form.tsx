@@ -15,6 +15,7 @@ import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { ApiError, api } from "@/lib/api";
 import { needsConsentPrompt } from "@/lib/whatsapp-consent";
 import type { Account, RegisterRequest, Registration, Webinar } from "@/lib/api-types";
+import { OfferJoinWithoutRegistration } from "@/lib/api-types";
 import {
   clearPendingWebinarRegister,
   isGmailAddress,
@@ -373,7 +374,9 @@ function EntryChoice({
    * `too_early`, so offering the button before the doors open would be offering a button that
    * fails. Registering early is exactly right, though, which is why only one of the two is
    * gated on this. */
-  const guestAvailable = w.guestJoinAllowed && open;
+  // The server already answers false while join without registration is paused for
+  // webinars; the constant is checked here too so the button hides with the same switch.
+  const guestAvailable = OfferJoinWithoutRegistration && w.guestJoinAllowed && open;
 
   /* The initial mode, and then the user owns it.
    *

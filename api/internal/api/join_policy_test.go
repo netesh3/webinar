@@ -96,6 +96,9 @@ func TestJoinWithoutRegistrationIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 	if !hasFeature(me.Features, types.FeatureJoinWithoutRegistration) {
 		t.Fatalf("/api/auth/me features = %v, want the switch on", me.Features)
 	}
+	// From here the switch has to OPEN the door, which the product-wide pause prevents.
+	// TestJoinWithoutRegistrationIsPaused asserts the door stays shut instead.
+	skipWhileGuestDoorPaused(t)
 	opened := policyInput(wb.Topic, false, false)
 	opened.RegistrationRequired = false
 	opened.StartsAt = wb.StartsAt
@@ -137,6 +140,77 @@ func TestJoinWithoutRegistrationIsRejectedUntilAnAdminAllowsIt(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "registration_required" {
 		t.Fatalf("guest join after disable: status %d code %q, want 403 registration_required\n  body: %s",
 			res.StatusCode, errorCode(t, raw), raw)
+	}
+}
+
+/* Join without registration is paused for webinars (types.OfferJoinWithoutRegistration).
+ *
+ * Even a host whose account has the switch cannot save a webinar with registration off,
+ * on create or on edit, and a webinar saved with it off before the pause is treated as
+ * registration-required: no guest door advertised, the guest endpoint refuses, and an
+ * attendee who registered keeps their join link. */
+func TestJoinWithoutRegistrationIsPaused(t *testing.T) {
+	if types.OfferJoinWithoutRegistration {
+		t.Skip("join without registration is offered; TestJoinWithoutRegistrationIsRejectedUntilAnAdminAllowsIt covers the switch")
+	}
+	h := newHarness(t)
+	h.login("neeraj@acme.dev")
+	h.allowOpenJoin() // the account switch is on; the pause wins over it
+
+	res, raw := h.do(http.MethodPost, "/api/host/webinars", policyInput("Paused door", false, false))
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("create: status %d body %s", res.StatusCode, raw)
+	}
+	var wb types.Webinar
+	h.decode(raw, &wb)
+	if !wb.RegistrationRequired || wb.GuestJoinAllowed {
+		t.Fatalf("create with registration off: registrationRequired %v guestJoinAllowed %v, want true/false",
+			wb.RegistrationRequired, wb.GuestJoinAllowed)
+	}
+
+	edit := policyInput(wb.Topic, false, false)
+	edit.StartsAt = wb.StartsAt
+	res, raw = h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID, edit)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("edit: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &wb)
+	if !wb.RegistrationRequired || wb.GuestJoinAllowed {
+		t.Fatalf("edit with registration off: registrationRequired %v guestJoinAllowed %v, want true/false",
+			wb.RegistrationRequired, wb.GuestJoinAllowed)
+	}
+
+	// A webinar saved with registration off before the pause, inside the join window.
+	wb = h.placeFixtureStart(wb.ID, time.Now().Add(5*time.Minute))
+	if _, err := h.store.Pool().Exec(context.Background(),
+		`UPDATE webinars SET registration_required = false WHERE slug = $1`, wb.ID); err != nil {
+		t.Fatal(err)
+	}
+	res, raw = h.do(http.MethodGet, "/api/host/webinars/"+wb.ID, nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("reload: status %d body %s", res.StatusCode, raw)
+	}
+	h.decode(raw, &wb)
+	if wb.RegistrationRequired {
+		t.Fatal("fixture: the row should still say registration is off")
+	}
+	if wb.GuestJoinAllowed {
+		t.Fatal("guest door advertised on an old registration-off webinar while paused")
+	}
+	res, raw = h.guestJoin(wb.ID, "Walk In")
+	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "registration_required" {
+		t.Fatalf("guest join: status %d code %q, want 403 registration_required\n  body: %s",
+			res.StatusCode, errorCode(t, raw), raw)
+	}
+	if n := h.registrantCount(wb.ID); n != 0 {
+		t.Errorf("registrants %d, want 0: a refused guest must leave no row", n)
+	}
+
+	// The registration form is the door, and a join link from it works.
+	reg := h.registerAsGuest(wb.ID, "paused-door@test.dev")
+	res, _, raw = h.joinAsGuestKey(wb.ID, reg.JoinKey)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("registered join: status %d body %s", res.StatusCode, raw)
 	}
 }
 
