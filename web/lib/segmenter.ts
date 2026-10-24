@@ -7,6 +7,7 @@ import {
 } from "@livekit/track-processors";
 import { LOW_LIGHT_GLSL, LOW_LIGHT_LIFT } from "./low-light-curve";
 import { HumanSeg, loadHumanSeg, type Matte } from "./humanseg";
+import { backgroundLoadingView, setCameraCovered } from "./background-loading";
 import { PresenterLock, type FaceBox } from "./presenter-lock";
 import { browserUprightPlan, capLongSide, uprightSize } from "./frame-orientation";
 export { needsUprightCopy } from "./frame-orientation";
@@ -1900,6 +1901,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   private lastFrameAt = 0;
   /** The 2D veil's canvases, made only if it is ever needed. */
   private flat: { small: Canvas2D; big: Canvas2D } | null = null;
+  /** The dark frame sent in the room while the background downloads (whileDownloading). */
+  private cover: Canvas2D | null = null;
   /** So a persistent per-frame fault is reported once rather than 30 times a second. */
   private reportedFrameFailure = false;
 
@@ -2059,7 +2062,20 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     await this.dispose();
   }
 
+  /** Whether the frame being handled went out as the dark frame (see setCameraCovered). */
+  private coverSent = false;
+
   transform(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
+    this.coverSent = false;
+    try {
+      this.transformFrame(frame, controller);
+    } finally {
+      // Every frame says whether the camera is covered: the room's note keys on this.
+      setCameraCovered(this.coverSent);
+    }
+  }
+
+  private transformFrame(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
     if (this.disposed) {
       frame.close();
       return;
@@ -2082,8 +2098,34 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       return;
     }
 
+    // Downloading: the camera or a dark frame, never the blur (see whileDownloading).
+    if (wantsBackground && !this.model && this.modelFailure === null && this.engineFailure === null) {
+      if (this.whileDownloading(frame, controller, lowLight)) return;
+    }
+
+    /* Given up — the download, the model or the GPU — in the room, where the screen has told the
+     * presenter their camera starts when the background is ready. The room they asked to hide
+     * does not go out on its own: the dark frame stays until they choose "Start camera without
+     * background" (which sets the view to "camera") or Retry (background-picker.tsx). */
+    if (
+      wantsBackground &&
+      (this.modelFailure !== null || this.engineFailure !== null) &&
+      backgroundLoadingView() === "cover"
+    ) {
+      const covered = this.coverFrame(frame);
+      if (covered) {
+        frame.close();
+        this.lastSent = covered.timestamp;
+        this.coverSent = true;
+        controller.enqueue(covered);
+        return;
+      }
+    }
+
     const engine = this.liveEngine();
     if (!engine) {
+      // The veil is only for a GPU context being rebuilt (a second or so) under a background
+      // that was already showing — not for the download, handled above.
       this.fallback(frame, controller, wantsBackground && this.canHide());
       return;
     }
@@ -2605,6 +2647,94 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
    * a blur that needs no GPU context. It is the room hidden while the engine is rebuilt, which
    * is a second or so. Without one, or once everything has been given up on, the frame itself.
    */
+  /* While the background's files are still downloading (lib/background-loading.ts).
+   *
+   * There is no person to cut out yet. This used to send the whole picture blurred, face and
+   * all, with nothing to say why — it read as a broken camera to the presenter and the audience
+   * alike. What goes out now depends on who can see it (backgroundLoadingView):
+   *   camera  the pre-join screen, only the presenter: the camera as it is (with the low-light
+   *           lift if one is on, which needs no model);
+   *   cover   the room: a plain dark frame until the background is ready, so the audience
+   *           sees neither a blur nor the room the presenter asked to hide.
+   * The veil is left at 0, so the first frame with a mask comes out sharp rather than fading
+   * in from a blur. Returns false only when it could not produce anything, for the caller's
+   * own path to handle. */
+  private whileDownloading(
+    frame: VideoFrame,
+    controller: TransformStreamDefaultController<VideoFrame>,
+    lowLight: number,
+  ): boolean {
+    this.ensureModel();
+    this.veil = 0;
+    if (backgroundLoadingView() === "cover") {
+      const covered = this.coverFrame(frame);
+      if (!covered) return false;
+      frame.close();
+      this.lastSent = covered.timestamp;
+      this.coverSent = true;
+      controller.enqueue(covered);
+      return true;
+    }
+    if (lowLight > 0) {
+      const engine = this.liveEngine();
+      if (engine) {
+        let output: VideoFrame | null = null;
+        try {
+          this.uploadFrame(engine, frame, false);
+          engine.forgetHistory();
+          engine.render(0, 0, lowLight, VEIL_RADIUS);
+          output = this.frameFrom(engine, frame.timestamp);
+          if (engine.gl.isContextLost()) throw new Error(CONTEXT_LOST);
+        } catch (err) {
+          output?.close();
+          output = null;
+          if (engine.gl.isContextLost()) this.lost(engine);
+          else if (!this.reportedFrameFailure) {
+            this.reportedFrameFailure = true;
+            console.warn("[background] frame processing failed", err);
+          }
+        }
+        if (output) {
+          frame.close();
+          this.lastSent = output.timestamp;
+          controller.enqueue(output);
+          return true;
+        }
+      }
+    }
+    this.lastSent = frame.timestamp;
+    controller.enqueue(frame);
+    return true;
+  }
+
+  private coverFrame(frame: VideoFrame): VideoFrame | null {
+    try {
+      /* Sized as the picture is shown. On WebKit a portrait phone's frame can report its
+       * landscape buffer, and a cover that size would turn the audience's tile sideways until
+       * the background arrived — the same correction uploadFrame makes. */
+      const video = this.inputVideo;
+      const shown = video ? { width: video.videoWidth, height: video.videoHeight } : null;
+      const { w, h } = this.uprightCopy
+        ? uprightSize(frame as VideoFrame & { rotation?: number }, shown)
+        : { w: frame.displayWidth, h: frame.displayHeight };
+      this.cover ??= canvas2d(w, h);
+      const c = this.cover;
+      if (c.canvas.width !== w || c.canvas.height !== h) {
+        c.canvas.width = w;
+        c.canvas.height = h;
+      }
+      // The stage's own tile colour, so it reads as a camera that has not started yet.
+      c.ctx.fillStyle = "#1c1c20";
+      c.ctx.fillRect(0, 0, w, h);
+      return new VideoFrame(c.canvas as unknown as CanvasImageSource, {
+        timestamp: frame.timestamp,
+        alpha: "discard",
+      });
+    } catch {
+      return null;
+    }
+  }
+
   private fallback(
     frame: VideoFrame,
     controller: TransformStreamDefaultController<VideoFrame>,
@@ -2654,6 +2784,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   }
 
   private dispose(): Promise<void> {
+    // No frames from this processor any more: nothing of it is covering the camera.
+    setCameraCovered(false);
     if (this.disposed) return Promise.resolve();
     this.disposed = true;
     this.modelWaiting?.frame.close();

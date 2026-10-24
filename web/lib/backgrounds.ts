@@ -12,6 +12,15 @@ import type {
   VideoProcessorOptions,
 } from "livekit-client";
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  SERVER_PROGRESS,
+  backgroundLoadingView,
+  downloadProgress,
+  subscribeDownload,
+  subscribeLoadingView,
+  type DownloadProgress,
+  type LoadingView,
+} from "./background-loading.ts";
 import type {
   Background,
   SegmenterOptions,
@@ -293,8 +302,15 @@ export function describeBackgroundError(err: unknown, lowLightOnly = false): str
       ? "Couldn't load the video adjustment. Check your connection and try again."
       : "Couldn't download the background effect. Check your connection and try again.";
   }
+  // Our own download (lib/background-loading.ts): stopped moving, or the server said no.
+  if (/background download stopped/.test(text)) {
+    return "Couldn't download the background: the connection stopped. Check it and try again.";
+  }
+  if (/background download failed/.test(text)) {
+    return "Couldn't download the background effect. Check your connection and try again.";
+  }
   if (text.includes("background image failed to load")) {
-    return "Couldn't load that background image. Try again or pick another one.";
+    return IMAGE_FAILED_TEXT;
   }
   /* Emscripten's half-drained start-up callbacks — see oneAtATime in lib/segmenter.ts.
    *
@@ -454,6 +470,28 @@ const IDLE: BackgroundStatus = { phase: "idle", error: null, retryable: false, a
 const readStatusOnServer = (): BackgroundStatus => IDLE;
 
 /** Where the virtual background is. See BackgroundStatus. */
+/** The sentence describeBackgroundError gives a still that failed to load. Then the person is
+ *  still shown, over the blur that stands in for the picture — the camera is not paused, so the
+ *  room's "camera is paused" note must not claim it is. */
+export const IMAGE_FAILED_TEXT = "Couldn't load that background image. Try again or pick another one.";
+
+/** The background's first-time download (lib/background-loading.ts), for a progress bar. */
+export function useBackgroundDownload(): DownloadProgress {
+  return useSyncExternalStore(subscribeDownload, downloadProgress, () => SERVER_PROGRESS);
+}
+
+/** What the camera shows while that download runs: the camera, or a dark frame. */
+export function useBackgroundLoadingView(): LoadingView {
+  return useSyncExternalStore(subscribeLoadingView, backgroundLoadingView, () => "cover" as const);
+}
+
+/** Starts the Enhanced engine's download ahead of need. For the pre-join screen, for somebody
+ *  with a background saved: by the time they have checked their camera it is usually done. */
+export function prefetchBackgroundModel(engine: BackgroundEngine): void {
+  if (engine !== "enhanced" || !backgroundsAvailable()) return;
+  void import("./humanseg").then((m) => m.prefetchHumanSeg()).catch(() => {});
+}
+
 export function useBackgroundStatus(): BackgroundStatus {
   return useSyncExternalStore(subscribeStatus, readStatus, readStatusOnServer);
 }
