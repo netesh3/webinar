@@ -275,6 +275,58 @@ func (s *Store) ConvertFeatureOverrides(ctx context.Context) error {
 	return err
 }
 
+/* AIDefaultOffSQL takes every AI switch out of the plan tiers (migrations/0159) without taking
+ * anything from a host an admin gave ai by hand: each AI switch such a host had from their
+ * plan, and not turned off for them, becomes their own override first. A host who had AI only
+ * from their plan loses it. What it did is kept in ai_default_off_undo, so it can be reversed.
+ *
+ * One shot: migrations/0159 runs it, and a store test checks this text still matches.
+ * Tests apply it to a matrix written in the old shape. */
+const AIDefaultOffSQL = `-- 1. Hosts with ai granted by hand keep the AI switches their plan gave them.
+INSERT INTO ai_default_off_undo (user_id, feature)
+SELECT u.id, pf.feature
+  FROM users u
+  JOIN plan_features pf ON pf.plan = effective_plan(u.id) AND pf.enabled
+ WHERE pf.feature IN ('ai', 'ai_knowledge', 'simulive_auto', 'followup_send', 'repurpose', 'clips')
+   AND 'ai' = ANY (u.features)
+   AND NOT (pf.feature = ANY (u.features))
+   AND NOT (pf.feature = ANY (u.features_off));
+
+UPDATE users u
+   SET features = u.features || ARRAY(SELECT d.feature FROM ai_default_off_undo d
+                                       WHERE d.user_id = u.id AND NOT (d.feature = ANY (u.features))
+                                       ORDER BY d.feature)
+ WHERE EXISTS (SELECT 1 FROM ai_default_off_undo d
+                WHERE d.user_id = u.id AND NOT (d.feature = ANY (u.features)));
+
+-- 2. No plan includes an AI switch.
+INSERT INTO ai_default_off_undo (plan, feature)
+SELECT plan, feature FROM plan_features
+ WHERE enabled
+   AND feature IN ('ai', 'ai_knowledge', 'simulive_auto', 'followup_send', 'repurpose', 'clips');
+
+DELETE FROM plan_features
+ WHERE feature IN ('ai', 'ai_knowledge', 'simulive_auto', 'followup_send', 'repurpose', 'clips');`
+
+/* AIDefaultOffUndoSQL reverses AIDefaultOffSQL from ai_default_off_undo: the plan rows go back
+ * and the overrides it added come off. Not run by anything; an operator's, with the code that
+ * refuses AI in a tier (types.Feature.PerHost) reverted first. A test proves it restores. */
+const AIDefaultOffUndoSQL = `INSERT INTO plan_features (plan, feature, enabled)
+SELECT plan, feature, true FROM ai_default_off_undo WHERE plan IS NOT NULL
+ON CONFLICT (plan, feature) DO UPDATE SET enabled = true;
+UPDATE users u
+   SET features = ARRAY(SELECT f FROM unnest(u.features) f
+                         WHERE f NOT IN (SELECT d.feature FROM ai_default_off_undo d
+                                          WHERE d.user_id = u.id))
+ WHERE EXISTS (SELECT 1 FROM ai_default_off_undo d WHERE d.user_id = u.id);
+DELETE FROM ai_default_off_undo;`
+
+// ConvertAIDefaultOff applies AIDefaultOffSQL. Tests only.
+func (s *Store) ConvertAIDefaultOff(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, AIDefaultOffSQL)
+	return err
+}
+
 // PlanTiers is every tier an admin configures, "" being no plan.
 var PlanTiers = []types.Plan{"", types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise}
 

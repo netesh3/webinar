@@ -11,7 +11,9 @@ import {
   withOverrides,
   type AccountFeatureGroup,
   overrideState,
+  inheritLabel,
   planIncludes,
+  tierFeaturesToSave,
   withOverride,
   type AccountFeatureRow,
   type OverrideState,
@@ -1102,8 +1104,7 @@ function FeatureToggle({
    * admin can see whether forcing it on or off changes anything. */
   const state = overrideState(user.featureOverrides, row.id);
   const inherited = planIncludes(tiers, user.plan, row.id);
-  const inheritLabel =
-    inherited === null ? "Plan default" : `Plan default (${inherited ? "on" : "off"})`;
+  const inheritText = inheritLabel(inherited, row.perHost);
   const effective = (user.features ?? []).includes(row.id);
   return (
     <div className="flex items-start justify-between gap-3">
@@ -1134,7 +1135,7 @@ function FeatureToggle({
         onChange={(e) => void onFeature(row.id, e.target.value as OverrideState)}
         className="shrink-0 rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <option value="inherit">{inheritLabel}</option>
+        <option value="inherit">{inheritText}</option>
         <option value="on">Always on</option>
         <option value="off">Always off</option>
       </select>
@@ -1299,7 +1300,10 @@ function PlanMatrix() {
     setSaving(true);
     try {
       const body = await api.setPlanFeatures(
-        TIER_COLUMNS.map((c) => ({ plan: c.plan, features: [...(draft[c.plan] ?? [])] })),
+        TIER_COLUMNS.map((c) => ({
+          plan: c.plan,
+          features: tierFeaturesToSave(draft[c.plan] ?? [], featureCatalogue),
+        })),
       );
       adopt(body.tiers);
       notify("Plans saved. Accounts without an override follow them now.", "ok");
@@ -1316,7 +1320,8 @@ function PlanMatrix() {
         <SectionTitle>Plans</SectionTitle>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-2">
           What each plan includes. An account follows its plan unless it has its own
-          override under Accounts → Features.
+          override under Accounts → Features. AI features are off on every plan: turn them on
+          for a host under Accounts → Features.
         </p>
       </div>
       {error && <Alert tone="error">{error}</Alert>}
@@ -1349,13 +1354,22 @@ function PlanMatrix() {
                   </td>
                   {TIER_COLUMNS.map((c) => (
                     <td key={c.plan || "none"} className="px-3 py-2.5 text-center">
-                      <input
-                        type="checkbox"
-                        aria-label={`${f.label} in ${c.label}`}
-                        checked={draft[c.plan]?.has(f.key) ?? false}
-                        onChange={(e) => toggle(c.plan, f.key, e.target.checked)}
-                        className="size-4 cursor-pointer accent-brand"
-                      />
+                      {f.perHost ? (
+                        <span
+                          className="text-[12px] text-ink-3"
+                          title="Off on every plan. Turn it on for a host under Accounts → Features."
+                        >
+                          Per host
+                        </span>
+                      ) : (
+                        <input
+                          type="checkbox"
+                          aria-label={`${f.label} in ${c.label}`}
+                          checked={draft[c.plan]?.has(f.key) ?? false}
+                          onChange={(e) => toggle(c.plan, f.key, e.target.checked)}
+                          className="size-4 cursor-pointer accent-brand"
+                        />
+                      )}
                     </td>
                   ))}
                 </tr>

@@ -12,8 +12,10 @@ import {
   accountFeaturesOnCount,
   bulkGrants,
   groupFeatureRows,
+  inheritLabel,
   overrideState,
   planIncludes,
+  tierFeaturesToSave,
   unmetRequirements,
   withOverride,
   withOverrides,
@@ -96,8 +98,8 @@ assert.deepEqual(withOverride({ zoom: false }, "whiteboard", "on"), { zoom: fals
 /* Groups, dependencies and the bulk toggle. */
 const aiCatalogue: Feature[] = [
   ...catalogue,
-  { key: "ai", label: "AI writing", description: "AI.", group: "ai" },
-  { key: "ai_knowledge", label: "AI knowledge", description: "Library.", group: "ai", requires: ["ai"] },
+  { key: "ai", label: "AI writing", description: "AI.", group: "ai", perHost: true },
+  { key: "ai_knowledge", label: "AI knowledge", description: "Library.", group: "ai", requires: ["ai"], perHost: true },
   { key: "mystery", label: "Mystery", description: "No group the server listed.", group: "nowhere" },
 ];
 const groups = [
@@ -138,3 +140,16 @@ assert.deepEqual(withOverrides({ zoom: true, ai: true }, ["ai", "ai_knowledge"],
   ai_knowledge: false,
 });
 assert.deepEqual(withOverrides({ ai: true }, ["ai"], "inherit"), {});
+
+/* AI is off on every plan (migrations/0159): Inherit says so, and the matrix never saves it. */
+assert.equal(knowledgeRow.perHost, true);
+assert.equal(aiRows.find((r) => r.id === "zoom")!.perHost, false);
+assert.equal(inheritLabel(null, true), "Plan default (off: per host only)");
+assert.equal(inheritLabel(true, true), "Plan default (off: per host only)");
+assert.equal(inheritLabel(null, false), "Plan default");
+assert.equal(inheritLabel(true, false), "Plan default (on)");
+assert.equal(inheritLabel(false, false), "Plan default (off)");
+assert.deepEqual(tierFeaturesToSave(new Set(["whiteboard", "ai", "zoom", "ai_knowledge"]), aiCatalogue), [
+  "whiteboard",
+  "zoom",
+]);
