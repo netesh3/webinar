@@ -196,8 +196,8 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
 | `EDGE_PLAYBACK_LOW_LATENCY` | `false` | Tells viewers the playback base is close to them, so the player starts in LL-HLS. Set it **only** once `EDGE_PLAYBACK_BASE` points at a CDN pull zone; against the distant origin, LL-HLS stutters (see Player). Off, players still move up to LL-HLS on their own when they measure fast requests. |
 | `EDGE_DEBUG_CLOCK` | `false` | Latency aid. Edge webinars' egress loads the composite at `<RECORDINGS_EGRESS_TEMPLATE_URL>/edge/clock`, which draws a server-synced clock (ms) in the corner. The edge player shows its own synced clock beside the latency readout. Glass-to-glass latency is one clock minus the other on a single screenshot. Both sync to `GET /api/time`. |
 | `EDGE_ENCODING_WIDTH` / `EDGE_ENCODING_HEIGHT` | `1280` / `720` | Edge mix resolution (even, 320–3840 × 180–2160). |
-| `EDGE_ENCODING_FPS` | `30` | 10–60. |
-| `EDGE_VIDEO_BITRATE_KBPS` | `1700` | 300–20000. Use about **4500 for 1080p**. |
+| `EDGE_ENCODING_FPS` | `25` | 10–60. The keyframe interval stays 1 s (25 frames at 25 fps). |
+| `EDGE_VIDEO_BITRATE_KBPS` | `1500` | 300–20000 (1500 is the old 1700 at 30 fps scaled to 25). Use about **4500 for 1080p**. |
 | `EDGE_AUDIO_BITRATE_KBPS` | `128` | AAC bitrate of the mix, 32–320. `96` is plenty for speech and trims ~30 kbps a viewer. |
 | `EDGE_H264_PROFILE` | `baseline` | `baseline`, `main` or `high`. Baseline was the default while the mix also fed WHEP, which cannot take B-frames. With WHEP retired, **high** gives noticeably sharper screen-share text for the same bitrate. |
 
@@ -239,6 +239,71 @@ These apply only to edge webinars' egress. The keyframe interval is fixed at 1s,
 clean LL-HLS segments and a fast first frame. Values are validated at startup: a bad value
 refuses to boot rather than falling back silently. Raise the resolution only where the egress
 box can carry it (see Phase 2).
+
+### A lighter mix for cameras
+
+The egress decodes every video track the SFU forwards to it, in software, in the Chrome that
+also composites and encodes the mix. Cameras publish 180p / 360p / 1080p (720p on top on
+machines that cannot capture 1080p), and the template used to take the top layer for every
+camera tile 300 px or taller, and for every camera on stage whether the layout drew it or not
+(speaker view's other cameras, the strip past its last tile). So a 720p mix of four cameras
+and a share was up to four 1080p VP8 decodes for one 360p-sized picture.
+
+The recorder template now picks each camera's layer from the box the layout gives it
+(`web/lib/mix-subscriptions.ts`, used by `useCameraSubscriptions` in
+`web/app/recorder-template/[[...slug]]/page.tsx`):
+
+| Tile height (output px) | Layer |
+|---|---|
+| over 540 | top (720p or 1080p, as published) |
+| 300–540 | medium (360p) |
+| under 300 | low (180p) |
+| speaker view's bare tile | medium |
+| not drawn | not forwarded (`setEnabled(false)` after a 3 s grace) |
+
+The rects are the layout's own, in CSS px of the egress window (the encoding's size at pixel
+ratio 1), so headless Chrome's `devicePixelRatio` plays no part. `adaptiveStream` stays off:
+livekit-client ignores `setVideoQuality` / `setEnabled` while it is on. **Screen shares are
+untouched**: always the top layer, whatever their box.
+
+What it does at 1280×720, by layout: a 2–4 camera grid (344–351 px tiles) goes from top to
+medium; auto with someone sharing (speaker view on edge) decodes one medium camera instead of
+one medium plus every other camera at the top layer; auto without a share is unchanged (main
+speaker on top, strip low) apart from cameras past the strip, which are no longer forwarded.
+
+**Expected saving.** Measured before on the c-4 box: ~0.7–1.0 core for 1–2 cameras, ~1.84 for
+3–4 cameras and a share. The decode part of that should fall the most where cameras were
+hidden or in a grid; 25 fps instead of 30 removes a sixth of the composite and x264 work
+wherever the deployment uses the default. Together, expect roughly 30–40% less egress CPU in
+the 3–4 cameras + share case and less in the single-camera case (one camera filling the frame
+still needs the top layer). This is an estimate, not a measurement.
+
+**How to verify.** In Grafana, during the same scenario before and after the deploy:
+
+```
+sum(rate(container_cpu_usage_seconds_total{service="egress"}[1m]))
+```
+
+(cores used by the egress container; the egress also logs `avgCPU`/`maxCPU` in its `egress
+metrics` line). Compare like with like: same layout, same number of cameras, a share on or
+off, a few minutes each.
+
+**The frame rate default only applies where `EDGE_ENCODING_FPS` is unset.** A deployment that
+sets it (the GitHub repository variable feeds Cloud Run, `deploy/cloudrun-deploy.sh`) keeps its
+own value; one already below 25 should stay there, since 25 would cost more, not less.
+
+**Trade-offs.** The audience stream (and the mix recording, which copies it) shows camera
+tiles at 360p in a 2–4 camera grid and never above the publisher's top layer; one large camera
+tile still gets it. A 25 fps mix moves slightly less smoothly than 30 (fast hand motion);
+for talking heads and slides it is not visible. A camera that the layout starts drawing again
+after its 3 s grace waits for a keyframe (a few hundred ms of the avatar tile). Cloud
+recordings that use this template at 1080p get the same mapping: a 2x2 grid's 540 px tiles
+take the medium layer there too.
+
+**LL-HLS and captions.** MediaMTX splits parts on frame boundaries: a 250 ms part at 25 fps is
+about six frames, at 500 ms about twelve, and segments (1 s) still each start on the 1 s
+keyframe. The mix recorder (mixrec) copies the stream, so recordings become 25 fps with no
+other change. Caption sync uses the player's measured delay, not the frame rate.
 
 ## Test it side by side
 

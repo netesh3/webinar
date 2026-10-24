@@ -30,6 +30,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/livekit/protocol/livekit"
 
+	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/realtime"
@@ -763,15 +764,15 @@ func (s *Server) edgeEncoding() lk.BroadcastEncoding {
 		AudioBitrateKbps: s.cfg.EdgeAudioBitrateKbps,
 		Profile:          s.cfg.EdgeH264Profile,
 	}
-	// A config built by hand (tests, tools) rather than by Load gets today's encoding.
+	// A config built by hand (tests, tools) rather than by Load gets Load's defaults.
 	if enc.Width == 0 || enc.Height == 0 {
 		enc.Width, enc.Height = 1280, 720
 	}
 	if enc.FPS == 0 {
-		enc.FPS = 30
+		enc.FPS = config.DefaultEdgeEncodingFPS
 	}
 	if enc.BitrateKbps == 0 {
-		enc.BitrateKbps = 1700
+		enc.BitrateKbps = config.DefaultEdgeVideoBitrateKbps
 	}
 	if enc.Profile == "" {
 		enc.Profile = "baseline"

@@ -13,6 +13,7 @@ import {
   SHARE_ID,
   usesSpeakerView,
   type AudienceLayoutId,
+  type Placement,
 } from "@/lib/composite-layouts";
 import {
   BEACON_COLOR,
@@ -22,6 +23,13 @@ import {
   type SpeakerCandidate,
 } from "@/lib/speaker-view";
 import { isPrivileged } from "@/lib/share-lock";
+import {
+  cameraSubscriptions,
+  HIDDEN_CAMERA_GRACE_MS,
+  LOW_TILE_MAX_PX,
+  type CameraLayer,
+  type CameraSubscription,
+} from "@/lib/mix-subscriptions";
 import { setReceiveAv1Excluded } from "@/lib/receive-codecs";
 import {
   LiveKitRoom,
@@ -39,6 +47,7 @@ import {
   ParticipantKind,
   VideoQuality,
   type Participant,
+  type RemoteTrackPublication,
   type Room,
 } from "livekit-client";
 
@@ -124,7 +133,9 @@ function RecorderTemplateInner() {
  *
  * No adaptiveStream: it sizes subscriptions from the <video> elements, which here are the
  * layout's boxes inside a headless window, and it pauses tracks it thinks are hidden. The
- * layers are chosen explicitly instead (SpeakerTile, ShareVideo). Spelled out rather than left
+ * layers are chosen explicitly instead, from the layout's own rects (useCameraSubscriptions,
+ * lib/mix-subscriptions.ts; ShareVideo); livekit-client only honours setVideoQuality and
+ * setEnabled while adaptiveStream is off. Spelled out rather than left
  * to livekit-client's defaults, so a changed default cannot quietly put the mix on a lower
  * layer. */
 const RECORDER_ROOM_OPTIONS = { adaptiveStream: false, dynacast: false } as const;
@@ -280,6 +291,7 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
     cameras: tiles,
     edge: edgeLayout,
   });
+  useCameraSubscriptions(cameraRefs, result.placements);
 
   if (result.placements.length === 0) {
     return (
@@ -313,7 +325,7 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
         const ref = byId.get(p.id);
         if (!ref) return null;
         const isSpeaking = ref.participant.identity === activeSpeakerId || ref.participant.isSpeaking;
-        const small = p.rect.h < SMALL_TILE_PX;
+        const small = p.rect.h < LOW_TILE_MAX_PX;
         if (p.bare) {
           // Speaker view's tile: exactly its rect, nothing drawn outside the camera, because a
           // phone crops the mix along this rect into its floating PiP.
@@ -336,7 +348,6 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
               className={`size-full ${p.role === "pip" ? "rounded-2xl" : ""}`}
               compact={small}
               fit={p.role === "main" ? "contain" : "cover"}
-              small={small}
             />
           </div>
         );
@@ -430,9 +441,89 @@ function ShareVideo({ trackRef }: { trackRef: TrackReference }) {
   return <VideoTrack trackRef={trackRef} className="size-full object-contain" />;
 }
 
-/** Below this height a tile asks for the low simulcast layer (about 180p): the egress decodes
- *  every tile it draws, and a thumbnail does not need a full-size camera. */
-const SMALL_TILE_PX = 300;
+/* Each camera's subscription, from the box the layout gives it (lib/mix-subscriptions.ts):
+ * the simulcast layer that box needs, and no forwarding at all for a camera the layout leaves
+ * out. The egress decodes everything the SFU sends it, drawn or not, so this is what bounds
+ * the mix's decode cost. A camera dropped from the layout keeps flowing for
+ * HIDDEN_CAMERA_GRACE_MS, so a swap straight back does not wait for a keyframe.
+ *
+ * The rects are the layout's, in CSS px of the egress window, which is the encoding's size at
+ * pixel ratio 1 (useFrameSize re-lays on resize), so no ResizeObserver is needed: the boxes
+ * are computed, not measured. */
+function useCameraSubscriptions(
+  cameraRefs: TrackReferenceOrPlaceholder[],
+  placements: readonly Placement[],
+) {
+  const plan = cameraSubscriptions(
+    cameraRefs.map((ref) => ref.participant.identity),
+    placements,
+  );
+  // Re-apply when a camera's plan or its publication changes, not on every render.
+  const key = cameraRefs
+    .map((ref) => `${ref.participant.identity}=${ref.publication?.trackSid ?? "-"}${ref.publication?.isSubscribed ? "+" : ""}:${planKey(plan.get(ref.participant.identity))}`)
+    .sort()
+    .join(",");
+  const latest = useRef({ cameraRefs, plan });
+  useEffect(() => {
+    latest.current = { cameraRefs, plan };
+  });
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const pending = timers.current;
+    const { cameraRefs: refs, plan: wanted } = latest.current;
+    for (const ref of refs) {
+      const pub = remotePublication(ref);
+      const want = wanted.get(ref.participant.identity);
+      if (!pub || !want) continue;
+      // Per publication, so a republished camera is not shadowed by its old track's timer.
+      const tid = pub.trackSid;
+      const timer = pending.get(tid);
+      if (want.enabled) {
+        if (timer) {
+          clearTimeout(timer);
+          pending.delete(tid);
+        }
+        pub.setEnabled(true);
+        pub.setVideoQuality(VIDEO_QUALITY[want.layer]);
+      } else if (!timer && pub.isEnabled) {
+        pending.set(
+          tid,
+          setTimeout(() => {
+            pending.delete(tid);
+            // Still left out: a plan that draws it again clears this timer first.
+            pub.setEnabled(false);
+          }, HIDDEN_CAMERA_GRACE_MS),
+        );
+      }
+    }
+  }, [key]);
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const t of pending.values()) clearTimeout(t);
+      pending.clear();
+    };
+  }, []);
+}
+
+const VIDEO_QUALITY: Record<CameraLayer, VideoQuality> = {
+  low: VideoQuality.LOW,
+  medium: VideoQuality.MEDIUM,
+  high: VideoQuality.HIGH,
+};
+
+function planKey(sub: CameraSubscription | undefined): string {
+  if (!sub) return "?";
+  return sub.enabled ? sub.layer : "off";
+}
+
+/** The ref's remote publication, if it has one that takes manual subscription settings. */
+function remotePublication(ref: TrackReferenceOrPlaceholder): RemoteTrackPublication | null {
+  const pub = ref.publication;
+  if (!pub || ref.participant.isLocal) return null;
+  const remote = pub as RemoteTrackPublication;
+  return typeof remote.setEnabled === "function" && typeof remote.setVideoQuality === "function" ? remote : null;
+}
 
 function onStage(p: Participant): boolean {
   const kind = p.kind;
@@ -492,7 +583,6 @@ function SpeakerTile({
   className = "",
   compact = false,
   fit = "cover",
-  small = false,
   bare = false,
 }: {
   trackRef: TrackReferenceOrPlaceholder;
@@ -505,18 +595,12 @@ function SpeakerTile({
    * the audience saw a zoomed, cropped picture of what the host sees whole. Strip tiles are
    * 16:9 boxes, where "cover" only trims a camera that is not 16:9. */
   fit?: "cover" | "contain";
-  /** A thumbnail: ask for the low simulcast layer rather than decoding a full camera. */
-  small?: boolean;
   /** Speaker view's tile: edge to edge (no border, ring or rounding, the camera covering the
-   *  box) and the middle layer, enough for a phone's PiP cut out of the mix. */
+   *  box). Its layer, the middle one, is set with every other camera's by
+   *  useCameraSubscriptions. */
   bare?: boolean;
 }) {
   const { participant, publication } = trackRef;
-  useEffect(() => {
-    if (publication && "setVideoQuality" in publication && typeof publication.setVideoQuality === "function") {
-      publication.setVideoQuality(bare ? VideoQuality.MEDIUM : small ? VideoQuality.LOW : VideoQuality.HIGH);
-    }
-  }, [publication, small, bare]);
   const hasVideo = publication?.isSubscribed && !publication?.isMuted && publication?.track;
   const name = participant.name || participant.identity || "Speaker";
   const initials = getInitials(name);

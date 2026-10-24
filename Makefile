@@ -130,6 +130,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And who must not RECEIVE it: the recorder template (the edge mix) always, ≤ 4-core
 	# devices and phones without hardware AV1 decode — they get the VP8 / H264 backup.
 	cd web && node --experimental-strip-types --no-warnings lib/receive-codecs.test.mts
+	# And which camera layer the mix takes per tile (high only above 540 px), and that cameras
+	# the layout does not draw are not forwarded to the egress at all.
+	cd web && node --experimental-strip-types --no-warnings lib/mix-subscriptions.test.mts
 	# The adaptation rules against synthetic stat streams: holds, clean windows, hysteresis,
 	# cool-down, the oscillation hold, the CPU ladder's order, and AV1's cheaper rungs.
 	cd web && node --experimental-strip-types --no-warnings lib/adapt-governor.test.mts
