@@ -202,6 +202,10 @@ func run() error {
 		crm.UseMediaStore(recordings)
 	}
 	apiServer.UseEngage(crm)
+	// Audience gauges for the dashboard (docs/observability.md). A no-op with telemetry off.
+	if err := apiServer.RegisterGauges(tel.MeterProvider()); err != nil {
+		log.Error("audience gauges did not register; continuing without them", "error", err)
+	}
 	go apiServer.StartMeetingLimitSweeper(ctx)
 	go apiServer.StartRecordingRetentionSweeper(ctx)
 	/* Future webinars still pinned to the retired Hetzner server move to the box first

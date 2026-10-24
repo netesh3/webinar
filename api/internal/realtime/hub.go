@@ -159,6 +159,18 @@ func (h *Hub) Count(slug string) int {
 	return len(h.subs[slug])
 }
 
+// Total is how many subscribers this process holds across every webinar: the edge viewers
+// connected to this instance (the webinarliv.edge_viewers gauge).
+func (h *Hub) Total() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, set := range h.subs {
+		n += len(set)
+	}
+	return n
+}
+
 // Active reports whether this process has any subscriber at all.
 func (h *Hub) Active() bool {
 	h.mu.Lock()
