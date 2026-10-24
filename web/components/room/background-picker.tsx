@@ -10,6 +10,7 @@ import {
   useEffectsPausedForCpu,
 } from "@/lib/cpu-relief";
 import {
+  IMAGE_FAILED_TEXT,
   NO_BACKGROUND,
   retryBackground,
   useAutoLowLight,
@@ -88,12 +89,41 @@ export function VirtualBackground() {
     if (effectsPausedForCpu()) setEffectsPausedForCpu(false);
   }, [choiceKey]);
 
-  const { error } = useVirtualBackground(
+  const { error, retryable } = useVirtualBackground(
     track,
     pausedForCpu ? NO_BACKGROUND : prefs.background,
     prefs.lowLight,
     prefs.backgroundEngine,
   );
+
+  /* The room is where the audience can see, so a background still downloading — or one that
+   * failed — sends the dark frame, not the room (lib/background-loading.ts, "cover"). Said on
+   * every mount of the room rather than only left over from the pre-join's cleanup: a room
+   * reached without a pre-join (a simulive going live with its host) must start the same way,
+   * and a "Start camera now" from an earlier room must not carry over to this one. */
+  useEffect(() => {
+    setBackgroundLoadingView("cover");
+  }, []);
+  const download = useBackgroundDownload();
+  const loadingView = useBackgroundLoadingView();
+  const status = useBackgroundStatus();
+  /* Only the Enhanced engine holds the camera (SoftSegmenter.whileDownloading); the LiveKit
+   * engine has no download of ours to wait for. */
+  const heldCamera =
+    !!track &&
+    isCameraEnabled &&
+    wanted &&
+    !pausedForCpu &&
+    prefs.backgroundEngine === "enhanced" &&
+    loadingView === "cover";
+  /* Waiting on the download. Keyed on the processor still preparing rather than on the
+   * download alone, so the note stays put between the segmenter's own retries (when the
+   * download reads "failed" for a moment) instead of flickering away and back. */
+  const holding =
+    heldCamera && status.phase === "preparing" && download.phase !== "idle" && download.phase !== "ready";
+  /* Given up, with the dark frame still going out: the choice is the presenter's — try again,
+   * or start the camera without the background. Said here instead of the generic error toast. */
+  const failedHold = heldCamera && status.phase === "failed" && status.error !== IMAGE_FAILED_TEXT;
 
   /* The same failure the pre-join screen shows, said out loud in the room.
    *
@@ -105,8 +135,8 @@ export function VirtualBackground() {
    * again with a button to try again; see BackgroundTiles.
    */
   useEffect(() => {
-    if (error) notify(error, "error");
-  }, [error, notify]);
+    if (error && !failedHold) notify(error, "error");
+  }, [error, notify, failedHold]);
 
   /* Live before the background's files have arrived — joined while the first download was
    * still running, or picked a background for the first time in the room. The camera sends a
@@ -114,26 +144,31 @@ export function VirtualBackground() {
    * off until its background has loaded: the audience sees neither a blur nor the room the
    * presenter asked to hide. This says so, with how far along it is, and offers the presenter
    * the choice to start the camera now (the background appears when it is ready). */
-  const download = useBackgroundDownload();
-  const loadingView = useBackgroundLoadingView();
-  const holding =
-    !!track &&
-    isCameraEnabled &&
-    wanted &&
-    !pausedForCpu &&
-    loadingView === "cover" &&
-    (download.phase === "downloading" || download.phase === "starting");
   useEffect(() => {
-    if (!holding) {
+    if (!holding && !failedHold) {
       dismissKey(HOLD_TOAST);
       return;
     }
-    upsert(HOLD_TOAST, {
-      message: "Your camera starts when your background is ready.",
-      interactive: true,
-      node: <BackgroundHoldCard download={download} onStart={() => setBackgroundLoadingView("camera")} />,
-    });
-  }, [holding, download, upsert, dismissKey]);
+    const startCamera = () => setBackgroundLoadingView("camera");
+    upsert(HOLD_TOAST, failedHold
+      ? {
+          message: error ?? "Couldn't load your background. Your camera is paused.",
+          tone: "error",
+          interactive: true,
+          node: (
+            <BackgroundHoldFailedCard
+              error={error}
+              onRetry={retryable ? retryBackground : undefined}
+              onStart={startCamera}
+            />
+          ),
+        }
+      : {
+          message: "Your camera starts when your background is ready.",
+          interactive: true,
+          node: <BackgroundHoldCard download={download} onStart={startCamera} />,
+        });
+  }, [holding, failedHold, download, error, retryable, upsert, dismissKey]);
   useEffect(() => () => dismissKey(HOLD_TOAST), [dismissKey]);
 
   return null;
@@ -156,7 +191,9 @@ function BackgroundHoldCard({ download, onStart }: { download: DownloadProgress;
           <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
             {download.phase === "downloading"
               ? `Downloading the background · ${percent}%`
-              : "Almost ready…"}
+              : download.phase === "failed"
+                ? "The download stopped. Trying again…"
+                : "Almost ready…"}
           </p>
         </div>
       </div>
@@ -180,6 +217,47 @@ function BackgroundHoldCard({ download, onStart }: { download: DownloadProgress;
       <p className="text-[11px] leading-snug text-ink-3">
         Others will see your room until the background is ready.
       </p>
+    </div>
+  );
+}
+
+/** The in-room note when the background could not be loaded and the camera is still paused. */
+function BackgroundHoldFailedCard({
+  error,
+  onRetry,
+  onStart,
+}: {
+  error: string | null;
+  onRetry?: () => void;
+  onStart: () => void;
+}) {
+  return (
+    <div className="join-card room-dark flex w-full flex-col gap-2 rounded-xl border border-live/40 bg-surface/95 px-3 py-2.5 text-left shadow-xl backdrop-blur sm:w-[20rem]">
+      <div className="min-w-0">
+        <p className="text-[13px] leading-snug font-semibold text-ink">
+          Couldn&apos;t load your background — your camera is paused
+        </p>
+        {error && <p className="mt-0.5 text-[12px] leading-snug text-ink-2">{error}</p>}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-md bg-white/15 px-2.5 py-1 text-[12px] font-medium text-ink hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:outline-none"
+          >
+            Retry
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onStart}
+          className="rounded-md bg-white/10 px-2.5 py-1 text-[12px] font-medium text-ink hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:outline-none"
+        >
+          Start camera without background
+        </button>
+      </div>
+      <p className="text-[11px] leading-snug text-ink-3">Others will see your room if you start without it.</p>
     </div>
   );
 }

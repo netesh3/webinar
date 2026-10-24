@@ -2090,6 +2090,24 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       if (this.whileDownloading(frame, controller, lowLight)) return;
     }
 
+    /* Given up — the download, the model or the GPU — in the room, where the screen has told the
+     * presenter their camera starts when the background is ready. The room they asked to hide
+     * does not go out on its own: the dark frame stays until they choose "Start camera without
+     * background" (which sets the view to "camera") or Retry (background-picker.tsx). */
+    if (
+      wantsBackground &&
+      (this.modelFailure !== null || this.engineFailure !== null) &&
+      backgroundLoadingView() === "cover"
+    ) {
+      const covered = this.coverFrame(frame);
+      if (covered) {
+        frame.close();
+        this.lastSent = covered.timestamp;
+        controller.enqueue(covered);
+        return;
+      }
+    }
+
     const engine = this.liveEngine();
     if (!engine) {
       // The veil is only for a GPU context being rebuilt (a second or so) under a background
@@ -2676,8 +2694,14 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
 
   private coverFrame(frame: VideoFrame): VideoFrame | null {
     try {
-      const w = frame.displayWidth;
-      const h = frame.displayHeight;
+      /* Sized as the picture is shown. On WebKit a portrait phone's frame can report its
+       * landscape buffer, and a cover that size would turn the audience's tile sideways until
+       * the background arrived — the same correction uploadFrame makes. */
+      const video = this.inputVideo;
+      const shown = video ? { width: video.videoWidth, height: video.videoHeight } : null;
+      const { w, h } = this.uprightCopy
+        ? uprightSize(frame as VideoFrame & { rotation?: number }, shown)
+        : { w: frame.displayWidth, h: frame.displayHeight };
       this.cover ??= canvas2d(w, h);
       const c = this.cover;
       if (c.canvas.width !== w || c.canvas.height !== h) {

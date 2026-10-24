@@ -124,5 +124,38 @@ const fakeFetch =
   ok(out.byteLength === 4, "slow but moving (600 ms overall, stall limit 200 ms) completes");
 }
 
+{
+  // Cancelled from outside — the other file of the pair failed — while still downloading.
+  const outer = new AbortController();
+  const seen: number[] = [];
+  let err: unknown = null;
+  const p = fetchWithProgress("/pair", {
+    onBytes: (n) => seen.push(n),
+    signal: outer.signal,
+    stallMs: 5000,
+    fetchImpl: fakeFetch(streamOf([new Uint8Array([1]), new Uint8Array([2])], 1)),
+  });
+  setTimeout(() => outer.abort(), 50);
+  try {
+    await p;
+  } catch (e) {
+    err = e;
+  }
+  ok(err instanceof DOMException && err.name === "AbortError", "an outside cancel ends it, as an abort", String(err));
+  ok(!(err instanceof DownloadStalledError), "…not reported as a stall");
+  const before = seen.length;
+  await new Promise((r) => setTimeout(r, 100));
+  ok(seen.length === before, "and it reports nothing after being cancelled");
+}
+{
+  // Written into one buffer of the expected size; grown if larger, trimmed if smaller.
+  const exact = await fetchWithProgress("/e", { onBytes: () => {}, expectedBytes: 5, fetchImpl: fakeFetch(streamOf([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])])) });
+  ok(exact.byteLength === 5 && exact.join() === "1,2,3,4,5", "expected size: exact bytes");
+  const bigger = await fetchWithProgress("/b", { onBytes: () => {}, expectedBytes: 2, fetchImpl: fakeFetch(streamOf([new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])])) });
+  ok(bigger.byteLength === 5 && bigger.join() === "1,2,3,4,5", "a larger file grows the buffer");
+  const smaller = await fetchWithProgress("/s", { onBytes: () => {}, expectedBytes: 9, fetchImpl: fakeFetch(streamOf([new Uint8Array([7, 8])])) });
+  ok(smaller.byteLength === 2 && smaller.join() === "7,8", "a smaller file is trimmed to what arrived");
+}
+
 console.log(`\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`);
 process.exit(failures === 0 ? 0 : 1);

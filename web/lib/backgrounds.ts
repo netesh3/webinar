@@ -310,7 +310,7 @@ export function describeBackgroundError(err: unknown, lowLightOnly = false): str
     return "Couldn't download the background effect. Check your connection and try again.";
   }
   if (text.includes("background image failed to load")) {
-    return "Couldn't load that background image. Try again or pick another one.";
+    return IMAGE_FAILED_TEXT;
   }
   /* Emscripten's half-drained start-up callbacks — see oneAtATime in lib/segmenter.ts.
    *
@@ -470,6 +470,11 @@ const IDLE: BackgroundStatus = { phase: "idle", error: null, retryable: false, a
 const readStatusOnServer = (): BackgroundStatus => IDLE;
 
 /** Where the virtual background is. See BackgroundStatus. */
+/** The sentence describeBackgroundError gives a still that failed to load. Then the person is
+ *  still shown, over the blur that stands in for the picture — the camera is not paused, so the
+ *  room's "camera is paused" note must not claim it is. */
+export const IMAGE_FAILED_TEXT = "Couldn't load that background image. Try again or pick another one.";
+
 /** The background's first-time download (lib/background-loading.ts), for a progress bar. */
 export function useBackgroundDownload(): DownloadProgress {
   return useSyncExternalStore(subscribeDownload, downloadProgress, () => SERVER_PROGRESS);

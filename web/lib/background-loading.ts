@@ -129,6 +129,11 @@ export async function fetchWithProgress(
     onBytes: (loaded: number) => void;
     stallMs?: number;
     fetchImpl?: typeof fetch;
+    /** Ends this download from outside — the other file of the pair failed (humanseg.ts). */
+    signal?: AbortSignal;
+    /** The expected size, to write the bytes straight into one buffer rather than collecting
+     *  chunks and copying them (which held the file twice). Grown if the file is larger. */
+    expectedBytes?: number;
   },
 ): Promise<Uint8Array> {
   const stallMs = opts.stallMs ?? STALL_MS;
@@ -140,14 +145,20 @@ export async function fetchWithProgress(
   /* On a stall: abort the request, and cancel the reader as well. Aborting alone ends a real
    * fetch's body stream in today's browsers, but a pending read() that is not tied to the
    * signal would wait for ever — the very hang this exists to end — so it is not relied on. */
+  const end = () => {
+    controller.abort();
+    void reader?.cancel().catch(() => {});
+  };
   const arm = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
       stalled = true;
-      controller.abort();
-      void reader?.cancel().catch(() => {});
+      end();
     }, stallMs);
   };
+  const onOuterAbort = () => end();
+  if (opts.signal?.aborted) throw new DOMException("the background download was cancelled", "AbortError");
+  opts.signal?.addEventListener("abort", onOuterAbort);
   arm();
   try {
     const res = await doFetch(url, { signal: controller.signal });
@@ -158,29 +169,31 @@ export async function fetchWithProgress(
       return buf;
     }
     reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
+    let buf = new Uint8Array(Math.max(0, opts.expectedBytes ?? 0));
     let loaded = 0;
     for (;;) {
       arm();
       const { done, value } = await reader.read();
-      // A cancelled read reports done: a stall must not pass for a finished file.
+      // A cancelled read reports done: a stall or an outside cancel must not pass for a
+      // finished file.
       if (stalled) throw new DownloadStalledError(url);
+      if (opts.signal?.aborted) throw new DOMException("the background download was cancelled", "AbortError");
       if (done) break;
-      chunks.push(value);
+      if (loaded + value.byteLength > buf.byteLength) {
+        const grown = new Uint8Array(Math.max(buf.byteLength * 2, loaded + value.byteLength));
+        grown.set(buf.subarray(0, loaded));
+        buf = grown;
+      }
+      buf.set(value, loaded);
       loaded += value.byteLength;
       opts.onBytes(loaded);
     }
-    const out = new Uint8Array(loaded);
-    let at = 0;
-    for (const c of chunks) {
-      out.set(c, at);
-      at += c.byteLength;
-    }
-    return out;
+    return loaded === buf.byteLength ? buf : buf.slice(0, loaded);
   } catch (err) {
     if (stalled) throw new DownloadStalledError(url);
     throw err;
   } finally {
     clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onOuterAbort);
   }
 }

@@ -95,25 +95,35 @@ function loadOrt(): Promise<Ort> {
  * along they are and a download that stops moving fails instead of waiting for ever (see
  * lib/background-loading.ts). The runtime is handed to ORT as bytes (env.wasm.wasmBinary, so
  * it fetches no .wasm of its own), the model to InferenceSession.create as bytes. */
+/* Each attempt is numbered, and only the current one may report. When one file of the pair
+ * fails, the other is cancelled with it: left running, it went on reporting "downloading"
+ * over the attempt's "failed" — so the screen promised a background that had already been
+ * given up on — and competed with the next attempt for the same slow connection. */
+let attemptSeq = 0;
+
 async function downloadFiles(): Promise<{ runtime: Uint8Array; model: Uint8Array }> {
+  const attempt = ++attemptSeq;
+  const pair = new AbortController();
   const total = BACKGROUND_FILES.runtime.bytes + BACKGROUND_FILES.model.bytes;
   const got = { runtime: 0, model: 0 };
-  const report = () => setDownloadProgress({ phase: "downloading", loaded: got.runtime + got.model, total });
+  const report = () => {
+    if (attempt !== attemptSeq || pair.signal.aborted) return;
+    setDownloadProgress({ phase: "downloading", loaded: got.runtime + got.model, total });
+  };
   report();
-  const [runtime, model] = await Promise.all([
-    fetchWithProgress(BACKGROUND_FILES.runtime.url, {
+  const one = (file: "runtime" | "model") =>
+    fetchWithProgress(BACKGROUND_FILES[file].url, {
+      signal: pair.signal,
+      expectedBytes: BACKGROUND_FILES[file].bytes,
       onBytes: (n) => {
-        got.runtime = n;
+        got[file] = n;
         report();
       },
-    }),
-    fetchWithProgress(BACKGROUND_FILES.model.url, {
-      onBytes: (n) => {
-        got.model = n;
-        report();
-      },
-    }),
-  ]);
+    }).catch((err: unknown) => {
+      pair.abort();
+      throw err;
+    });
+  const [runtime, model] = await Promise.all([one("runtime"), one("model")]);
   return { runtime, model };
 }
 
@@ -131,11 +141,18 @@ function loadShared(): Promise<Shared> {
     const downloadedMs = Math.round(performance.now() - began);
     setDownloadProgress({ phase: "starting", loaded: files.runtime.byteLength + files.model.byteLength, total: files.runtime.byteLength + files.model.byteLength });
     ort.env.wasm.wasmBinary = files.runtime;
-    const session = await ort.InferenceSession.create(files.model, {
-      executionProviders: ["wasm"],
-      graphOptimizationLevel: "all",
-      logSeverityLevel: 3,
-    });
+    let session: Session;
+    try {
+      session = await ort.InferenceSession.create(files.model, {
+        executionProviders: ["wasm"],
+        graphOptimizationLevel: "all",
+        logSeverityLevel: 3,
+      });
+    } finally {
+      /* Instantiated by now (or failed): the 14 MB is not needed again, and env would hold it
+       * for the life of the page. ORT initialises its WebAssembly once per page. */
+      ort.env.wasm.wasmBinary = undefined;
+    }
     console.info("[background] segmentation ready", {
       model: MODEL_PATH,
       downloadMs: downloadedMs,
