@@ -1448,12 +1448,21 @@ export function useRealtime(
     await publish(msg);
   }, [apply, publish]);
 
+  /* Through the relay for everyone, like questions (sendRecorded).
+   *
+   * The stage used to publish reactions straight onto the data channel, which reaches only
+   * the people connected to LiveKit — never an Edge audience, who get the room's messages
+   * from the server's realtime bus, and the server only copies onto that bus what it sends
+   * itself (edgeRoom.SendData in api/internal/api/edge.go). So a host's or panelist's
+   * reaction was invisible to everyone watching on Edge. The relay broadcasts to the whole
+   * room, sender included, and to the bus; it falls back to the data channel when the relay
+   * refuses (before the session is live, or rate-limited), as before. */
   const react = useCallback(
     async (emoji: Reaction) => {
       const msg: ReactionMessage = { kind: "reaction", from: meRef.current, emoji };
-      await send(msg, { kind: "reaction", emoji });
+      await sendRecorded(msg, { kind: "reaction", emoji });
     },
-    [send],
+    [sendRecorded],
   );
 
   const askToUnmute = useCallback(

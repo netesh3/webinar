@@ -54,6 +54,7 @@ import { FileShareBar } from "./file-share-bar";
 import { MeetingLimitBanner } from "./meeting-limit-banner";
 import { RoomHeader } from "./webinar-room";
 import { EdgePlayer } from "./edge-player";
+import { ReactionOverlay } from "./reactions";
 import { useReturnQuiet } from "@/lib/use-return-quiet";
 import { mayBeSpeakerView } from "@/lib/speaker-view";
 
@@ -350,6 +351,9 @@ export function EdgeAudienceRoom({
                           lowLatency={Boolean(join.lowLatency)}
                           speakerView={mayBeSpeakerView(controls.audienceLayout)}
                         />
+                        {/* Reactions float over the player here as they do over the stage — this room
+                            renders no Stage, so without it nobody watching on Edge saw any. */}
+                        <ReactionOverlay />
                         {streamState === "retrying" && !returnQuiet && (
                           <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full bg-black/60 px-3 py-1 text-[11.5px] text-white/80">
                             Reconnecting chat…
