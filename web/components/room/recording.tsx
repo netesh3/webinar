@@ -146,7 +146,12 @@ function useRecorder(): RecorderContextValue {
   const [destination, setDestination] = useState<"cloud" | "local" | null>(null);
 
   const [stoppedRecently, setStoppedRecently] = useState(false);
-  const { recording: serverRecording, recordingStartedAt: serverStartedAt } = useRoomUI();
+  const {
+    recording: serverRecording,
+    recordingStartedAt: serverStartedAt,
+    recordingAuto,
+    isHost,
+  } = useRoomUI();
 
   // Cleared when the server stops reporting a recording — on that edge, during
   // render, rather than in an effect after it. Only the edge: stop() raising the
@@ -174,6 +179,21 @@ function useRecorder(): RecorderContextValue {
     notifyRef.current = notify;
   }, [notify]);
 
+  /* "Record automatically" started the recording on the server, so nobody pressed Record and
+   * nothing above announced it: tell the host. Once per recording (keyed on its start), and
+   * also to a host who joins after it began, so they know it is running. */
+  const autoNoticed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isHost || !serverRecording || !recordingAuto) return;
+    const key = serverStartedAt ?? "auto";
+    if (autoNoticed.current === key) return;
+    autoNoticed.current = key;
+    notifyRef.current(
+      "Recording started automatically. People on stage see a REC indicator.",
+      "ok",
+    );
+  }, [isHost, serverRecording, recordingAuto, serverStartedAt]);
+
   const start = useCallback(
     async (dest: "cloud" | "local") => {
       if (recorder.current || recording.current) return;
@@ -191,7 +211,7 @@ function useRecorder(): RecorderContextValue {
           setState("recording");
           setStartedAt(began);
           setBytes(0);
-          notifyRef.current("Recording started.", "ok");
+          notifyRef.current("Recording started. People on stage see a REC indicator.", "ok");
           // Storage nearly or already full: the recording goes ahead, the host is told.
           if (rec.storageWarning) notifyRef.current(rec.storageWarning, "info");
         } catch (err: unknown) {
@@ -233,7 +253,7 @@ function useRecorder(): RecorderContextValue {
           notifyRef.current(
             local
               ? `Recording started — saving the ${meeting ? "meeting" : "webinar"} to the file you chose. Keep this tab open.`
-              : "Recording started. Everyone can see it — keep this tab open.",
+              : "Recording started. People on stage see a REC indicator — keep this tab open.",
             "ok",
           );
         },

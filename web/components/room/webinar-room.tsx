@@ -635,6 +635,7 @@ function RoomSession({
         topic={initialTopic}
         displayName={join.displayName}
         role={join.role === "host" ? "Host" : join.meeting ? "Meeting" : "Panelist"}
+        meeting={join.meeting === true}
         prefs={prefs}
         onUpdatePrefs={updatePrefs}
         initialMedia={meetingEntry ? prejoinMedia(prefs, true) : undefined}
@@ -826,6 +827,7 @@ function ConnectedRoom({
     topic,
     recording,
     recordingStartedAt,
+    recordingAuto,
     startedAt,
     endedAt,
     status,
@@ -1948,6 +1950,7 @@ function ConnectedRoom({
       maxDurationMin,
       recording,
       recordingStartedAt,
+      recordingAuto,
       isHost,
       permissions,
       me,
@@ -2001,6 +2004,7 @@ function ConnectedRoom({
       maxDurationMin,
       recording,
       recordingStartedAt,
+      recordingAuto,
       isHost,
       permissions,
       me,

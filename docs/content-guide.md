@@ -35,7 +35,9 @@ export const post: Post = {
 ```
 
 Then add it to `web/content/blog/index.ts`. That is all: the index, category pages,
-post page, sitemap and RSS feed (`/blog/rss.xml`) pick it up. Posts are compiled into
+post page, sitemap and RSS feed (`/blog/rss.xml`) pick it up. (The sitemap and robots rules
+live in `web/lib/seo.ts`; `lib/seo.test.mts` checks that every post is listed and no app
+route is.) Posts are compiled into
 the build, so every page is generated statically and nothing reads the filesystem at
 runtime on Workers.
 
@@ -149,38 +151,35 @@ which should say so up front.
 
 Done: **Run a meeting** (`run-a-meeting`), **Co-hosts and panelists**
 (`co-hosts-and-panelists`), **Recordings and retention** (`recordings-and-retention`),
-**Live captions** (`live-captions`).
+**Live captions** (`live-captions`), **Follow up by email and WhatsApp**
+(`follow-up-by-email-and-whatsapp`), **Your audience** (`your-audience`), **AI recap and
+insights** (`ai-recap-and-insights`), **AI knowledge base** (`ai-knowledge-base`),
+**Highlights, reels and Studio** (`highlights-reels-and-studio`).
 
-1. **Follow up by email and WhatsApp** — confirmation, reminders, replay link, the Follow
-   up tab, WhatsApp consent (WhatsApp: on request)
-2. **Your audience (CRM)** — the Audience tab, registrants across webinars, exports
-3. **AI recap and insights** — the AI insights tab, Generate recap now, key points,
-   action items, chapters, top questions (AI: on request, off by default)
-4. **AI knowledge base** — adding material, how answers stay grounded, past-Q&A
-   follow-ups (AI: on request)
-5. **Auto mode for Simulive** — what the assistant answers, how it is signed, retracting
+1. **Auto mode for Simulive** — what the assistant answers, how it is signed, retracting
    an answer (on request; needs AI, engagement replay and Simulive)
-6. **Spam detection** — flags, Remove person, Mute chat, auto-hide, links
-7. **Highlights, reels and Studio** — starting highlights, clips, the content plan
-    (on request)
-8. **Repurpose your content** — turning a session into posts and emails (on request)
-9. **Integrations** — Zoom meetings and webinars, Stream to YouTube, the email inbox,
-    WhatsApp (Zoom and WhatsApp: on request)
-10. **Install the app and get notifications** — PWA install on desktop, Android and iOS
-    (16.4+, from the Home Screen), Web Push
-11. **Admin features** — for operators: account switches, approvals, storage, usage
+2. **Spam detection** — flags, Remove person, Mute chat, auto-hide, links
+3. **WhatsApp inbox and broadcasts** — chats, templates, automations, broadcasts, saved
+   lists (on request)
+4. **Integrations** — Zoom meetings and webinars, Stream to YouTube, the email inbox,
+   WhatsApp (Zoom and WhatsApp: on request)
+5. **Install the app and get notifications** — PWA install on desktop, Android and iOS
+   (16.4+, from the Home Screen), Web Push
+6. **Admin features** — for operators: account switches, approvals, storage, usage
 
 ### Engineering
 
-1. **Simulive's shared clock** — one start time, per-viewer position, late joiners,
-   why attendees cannot seek, engagement replay timing
-2. **On-demand video servers** — warm-up ahead of sessions, readiness checks, draining,
-   retries
-3. **CPU-aware quality adaptation** — the CPU ladder, why its order, AV1 demotion,
+Done: **How Webinar Liv delivers video** (`how-webinar-liv-delivers-video`), **Simulive's
+shared clock** (`simulive-keeping-every-viewer-on-the-same-moment`), **On-demand video
+servers** (`running-a-video-server-only-when-you-need-it`).
+
+1. **CPU-aware quality adaptation** — the CPU ladder, why its order, AV1 demotion,
    hysteresis
-4. **The recording pipeline** — from the room to a playable file, retention
-5. **The captions pipeline** — speech to text, where it runs, keeping captions in sync
-6. **AI that does not guess** — grounding answers in the host's own material, refusing
+2. **The recording pipeline** — from the room to a playable file, retention
+3. **The captions pipeline** — speech to text, where it runs, keeping captions in sync
+4. **AI that does not guess** — grounding answers in the host's own material, refusing
    when it does not know, signing assistant answers
-7. **Shipping without breaking live sessions** — the deploy guard
-8. **Observability** — OpenTelemetry traces, Grafana, and privacy-safe browser telemetry
+5. **Picking highlights** — counting engagement in code, letting the model choose and
+   title, snapping to sentences, making clips on the video server between sessions
+6. **Shipping without breaking live sessions** — the deploy guard
+7. **Observability** — OpenTelemetry traces, Grafana, and privacy-safe browser telemetry

@@ -235,6 +235,14 @@ func (s *Server) handleHostWebinar(w http.ResponseWriter, r *http.Request) {
 	if own, on, err := s.store.WebinarStreamIngest(r.Context(), wb.ID); err == nil && on {
 		wb.StreamRefused = destFailures.platformFailed(wb.ID, "stream", own, time.Now())
 	}
+	// The panel's addresses, for the edit form to save back (host views only).
+	if panel, err := s.store.PanelistContacts(r.Context(), wb.ID); err == nil {
+		for _, p := range panel {
+			wb.PanelistEmails = append(wb.PanelistEmails, p.Email)
+		}
+	} else {
+		s.log.Warn("host webinar: could not list the panel's addresses", "slug", wb.ID, "error", err)
+	}
 	httpx.JSON(w, http.StatusOK, wb)
 }
 
@@ -296,8 +304,19 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if meeting {
 		panelSeats = s.meetingCapForHost(r.Context(), user.ID)
 	}
-	if msg := panelistCapField(in.PanelistEmails, panelSeats); msg != "" {
-		fields["panelistEmails"] = msg
+	/* Addresses without an account first: they are named, and they are not counted
+	 * against the stage, because they would never take a seat on it. */
+	if _, taken := fields["panelistEmails"]; !taken {
+		msg, err := s.panelistAccountsField(r.Context(), in.Panel())
+		if err != nil {
+			s.fail(w, r, "create webinar: panelist accounts", err)
+			return types.Webinar{}, false
+		}
+		if msg != "" {
+			fields["panelistEmails"] = msg
+		} else if msg := panelistCapField(in.Panel(), panelSeats); msg != "" {
+			fields["panelistEmails"] = msg
+		}
 	}
 	if msg := s.simuliveRecordingField(r.Context(), user.ID, in, ""); msg != "" {
 		fields["simuliveRecordingId"] = msg
@@ -467,8 +486,19 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if wantMeeting && prevKind != "" && prevKind != types.KindMeeting {
 		fields["kind"] = "A webinar can't become a meeting. Create a meeting instead."
 	}
-	if msg := panelistCapField(in.PanelistEmails, stageCap); msg != "" {
-		fields["panelistEmails"] = msg
+	/* Addresses without an account first: they are named, and they are not counted
+	 * against the stage, because they would never take a seat on it. */
+	if _, taken := fields["panelistEmails"]; !taken {
+		msg, err := s.panelistAccountsField(r.Context(), in.Panel())
+		if err != nil {
+			s.fail(w, r, "update webinar: panelist accounts", err)
+			return
+		}
+		if msg != "" {
+			fields["panelistEmails"] = msg
+		} else if msg := panelistCapField(in.Panel(), stageCap); msg != "" {
+			fields["panelistEmails"] = msg
+		}
 	}
 	// The OWNER's recordings, whoever is editing: a co-host cannot point the host's
 	// simulive at a recording of their own.
@@ -593,6 +623,24 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		in.Controls.CaptionsEnabled = in.Options.Captions
 	}
 
+	/* A save that writes other sessions too (this and following, or a one-off becoming a
+	 * series) gives them this session's panel when the panel was not sent, rather than none:
+	 * "omitted keeps the panel" has to hold for the sessions it creates as well. */
+	if in.PanelistEmails == nil && hasPrev &&
+		((prev.SeriesID != "" && in.SeriesScope == "following") ||
+			(prev.SeriesID == "" && seriesRequested(in))) {
+		panel, err := s.store.PanelistContacts(r.Context(), slug)
+		if err != nil {
+			s.fail(w, r, "update webinar: panel", err)
+			return
+		}
+		emails := make([]string, 0, len(panel))
+		for _, p := range panel {
+			emails = append(emails, p.Email)
+		}
+		in.PanelistEmails = &emails
+	}
+
 	var wb types.Webinar
 	switch {
 	case hasPrev && prev.SeriesID != "" && in.SeriesScope == "following":
@@ -684,6 +732,13 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wb.ZoomNotice = savedZoom.Notice
+
+	/* Somebody this save took off the panel loses what was laid on their seat this session,
+	 * as with the bin in Setup (handleRemovePanelist): co-host above all, which would
+	 * otherwise keep letting them run a webinar they are no longer on. */
+	if hasPrev {
+		s.revokeDroppedPanelists(r.Context(), slug, prev.Panelists, wb.Panelists)
+	}
 
 	// Start time and reminder times both apply to what is already queued: see
 	// replanReminders, and the CRM's side in Engage.OnRescheduled.
@@ -1236,7 +1291,7 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	} else {
 		in.Options.Reminders = list
 	}
-	for _, email := range in.PanelistEmails {
+	for _, email := range in.Panel() {
 		if e := strings.TrimSpace(email); e != "" {
 			if _, err := mail.ParseAddress(e); err != nil {
 				fields["panelistEmails"] = fmt.Sprintf("%q isn't an email address.", e)
@@ -1319,7 +1374,11 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	 * so this does not wait for a sweeper — and a session that is live is not
 	 * marked, so this never closes one that is on the air. */
 	if existing.DidntGoLive {
-		httpx.Error(w, http.StatusForbidden, "ended", "This webinar's scheduled time has passed.")
+		msg := "This webinar's scheduled time has passed."
+		if isMeeting(existing) {
+			msg = "This meeting's scheduled time has passed."
+		}
+		httpx.Error(w, http.StatusForbidden, "ended", msg)
 		return
 	}
 	/* Already live is a rejoin, not a new start. Ended is left to SetStatus.
@@ -1398,6 +1457,9 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 		}
 		go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 	}
+	// A host already on camera before pressing Go live: "Record automatically" starts now
+	// rather than at the next tick (auto_record.go).
+	s.autoRecordSoon(wb)
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)
@@ -1445,7 +1507,12 @@ func goLiveClosed(wb types.Webinar) (string, bool) {
 	}
 	/* The minute count is hostStartLead, so the sentence and the check cannot drift. */
 	leadMin := int(hostStartLead / time.Minute)
-	return fmt.Sprintf("Go live opens %d minutes before the start, at %s.", leadMin, localTime(opens, wb.TimeZone)), true
+	/* Named after the button the host pressed: a meeting's is "Start meeting", not "Go live". */
+	button := "Go live"
+	if isMeeting(wb) {
+		button = "Start meeting"
+	}
+	return fmt.Sprintf("%s opens %d minutes before the start, at %s.", button, leadMin, localTime(opens, wb.TimeZone)), true
 }
 
 // handleTransferHost hands a live session to another panelist already in the room.
@@ -1896,12 +1963,18 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 // to perform the action this is announcing — and pushing metadata to a different project than
 // the one the action landed on would be worse than not pushing it at all.
 func (s *Server) pushRoomMetadata(r *http.Request, sfu RoomManager, wb types.Webinar) {
-	meta, err := s.roomMetadata(r.Context(), wb)
+	s.pushRoomMetadataCtx(r.Context(), sfu, wb)
+}
+
+// pushRoomMetadataCtx is pushRoomMetadata for work with no request (the sweeper, a webhook's
+// background follow-up).
+func (s *Server) pushRoomMetadataCtx(ctx context.Context, sfu RoomManager, wb types.Webinar) {
+	meta, err := s.roomMetadata(ctx, wb)
 	if err != nil {
 		s.log.Warn("could not encode room metadata", "slug", wb.ID, "error", err)
 		return
 	}
-	if err := sfu.SetMetadata(r.Context(), lk.RoomName(wb.ID), meta); err != nil {
+	if err := sfu.SetMetadata(ctx, lk.RoomName(wb.ID), meta); err != nil {
 		s.log.Warn("could not push room metadata", "slug", wb.ID, "error", err)
 	}
 }
@@ -2927,6 +3000,51 @@ func (s *Server) handleAddPanelist(w http.ResponseWriter, r *http.Request) {
 		s.syncPanelistMail(r.Context(), wb, "")
 	}
 	httpx.JSON(w, http.StatusOK, person)
+}
+
+// revokeDroppedPanelists clears the stage grant of everyone in before who is not in after.
+func (s *Server) revokeDroppedPanelists(ctx context.Context, slug string, before, after []types.Person) {
+	kept := make(map[string]bool, len(after))
+	for _, p := range after {
+		kept[p.ID] = true
+	}
+	for _, p := range before {
+		if kept[p.ID] {
+			continue
+		}
+		if err := s.store.RevokeStage(ctx, slug, hostIdentity(p.ID)); err != nil {
+			s.log.Warn("update webinar: could not clear a dropped panelist's grant",
+				"slug", slug, "user", p.ID, "error", err)
+		}
+	}
+}
+
+/* panelistAccountsField is the validation message naming the panelist addresses that have
+ * no account, or "". They used to be skipped without a word, so a host who typed a guest
+ * speaker's address saw the save succeed and found nobody on the stage. A panelist needs
+ * an account because their stage token is minted from a signed-in session. */
+func (s *Server) panelistAccountsField(ctx context.Context, emails []string) (string, error) {
+	missing, err := s.store.EmailsWithoutAccount(ctx, emails)
+	if err != nil || len(missing) == 0 {
+		return "", err
+	}
+	return panelistAccountsMessage(missing), nil
+}
+
+func panelistAccountsMessage(missing []string) string {
+	list := missing[0]
+	switch n := len(missing); {
+	case n == 2:
+		list = missing[0] + " and " + missing[1]
+	case n > 2:
+		list = strings.Join(missing[:n-1], ", ") + " and " + missing[n-1]
+	}
+	if len(missing) == 1 {
+		return fmt.Sprintf("No account uses %s yet, so they can't be a panelist. "+
+			"Ask them to sign up, then add them, or remove the address to save.", list)
+	}
+	return fmt.Sprintf("No account uses %s yet, so they can't be panelists. "+
+		"Ask them to sign up, then add them, or remove those addresses to save.", list)
 }
 
 func (s *Server) handleRemovePanelist(w http.ResponseWriter, r *http.Request) {

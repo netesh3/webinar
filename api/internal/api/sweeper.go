@@ -238,6 +238,8 @@ func (s *Server) runRealtime(ctx context.Context) bool {
 	s.realtimeJob(ctx, "expired webinars", realtimeJobBudget, s.sweepExpiredWebinars)
 	s.realtimeJob(ctx, "empty webinars", realtimeJobBudget, s.sweepEmptyWebinars)
 	s.realtimeJob(ctx, "broadcasts", realtimeJobBudget, s.sweepBroadcasts)
+	// "Record automatically", once the room is up and somebody is on the stage (auto_record.go).
+	s.realtimeJob(ctx, "auto recordings", realtimeJobBudget, s.sweepAutoRecordings)
 	s.realtimeJob(ctx, "egress pools", realtimeJobBudget, s.sweepEgressPools)
 	s.realtimeJob(ctx, "sfu vms", realtimeJobBudget, s.sweepSFUVMs)
 	s.realtimeJob(ctx, "simulive", realtimeJobBudget, s.sweepSimulive)

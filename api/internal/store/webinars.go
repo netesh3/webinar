@@ -1306,6 +1306,45 @@ func (s *Store) deleteWebinarRow(ctx context.Context, slug string) (Deleted, err
 	return out, nil
 }
 
+/* EmailsWithoutAccount returns the addresses in emails that no account has, lowercased,
+ * de-duplicated and in the order given. A panelist needs an account (their stage token is
+ * minted from a session), so the schedule form names these instead of dropping them. */
+func (s *Store) EmailsWithoutAccount(ctx context.Context, emails []string) ([]string, error) {
+	var want []string
+	seen := map[string]bool{}
+	for _, raw := range emails {
+		e := strings.ToLower(strings.TrimSpace(raw))
+		if e == "" || seen[e] {
+			continue
+		}
+		seen[e] = true
+		want = append(want, e)
+	}
+	if len(want) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT lower(email) FROM users WHERE lower(email) = ANY($1)`, want)
+	if err != nil {
+		return nil, err
+	}
+	found, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]bool, len(found))
+	for _, e := range found {
+		known[e] = true
+	}
+	var missing []string
+	for _, e := range want {
+		if !known[e] {
+			missing = append(missing, e)
+		}
+	}
+	return missing, nil
+}
+
 // AddPanelist grants an existing account a seat on the stage.
 func (s *Store) AddPanelist(ctx context.Context, slug, email string) (types.Person, error) {
 	u, err := s.UserByEmail(ctx, email)
@@ -1608,7 +1647,12 @@ func replaceQuestions(ctx context.Context, tx pgx.Tx, webinarID string, qs []typ
 // replacePanelists resolves emails to accounts. Addresses with no account are
 // skipped rather than rejected: a host pasting in a list should not have the
 // whole save fail because one colleague has not signed up yet.
-func replacePanelists(ctx context.Context, tx pgx.Tx, webinarID, hostID string, emails []string) error {
+func replacePanelists(ctx context.Context, tx pgx.Tx, webinarID, hostID string, list *[]string) error {
+	// Omitted: the panel stays as it is (types.WebinarInput.PanelistEmails).
+	if list == nil {
+		return nil
+	}
+	emails := *list
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM webinar_panelists WHERE webinar_id = $1`, webinarID); err != nil {
 		return err

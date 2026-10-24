@@ -34,8 +34,10 @@ export const post: Post = {
 
     Each panelist gets an email titled **You're a panelist:** followed by your topic, with a **Join the stage** button and a calendar file. If you move the webinar they are told the new time, and if you delete it they are told it is cancelled.
 
-    > [!WARNING] Addresses without an account are skipped
-    > If someone does not have an account yet, their address is left out without a message. Ask them to sign up first, then add them.
+    > [!WARNING] Every panelist needs an account
+    > If someone does not have an account yet, the form names their address under **Panelist emails** and does not save until you take it out. Ask them to sign up first, then add them.
+
+    When you edit the webinar later, the box already lists your panelists. Leave it alone and they stay on the stage. To take someone off, delete their address; you are asked to confirm before the change is saved.
 
     ### After scheduling
 
@@ -69,6 +71,8 @@ export const post: Post = {
 
     To send someone back, open their menu and choose **Remove speaker permission**. They are muted and return to the audience.
 
+    Scheduled panelists are not offered **Audio only** or **Remove speaker permission**, because their seat comes from the panel. Mute them from **Participants**, or take them off the panel in **Setup**.
+
     For everyone at once, **Host tools** has **Allow everyone to speak**, **Bring everyone on stage** and **Remove everyone's speaking permission**. That last one leaves your scheduled panelists where they are.
 
     ## Make a co-host
@@ -79,9 +83,11 @@ export const post: Post = {
     2. Open the menu next to one of your panelists.
     3. Choose **Make co-host**.
 
-    You see a note that they can now control the webinar like you can. To undo it, choose **Remove co-host**, and they go back to being an ordinary panelist.
+    You see a note listing what they can now do, and what stays with you. To undo it, choose **Remove co-host**, and they go back to being an ordinary panelist.
 
     Only scheduled panelists can be co-hosts, so invite someone as a panelist first. A few things stay with you as the host: deleting or copying the webinar, handing over the host role, sending follow-ups, and deleting recordings.
+
+    When a co-host presses **Leave**, they get **Leave webinar** (the session carries on with you) and **End webinar for everyone**. They are not offered **Assign host & leave**, because only you can hand over the host role.
 
     ## Remove someone
 

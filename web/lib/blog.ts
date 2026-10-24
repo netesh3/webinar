@@ -140,6 +140,8 @@ export const DIAGRAM_NAMES = [
   "server-lifecycle",
   "webinar-timeline",
   "simulive-clock",
+  "server-clock",
+  "video-box-lifecycle",
 ] as const;
 
 export type DiagramName = (typeof DIAGRAM_NAMES)[number];

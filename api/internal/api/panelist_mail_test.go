@@ -42,7 +42,7 @@ func TestPanelistsAreEmailedTheirStageLink(t *testing.T) {
 	// A draft is not a commitment: nobody is emailed yet.
 	wb := h.newWebinar("Panel Mail", func(in *types.WebinarInput) {
 		in.Status = types.StatusDraft
-		in.PanelistEmails = []string{"Pam.Panel@test.dev", "nobody-yet@test.dev"}
+		in.PanelistEmails = ptr([]string{"Pam.Panel@test.dev"})
 	})
 	h.server.WaitBackground()
 	if got := mail.to("pam.panel@test.dev", "You're a panelist"); len(got) != 0 {
@@ -55,7 +55,7 @@ func TestPanelistsAreEmailedTheirStageLink(t *testing.T) {
 			Topic: wb.Topic, StartsAt: wb.StartsAt, Duration: 60, TimeZone: "UTC",
 			Kind: types.KindLive, Status: types.StatusScheduled, RegistrationRequired: true,
 			Approval: types.ApprovalAutomatic, AttendeeLimit: 100,
-			PanelistEmails: []string{"pam.panel@test.dev"},
+			PanelistEmails: ptr([]string{"pam.panel@test.dev"}),
 		}
 		mutate(&in)
 		res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/", in)
@@ -110,7 +110,7 @@ func TestPanelistsAreEmailedTheirStageLink(t *testing.T) {
 	newStart := time.Now().Add(3 * time.Hour).UTC().Format(time.RFC3339)
 	wb = update(func(in *types.WebinarInput) {
 		in.StartsAt = newStart
-		in.PanelistEmails = []string{"pam.panel@test.dev", "pia.panel@test.dev"}
+		in.PanelistEmails = ptr([]string{"pam.panel@test.dev", "pia.panel@test.dev"})
 	})
 	if got := mail.to("pia.panel@test.dev", "You're a panelist"); len(got) != 1 {
 		t.Errorf("invitations to pia = %d, want 1", len(got))
@@ -132,10 +132,10 @@ func TestPanelistsAreEmailedTheirStageLink(t *testing.T) {
 	seq = icsSequence(t, moved[0].ICS)
 
 	// Taken off and put back: invited again.
-	wb = update(func(in *types.WebinarInput) { in.StartsAt = newStart; in.PanelistEmails = nil })
+	wb = update(func(in *types.WebinarInput) { in.StartsAt = newStart; in.PanelistEmails = ptr([]string{}) })
 	wb = update(func(in *types.WebinarInput) {
 		in.StartsAt = newStart
-		in.PanelistEmails = []string{"pam.panel@test.dev", "pia.panel@test.dev"}
+		in.PanelistEmails = ptr([]string{"pam.panel@test.dev", "pia.panel@test.dev"})
 	})
 	if got := mail.to("pam.panel@test.dev", "You're a panelist"); len(got) != 2 {
 		t.Errorf("after being re-added, invitations to pam = %d, want 2", len(got))

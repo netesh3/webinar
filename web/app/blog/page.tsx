@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { BlogHeader, BlogShell, PostList } from "@/components/blog/blog-shell";
 import { POSTS } from "@/content/blog";
+import { RSS_ALTERNATE } from "@/lib/seo";
 
 const DESCRIPTION =
   "Step-by-step tutorials for hosting webinars with Webinar Liv, and engineering notes on how the platform is built.";
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   alternates: {
     canonical: "/blog",
-    types: { "application/rss+xml": [{ url: "/blog/rss.xml", title: "Webinar Liv blog" }] },
+    types: RSS_ALTERNATE,
   },
   openGraph: { title: "Webinar Liv blog", description: DESCRIPTION, type: "website", url: "/blog" },
 };

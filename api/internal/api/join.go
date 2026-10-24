@@ -738,6 +738,13 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 	if recording && !recordingSince.IsZero() {
 		recordingStartedAt = recordingSince.UTC().Format(time.RFC3339Nano)
 	}
+	// Whether it is the one "Record automatically" started, for the host's notice.
+	recordingAuto := false
+	if recording {
+		if auto, err := s.store.ActiveRecordingIsAuto(ctx, wb.ID); err == nil {
+			recordingAuto = auto
+		}
+	}
 	b, err := json.Marshal(types.RoomMeta{
 		Controls:           wb.Controls,
 		Status:             wb.Status,
@@ -746,6 +753,7 @@ func (s *Server) roomMetadata(ctx context.Context, wb types.Webinar) (string, er
 		EndedAt:            wb.EndedAt,
 		Recording:          recording,
 		RecordingStartedAt: recordingStartedAt,
+		RecordingAuto:      recordingAuto,
 		MaxDurationMin:     wb.MaxDurationMin,
 		SimuliveStartAt:    wb.SimuliveStartAt,
 		SimuliveDoorsOpen:  wb.SimuliveDoorsOpen,

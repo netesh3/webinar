@@ -1,6 +1,7 @@
 "use client";
 
 import { Toggle } from "../controls";
+import { Badge } from "../ui";
 import { useAppConfig, useSession } from "../providers";
 import { api } from "@/lib/api";
 import { FeatureCloudRecording, type Webinar } from "@/lib/api-types";
@@ -23,14 +24,16 @@ export function RoomSection({
   const config = useAppConfig();
   const { account } = useSession();
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
+  /* "Record automatically" is a cloud recording the server starts (api/internal/api/
+   * auto_record.go), so it needs the host's cloud recording switch and a site that records
+   * on the server. Without them it is shown off and disabled rather than hidden, so a host
+   * knows it exists. A simulive plays a recording and is never recorded itself. */
+  const autoRecordShown = form.kind !== "simulive";
+  const autoRecordReady = cloudRecording && config.recordingMode === "egress";
   const extras = (
     [
-      // A simulive plays a recording and is never recorded itself.
-      ...(cloudRecording && form.kind !== "simulive"
-        ? ([["autoRecord", "Record automatically"]] as const)
-        : []),
-      // Nor captioned live: nobody speaks in it, and it shows the original session's
-      // captions (the API drops the option for one).
+      // Not captioned live for a simulive: nobody speaks in it, and it shows the original
+      // session's captions (the API drops the option for one).
       ...(form.kind !== "simulive"
         ? ([["captions", "Live captions"]] as const)
         : []),
@@ -120,8 +123,8 @@ export function RoomSection({
           <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
             Each panelist is emailed their stage link once the webinar is
             scheduled, and told if you move or delete it. They need an account,
-            because a publishing token is minted from a signed-in session —
-            addresses without one are skipped.
+            because a publishing token is minted from a signed-in session. An
+            address without one is named here, and not saved, until they sign up.
           </p>
           {fields.panelistEmails && (
             <p className="mt-1 text-[12px] font-medium text-live">
@@ -131,8 +134,9 @@ export function RoomSection({
           {editing && webinar && webinar.panelists.length > 0 && (
             <p className="mt-2 text-[12px] text-ink-2">
               Currently on the stage:{" "}
-              {webinar.panelists.map((p) => p.name).join(", ")}. Leave the box
-              empty to remove them all.
+              {webinar.panelists.map((p) => p.name).join(", ")}. Take an address
+              out of the box to remove that panelist; you are asked before it
+              saves.
             </p>
           )}
         </div>
@@ -143,6 +147,30 @@ export function RoomSection({
         description="Recording, captions and streaming."
       >
         <div className="grid gap-1 lg:grid-cols-2">
+          {autoRecordShown && (
+            <Toggle
+              checked={autoRecordReady && form.options.autoRecord}
+              disabled={!autoRecordReady}
+              onChange={(v) => set("options", { ...form.options, autoRecord: v })}
+              label={
+                autoRecordReady ? (
+                  "Record automatically"
+                ) : (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    Record automatically
+                    {!cloudRecording && <Badge tone="warn">Available on request</Badge>}
+                  </span>
+                )
+              }
+              description={
+                autoRecordReady
+                  ? "Starts a cloud recording once you're live and someone on the stage has their camera or mic on."
+                  : cloudRecording
+                    ? "Needs server-side recording, which this site doesn't use."
+                    : "Cloud recording is switched on per account. Ask us to turn it on."
+              }
+            />
+          )}
           {extras.map(([key, label]) => (
             <Toggle
               key={key}

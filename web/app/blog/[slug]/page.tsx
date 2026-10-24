@@ -14,6 +14,7 @@ import {
   type TocEntry,
 } from "@/lib/blog";
 import { parseMarkdown } from "@/lib/blog-markdown";
+import { RSS_ALTERNATE } from "@/lib/seo";
 
 // Posts are compiled in: every slug is known at build time, anything else is a 404.
 export const dynamicParams = false;
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: PageProps<"/blog/[slug]">): P
   return {
     title: `${post.title} — Webinar Liv`,
     description: post.description,
-    alternates: { canonical: url },
+    alternates: { canonical: url, types: RSS_ALTERNATE },
     authors: [{ name: BLOG_AUTHOR }],
     keywords: post.tags,
     openGraph: {
