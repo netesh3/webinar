@@ -282,7 +282,7 @@ Boxes and volumes from before: the next `redeploy.sh` (a deploy, or the next dro
 removes any caption container and its image, `captions.env`, `/opt/livekit/captions/`,
 `docker-compose.captions.yml`, and the old `captions_models` (~2.7 GB) and `captions_spool`
 directories on the volume. `CAPTIONS_*` lines left in `/opt/livekit/.env` are ignored, and
-`sfu-boot.sh` drops `CAPTIONS_REMOTE`.
+`sfu-boot.sh` drops `CAPTIONS_REMOTE`. `CAPTIONS_ON_VIDEO_BOX` (a short-lived opt-back-in) is gone too.
 
 ## Captions box (optional, off until `CAPTIONS_BOX_ENABLED=true`)
 

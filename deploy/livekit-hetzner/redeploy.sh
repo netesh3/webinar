@@ -276,7 +276,8 @@ fi
 # deploy/digitalocean/README.md "Captions box"). One-time cleanup for boxes and volumes from
 # before that: remove a caption agent container left running, its image, and the stale
 # captions.env, ./captions source and docker-compose.captions.yml old deploys left here (the
-# CAPTIONS_* lines in .env are simply unused now). Harmless when there is nothing to remove.
+# CAPTIONS_* lines in .env, CAPTIONS_ON_VIDEO_BOX included, are simply unused now). Harmless
+# when there is nothing to remove.
 docker ps -aq --filter label=com.docker.compose.service=captions | xargs -r docker rm -f >/dev/null
 docker image rm webinarliv-captions:local >/dev/null 2>&1 || true
 rm -rf captions.env captions docker-compose.captions.yml
