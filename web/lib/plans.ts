@@ -60,7 +60,7 @@ export const PLANS: Plan[] = [
     server: "professional",
     name: "Starter",
     who: "For coaches running their first programs",
-    monthly: { INR: 3999, USD: 49 },
+    monthly: { INR: 4999, USD: 59 },
     limits: {
       attendees: 200,
       attendeeHours: 2500,
