@@ -65,6 +65,8 @@ export type RoomUI = {
    *  REC clock for every browser that did not press Record itself, including one that
    *  rejoined mid-recording. Optional so rooms with no server recording need not set it. */
   recordingStartedAt?: string | null;
+  /** The recording in progress is the one "Record automatically" started. Optional, as above. */
+  recordingAuto?: boolean;
 
   isHost: boolean;
   /** Live publish permissions, from the connection rather than the join response.

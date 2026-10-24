@@ -1367,6 +1367,9 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 		}
 		go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 	}
+	// A host already on camera before pressing Go live: "Record automatically" starts now
+	// rather than at the next tick (auto_record.go).
+	s.autoRecordSoon(wb)
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)
@@ -1864,12 +1867,18 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 // to perform the action this is announcing — and pushing metadata to a different project than
 // the one the action landed on would be worse than not pushing it at all.
 func (s *Server) pushRoomMetadata(r *http.Request, sfu RoomManager, wb types.Webinar) {
-	meta, err := s.roomMetadata(r.Context(), wb)
+	s.pushRoomMetadataCtx(r.Context(), sfu, wb)
+}
+
+// pushRoomMetadataCtx is pushRoomMetadata for work with no request (the sweeper, a webhook's
+// background follow-up).
+func (s *Server) pushRoomMetadataCtx(ctx context.Context, sfu RoomManager, wb types.Webinar) {
+	meta, err := s.roomMetadata(ctx, wb)
 	if err != nil {
 		s.log.Warn("could not encode room metadata", "slug", wb.ID, "error", err)
 		return
 	}
-	if err := sfu.SetMetadata(r.Context(), lk.RoomName(wb.ID), meta); err != nil {
+	if err := sfu.SetMetadata(ctx, lk.RoomName(wb.ID), meta); err != nil {
 		s.log.Warn("could not push room metadata", "slug", wb.ID, "error", err)
 	}
 }
