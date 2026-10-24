@@ -274,8 +274,16 @@ fi
 # cannot slow video: see docker-compose.captions.yml. CAPTIONS_REMOTE=true (written by
 # deploy/digitalocean/sfu-boot.sh when the API runs a separate captions box) keeps it off here:
 # the agent runs on that box and this one's CPU stays with LiveKit and the edge mix.
+# The video box runs NO caption agent by default (2026-10-24): on a c-4 the agent took up to
+# two cores and its memory kept climbing beside the edge mix, which stalled the audience
+# stream. Captions run on the separate on-demand captions box (CAPTIONS_BOX_ENABLED in the
+# API); without it, rooms fall back to on-device captions. CAPTIONS_ON_VIDEO_BOX=true in .env
+# is the deliberate opt-back-in (a dev or single-box setup), and only then does
+# CAPTIONS_ENABLED start it here. Anything else removes a running captions container below.
 CAPTIONS=0
-if [[ "$(env_value CAPTIONS_REMOTE)" == "true" ]]; then
+if [[ "$(env_value CAPTIONS_ON_VIDEO_BOX)" != "true" ]]; then
+  echo "Server captions: not on this video box (set CAPTIONS_ON_VIDEO_BOX=true to run them here)"
+elif [[ "$(env_value CAPTIONS_REMOTE)" == "true" ]]; then
   echo "Server captions: on the separate captions box (CAPTIONS_REMOTE=true); none on this box"
 elif [[ "$(env_value CAPTIONS_ENABLED)" == "true" ]]; then
   CAPTIONS_SECRET_VALUE="$(env_value CAPTIONS_SECRET)"
