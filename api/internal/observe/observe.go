@@ -36,11 +36,13 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otellog "go.opentelemetry.io/otel/log"
 	lognoop "go.opentelemetry.io/otel/log/noop"
+	"go.opentelemetry.io/otel/metric"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DefaultServiceName is what the API reports itself as when OTEL_SERVICE_NAME is unset.
@@ -157,8 +159,10 @@ func Setup(ctx context.Context) (*Telemetry, error) {
 	}
 	tp := sdktrace.NewTracerProvider(tpOpts...)
 
+	// meterViews (metrics.go) keeps the series count inside the free tier.
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
+		sdkmetric.WithView(meterViews()...),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExp,
 			sdkmetric.WithInterval(metricInterval),
 			sdkmetric.WithTimeout(exportTimeout))),
@@ -196,10 +200,7 @@ func Setup(ctx context.Context) (*Telemetry, error) {
 	 * (livekit/protocol's webhook URL notifier does, and it is not used). Asserting it
 	 * anywhere new must handle the wrapped case. The OTLP exporters keep their own
 	 * transports, so exporting does not trace itself. */
-	http.DefaultTransport = otelhttp.NewTransport(http.DefaultTransport,
-		otelhttp.WithTracerProvider(tp),
-		otelhttp.WithMeterProvider(mp),
-		otelhttp.WithSpanNameFormatter(clientSpanName))
+	http.DefaultTransport = clientTransport(http.DefaultTransport, tp, mp)
 
 	enabled.Store(true)
 	return t, nil
@@ -264,4 +265,13 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("shutdown logs: %w", err))
 	}
 	return errors.Join(errs...)
+}
+
+// clientTransport is base instrumented for outbound calls: a client span per request and
+// http.client.request.duration (shaped by meterViews).
+func clientTransport(base http.RoundTripper, tp trace.TracerProvider, mp metric.MeterProvider) http.RoundTripper {
+	return otelhttp.NewTransport(base,
+		otelhttp.WithTracerProvider(tp),
+		otelhttp.WithMeterProvider(mp),
+		otelhttp.WithSpanNameFormatter(clientSpanName))
 }

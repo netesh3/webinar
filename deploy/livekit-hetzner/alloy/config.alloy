@@ -28,6 +28,16 @@ prometheus.relabel "apps" {
 		regex         = "go_(gc|memstats|sched|cgo|cpu|godebug|sync|info|threads)_.*|go_gc_duration_seconds.*|promhttp_.*"
 		action        = "drop"
 	}
+
+	// LiveKit's histograms nobody charts: ~500 of its ~780 series on 2026-10-24. psrpc_* is
+	// its internal RPC (all of it); the rest lose only their buckets, keeping _sum and _count
+	// for a mean. Kept whole: rtt and packet_loss (Grafana Cloud dashboard), room_duration
+	// and session_join_latency (grafana-provisioning/dashboards/json/livekit.json).
+	rule {
+		source_labels = ["__name__"]
+		regex         = "livekit_psrpc_.*|livekit_(node_twirp_request_latency_ms|pubsubtime_ms|packet_out_of_order_percent|jitter_us|forward_latency_ns|webhook_queue_length|session_start_time_ms|session_duration_ms)_bucket"
+		action        = "drop"
+	}
 	forward_to = [prometheus.remote_write.cloud.receiver]
 }
 

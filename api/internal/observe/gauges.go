@@ -132,7 +132,7 @@ func RegisterAudienceGauges(mp metric.MeterProvider, src AudienceSource) error {
 }
 
 func registerAudienceGauges(mp metric.MeterProvider, src AudienceSource, now func() time.Time) error {
-	m := mp.Meter("github.com/netkumar/webcast/api/internal/observe")
+	m := mp.Meter(meterScope)
 
 	edge, err := m.Int64ObservableGauge(MetricEdgeViewers,
 		metric.WithDescription("Edge (LL-HLS) viewers with an event stream open on this instance. Sum across instances."),
