@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,6 +126,19 @@ type fakeRooms struct {
 	// dispatchMeta is the metadata each open dispatch was created with, by room.
 	dispatchMeta map[string]string
 	dispatchErr  error
+	/* hang makes the calls a sweeper or a delete makes block until their context is done,
+	 * as a video server behind an address nobody answers on does (the 24 Oct 2026 box
+	 * outage). Checked outside mu, so a hung call does not hold the fake's lock. */
+	hang atomic.Bool
+}
+
+// hung blocks while hang is set, until ctx is done.
+func (f *fakeRooms) hung(ctx context.Context) error {
+	if !f.hang.Load() {
+		return nil
+	}
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 type sentPacket struct {
@@ -200,7 +214,10 @@ func (f *fakeRooms) EnsureRoom(_ context.Context, room string, max, _, departure
 	return 0, false, nil
 }
 
-func (f *fakeRooms) SetMetadata(_ context.Context, room, metadata string) error {
+func (f *fakeRooms) SetMetadata(ctx context.Context, room, metadata string) error {
+	if err := f.hung(ctx); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.metadata[room] = metadata
@@ -214,7 +231,10 @@ func (f *fakeRooms) SendData(_ context.Context, room, topic string, data []byte,
 	return nil
 }
 
-func (f *fakeRooms) ParticipantCount(context.Context, string) (int, error) {
+func (f *fakeRooms) ParticipantCount(ctx context.Context, _ string) (int, error) {
+	if err := f.hung(ctx); err != nil {
+		return 0, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.count, f.countErr
@@ -413,7 +433,10 @@ func (f *fakeRooms) RemoveParticipant(_ context.Context, _, identity string) err
 	return nil
 }
 
-func (f *fakeRooms) DeleteRoom(_ context.Context, room string) error {
+func (f *fakeRooms) DeleteRoom(ctx context.Context, room string) error {
+	if err := f.hung(ctx); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deleted = append(f.deleted, room)
@@ -495,7 +518,10 @@ func (f *fakeRooms) UpdateStream(_ context.Context, egressID string, add, remove
 	return &livekit.EgressInfo{EgressId: egressID, Status: livekit.EgressStatus_EGRESS_ACTIVE}, nil
 }
 
-func (f *fakeRooms) ListEgress(_ context.Context, _ string) ([]*livekit.EgressInfo, error) {
+func (f *fakeRooms) ListEgress(ctx context.Context, _ string) ([]*livekit.EgressInfo, error) {
+	if err := f.hung(ctx); err != nil {
+		return nil, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.liveEgress, nil

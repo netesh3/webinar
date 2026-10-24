@@ -25,18 +25,33 @@ func (s *Store) TryLease(ctx context.Context, name string, ttl time.Duration) (r
 	}
 	holder := hex.EncodeToString(b[:])
 
+	/* Never waits on a lock. An expired row is taken only if nobody has it locked (SKIP
+	 * LOCKED): a row held by a stuck backend reads as "somebody else has it", rather than
+	 * every runner queueing behind it with a pool connection each until their deadlines
+	 * (24 Oct 2026: every lease in the tick failed together on context deadline exceeded).
+	 * A name with no row yet is inserted; DO NOTHING when another runner just did. */
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO sweep_leases (name, holder, expires_at)
-		VALUES ($1, $2, now() + make_interval(secs => $3))
-		ON CONFLICT (name) DO UPDATE
-		   SET holder = EXCLUDED.holder, expires_at = EXCLUDED.expires_at
-		 WHERE sweep_leases.expires_at <= now()`,
+		UPDATE sweep_leases
+		   SET holder = $2, expires_at = now() + make_interval(secs => $3)
+		 WHERE name = (SELECT name FROM sweep_leases
+		                WHERE name = $1 AND expires_at <= now()
+		                FOR UPDATE SKIP LOCKED)`,
 		name, holder, ttl.Seconds())
 	if err != nil {
 		return nil, false, err
 	}
 	if tag.RowsAffected() == 0 {
-		return nil, false, nil
+		tag, err = s.pool.Exec(ctx, `
+			INSERT INTO sweep_leases (name, holder, expires_at)
+			VALUES ($1, $2, now() + make_interval(secs => $3))
+			ON CONFLICT (name) DO NOTHING`,
+			name, holder, ttl.Seconds())
+		if err != nil {
+			return nil, false, err
+		}
+		if tag.RowsAffected() == 0 {
+			return nil, false, nil
+		}
 	}
 
 	return func() {

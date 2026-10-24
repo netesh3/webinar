@@ -69,6 +69,11 @@ const (
 	boxDeleteResend = 3 * time.Minute
 	// boxBootEstimate is what the waiting screen says a boot takes.
 	boxBootEstimate = 2 * time.Minute
+	// boxIPStuckAlert is how long an active droplet may wait for the reserved IP before the
+	// admins are told. It is not deleted for it: a new droplet would wait for the same IP.
+	boxIPStuckAlert = 3 * time.Minute
+	// boxParkCheckEvery is how often a box that is down checks the IP is parked.
+	boxParkCheckEvery = 5 * time.Minute
 )
 
 // boxCloud is the DigitalOcean calls the manager makes (doapi.Client; a fake in tests).
@@ -101,6 +106,10 @@ type boxManager struct {
 	cached    store.SFUBoxState
 	cachedAt  time.Time
 	lastProbe time.Time
+	// lastSkipLog throttles boxRoom's "not reachable, skipped" line; lastParkCheck the IP check
+	// while down.
+	lastSkipLog   time.Time
+	lastParkCheck time.Time
 }
 
 func (b *boxManager) invalidate() {
@@ -223,7 +232,12 @@ func boxBackoff(failures int) time.Duration {
 
 // ---------------------------------------------------------------- the tick
 
-// sweepSFUBox is the box's step in the realtime lane.
+/* sweepSFUBox is the box's step: a lane of RunTick of its own, with its own deadline, so no
+ * sweep can starve it. Its own lease (sfu_box_state) keeps two runners from stepping at once.
+ * It used to run inside the realtime lane after the sweeps that ask the box's LiveKit about
+ * every live session; with the box unreachable those ate the lane, this step started with an
+ * expired context, and the reserved IP that would have made the box reachable was never
+ * moved (24 Oct 2026). */
 func (s *Server) sweepSFUBox(ctx context.Context) {
 	if s.box == nil {
 		return
@@ -345,6 +359,18 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 			// take it back so the normal path deletes it.
 			if d, ok := s.boxFindManaged(ctx); ok {
 				s.boxAdopt(ctx, st, d, now)
+				return
+			}
+			// The IP goes back to the park droplet when the box goes; a park that failed (an
+			// unassign still pending at DigitalOcean) is retried here, every few minutes.
+			b.mu.Lock()
+			due := time.Since(b.lastParkCheck) >= boxParkCheckEvery
+			if due {
+				b.lastParkCheck = time.Now()
+			}
+			b.mu.Unlock()
+			if due {
+				s.boxParkIP(ctx)
 			}
 			return
 		}
@@ -386,10 +412,14 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 		if d.Status == "active" {
 			if err := s.boxAssignIP(ctx, d.ID); err != nil {
 				st.LastError = "assign reserved IP: " + err.Error()
-			} else {
-				st.LastError = ""
-				s.setBoxActual(st, store.BoxBooting, now)
+				s.boxIPStuck(ctx, st, d, now, err)
+				// Not the boot deadline: the droplet is up and a new one would wait for the
+				// same IP. The next step (a minute) assigns again.
+				return
 			}
+			st.LastError = ""
+			s.setBoxActual(st, store.BoxBooting, now)
+			return
 		}
 		s.boxBootDeadline(ctx, st, d, now)
 
@@ -430,11 +460,17 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 	case store.BoxReady, store.BoxDraining:
 		if st.Desired == "up" {
 			s.setBoxActual(st, store.BoxReady, now)
-			if _, err := b.cloud.Droplet(ctx, st.DropletID); doapi.IsNotFound(err) {
+			_, err := b.cloud.Droplet(ctx, st.DropletID)
+			if doapi.IsNotFound(err) {
 				s.boxGone(ctx, st, now)
 				s.boxAlert(ctx, st, "ALERT: video server droplet disappeared",
 					fmt.Sprintf("Droplet %d of %s was deleted outside the API while it was wanted. A new one is being created.",
 						st.DropletID, b.cfg.Project))
+				return
+			}
+			if err == nil {
+				// The reserved IP is what everybody connects to: put it back if it moved.
+				s.boxKeepIP(ctx, st)
 			}
 			return
 		}
@@ -621,7 +657,50 @@ func (s *Server) boxAssignIP(ctx context.Context, dropletID int64) error {
 	if cur == dropletID {
 		return nil
 	}
-	return s.box.cloud.AssignReservedIP(ctx, ip, dropletID)
+	aerr := s.box.cloud.AssignReservedIP(ctx, ip, dropletID)
+	if aerr == nil {
+		s.log.Info("sfu box: reserved IP assigned", "ip", ip, "droplet", dropletID, "from", cur)
+		return nil
+	}
+	/* DigitalOcean refuses an assign the IP already has (422 "already assigned"), and its read
+	 * can lag an assign made a moment ago (by an operator, or by the step before). Ask again:
+	 * on the droplet now is success, not a failure to count. */
+	if again, err := s.box.cloud.ReservedIPDroplet(ctx, ip); err == nil && again == dropletID {
+		return nil
+	}
+	return aerr
+}
+
+// boxKeepIP checks a ready box still has the reserved IP and assigns it again if not.
+func (s *Server) boxKeepIP(ctx context.Context, st *store.SFUBoxState) {
+	ip := s.box.cfg.ReservedIP
+	cur, err := s.box.cloud.ReservedIPDroplet(ctx, ip)
+	if err != nil || cur == st.DropletID {
+		return
+	}
+	s.log.Error("sfu box: reserved IP is not on the ready box, assigning it again",
+		"project", s.box.cfg.Project, "ip", ip, "droplet", st.DropletID, "ipOn", cur)
+	if err := s.boxAssignIP(ctx, st.DropletID); err != nil {
+		st.LastError = "assign reserved IP: " + err.Error()
+		s.log.Error("sfu box: assign reserved IP", "project", s.box.cfg.Project, "droplet", st.DropletID, "error", err)
+	}
+}
+
+/* boxIPStuck is an active droplet whose reserved IP would not move: logged loudly every
+ * step, and after boxIPStuckAlert the admins are told (once). The step keeps assigning. */
+func (s *Server) boxIPStuck(ctx context.Context, st *store.SFUBoxState, d doapi.Droplet, now time.Time, err error) {
+	waiting := now.Sub(maxTime(d.Created(), st.Since))
+	s.log.Error("sfu box: could not assign the reserved IP to the active droplet",
+		"project", s.box.cfg.Project, "ip", s.box.cfg.ReservedIP, "droplet", d.ID,
+		"waiting", waiting.Round(time.Second), "error", err)
+	if waiting < boxIPStuckAlert || st.AlertedAt != nil {
+		return
+	}
+	s.boxAlert(ctx, st, "ALERT: video server waiting for its reserved IP",
+		fmt.Sprintf("Droplet %d of %s is active but reserved IP %s could not be moved onto it for %s.\n\nLast error: %v\n\n"+
+			"It keeps trying every minute. Nobody can reach the video server until the IP is on it; "+
+			"assign it by hand in DigitalOcean (Networking > Reserved IPs) if this does not clear.",
+			d.ID, s.box.cfg.Project, s.box.cfg.ReservedIP, waiting.Round(time.Second), err))
 }
 
 // boxParkIP moves the reserved IP to the park droplet (an unassigned one bills $5/month).
@@ -740,10 +819,7 @@ func (s *Server) boxLiveKitActivity(ctx context.Context) (lk.Activity, error) {
 	if err != nil {
 		return lk.Activity{}, err
 	}
-	if inner, ok := room.(edgeRoom); ok {
-		room = inner.RoomManager
-	}
-	a, ok := room.(boxActivity)
+	a, ok := unwrapRoom(room).(boxActivity)
 	if !ok {
 		return lk.Activity{}, nil
 	}
