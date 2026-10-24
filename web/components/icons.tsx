@@ -884,3 +884,35 @@ export function CloudAlertIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** A clapperboard, for the Studio (clips, reels and their plan). */
+export function ClapperIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z" />
+      <path d="m6.2 5.3 3.1 3.9" />
+      <path d="m12.4 3.4 3.1 4" />
+      <path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+    </Icon>
+  );
+}
+
+/** TikTok's note — stroke style, takes the text colour. */
+export function TikTokIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5" />
+      <path d="M14 3c.4 2.6 2.3 4.4 5 4.6" />
+    </Icon>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4v11" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 20h14" />
+    </Icon>
+  );
+}

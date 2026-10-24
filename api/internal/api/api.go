@@ -689,6 +689,10 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/webinars", s.handleHostWebinars)
 				r.Post("/webinars", s.handleCreateWebinar)
 				r.Get("/recordings", s.handleHostRecordingLibrary)
+				// The Studio: recordings, clips and their plan across the host's own sessions,
+				// behind the clips switch (studio.go).
+				r.Get("/studio/recordings", s.handleStudioRecordings)
+				r.Get("/studio/clips", s.handleStudioClips)
 				// The recording storage meter, and the expiry email's "Keep 3 more months".
 				r.Get("/recording-storage", s.handleRecordingStorage)
 				r.Post("/recordings/keep-link", s.handleKeepRecordingLink)
@@ -869,6 +873,8 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/recordings/{id}/clips/{clipId}/file", s.handleClipFile)
 				r.Post("/recordings/{id}/clips/{clipId}/posts", s.handleRewriteClipPosts)
 				r.Delete("/recordings/{id}/clips/{clipId}", s.handleDeleteClip)
+				// Where and when the host means to post it, for the Studio's plan (studio.go).
+				r.Patch("/recordings/{id}/clips/{clipId}/plan", s.handlePatchClipPlan)
 				// The AI recap, written automatically after the session. See recap.go.
 				r.Get("/recap", s.handleGetRecap)
 				// "Generate recap now": stop waiting for the transcript (pending only).

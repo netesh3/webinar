@@ -37,7 +37,7 @@ export function Spinner({ className = "size-4" }: { className?: string }) {
  *  Pointerdown rather than click: a click fires after the button that opened the
  *  menu has already been re-rendered, which reads as a stray outside-click and
  *  closes the menu the same tick it opened. */
-function useDismiss(
+export function useDismiss(
   ref: React.RefObject<HTMLElement | null>,
   open: boolean,
   onClose: () => void,

@@ -337,6 +337,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# Clips and reels made from a recording: the post text as copied, a reel's rules, each
 	# clip's state in words, and what the queue says while it waits.
 	cd web && node --experimental-strip-types --no-warnings lib/clips.test.mts
+	# The Studio: each recording's and clip's state in one line, the one action a card offers,
+	# and the content plan's status cycle and week buckets.
+	cd web && node --experimental-strip-types --no-warnings lib/studio.test.mts
 	# Captions on replays: the captions file's address, each take's own file on the
 	# playlist, and switching only our track (not one hls.js made).
 	cd web && node --experimental-strip-types --no-warnings lib/caption-track.test.mts

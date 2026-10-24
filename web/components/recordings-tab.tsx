@@ -52,12 +52,15 @@ export function RecordingsTab({
   webinar: w,
   recordings: rows,
   onChanged,
+  initialRecording,
 }: {
   webinar: Webinar;
   /** Loaded by the screen, so the tab strip can show a count without a second
    *  request for the same list. */
   recordings: Recording[];
   onChanged: () => void | Promise<void>;
+  /** A recording to open in the player once it is in the list (?recording=, from the Studio). */
+  initialRecording?: string | null;
 }) {
   const { notify } = useToast();
   const cfg = useAppConfig();
@@ -79,6 +82,20 @@ export function RecordingsTab({
   const [confirmExpire, setConfirmExpire] = useState<Recording | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const player = useRef<VideoPlayerHandle>(null);
+  const playerCard = useRef<HTMLDivElement>(null);
+  /* ?recording= opens that recording in the player, once, when it is in the list (which can
+   * arrive after the first paint). Adjusted during render rather than in an effect. */
+  const [opened, setOpened] = useState<string | null>(null);
+  if (initialRecording && opened !== initialRecording) {
+    const asked = rows.find((r) => r.id === initialRecording || r.parts?.some((p) => p.id === initialRecording));
+    if (asked) {
+      setOpened(initialRecording);
+      if (asked.status === "ready") setPlaying(asked);
+    }
+  }
+  useEffect(() => {
+    if (opened) playerCard.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [opened]);
 
   /* The AI recap's chapters, for the player. Read once the session has ended (that is when
    * a recap exists); a session without one simply has no chapters. The recap waits for the
@@ -230,6 +247,7 @@ export function RecordingsTab({
       )}
 
       {playing && (
+        <div ref={playerCard} className="scroll-mt-4">
         <Card className="overflow-hidden">
           <VideoPlayer
             key={playing.id}
@@ -285,6 +303,7 @@ export function RecordingsTab({
             </div>
           </div>
         </Card>
+        </div>
       )}
 
       {rows.length === 0 ? (
