@@ -10,9 +10,9 @@
  *      beat for 150 s is closed, so a viewer without beats would stop counting)
  *   4. the playlist and media as hls.js with lowLatencyMode does: multivariant -> one variant
  *      (+ its audio rendition, if separate), init segment once, start PART-HOLD-BACK behind
- *      live, fetch every part (or segment, without low latency) once in order, reload the
- *      playlist with _HLS_msn/_HLS_part blocking requests when the server can block, else
- *      every target duration.
+ *      live, fetch every part (or segment, without low latency) once in order, and alongside
+ *      that reload the playlist with _HLS_msn/_HLS_part blocking requests while it advances,
+ *      recovering from a failed one with a plain reload as hls.js does (nextReload below).
  *   5. POST /api/webinars/{slug}/events/leave?t=<token> at the end (pagehide's beacon).
  *
  * The bytes are read and dropped. A PlayerModel turns arrival times into stalls and a live
@@ -239,19 +239,25 @@ export class EdgeViewer {
     await Promise.allSettled(tracks);
   }
 
-  /* One media playlist, played to the end of the run. `main` drives the player model (video). */
+  /* One media playlist, played to the end of the run. `main` drives the player model (video).
+   *
+   * Two loops, as in hls.js: the playlist loader (reloads(): its level / audio-track
+   * controller) and the media loader (media(): its stream controller) run side by side and
+   * share the newest playlist. They used to be one loop that reloaded only once every pending
+   * part had arrived, so a part that took 10 s left the next blocking reload 10 s stale. */
   async track(url, firstText, main) {
     const sig = this.ctl.signal;
-    let pl = null;
-    if (firstText !== null && firstText !== undefined) pl = parseMedia(firstText, url);
-    while (!pl && !sig.aborted) {
+    let first = null;
+    if (firstText !== null && firstText !== undefined) first = { pl: parseMedia(firstText, url), ageSec: 0, ms: 0 };
+    while (!first && !sig.aborted) {
       const r = await timed(url, { signal: sig });
       if (sig.aborted) return;
       this.rec("playlist", r);
-      if (r.ok) pl = parseMedia(r.body, url);
+      if (r.ok) first = { pl: parseMedia(r.body, url), ageSec: ageOf(r), ms: r.ms };
       else await sleep(1000, sig);
     }
-    if (!pl) return;
+    if (!first) return;
+    const pl = first.pl;
     const ll = (this.o.lowLatency ?? this.serverLowLatency) && pl.partTarget > 0;
     const startBack = ll ? pl.partHoldBack || 3 * pl.partTarget : pl.holdBack || 3 * pl.targetDuration;
     if (pl.map) {
@@ -259,10 +265,68 @@ export class EdgeViewer {
       if (sig.aborted) return;
       this.rec("init", r);
     }
+    const live = new Latest(pl, sig);
+    const media = { lastNew: Date.now() };
+    await Promise.allSettled([this.reloads(url, live, ll, first, media), this.media(live, ll, startBack, main, media)]);
+  }
+
+  /* The playlist loader: blocking reloads with delivery directives while the playlist
+   * advances, and hls.js's recovery when one fails (nextReload). */
+  async reloads(url, live, ll, first, media) {
+    const sig = this.ctl.signal;
+    let last = { ok: true, advanced: true, ageSec: first.ageSec, elapsedMs: first.ms };
+    let errors = 0;
+    let tuneInGoal = 0;
+    while (!sig.aborted && !live.value.endList) {
+      const pl = live.value;
+      const plan = nextReload({ pl, ll, ...last, retry: errors, tuneInGoal });
+      tuneInGoal = plan.tuneInGoal;
+      if (plan.delayMs > 0) await sleep(plan.delayMs, sig);
+      if (sig.aborted) return;
+      const blocking = plan.req !== null;
+      const r = await timed(withBlocking(url, plan.req), {
+        signal: sig,
+        timeoutMs: blocking ? blockingTimeoutMs(pl) : PLAYLIST_TIMEOUT_MS,
+      });
+      if (sig.aborted) return;
+      this.rec(blocking ? "playlistBlocking" : "playlist", r, "playlist");
+      if (r.ok) {
+        const next = parseMedia(r.body, url);
+        if (errors > 0) this.step.count("playlistRecovered");
+        errors = 0;
+        last = { ok: true, advanced: playlistAdvanced(pl, next), ageSec: ageOf(r), elapsedMs: r.ms };
+        live.set(next);
+      } else {
+        last = { ok: false, timedOut: r.status === "timeout", blocking, elapsedMs: r.ms };
+        errors++;
+      }
+      if (Date.now() - media.lastNew > 30000) {
+        // The stream stopped producing (presenter gone, mix stopped): note it once a while.
+        this.step.error("hls", "no-new-media-30s");
+        media.lastNew = Date.now();
+      }
+    }
+  }
+
+  /* The media loader: every part (or segment) once, in order, from the newest playlist. */
+  async media(live, ll, startBack, main, media) {
+    const sig = this.ctl.signal;
     let cursor = null;
-    let lastNew = Date.now();
-    while (!sig.aborted && !pl.endList) {
+    while (!sig.aborted) {
+      const pl = live.value;
+      const seen = live.version;
+      // Behind the start of the sliding window (after an outage): hls.js does not try to play
+      // what the origin has dropped, it starts again at the live sync position.
+      if (cursor !== null && fellOutOfWindow(pl, cursor)) {
+        this.step.count("rejoinLive");
+        cursor = null;
+      }
       const items = pendingMedia(pl, cursor, { lowLatency: ll, startBackSec: startBack });
+      if (!items.length) {
+        if (pl.endList) return;
+        await live.changed(seen);
+        continue;
+      }
       for (const it of items) {
         if (sig.aborted) return;
         const r = await timed(it.uri, { signal: sig, timeoutMs: Math.max(10000, pl.targetDuration * 3000) });
@@ -272,7 +336,7 @@ export class EdgeViewer {
         cursor = it.key;
         if (!r.ok) continue; // hls.js skips a part it cannot load and carries on
         this.step.count(kind);
-        lastNew = Date.now();
+        media.lastNew = Date.now();
         if (main) {
           const { stalledMs, latencyMs } = this.player.append(it.duration, it.pdt);
           // A few ms of an empty buffer is timer jitter, not something a viewer sees.
@@ -282,28 +346,134 @@ export class EdgeViewer {
           }
           if (latencyMs !== null) this.step.sample("liveLatency", latencyMs);
         }
-      }
-      // Next playlist: blocking reload when the server can hold it, else poll like hls.js.
-      const req = ll ? nextBlockingRequest(pl) : null;
-      if (req) {
-        const r = await timed(withBlocking(url, req), { signal: sig, timeoutMs: pl.targetDuration * 3000 + 5000 });
-        if (sig.aborted) return;
-        this.rec("playlistBlocking", r, "playlist");
-        if (r.ok) pl = parseMedia(r.body, url);
-        else await sleep(1000, sig);
-      } else {
-        const wait = items.length ? pl.targetDuration * 1000 : (pl.targetDuration * 1000) / 2;
-        await sleep(wait, sig);
-        const r = await timed(url, { signal: sig });
-        if (sig.aborted) return;
-        this.rec("playlist", r);
-        if (r.ok) pl = parseMedia(r.body, url);
-      }
-      if (Date.now() - lastNew > 30000) {
-        // The stream stopped producing (presenter gone, mix stopped): note it once a while.
-        this.step.error("hls", "no-new-media-30s");
-        lastNew = Date.now();
+        // The window moved past the rest of this list while it was fetched: start again from
+        // the newest playlist rather than ask for media the origin no longer has.
+        if (live.version !== seen && fellOutOfWindow(live.value, cursor)) break;
       }
     }
+  }
+}
+
+/* ---------------------------------------------------------------- reload policy (pure)
+ *
+ * What hls.js 1.7 (base-playlist-controller.ts playlistLoaded / checkRetry,
+ * playlist-loader.ts, error-controller.ts) asks for after each media playlist response, with
+ * the player's config (web/lib/edge-hls.ts: levelLoadingMaxRetry 60 and
+ * levelLoadingRetryDelay 1000, so a playlist error is retried after 1 s, doubling to 8 s).
+ *
+ * Spelled out because of the 1,000-viewer CDN run of 2026-10-24. The kit retried a failed
+ * blocking reload with the same _HLS_msn/_HLS_part every second, for ever. MediaMTX
+ * (gohlslib muxer_stream.go) answers 400 at once to an _HLS_msn more than one segment past
+ * the one being written, or older than the oldest segment it still lists, so once a CDN 503
+ * or an 11 s timeout had held a viewer a few seconds its URL was out of the window and every
+ * retry was another 400: one bad response took a track off the stream for the rest of the
+ * step (one part timeout -> 173 x "playlist 400" in step 2 on lg2; ~1 a second per stuck
+ * track in step 3). hls.js never repeats a failed request's directives: it reloads the plain
+ * playlist (at once after a blocking-reload timeout, else after the retry delay) and asks
+ * for the part after the newest that one lists. */
+
+const PLAYLIST_TIMEOUT_MS = 10_000; // playlistLoadPolicy maxTimeToFirstByteMs
+
+/** hls.js's timeout for a blocking reload: max(3 part targets, 0.8 target durations). */
+export function blockingTimeoutMs(pl) {
+  if (!(pl.partTarget > 0) || !(pl.targetDuration > 0)) return PLAYLIST_TIMEOUT_MS;
+  return Math.min(PLAYLIST_TIMEOUT_MS, Math.max(pl.partTarget * 3, pl.targetDuration * 0.8) * 1000);
+}
+
+/** The newest media a playlist lists, as hls.js LevelDetails has it: endSn, lastPartSn, lastPartIndex. */
+export function playlistEdge(pl) {
+  const last = pl.segments[pl.segments.length - 1];
+  const endSn = last ? last.msn : pl.mediaSequence - 1;
+  if (pl.trailingParts.length) return { endSn, partSn: endSn + 1, partIndex: pl.trailingParts.length - 1 };
+  if (last && last.parts.length) return { endSn, partSn: endSn, partIndex: last.parts.length - 1 };
+  return { endSn, partSn: endSn, partIndex: -1 };
+}
+
+/** LevelDetails.reloaded: whether `next` lists media past `prev`'s newest. */
+export function playlistAdvanced(prev, next) {
+  if (!prev) return true;
+  const a = playlistEdge(prev);
+  const b = playlistEdge(next);
+  const partSnDiff = b.partSn - a.partSn;
+  return b.endSn > a.endSn || partSnDiff > 0 || (partSnDiff === 0 && b.partIndex > a.partIndex);
+}
+
+/* nextReload -> { req: {msn, part}|null, delayMs, tuneInGoal }: the next playlist request
+ * (req null: the plain playlist, no delivery directives) and how long to wait before it.
+ *
+ *   pl                  the newest playlist this viewer has
+ *   ll                  low-latency mode (blocking reloads)
+ *   ok                  whether the last playlist request succeeded
+ *   advanced, ageSec    (ok) whether it listed anything new; its Age header (CDN cache age)
+ *   timedOut, blocking  (failed) a timeout or not; whether it carried directives
+ *   retry               failures in a row before this one (hls.js playlistError)
+ *   elapsedMs           how long the last request took
+ *   tuneInGoal          the last call's tuneInGoal */
+export function nextReload({ pl, ll, ok, advanced = true, ageSec = 0, timedOut = false, blocking = false, retry = 0, elapsedMs = 0, tuneInGoal = 0 }) {
+  const td = pl.targetDuration > 0 ? pl.targetDuration : 1;
+  if (!ok) {
+    // checkRetry: "The LL-HLS request already timed out so retry immediately" without
+    // directives; any other failure (400, 503, network) after the retry delay, also without.
+    if (timedOut && blocking) return { req: null, delayMs: 0, tuneInGoal };
+    return { req: null, delayMs: Math.min(1000 * 2 ** retry, 8000), tuneInGoal };
+  }
+  if (ll && pl.canBlockReload && advanced) {
+    let req = nextBlockingRequest(pl);
+    let goal = 0;
+    // Low-Latency CDN tune-in: a playlist the CDN had cached for a while is that far behind
+    // live, so ask for the one that much further on, or for the plain playlist if it is old.
+    const want = Math.min(ageSec - pl.partTarget, td * 1.5);
+    if (want > 0) {
+      if (ageSec > td * 3) req = null;
+      else if (!(tuneInGoal && ageSec - pl.partTarget > tuneInGoal)) {
+        goal = want;
+        const part = req.part === null ? null : req.part + Math.round((goal % td) / pl.partTarget);
+        req = { msn: req.msn + Math.floor(goal / td), part };
+      }
+    }
+    return { req, delayMs: 0, tuneInGoal: goal };
+  }
+  // Polling (no blocking reloads, or the playlist did not advance): computeReloadInterval, a
+  // target duration after the last request started, half of one when nothing changed.
+  const interval = advanced ? td * 1000 : td * 500;
+  return { req: null, delayMs: Math.max(0, Math.round(interval - elapsedMs)), tuneInGoal: 0 };
+}
+
+/** Whether what follows `cursor` (a pendingMedia key) has already left the playlist. */
+export function fellOutOfWindow(pl, cursor) {
+  const first = pl.segments[0];
+  if (!first) return false;
+  return Math.floor(cursor / 1000) < first.msn - 1;
+}
+
+function ageOf(r) {
+  const v = Number(r.headers?.get?.("age"));
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+/* The newest value two loops share, and a wait for the next one. One abort listener for the
+ * lot rather than one per wait: a viewer waits several times a second. */
+class Latest {
+  constructor(value, signal) {
+    this.value = value;
+    this.version = 0;
+    this.signal = signal;
+    this.waiters = [];
+    signal.addEventListener("abort", () => this.wake(), { once: true });
+  }
+  set(value) {
+    this.value = value;
+    this.version++;
+    this.wake();
+  }
+  wake() {
+    const w = this.waiters;
+    this.waiters = [];
+    for (const f of w) f();
+  }
+  /** Resolves once there is a value newer than `version`, or the run ends. */
+  changed(version) {
+    if (this.version !== version || this.signal.aborted) return Promise.resolve();
+    return new Promise((r) => this.waiters.push(r));
   }
 }
