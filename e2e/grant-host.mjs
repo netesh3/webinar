@@ -22,10 +22,12 @@
 /**
  * Grants hosting to `email`, using admin credentials from the environment.
  *
- * Resolves to `{ ok: true }` or `{ ok: false, reason }`. Never throws for a configuration
- * problem; only genuine network failures propagate.
+ * Resolves to `{ ok: true, id, cookie }` (the account's id and the admin's session cookie) or
+ * `{ ok: false, reason }`. Never throws for a configuration problem; only genuine network
+ * failures propagate. `features` are per-account feature keys to switch on as well (e.g.
+ * "instant_webinar"). A .invalid address is verified on the way (see below).
  */
-export async function grantHost(base, email) {
+export async function grantHost(base, email, { features = [] } = {}) {
   const adminEmail = process.env.PROBE_ADMIN_EMAIL;
   const adminPassword = process.env.PROBE_ADMIN_PASSWORD;
   if (!adminEmail || !adminPassword) {
@@ -75,6 +77,20 @@ export async function grantHost(base, email) {
   const target = rows.find((u) => u.email.toLowerCase() === email.toLowerCase());
   if (!target) return { ok: false, reason: `no account found for ${email}` };
 
+  /* Password signup leaves the address unverified, and an unverified account cannot sign in.
+   * A probe's address is a .invalid one that never gets the link, so the admin verifies it
+   * (POST /api/admin/users/{id}/verify-email, which only accepts .invalid addresses). A server
+   * from before that endpoint answers 404/405; the probe then fails at its login, as before. */
+  if (target.email.toLowerCase().endsWith(".invalid")) {
+    const verified = await fetch(`${base}/api/admin/users/${target.id}/verify-email`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    if (!verified.ok && verified.status !== 404 && verified.status !== 405) {
+      return { ok: false, reason: `verify failed (${verified.status})` };
+    }
+  }
+
   const granted = await fetch(`${base}/api/admin/users/${target.id}/host`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", cookie },
@@ -82,5 +98,15 @@ export async function grantHost(base, email) {
   });
   if (!granted.ok) return { ok: false, reason: `grant failed (${granted.status})` };
 
-  return { ok: true };
+  // Optional per-account features, e.g. instant_webinar so a probe can start right away.
+  for (const feature of features) {
+    const f = await fetch(`${base}/api/admin/users/${target.id}/features`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", cookie },
+      body: JSON.stringify({ feature, enabled: true }),
+    });
+    if (!f.ok) return { ok: false, reason: `grant ${feature} failed (${f.status})` };
+  }
+
+  return { ok: true, id: target.id, cookie };
 }

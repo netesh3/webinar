@@ -144,6 +144,13 @@ func (s *Server) joinAsAttendee(
 
 	room := lk.RoomName(slug)
 	limit := min(wb.AttendeeLimit, s.ceilingForHost(r.Context(), wb.Host.ID))
+	/* A load test (admin_loadtest.go) admits its own number of viewers instead: only ever set by
+	 * an admin, on a test account's webinar. A failed read keeps the ordinary ceiling. */
+	if n, ok, lerr := s.store.LoadTestViewers(r.Context(), slug); lerr != nil {
+		s.log.Warn("join: load test lookup failed, using the plan ceiling", "error", lerr, "webinar", slug)
+	} else if ok {
+		limit = n
+	}
 
 	// Room is created here rather than by auto_create so the participant
 	// ceiling is enforced by the SFU itself, not just by our own counting.
