@@ -48,8 +48,11 @@ import { EdgeClock } from "./edge-clock";
 import { EdgeSpeakerSplit } from "./edge-speaker-split";
 
 const TELEMETRY_EVERY_MS = 30_000;
-// A wait shorter than this is a hiccup, not worth a badge.
-const RECONNECTING_AFTER_MS = 800;
+/* A wait shorter than this is a hiccup, not worth a badge. Low latency keeps only 1–2s
+ * buffered, so a one-second blip on the viewer's network or at the CDN edge stalls the
+ * picture and plays on by itself; at 800ms every such blip read as "Reconnecting"
+ * (instant-webinar-2050, 2026-10-24). */
+const RECONNECTING_AFTER_MS = 4000;
 
 export function EdgePlayer({
   playbackUrl,
@@ -225,10 +228,13 @@ export function EdgePlayer({
       playingRef.current = true;
       resumed();
     };
-    const onWaiting = () => {
-      if (!played) return;
+    // The badge only once the picture has stayed stuck; playing again (resumed) cancels it.
+    const badgeIfStuck = () => {
       clearTimeout(waitTimer);
       waitTimer = setTimeout(() => setReconnecting(true), RECONNECTING_AFTER_MS);
+    };
+    const onWaiting = () => {
+      if (played) badgeIfStuck();
     };
     video.addEventListener("playing", onPlaying);
     video.addEventListener("waiting", onWaiting);
@@ -280,7 +286,7 @@ export function EdgePlayer({
         }
         if (played) {
           freezeFrame();
-          setReconnecting(true);
+          badgeIfStuck();
         }
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           mediaRecoveries += 1;
@@ -320,7 +326,7 @@ export function EdgePlayer({
       const onErr = () => {
         if (played) {
           freezeFrame();
-          setReconnecting(true);
+          badgeIfStuck();
         } else {
           setError("The stream is starting, usually in under a minute…");
         }
