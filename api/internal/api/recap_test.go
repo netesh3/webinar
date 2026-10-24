@@ -40,13 +40,19 @@ func recapHost(t *testing.T, h *harness) types.Account {
 	return acct
 }
 
-/* enableAIForUser turns the ai switch on for one account, as an admin does. Explicit rather than
- * relying on the tier default, because the switch is meant to be opt-in per host. */
+/* aiGrant is what an admin turns on for a host who uses AI: AI writing and the sub-switches
+ * every tier used to include (ai_knowledge, simulive_auto, followup_send). No plan includes an
+ * AI switch (migrations/0159), so each is a per-host override. Repurpose and clips stay off. */
+var aiGrant = []string{types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto, types.FeatureFollowupSend}
+
+// enableAIForUser turns aiGrant on for one account, as an admin does.
 func enableAIForUser(t *testing.T, h *harness, userID string) {
 	t.Helper()
 	on := true
-	if _, err := h.store.SetFeatureOverride(context.Background(), userID, types.FeatureAI, &on); err != nil {
-		t.Fatal(err)
+	for _, k := range aiGrant {
+		if _, err := h.store.SetFeatureOverride(context.Background(), userID, k, &on); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

@@ -368,6 +368,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The Accounts tab's Hosts / Attendees chips: search and chip combine, and the
 	# chip counts follow the search text.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-accounts-filter.test.mts
+	# The Webinars tab's row actions: End only when live (not Zoom), draft <-> scheduled,
+	# no reopen, and Delete armed only by the topic or DELETE.
+	cd web && node --experimental-strip-types --no-warnings lib/admin-session-actions.test.mts
 	# The host home's list filters in the URL: tab, search and dates survive a refresh or
 	# the back button, defaults stay out of the address, bad dates read as unset.
 	cd web && node --experimental-strip-types --no-warnings lib/host-list-url.test.mts
@@ -427,6 +430,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# What Grafana Faro may send: page URLs without their query (?k= join keys, ?t= and ?token=
 	# tokens), no emails or JWTs in error text, no user meta.
 	cd web && node --experimental-strip-types --no-warnings lib/faro-privacy.test.mts
+	# The proposed plans behind /features and /pricing/proposed: the yearly rule, limits read
+	# into the comparison table, and the proposal switch.
+	cd web && node --experimental-strip-types --no-warnings lib/plans.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

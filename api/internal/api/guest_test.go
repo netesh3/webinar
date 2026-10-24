@@ -65,9 +65,23 @@ func (h *harness) registrantCount(slug string) int {
 	return len(rows)
 }
 
+/* skipWhileGuestDoorPaused skips a test that needs the guest door to OPEN.
+ *
+ * "Join without registration" is paused for webinars (types.OfferJoinWithoutRegistration is
+ * false), so the door is closed whatever the host's switch says; TestJoinWithoutRegistrationIsPaused
+ * asserts that. These tests describe the door when it is offered, and run again as soon as the
+ * constant is set back to true. */
+func skipWhileGuestDoorPaused(t *testing.T) {
+	t.Helper()
+	if !types.OfferJoinWithoutRegistration {
+		t.Skip("join without registration is paused: types.OfferJoinWithoutRegistration is false")
+	}
+}
+
 // openWebinar is a live, automatic-approval, passcode-free webinar with registration
 // off: the shape the guest door is for. The door also needs the host's switch, which
-// defaults to off.
+// defaults to off. While types.OfferJoinWithoutRegistration is false the save keeps
+// registration required, so it is an ordinary open webinar (the SFU tests use it so).
 func (h *harness) openWebinar(topic string) types.Webinar {
 	h.t.Helper()
 	h.allowOpenJoin()
@@ -88,6 +102,7 @@ func (h *harness) allowOpenJoin() {
 }
 
 func TestGuestJoinLetsANameStraightIn(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Guest door")
@@ -130,6 +145,7 @@ func TestGuestJoinLetsANameStraightIn(t *testing.T) {
 // which is what lets the host's list tell it apart from a lead instead of showing a blank
 // address that looks like a bug.
 func TestGuestJoinRecordsAGuestRegistration(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Guest rows")
@@ -171,6 +187,7 @@ func TestGuestJoinRecordsAGuestRegistration(t *testing.T) {
  * recreating it as partial (`WHERE NOT is_guest`) is what makes this pass.
  */
 func TestTwoGuestsGetTwoSeats(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Two guests")
@@ -209,6 +226,7 @@ func TestTwoGuestsGetTwoSeats(t *testing.T) {
  * where the host reviews them later.
  */
 func TestGuestJoinRefusedWhenTheHostApprovesEachAttendee(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	h.allowOpenJoin()
@@ -268,6 +286,7 @@ func TestGuestJoinRefusedWhenAPasscodeIsSet(t *testing.T) {
  * before the passcode is blanked, or every protected webinar advertises a guest door.
  */
 func TestGuestJoinAllowedMatchesWhatTheEndpointDoes(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	h.allowOpenJoin()
@@ -329,6 +348,7 @@ func TestGuestJoinAllowedMatchesWhatTheEndpointDoes(t *testing.T) {
 }
 
 func TestGuestJoinNeedsAName(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Names")
@@ -361,6 +381,7 @@ func TestGuestJoinNeedsAName(t *testing.T) {
  * quietly becoming two.
  */
 func TestGuestJoinClearsTheSameGatesAsRegisteredEntry(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	h.allowOpenJoin()
@@ -465,6 +486,7 @@ func TestGuestJoinClearsTheSameGatesAsRegisteredEntry(t *testing.T) {
  * connection, or the back button. If this fails, guests get exactly one page load.
  */
 func TestAGuestKeyWorksOnTheOrdinaryJoinEndpoint(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Reload")
@@ -519,6 +541,7 @@ func TestAGuestKeyWorksOnTheOrdinaryJoinEndpoint(t *testing.T) {
  * that appears and disappears with the data breaks whatever the host built on top of it.
  */
 func TestTheHostCanTellAGuestApart(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Mixed audience")
@@ -646,6 +669,7 @@ func TestGuestJoinOnAnUnknownWebinarIs404(t *testing.T) {
  * the stronger answer, and the one that shows up in a log.
  */
 func TestGuestJoinRefusesAnythingButTheName(t *testing.T) {
+	skipWhileGuestDoorPaused(t)
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Role grab")

@@ -116,7 +116,7 @@ func TestAISubSwitchesAreEnforced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// With ai on, the sub-switches (on in every tier) are in effect.
+	// With ai and the sub-switches granted for this host (no plan includes them), they are in effect.
 	a := meAccount(t, h)
 	for _, k := range []string{types.FeatureAIKnowledge, types.FeatureFollowupSend} {
 		if !hasFeature(a.Features, k) {
@@ -219,10 +219,14 @@ func TestAdminSetsSeveralFeaturesAtOnce(t *testing.T) {
 	}
 	var acct types.Account
 	h.decode(raw, &acct)
-	for _, k := range []string{types.FeatureAI, types.FeatureSimulive, types.FeatureAIKnowledge} {
+	for _, k := range []string{types.FeatureAI, types.FeatureSimulive} {
 		if !hasFeature(acct.Features, k) {
 			t.Errorf("after bulk: %v, want %s", acct.Features, k)
 		}
+	}
+	// AI on does not bring its sub-switches: no plan includes them (migrations/0159).
+	if hasFeature(acct.Features, types.FeatureAIKnowledge) {
+		t.Errorf("after bulk: %v, want no ai_knowledge without its own grant", acct.Features)
 	}
 	if hasFeature(acct.Features, types.FeatureMeetings) {
 		t.Errorf("after bulk: %v, want meetings off", acct.Features)

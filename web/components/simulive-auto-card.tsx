@@ -74,7 +74,8 @@ export function SimuliveAutoCard({ webinar: w }: { webinar: Webinar }) {
       ) : (
         <p className="text-[12.5px] text-ink-2">
           Let an assistant answer new questions from your AI knowledge while the simulive plays. Auto
-          mode needs both AI and engagement replay switched on for this account — ask us to turn them on.
+          mode isn&apos;t switched on for this account (it needs AI, engagement replay and Auto mode)
+          — ask us to turn it on.
         </p>
       )}
     </Card>

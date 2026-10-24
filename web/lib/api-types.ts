@@ -5469,10 +5469,10 @@ export const FeatureWhiteboard = "whiteboard";
  * 	 * features after it. Each call counts against the monthly AI caps
  * 	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
  * 	 *
- * 	 * Opt-in: off for every account until an admin turns it on for that host (Admin ->
- * 	 * Accounts, or in a plan tier's defaults). 0126 had it on in every tier; 0127 took
- * 	 * that back (2026-10-22). Off means no AI buttons, the AI routes answer 403
- * 	 * feature_off, and no recap is made.
+ * 	 * Opt-in: off for every account on every plan until an admin turns it on for that host
+ * 	 * (Admin -> Accounts). No plan tier may include it (Feature.PerHost, migrations/0159).
+ * 	 * 0126 had it on in every tier; 0127 took that back (2026-10-22). Off means no AI
+ * 	 * buttons, the AI routes answer 403 feature_off, and no recap is made.
  */
 export const FeatureAI = "ai";
 /**
@@ -5507,20 +5507,20 @@ export const FeatureSimulive = "simulive";
 export const FeatureMeetings = "meetings";
 /**
  *  FeatureAIKnowledge is the AI knowledge library (documents, links, past answers) and
- * 	 * the Q&A drafts grounded in it. Needs FeatureAI: on in every tier (migrations/0142) but
- * 	 * only in effect for an account that also has AI. Off: no library, and Q&A drafts are
+ * 	 * the Q&A drafts grounded in it. Needs FeatureAI. Off by default, per host only
+ * 	 * (migrations/0159). Off: no library, and Q&A drafts are
  * 	 * written from the topic and description only.
  */
 export const FeatureAIKnowledge = "ai_knowledge";
 /**
  *  FeatureSimuliveAuto is Auto mode: the assistant answering a simulive's questions by
- * 	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive; on in every tier
- * 	 * (migrations/0142), in effect only with all three.
+ * 	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive, in effect only with all
+ * 	 * three. Off by default, per host only (migrations/0159).
  */
 export const FeatureSimuliveAuto = "simulive_auto";
 /**
  *  FeatureFollowupSend is sending the AI follow-up drafts by email or WhatsApp from
- * 	 * Results. Needs FeatureAI; on in every tier (migrations/0142). Off: the drafts are
+ * 	 * Results. Needs FeatureAI. Off by default, per host only (migrations/0159). Off: the drafts are
  * 	 * still written, to copy or export, and the send routes answer 403 feature_off.
  */
 export const FeatureFollowupSend = "followup_send";
@@ -5581,6 +5581,12 @@ export interface Feature {
    * 	 * effect, whatever its own setting says: EffectiveFeatures drops it from the account.
    */
   requires?: string[];
+  /**
+   *  PerHost is a switch no plan tier may include: off for every host on every plan until
+   * 	 * an admin turns it on for that host (an override). Every AI-backed switch is one
+   * 	 * (migrations/0159); the plan matrix refuses them (422 per_host_feature).
+   */
+  perHost?: boolean;
 }
 /**
  * YouTubeLink is the public half of a host's YouTube OAuth grant. The refresh
@@ -7918,6 +7924,14 @@ export interface HostGrant {
   canHost: boolean;
 }
 /**
+ *  AdminWebinarStatus is PATCH /api/admin/webinars/{slug}/status: an admin publishing a
+ *  * draft (to scheduled) or taking a scheduled session back to a draft. Those are the only
+ *  * two moves it accepts — live is reached through the host's room, ended through End.
+ */
+export interface AdminWebinarStatus {
+  status: WebinarStatus;
+}
+/**
  *  FeatureGrant switches one feature on or off for one account.
  *  *
  *  * One feature per request, with the state it should end in rather than a verb, for the
@@ -8440,6 +8454,27 @@ export interface LobbyAdmitAllResponse {
   admitted: number /* int */;
   left: number /* int */;
 }
+/**
+ *  OfferJoinWithoutRegistration is the product-wide switch for "Join without registration" on
+ *  * webinars: turning registration off so the shared link opens a name-only guest door.
+ *  *
+ *  * PAUSED (2026-10): false. We do not offer that option for webinars right now, so every
+ *  * webinar is registration-required whatever an account's FeatureJoinWithoutRegistration
+ *  * says: create and edit save registration required (host.go), the guest endpoint answers
+ *  * 403 registration_required (guest.go), and GuestJoinAllowed is false, so the landing page
+ *  * shows only the registration form. A webinar saved earlier with registration off is
+ *  * treated as registration-required from now on; its row is left as it was.
+ *  *
+ *  * Meetings are unaffected: they have no registration and their door is the lobby.
+ *  *
+ *  * The web app reads the same constant from the generated web/lib/api-types.ts, so the
+ *  * schedule form, the edit form, the settings tab and the guest button on the landing page
+ *  * hide with it (lib/join-without-registration.ts).
+ *  *
+ *  * TO RESTORE: set this to true and run `make types`. The per-account switch
+ *  * (Admin -> Accounts) then works as before, and the skipped guest-door tests run again.
+ */
+export const OfferJoinWithoutRegistration = false;
 export interface JoinRequest {
   /**
    * JoinKey is optional for a signed-in account: the server finds the

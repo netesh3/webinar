@@ -1,11 +1,15 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/netkumar/webcast/api/types"
@@ -14,6 +18,42 @@ import (
 // jsonUnmarshal exists because the concurrency test decodes inside a goroutine, and the
 // harness's decode calls t.Fatalf — which is not allowed off the test's own goroutine.
 func jsonUnmarshal(raw []byte, dst any) error { return json.Unmarshal(raw, dst) }
+
+var attendeeSeq atomic.Int64
+
+/* attendeeJoin is one audience member arriving: a registration, then the join with its key
+ * and no session, as an attendee's browser does.
+ *
+ * These tests used the guest door (guestJoin) for this, which is paused for webinars while
+ * types.OfferJoinWithoutRegistration is false. What they test is where the join lands, not
+ * which door it came through, so a registered, approved attendee is the same test. Safe off the test's
+ * own goroutine: a failure is reported with Errorf and returned as a non-200. */
+func (h *harness) attendeeJoin(slug, name string) (*http.Response, []byte) {
+	email := fmt.Sprintf("attendee-%d@test.dev", attendeeSeq.Add(1))
+	reg, err := h.store.Register(context.Background(), slug, types.RegisterRequest{
+		FirstName: name, Email: email, Consent: true, Phone: testPhone,
+	}, "")
+	if err != nil {
+		h.t.Errorf("register %s on %s: %v", email, slug, err)
+		return &http.Response{StatusCode: 0}, []byte(err.Error())
+	}
+	// A fresh address comes back unverified. Approve it as the verification link would; the
+	// email round trip is not what these tests are about.
+	if _, err := h.store.Pool().Exec(context.Background(),
+		`UPDATE registrations SET state = $2 WHERE id = $1`, reg.ID, string(types.RegApproved)); err != nil {
+		h.t.Errorf("approve %s: %v", email, err)
+		return &http.Response{StatusCode: 0}, []byte(err.Error())
+	}
+	body, _ := json.Marshal(types.JoinRequest{JoinKey: reg.JoinKey})
+	res, err := (&http.Client{}).Post(h.srv.URL+"/api/webinars/"+slug+"/join", "application/json", bytes.NewReader(body))
+	if err != nil {
+		h.t.Errorf("join %s: %v", slug, err)
+		return &http.Response{StatusCode: 0}, []byte(err.Error())
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	return res, raw
+}
 
 /* Which LiveKit project a webinar lands on, and — mostly — what must never move it.
  *
@@ -61,7 +101,7 @@ func TestANewWebinarLandsOnTheFirstEnabledProject(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("First project")
 
-	res, raw := h.guestJoin(wb.ID, "Attendee One")
+	res, raw := h.attendeeJoin(wb.ID, "Attendee One")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("join: status %d body %s", res.StatusCode, raw)
 	}
@@ -90,7 +130,7 @@ func TestThePinSurvivesAChangeToTheProjectList(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Sticky")
 
-	res, raw := h.guestJoin(wb.ID, "Early Bird")
+	res, raw := h.attendeeJoin(wb.ID, "Early Bird")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("first join: status %d body %s", res.StatusCode, raw)
 	}
@@ -103,7 +143,7 @@ func TestThePinSurvivesAChangeToTheProjectList(t *testing.T) {
 	h.pool.projects["cloud-new"] = fresh
 	h.pool.enabled["cloud-new"] = true
 
-	res, raw = h.guestJoin(wb.ID, "Late Arrival")
+	res, raw = h.attendeeJoin(wb.ID, "Late Arrival")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("second join: status %d body %s", res.StatusCode, raw)
 	}
@@ -127,7 +167,7 @@ func TestTheHostJoinsTheSameProjectAsTheAudience(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Same room")
 
-	res, raw := h.guestJoin(wb.ID, "In The Audience")
+	res, raw := h.attendeeJoin(wb.ID, "In The Audience")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("guest join: status %d body %s", res.StatusCode, raw)
 	}
@@ -180,7 +220,7 @@ func TestConcurrentFirstJoinsAgreeOnOneProject(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res, raw := h.guestJoin(wb.ID, "Simultaneous")
+			res, raw := h.attendeeJoin(wb.ID, "Simultaneous")
 			mu.Lock()
 			defer mu.Unlock()
 			if res.StatusCode != http.StatusOK {
@@ -273,7 +313,7 @@ func TestTheHerdArrivingAfterAFailoverAllGetIn(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res, raw := h.guestJoin(wb.ID, "Audience")
+			res, raw := h.attendeeJoin(wb.ID, "Audience")
 			mu.Lock()
 			defer mu.Unlock()
 			if res.StatusCode != http.StatusOK {
@@ -336,7 +376,7 @@ func TestARequestThatLosesTheRaceFollowsTheFailover(t *testing.T) {
 		}
 	}
 
-	res, raw := h.guestJoin(wb.ID, "Follower")
+	res, raw := h.attendeeJoin(wb.ID, "Follower")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status %d body %s — the request did not follow the failover", res.StatusCode, raw)
 	}
@@ -362,7 +402,7 @@ func TestADisabledProjectStillServesTheWebinarsAlreadyOnIt(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Already here")
 
-	if res, raw := h.guestJoin(wb.ID, "Pinned"); res.StatusCode != http.StatusOK {
+	if res, raw := h.attendeeJoin(wb.ID, "Pinned"); res.StatusCode != http.StatusOK {
 		t.Fatalf("first join: status %d body %s", res.StatusCode, raw)
 	}
 	pinned := h.pinOf(wb.ID)
@@ -370,7 +410,7 @@ func TestADisabledProjectStillServesTheWebinarsAlreadyOnIt(t *testing.T) {
 	// The operator retires it.
 	h.pool.enabled[pinned] = false
 
-	res, raw := h.guestJoin(wb.ID, "Still Welcome")
+	res, raw := h.attendeeJoin(wb.ID, "Still Welcome")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("join after the project was disabled: status %d body %s", res.StatusCode, raw)
 	}
@@ -382,7 +422,7 @@ func TestADisabledProjectStillServesTheWebinarsAlreadyOnIt(t *testing.T) {
 
 	// A NEW webinar avoids it, which is the other half of what "disabled" means.
 	next := h.openWebinar("Brand new")
-	if res, raw := h.guestJoin(next.ID, "Newcomer"); res.StatusCode != http.StatusOK {
+	if res, raw := h.attendeeJoin(next.ID, "Newcomer"); res.StatusCode != http.StatusOK {
 		t.Fatalf("join a new webinar: status %d body %s", res.StatusCode, raw)
 	}
 	if got := h.pinOf(next.ID); got == pinned {
@@ -409,7 +449,7 @@ func TestANewWebinarFailsOverWhenTheFirstProjectRefusesRooms(t *testing.T) {
 	 * therefore did nothing in exactly this case. */
 	h.rooms.refuseRooms = true
 
-	res, raw := h.guestJoin(wb.ID, "Lucky")
+	res, raw := h.attendeeJoin(wb.ID, "Lucky")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("join: status %d body %s, want a failover to the spare", res.StatusCode, raw)
 	}
@@ -441,7 +481,7 @@ func TestAnEstablishedWebinarIsNeverMovedByARefusal(t *testing.T) {
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("In progress")
 
-	if res, raw := h.guestJoin(wb.ID, "First In"); res.StatusCode != http.StatusOK {
+	if res, raw := h.attendeeJoin(wb.ID, "First In"); res.StatusCode != http.StatusOK {
 		t.Fatalf("first join: status %d body %s", res.StatusCode, raw)
 	}
 	pinned := h.pinOf(wb.ID)
@@ -449,7 +489,7 @@ func TestAnEstablishedWebinarIsNeverMovedByARefusal(t *testing.T) {
 	// Now it runs out, mid-session.
 	h.rooms.refuseRooms = true
 
-	res, raw := h.guestJoin(wb.ID, "Second In")
+	res, raw := h.attendeeJoin(wb.ID, "Second In")
 	if res.StatusCode == http.StatusOK {
 		t.Fatalf("the join succeeded: body %s — a live webinar was moved to another project, "+
 			"so this attendee is in a different room from the host", raw)
@@ -486,7 +526,7 @@ func TestAWebinarWhoseProjectIsGone(t *testing.T) {
 		}
 		h.pool.forget("test")
 
-		res, raw := h.guestJoin(wb.ID, "Rescued")
+		res, raw := h.attendeeJoin(wb.ID, "Rescued")
 		if res.StatusCode != http.StatusOK {
 			t.Fatalf("join: status %d body %s, want a repin to the surviving project",
 				res.StatusCode, raw)
@@ -506,7 +546,7 @@ func TestAWebinarWhoseProjectIsGone(t *testing.T) {
 		}
 		h.pool.forget("test")
 
-		res, raw := h.guestJoin(wb.ID, "Unlucky")
+		res, raw := h.attendeeJoin(wb.ID, "Unlucky")
 		if res.StatusCode != http.StatusServiceUnavailable {
 			t.Fatalf("status %d body %s, want 503", res.StatusCode, raw)
 		}
@@ -610,7 +650,7 @@ func TestTheProjectPinIsStrippedFromPublicPayloads(t *testing.T) {
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
 	wb := h.openWebinar("Redaction")
-	if res, raw := h.guestJoin(wb.ID, "Somebody"); res.StatusCode != http.StatusOK {
+	if res, raw := h.attendeeJoin(wb.ID, "Somebody"); res.StatusCode != http.StatusOK {
 		t.Fatalf("join: status %d body %s", res.StatusCode, raw)
 	}
 
@@ -649,7 +689,7 @@ func TestNoEnabledProjectIsA503(t *testing.T) {
 
 	h.pool.enabled["test"] = false
 
-	res, raw := h.guestJoin(wb.ID, "Nobody")
+	res, raw := h.attendeeJoin(wb.ID, "Nobody")
 	if res.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("status %d body %s, want 503", res.StatusCode, raw)
 	}

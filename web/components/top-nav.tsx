@@ -14,6 +14,7 @@ import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
 import { EmailNavLink } from "./email/email-nav";
 import { useInstallMenuAction } from "./pwa";
+import { indexable } from "@/lib/plans";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -53,7 +54,11 @@ function linksFor(signedIn: boolean, canHost: boolean) {
         { href: "/my-webinars", label: "WatchList" },
         { href: "/pricing", label: "Pricing" },
       ]
-    : [{ href: "/pricing", label: "Pricing" }];
+    : [
+        // Features carries the proposed prices, so it is linked once they are live (lib/plans.ts).
+        ...(indexable() ? [{ href: "/features", label: "Features" }] : []),
+        { href: "/pricing", label: "Pricing" },
+      ];
 }
 
 /** Where the logo takes you. A host's real home base is /host — everything else

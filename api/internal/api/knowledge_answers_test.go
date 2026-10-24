@@ -512,6 +512,7 @@ func TestHybridRetrievalFusesAndFallsBackToFullText(t *testing.T) {
 	_ = faq
 
 	// Repeats by embedding: the same question in other words updates the entry.
+	h.endLive(wb.ID) // one live session per host
 	first := h.liveWebinar("Session one", nil)
 	h.question(first.ID, "q-hy-1", "What is the price?", 0)
 	h.answerQuestion(first.ID, "q-hy-1", "499 rupees.")

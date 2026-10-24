@@ -182,7 +182,10 @@ func TestEdgeRoomOutlivesAHostRefresh(t *testing.T) {
 	h := newHarness(t, edgeConfig)
 	edgeHost(t, h, "departure@test.dev")
 	edge := edgeWebinar(h, "Edge departure")
-	plain := h.liveWebinar("Standard departure", nil)
+	// Both on the air at once to compare them, which POST /start no longer allows one
+	// host: the standard one goes live straight in the store.
+	plain := h.newWebinar("Standard departure", nil)
+	h.goLive(plain.ID)
 	for _, slug := range []string{edge.ID, plain.ID} {
 		res, raw := h.do(http.MethodPost, "/api/host/webinars/"+slug+"/join", types.JoinRequest{})
 		if res.StatusCode != http.StatusOK {

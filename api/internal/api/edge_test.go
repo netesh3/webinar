@@ -239,7 +239,9 @@ func TestEdgeJoinGivesPlaybackNotALiveKitToken(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// A standard webinar of the same host is exactly as before.
+	// A standard webinar of the same host is exactly as before (once the edge one is over:
+	// a host runs one session at a time).
+	h.endLive(wb.ID)
 	plain := h.liveWebinar("Edge host, standard webinar", nil)
 	preg := h.registerAsGuest(plain.ID, "edge-join-plain@test.dev")
 	res, pjoin, raw := h.joinAsGuestKey(plain.ID, preg.JoinKey)

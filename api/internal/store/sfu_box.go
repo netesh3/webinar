@@ -71,7 +71,8 @@ func (s *Store) SFUBox(ctx context.Context, project string) (SFUBoxState, error)
 }
 
 /* TakeSFUBoxLease takes the row for ttl. ok=false (nil error) is somebody else holding it:
- * skip, they are acting. The holder token must be passed to SaveSFUBox and ReleaseSFUBoxLease. */
+ * skip, they are acting. It never waits on a row lock (SKIP LOCKED): a row locked by another
+ * backend reads as held, rather than the step waiting out its deadline on it. The holder token must be passed to SaveSFUBox and ReleaseSFUBoxLease. */
 func (s *Store) TakeSFUBoxLease(ctx context.Context, project string, ttl time.Duration) (holder string, b SFUBoxState, ok bool, err error) {
 	if err := s.EnsureSFUBox(ctx, project); err != nil {
 		return "", b, false, err
@@ -84,7 +85,9 @@ func (s *Store) TakeSFUBoxLease(ctx context.Context, project string, ttl time.Du
 	b, err = scanSFUBox(s.pool.QueryRow(ctx, `
 		UPDATE sfu_box_state
 		   SET lease_holder = $2, lease_until = now() + make_interval(secs => $3)
-		 WHERE project = $1 AND (lease_until IS NULL OR lease_until <= now())
+		 WHERE project = (SELECT project FROM sfu_box_state
+		                   WHERE project = $1 AND (lease_until IS NULL OR lease_until <= now())
+		                   FOR UPDATE SKIP LOCKED)
 		 RETURNING `+sfuBoxCols, project, holder, ttl.Seconds()))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", b, false, nil
