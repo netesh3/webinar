@@ -556,3 +556,50 @@ func TestBoxHoursInTheCostReport(t *testing.T) {
 		t.Fatalf("admin sfu box = %+v", box)
 	}
 }
+
+/* Clips wait for the box rather than start it: a queued clip asks nothing. An admin's "Make it
+ * now" starts it; a clip being made keeps it up; once the queue is made it goes at once,
+ * without the idle grace a session leaves. */
+func TestBoxClipsWaitThenMakeNow(t *testing.T) {
+	r := newBoxRig(t)
+	ctx := context.Background()
+	r.h.login("box-host@test.dev")
+	wb := r.h.newWebinar("Recorded long ago", nil)
+	r.h.exec(`UPDATE webinars SET status = 'ended', ended_at = now() - interval '3 days', starts_at = now() - interval '3 days' WHERE slug = $1`, wb.ID)
+	rec := r.h.insertTake(wb.ID, "", time.Now().Add(-72*time.Hour), 10*time.Minute, false)
+	r.h.exec(`INSERT INTO clip_jobs (recording_id, kind, format, segments, duration_sec, storage_key)
+	          VALUES ($1::uuid, 'clip', '9x16', '[]', 30, 'clips/x/' || gen_random_uuid() || '.mp4')`, rec)
+
+	r.wantActual(r.step(), store.BoxDown)
+	if r.fake.Creates != 0 {
+		t.Fatal("a queued clip started the box")
+	}
+
+	if _, _, err := r.h.store.PromoteAdmins(ctx, []string{"neeraj@acme.dev"}); err != nil {
+		t.Fatal(err)
+	}
+	r.h.login("neeraj@acme.dev")
+	res, raw := r.h.do(http.MethodPost, "/api/admin/clips/make-now", nil)
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"queued":1`) {
+		t.Fatalf("make now: %d %s", res.StatusCode, raw)
+	}
+	if r.fake.Creates != 1 {
+		t.Fatalf("make now did not start the box: %d creates", r.fake.Creates)
+	}
+	r.wantActual(r.state(), store.BoxCreating)
+	st := r.step()
+	r.fake.Activate(st.DropletID)
+	r.step()
+	r.ready.Store(true)
+	r.wantActual(r.step(), store.BoxReady)
+
+	// Being made: kept up, hours on.
+	r.h.exec(`UPDATE clip_jobs SET status = 'processing', rush_until = NULL, lease_until = now() + interval '3 minutes'`)
+	r.skew.Store(int64(3 * time.Hour))
+	if st := r.step(); st.Desired != "up" || r.fake.Deletes != 0 {
+		t.Fatalf("while a clip is made: desired %s, deletes %d", st.Desired, r.fake.Deletes)
+	}
+	// Made: gone at the next step.
+	r.h.exec(`UPDATE clip_jobs SET status = 'ready', lease_until = NULL`)
+	r.wantActual(r.step(), store.BoxDeleting)
+}

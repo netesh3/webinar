@@ -334,6 +334,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# Suggested highlights under a recording: clock times typed and shown, an adjusted
 	# range's problems (20–90 s, inside one take), the engagement chips and the states.
 	cd web && node --experimental-strip-types --no-warnings lib/highlights.test.mts
+	# Clips and reels made from a recording: the post text as copied, a reel's rules, each
+	# clip's state in words, and what the queue says while it waits.
+	cd web && node --experimental-strip-types --no-warnings lib/clips.test.mts
 	# Captions on replays: the captions file's address, each take's own file on the
 	# playlist, and switching only our track (not one hls.js made).
 	cd web && node --experimental-strip-types --no-warnings lib/caption-track.test.mts

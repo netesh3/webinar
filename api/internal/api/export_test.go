@@ -182,3 +182,9 @@ func ForgetBoxCache(s *Server) {
 	s.box.lastProbe = time.Time{}
 	s.box.mu.Unlock()
 }
+
+// SweepClipBlobs is the maintenance pass that deletes the files of deleted clips.
+func SweepClipBlobs(s *Server, ctx context.Context) { s.sweepClipBlobs(ctx) }
+
+// AIModelFor is the per-feature model (AI_MODEL_HIGHLIGHTS for the clip features).
+func AIModelFor(s *Server, feature string) string { return s.aiModelFor(feature) }

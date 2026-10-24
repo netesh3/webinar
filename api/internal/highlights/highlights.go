@@ -243,6 +243,11 @@ func Peaks(moments []Moment, durationSec float64, k int) []Peak {
  * to 20–90 seconds, inside the one take its start is in. ok is false when no such clip exists
  * there (the take is too short, or nothing was said). */
 func Snap(startSec, endSec float64, sentences []Sentence, parts []Part) (s, e float64, part Part, ok bool) {
+	return SnapWithin(startSec, endSec, sentences, parts, types.HighlightMinSec, types.HighlightMaxSec)
+}
+
+// SnapWithin is Snap to minSec–maxSec instead (a reel's short moments).
+func SnapWithin(startSec, endSec float64, sentences []Sentence, parts []Part, minSec, maxSec float64) (s, e float64, part Part, ok bool) {
 	if endSec < startSec {
 		startSec, endSec = endSec, startSec
 	}
@@ -269,23 +274,23 @@ func Snap(startSec, endSec float64, sentences []Sentence, parts []Part) (s, e fl
 		last++
 	}
 	length := func() float64 { return in[last].EndSec - in[first].StartSec }
-	for length() < types.HighlightMinSec && last+1 < len(in) {
+	for length() < minSec && last+1 < len(in) {
 		last++
 	}
-	for length() < types.HighlightMinSec && first > 0 {
+	for length() < minSec && first > 0 {
 		first--
 	}
-	for length() > types.HighlightMaxSec && last > first {
+	for length() > maxSec && last > first {
 		last--
 	}
 	s, e = in[first].StartSec, in[last].EndSec
-	if e-s > types.HighlightMaxSec {
-		e = s + types.HighlightMaxSec // one very long sentence: cut it
+	if e-s > maxSec {
+		e = s + maxSec // one very long sentence: cut it
 	}
 	// A breath either side, inside the take.
 	s = math.Max(part.StartSec, s-0.3)
 	e = math.Min(part.EndSec, e+0.5)
-	if e-s < types.HighlightMinSec {
+	if e-s < minSec {
 		return 0, 0, Part{}, false
 	}
 	return round1(s), round1(e), part, true
@@ -306,7 +311,7 @@ func round1(x float64) float64 { return math.Round(x*10) / 10 }
 type Pick struct {
 	StartSec, EndSec float64
 	Part             Part
-	Title, Why       string
+	Title, Why, Hook string
 	// Interest is the model's 1–10 for how well it stands alone as a clip.
 	Interest int
 }
@@ -358,7 +363,7 @@ func Rank(picks []Pick, moments []Moment, sentences []Sentence, n int) []types.H
 	out := make([]types.Highlight, 0, len(kept))
 	for _, k := range kept {
 		h := types.Highlight{
-			Title: k.p.Title, Why: k.p.Why, StartSec: k.p.StartSec, EndSec: k.p.EndSec,
+			Title: k.p.Title, Why: k.p.Why, Hook: k.p.Hook, StartSec: k.p.StartSec, EndSec: k.p.EndSec,
 			PartID: k.p.Part.ID, PartStartSec: round1(k.p.StartSec - k.p.Part.StartSec),
 			Score: k.score, Signals: Signals(moments, k.p.StartSec, k.p.EndSec),
 		}

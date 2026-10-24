@@ -69,6 +69,9 @@ func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.
 	if err := s.aiCapCheck(ctx, feature, hostID); err != nil {
 		return ai.Reply{}, err
 	}
+	if req.Model == "" {
+		req.Model = s.aiModelFor(feature)
+	}
 
 	reply, callErr := s.ai.Complete(ctx, req)
 	usage := store.AIUsage{Feature: feature, HostID: hostID, OK: callErr == nil}
@@ -82,6 +85,17 @@ func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.
 		s.log.Warn("ai: record usage", "feature", feature, "error", err)
 	}
 	return reply, callErr
+}
+
+/* aiModelFor is the per-feature model: AI_MODEL_HIGHLIGHTS for the clip features (picking
+ * highlights, planning reels with their hook titles, writing post text), nothing (the
+ * provider's own model, OPENAI_MODEL) for the rest. */
+func (s *Server) aiModelFor(feature string) string {
+	switch feature {
+	case types.AIFeatureHighlights, types.AIFeatureReels, types.AIFeatureClipPosts:
+		return s.cfg.AIModelHighlights
+	}
+	return ""
 }
 
 // aiCapCheck is errAILimit when the instance or the host has spent its month's allowance.

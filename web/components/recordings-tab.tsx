@@ -32,7 +32,7 @@ import { RecordingChapters } from "./recording-chapters";
 import { playableRecordingParts, recordingSources } from "@/lib/recording-parts";
 import { chapterSeekTimes } from "@/lib/recap";
 import { clipsOffered, simuliveAllowed } from "@/lib/host-features";
-import { RecordingHighlights } from "./recording-highlights";
+import { RecordingClips } from "./recording-clips";
 import { simuliveEligible, simuliveScheduleHref } from "@/lib/simulive-create";
 import { SimuliveInfoButton } from "./simulive-info";
 
@@ -250,13 +250,13 @@ export function RecordingsTab({
             pending={recapPending}
             onSeek={(sec) => player.current?.seek(sec)}
           />
-          {/* Suggested highlights, for clips: the host's switch, after the end. */}
+          {/* Highlights, suggested reels and the clips made from them: the host's switch, after the end. */}
           {ended && clipsOffered(account) && playing.status === "ready" && (
-            <RecordingHighlights
+            <RecordingClips
               key={playing.id}
               slug={w.id}
               recording={playing}
-              onPreview={(start, end) => player.current?.playRange(start, end)}
+              playRanges={(ranges, onStep) => player.current?.playRanges(ranges, onStep)}
             />
           )}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3">

@@ -235,6 +235,8 @@ done
 [[ -n "${AI_PROVIDERS:-}" ]] && ENV_VARS+=("AI_PROVIDERS=${AI_PROVIDERS}")
 [[ -n "${OPENAI_API_KEY:-}" ]] && ENV_VARS+=("OPENAI_API_KEY=${OPENAI_API_KEY}")
 [[ -n "${OPENAI_MODEL:-}" ]] && ENV_VARS+=("OPENAI_MODEL=${OPENAI_MODEL}")
+# The clip features' model (highlights, reels, hooks, post text); the API defaults to gpt-5-mini.
+[[ -n "${AI_MODEL_HIGHLIGHTS:-}" ]] && ENV_VARS+=("AI_MODEL_HIGHLIGHTS=${AI_MODEL_HIGHLIGHTS}")
 [[ -n "${AI_MONTHLY_USD:-}" ]] && ENV_VARS+=("AI_MONTHLY_USD=${AI_MONTHLY_USD}")
 [[ -n "${AI_HOST_MONTHLY_USD:-}" ]] && ENV_VARS+=("AI_HOST_MONTHLY_USD=${AI_HOST_MONTHLY_USD}")
 [[ -n "${CLOUDFLARE_AI_ACCOUNT_ID:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_ACCOUNT_ID=${CLOUDFLARE_AI_ACCOUNT_ID}")

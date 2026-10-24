@@ -4,7 +4,9 @@
 # The API gives the running mix a second RTMP output, rec/{slug}; MediaMTX records it under
 # ./recordings (mediamtx.yml.template); this joins the segments into an MP4 (a copy, never an
 # encode), uploads it to a URL the API signs, and reports it. Never touches the mix itself.
-# Low priority so a remux cannot slow video.
+# It also makes hosts' clips and reels (mixrec/clips.go): an encode, but only while nothing is
+# live on this box (the API hands out no job then), under nice 19 and the idle I/O class.
+# Low priority so neither can slow video.
 services:
   mixrec:
     image: ${MIXREC_IMAGE:-webinarliv-mixrec:local}
@@ -14,7 +16,8 @@ services:
     depends_on: [mediamtx]
     cpus: ${MIXREC_CPUS:-1}
     cpu_shares: 256
-    mem_limit: 512m
+    # A 1080x1920 clip render peaks near 500 MB; the joins need far less.
+    mem_limit: ${MIXREC_MEM:-1g}
     oom_score_adj: 500
     # Written by redeploy.sh from .env (MIXREC_SECRET, MIXREC_API_URL), mode 600.
     env_file: mixrec.env

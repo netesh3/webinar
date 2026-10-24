@@ -153,6 +153,11 @@ type boxInputs struct {
 	Finalizing int
 	Recordings int
 	Requested  bool
+	/* Clips is clip jobs being made on the box (their lease alive) and jobs an admin asked
+	 * to make now (clip_jobs.go). Wanted while there are any, so a render is never cut off;
+	 * but not a session, so it does not start the idle grace: once they are made the box
+	 * goes as soon as nothing else needs it. */
+	Clips int
 	// RoomsBusy is LiveKit reporting participants or egress on the server.
 	RoomsBusy  bool
 	LastNeeded *time.Time
@@ -163,7 +168,9 @@ type boxDecision struct {
 	Desired string
 	// Needed is something wanting the box right now (not just the grace).
 	Needed bool
-	Reason string
+	// ClipsOnly is Needed by clip jobs alone, which does not restart the idle grace.
+	ClipsOnly bool
+	Reason    string
 }
 
 // decideBox is the whole up/down rule, pure so it is tested on its own.
@@ -190,8 +197,12 @@ func decideBox(in boxInputs) boxDecision {
 	if in.RoomsBusy {
 		why = append(why, "rooms or egress running")
 	}
+	sessions := len(why)
+	if in.Clips > 0 {
+		why = append(why, fmt.Sprintf("%d clips to make", in.Clips))
+	}
 	if len(why) > 0 {
-		return boxDecision{Desired: "up", Needed: true, Reason: strings.Join(why, ", ")}
+		return boxDecision{Desired: "up", Needed: true, ClipsOnly: sessions == 0, Reason: strings.Join(why, ", ")}
 	}
 	if in.LastNeeded != nil {
 		if left := in.IdleGrace - in.Now.Sub(*in.LastNeeded); left > 0 {
@@ -254,13 +265,18 @@ func (s *Server) boxStep(ctx context.Context) {
 		s.log.Error("sfu box: finalizing", "project", project, "error", err)
 		return
 	}
+	clipsMaking, clipsRushed, err := s.store.ClipDemand(ctx, clipMaxAttempts)
+	if err != nil {
+		s.log.Error("sfu box: clip demand", "project", project, "error", err)
+		return
+	}
 	var act lk.Activity
 	var actErr error
 	if st.Actual == store.BoxReady || st.Actual == store.BoxDraining {
 		act, actErr = b.activity(ctx)
 	}
 	in := boxInputs{
-		Now: now, AlwaysOn: b.cfg.AlwaysOn,
+		Now: now, AlwaysOn: b.cfg.AlwaysOn, Clips: clipsMaking + clipsRushed,
 		Live: dem.Live, Soon: dem.Soon, Finalizing: finalizing, Recordings: dem.Recordings,
 		Requested:  st.RequestedUntil != nil && st.RequestedUntil.After(now),
 		RoomsBusy:  actErr == nil && act.Busy(),
@@ -270,7 +286,7 @@ func (s *Server) boxStep(ctx context.Context) {
 		in.LastNeeded = dem.LastEnded
 	}
 	dec := decideBox(in)
-	if dec.Needed {
+	if dec.Needed && !dec.ClipsOnly {
 		in.LastNeeded = &now
 	}
 	st.LastNeededAt = in.LastNeeded
@@ -452,6 +468,8 @@ func (s *Server) boxBusy(ctx context.Context, in boxInputs, act lk.Activity, act
 	switch {
 	case in.Live > 0, in.Finalizing > 0, in.Recordings > 0, in.Soon > 0:
 		return true, "sessions"
+	case in.Clips > 0:
+		return true, "clips being made"
 	case actErr == nil && act.Busy():
 		return true, fmt.Sprintf("%d participants, %d egress", act.Participants, act.Egresses)
 	case actErr != nil:

@@ -27,16 +27,19 @@ function partBounds(rec: Recording): Map<string, { start: number; end: number }>
 
 /* Suggested highlights under the player in the Recording tab (the clips switch): the moments
  * AI picked as the best short clips, from the transcript and where the audience reacted. Each
- * can be previewed (the player plays just that stretch) and its start and end adjusted; the
- * times are the player's own. Found the first time this opens, then kept. */
+ * can be previewed (the player plays just that stretch), its start and end adjusted (the
+ * times are the player's own) and made into a clip (onMakeClip, with the adjusted times).
+ * Found the first time this opens, then kept. */
 export function RecordingHighlights({
   slug,
   recording,
   onPreview,
+  onMakeClip,
 }: {
   slug: string;
   recording: Recording;
   onPreview: (startSec: number, endSec: number) => void;
+  onMakeClip?: (h: Highlight, startSec: number, endSec: number) => void;
 }) {
   const { notify } = useToast();
   const [data, setData] = useState<HighlightsResponse | null>(null);
@@ -127,6 +130,7 @@ export function RecordingHighlights({
                     highlight={h}
                     part={bounds.get(h.partId) ?? { start: 0, end: Number.POSITIVE_INFINITY }}
                     onPreview={onPreview}
+                    onMakeClip={onMakeClip}
                   />
                 ))}
               </ol>
@@ -142,10 +146,12 @@ function HighlightRow({
   highlight: h,
   part,
   onPreview,
+  onMakeClip,
 }: {
   highlight: Highlight;
   part: { start: number; end: number };
   onPreview: (startSec: number, endSec: number) => void;
+  onMakeClip?: (h: Highlight, startSec: number, endSec: number) => void;
 }) {
   const [adjusting, setAdjusting] = useState(false);
   const [startText, setStartText] = useState(clock(h.startSec));
@@ -189,6 +195,11 @@ function HighlightRow({
         <Button type="button" variant="secondary" size="sm" onClick={() => onPreview(shownStart, shownEnd)}>
           Preview
         </Button>
+        {onMakeClip && (
+          <Button type="button" size="sm" disabled={!!problem} onClick={() => onMakeClip(h, shownStart, shownEnd)}>
+            Make a clip
+          </Button>
+        )}
         <Button type="button" variant="ghost" size="sm" aria-expanded={adjusting} onClick={() => setAdjusting((a) => !a)}>
           {adjusting ? "Done" : "Adjust start and end"}
         </Button>

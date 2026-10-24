@@ -261,6 +261,8 @@ func (s *Server) runMaintenance(ctx context.Context) {
 	s.leasedJob(ctx, "engagement-retention", retentionEvery, s.sweepEngagementEvents)
 	// Uploads a browser started and never finished (video_upload.go).
 	s.leasedJob(ctx, "video-upload-abort", retentionEvery, s.sweepAbandonedVideoUploads)
+	// Files of deleted clips, and clips whose last try ran out (clip_jobs.go).
+	s.leasedJob(ctx, "clip-blobs", retentionEvery, s.sweepClipBlobs)
 	// Moves pre-0098 cover images and profile photos out of Postgres; see images.go.
 	s.leasedJob(ctx, "image-backfill", retentionEvery, s.backfillImages)
 	s.leasedJob(ctx, "email-retention", emailRetentionEvery, s.sweepHostEmails)
