@@ -271,9 +271,13 @@ fi
 # CAPTIONS_ENABLED=true and CAPTIONS_SECRET (the API's, 32+ chars) in .env; every other
 # CAPTIONS_* line in .env is passed to the agent as is. A missing secret skips captions
 # with a warning rather than failing the LiveKit redeploy. Capped and deprioritised so it
-# cannot slow video: see docker-compose.captions.yml.
+# cannot slow video: see docker-compose.captions.yml. CAPTIONS_REMOTE=true (written by
+# deploy/digitalocean/sfu-boot.sh when the API runs a separate captions box) keeps it off here:
+# the agent runs on that box and this one's CPU stays with LiveKit and the edge mix.
 CAPTIONS=0
-if [[ "$(env_value CAPTIONS_ENABLED)" == "true" ]]; then
+if [[ "$(env_value CAPTIONS_REMOTE)" == "true" ]]; then
+  echo "Server captions: on the separate captions box (CAPTIONS_REMOTE=true); none on this box"
+elif [[ "$(env_value CAPTIONS_ENABLED)" == "true" ]]; then
   CAPTIONS_SECRET_VALUE="$(env_value CAPTIONS_SECRET)"
   if (( ${#CAPTIONS_SECRET_VALUE} < 32 )); then
     echo "CAPTIONS_ENABLED=true but CAPTIONS_SECRET is missing or under 32 characters; captions not started" >&2
@@ -286,7 +290,7 @@ if [[ "$(env_value CAPTIONS_ENABLED)" == "true" ]]; then
       echo "LIVEKIT_API_KEY=${API_KEY}"
       echo "LIVEKIT_API_SECRET=${API_SECRET}"
       echo "CAPTIONS_API_URL=$(env_value CAPTIONS_API_URL | sed 's|/*$||' | grep . || echo https://webinarliv.com)"
-      grep -E '^CAPTIONS_' .env | grep -vE '^CAPTIONS_(ENABLED|IMAGE|MEMORY|API_URL)=' | tr -d '"' || true
+      grep -E '^CAPTIONS_' .env | grep -vE '^CAPTIONS_(ENABLED|REMOTE|IMAGE|MEMORY|API_URL)=' | tr -d '"' || true
     } >captions.env
     umask 022
     COMPOSE_ARGS+=("-f" "docker-compose.captions.yml")

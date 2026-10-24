@@ -1,0 +1,24 @@
+# The caption agent on the on-demand captions box (api/internal/api/captions_box.go,
+# deploy/digitalocean/README.md "Captions box"). Started by captions-boot.sh. Nothing else runs
+# on the droplet, so unlike docker-compose.captions.yml on the video box there is no low
+# cpu_shares or OOM preference: the agent has the box. It still runs at nice 10 (Dockerfile) and
+# its CPU guard still steps down above 85 % host CPU.
+#
+# /etc/webinarliv/captions.env (root, mode 600) is written by the droplet's user data: the
+# video box's LiveKit URL, key and secret, CAPTIONS_SECRET, CAPTIONS_CPUS, CAPTIONS_MAX_ROOMS
+# and CAPTIONS_MODEL.
+services:
+  captions:
+    image: webinarliv-captions:local
+    network_mode: host
+    restart: unless-stopped
+    cpus: ${CAPTIONS_CPUS:-2}
+    env_file: /etc/webinarliv/captions.env
+    volumes:
+      - captions_models:/models
+      - captions_spool:/var/lib/captions
+    stop_grace_period: 40s
+
+volumes:
+  captions_models:
+  captions_spool:

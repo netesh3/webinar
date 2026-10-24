@@ -65,3 +65,49 @@ func (c *Client) StopAgent(ctx context.Context, room, agentName string) error {
 	}
 	return nil
 }
+
+/* RedispatchIdle re-creates room's dispatch of agentName when no job of it is pending or
+ * running: a dispatch made while no worker of that name was registered (the captions box still
+ * booting) or while every worker was full, or whose job ended without the room asking. LiveKit
+ * assigns a dispatch when it is created, so re-creating it now that a worker may be there is
+ * what gets the agent in. A dispatch with a live job is left alone, so this never puts a second
+ * agent in a room. Reports whether it re-created one. No dispatch at all: nothing to do (the
+ * session's own sync makes the first). */
+func (c *Client) RedispatchIdle(ctx context.Context, room, agentName string) (bool, error) {
+	list, err := c.agents.ListDispatch(ctx, &livekit.ListAgentDispatchRequest{Room: room})
+	if err != nil {
+		if isNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	var idle *livekit.AgentDispatch
+	for _, d := range list.GetAgentDispatches() {
+		if d.GetAgentName() != agentName {
+			continue
+		}
+		for _, j := range d.GetState().GetJobs() {
+			switch j.GetState().GetStatus() {
+			case livekit.JobStatus_JS_PENDING, livekit.JobStatus_JS_RUNNING:
+				return false, nil
+			}
+		}
+		if idle == nil {
+			idle = d
+		}
+	}
+	if idle == nil {
+		return false, nil
+	}
+	if _, err := c.agents.DeleteDispatch(ctx, &livekit.DeleteAgentDispatchRequest{
+		DispatchId: idle.GetId(), Room: room,
+	}); err != nil && !isNotFound(err) {
+		return false, err
+	}
+	if _, err := c.agents.CreateDispatch(ctx, &livekit.CreateAgentDispatchRequest{
+		AgentName: agentName, Room: room, Metadata: idle.GetMetadata(),
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}

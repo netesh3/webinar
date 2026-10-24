@@ -69,6 +69,9 @@ type SFUBox struct {
 	 * "Grafana Cloud"), passed to every droplet in its user data so it reports from first boot
 	 * without the deploy workflow (which skips while the box is down). All five or none. */
 	Grafana BoxGrafana
+
+	// Captions is the captions droplet made and deleted with this box (captions_box.go).
+	Captions CaptionsBox
 }
 
 /* BoxGrafana is GRAFANA_CLOUD_PROM_URL, _PROM_USER, _LOKI_URL, _LOKI_USER (repo variables) and
@@ -148,6 +151,7 @@ func loadSFUBox() SFUBox {
 			LokiUser: strings.TrimSpace(env("GRAFANA_CLOUD_LOKI_USER", "")),
 			Token:    strings.TrimSpace(env("GRAFANA_CLOUD_TOKEN", "")),
 		},
+		Captions: loadCaptionsBox(),
 	}
 	return b
 }
@@ -177,12 +181,12 @@ func (g BoxGrafana) validate() []error {
 // validateSFUBox reports a box that is switched on but cannot work.
 func (c Config) validateSFUBox() []error {
 	b := c.SFUBox
+	errs := c.validateCaptionsBox()
 	// A token alone is fine (the same repo secret serves the image workflow): the box is simply
 	// not managed. Deleting SFU_BOX_PROJECT is how the manager is switched off.
 	if b.Project == "" {
-		return nil
+		return errs
 	}
-	var errs []error
 	if b.Token == "" {
 		errs = append(errs, fmt.Errorf("SFU_BOX_PROJECT=%s needs DO_API_TOKEN", b.Project))
 	}

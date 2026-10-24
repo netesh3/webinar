@@ -44,8 +44,17 @@ type boxRig struct {
 
 func newBoxRig(t *testing.T, tweak ...func(*config.SFUBox)) *boxRig {
 	t.Helper()
+	return newBoxRigWith(t, nil, tweak...)
+}
+
+// newBoxRigWith is newBoxRig with a change to the rest of the config too (cfg may be nil).
+func newBoxRigWith(t *testing.T, cfg func(*config.Config), tweak ...func(*config.SFUBox)) *boxRig {
+	t.Helper()
 	rig := &boxRig{rooms: newFakeProject(boxProject)}
 	h := newHarnessWith(t, []*fakeRooms{rig.rooms}, func(c *config.Config) {
+		if cfg != nil {
+			cfg(c)
+		}
 		// The empty-room sweep runs in RunTick (a long grace: it never ends anything here).
 		c.EmptyRoomCloseMin = 30
 		c.SFUBox = config.SFUBox{

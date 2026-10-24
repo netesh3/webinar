@@ -126,6 +126,8 @@ type fakeRooms struct {
 	// dispatchMeta is the metadata each open dispatch was created with, by room.
 	dispatchMeta map[string]string
 	dispatchErr  error
+	// redispatched is every room RedispatchIdle re-created a dispatch for (captions_box_test.go).
+	redispatched []string
 	/* hang makes the calls a sweeper or a delete makes block until their context is done,
 	 * as a video server behind an address nobody answers on does (the 24 Oct 2026 box
 	 * outage). Checked outside mu, so a hung call does not hold the fake's lock. */

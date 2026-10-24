@@ -226,6 +226,13 @@ for v in SFU_BOX_PROJECT SFU_BOX_ALWAYS_ON SFU_BOX_WARM_LEAD SFU_BOX_IDLE_GRACE 
   SFU_BOX_REPO SFU_BOX_REF SFU_BOX_TURN_HOST; do
   if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
 done
+# The captions box made and deleted with it (api/internal/api/captions_box.go). Off unless
+# CAPTIONS_BOX_ENABLED=true; the rest override its defaults.
+for v in CAPTIONS_BOX_ENABLED CAPTIONS_BOX_SIZE CAPTIONS_BOX_IMAGE CAPTIONS_BOX_NAME CAPTIONS_BOX_TAGS \
+  CAPTIONS_BOX_CPUS CAPTIONS_BOX_MAX_ROOMS CAPTIONS_BOX_MODEL CAPTIONS_BOX_API_URL \
+  CAPTIONS_BOX_LIVEKIT_URL CAPTIONS_BOX_BOOT_TIMEOUT; do
+  if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
+done
 # Grafana Cloud for the box's Alloy, passed in its user data at create (config.BoxGrafana): all
 # five or none. GRAFANA_CLOUD_TOKEN is a secret (a write-only access policy token).
 for v in GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USER \

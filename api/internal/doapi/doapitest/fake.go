@@ -29,8 +29,9 @@ type Fake struct {
 	// Creates and Deletes count the calls that changed something.
 	Creates int
 	Deletes int
-	// LastCreate is the body of the last create.
+	// LastCreate is the body of the last create; Created is every create's, in order.
 	LastCreate doapi.CreateDroplet
+	Created    []doapi.CreateDroplet
 	// FailCreates makes the next n creates answer 500.
 	FailCreates int
 	// AutoActivate makes a created droplet active on its first GET.
@@ -99,6 +100,26 @@ func (f *Fake) Only() *doapi.Droplet {
 		return &c
 	}
 	return nil
+}
+
+// Tagged is the ids of the droplets carrying tag.
+func (f *Fake) Tagged(tag string) []int64 {
+	f.Mu.Lock()
+	defer f.Mu.Unlock()
+	var out []int64
+	for id, d := range f.Droplets {
+		if has(d.Tags, tag) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// AddImage adds a snapshot (another image's, say the captions box's).
+func (f *Fake) AddImage(im doapi.Image) {
+	f.Mu.Lock()
+	defer f.Mu.Unlock()
+	f.Images = append(f.Images, im)
 }
 
 // AssignedTo is the droplet a reserved IP points at.
@@ -176,6 +197,7 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		f.Droplets[d.ID] = d
 		f.Creates++
 		f.LastCreate = req
+		f.Created = append(f.Created, req)
 		writeJSON(w, http.StatusAccepted, map[string]any{"droplet": d})
 	case strings.HasPrefix(p, "/v2/droplets/"):
 		id, _ := strconv.ParseInt(strings.TrimPrefix(p, "/v2/droplets/"), 10, 64)

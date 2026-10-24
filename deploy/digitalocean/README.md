@@ -104,6 +104,8 @@ measured hours of the last 30 days. Rates are unchanged ($84/month, $0.125/h).
 | `api/internal/store/sfu_box.go`, migrations/0152 | `sfu_box_state` (with the lease), `sfu_box_runs` (hours) |
 | `deploy/digitalocean/sfu-boot.sh` | first boot: mount the volume, link `/opt/livekit`, sync deploy files, merge the Grafana Cloud settings from the user data into `.env` (Alloy; `deploy/livekit-hetzner/README.md`, Grafana Cloud), `redeploy.sh` |
 | `deploy/digitalocean/build-image.sh` | what the snapshot carries (Docker, ufw, every image) |
+| `api/internal/api/captions_box.go`, migrations/0163 | the captions box beside it (see "Captions box") |
+| `deploy/digitalocean/build-captions-image.sh`, `captions-boot.sh`, `docker-compose.captions-box.yml` | the captions box's image, first boot and agent |
 | `deploy/digitalocean/migrate-to-volume.sh` | one-time: move the running box's state onto the volume |
 | `deploy/livekit-hetzner/docker-compose.data.yml` | binds certificates and caption models/spool to the volume (`SFU_DATA_DIR`) |
 | `deploy/ops-box/` | the always-on tick droplet |
@@ -277,6 +279,120 @@ workflow does this; here it is a manual `rsync`), then `redeploy.sh`. It is capp
 that already carries the SFU and an edge composite the live `small.en` model (~1.5–2 cores for 1–2
 speakers) is the first thing to load-test; `CAPTIONS_MODEL=base.en` halves it. Memory: up to 4 GB
 (`CAPTIONS_MEMORY`) of the 8. Sizing in `deploy/captions/README.md`.
+
+## Captions box (optional, off until `CAPTIONS_BOX_ENABLED=true`)
+
+On 24 Oct 2026 the c-4 ran at 70–91 % during a live session (egress/mix 1.84 cores, caption agent
+0.66, LiveKit 0.26) and the audience stalled. The captions box moves the caption agent onto a
+small droplet of its own, **one per video box, shared by every room on it**, created by the API in
+the same step as the video droplet and deleted in the step that deletes it
+(`api/internal/api/captions_box.go`). The video box then runs no caption agent, so its CPU is
+LiveKit's and the mix's.
+
+**How it fits.**
+
+- *State.* `captions_box_state` (migrations/0163), one row per video box project, written only
+  under that project's `sfu_box_state` lease: `down → creating → ready → deleting → down`. A
+  second video box would get a captions box of its own on its own row.
+- *Never in the video box's way.* The captions step runs after the video box's step has been
+  saved. A failed create (no snapshot, a DigitalOcean error) or a droplet not active within
+  `CAPTIONS_BOX_BOOT_TIMEOUT` (10 min) is deleted and retried with the same backoff (30 s → 5 min).
+  After `SFU_BOX_MAX_FAILURES` attempts it sends one ops email. Video carries on: rooms caption
+  on each speaker's device (the existing fallback), and the host's captions show that source.
+- *No orphaned billing.* Every captions droplet is tagged `webinar-captions-ondemand`. A wanted
+  box that is down adopts a tagged droplet instead of creating a second one (a create whose
+  answer was lost), and deletes any extras. `deleting` lasts until the tag lists nothing. A box
+  that is down and not wanted (the switch was turned off mid-run, say) checks the tag every
+  5 minutes and deletes anything it finds. Hours go in `sfu_box_runs` as project
+  `do-blr:captions`; the cost report's video box hours are unchanged.
+- *The agent.* The captions droplet comes from the newest `webinar-captions-image` snapshot. The
+  image has Docker, a ufw that lets in SSH only, and the agent's image with **base.en and
+  large-v3-turbo baked in**, so a new box downloads no models. Its user data writes
+  `/etc/webinarliv/captions.env` (root, 0600): the video box's LiveKit URL
+  (`LIVEKIT_PROJECTS` for `do-blr`, i.e. the reserved IP's sslip.io name, through Caddy; or
+  `CAPTIONS_BOX_LIVEKIT_URL`), its API key and secret, `CAPTIONS_SECRET` and the size settings.
+  `captions-boot.sh` then syncs `deploy/captions` from `SFU_BOX_REF`, rebuilds the image (a cache
+  hit unless the agent changed) and starts `docker-compose.captions-box.yml`. The box has no
+  volume, so the secrets travel in user data. They are readable from inside the droplet and by
+  holders of the DO token, the same exposure as the video box's Grafana token. They are never
+  logged. "Deploy LiveKit (DigitalOcean)" does not touch the captions box: an agent change
+  reaches it the next time the box is created.
+- *Dispatch.* The agent connects out to LiveKit and registers as a worker under
+  `CAPTIONS_AGENT_NAME`; the API's dispatch is unchanged. A room dispatched before that worker was
+  up (or while it was full) has a dispatch with no job. While the box is ready, each tick
+  re-creates those dispatches for live rooms whose agent has not reported live
+  (`lk.Client.RedispatchIdle`). It never touches a dispatch that has a pending or running job, so
+  a room never gets two agents. Captions therefore start up to a minute after the box is ready.
+- *The video box.* With the switch on, its user data says `SFU_CAPTIONS_REMOTE=true`.
+  `sfu-boot.sh` writes `CAPTIONS_REMOTE=true` into the volume's `.env`, and `redeploy.sh` then
+  starts no caption container. With the switch off, the line is removed at the next boot.
+
+**Size and capacity.** Default `CAPTIONS_BOX_SIZE=s-2vcpu-4gb` (2 shared vCPUs, 4 GB). The agent
+takes up to `CAPTIONS_BOX_MAX_ROOMS` rooms at once (default 2 per vCPU, so 4). It runs each room
+in its own process (~0.3 GB with base.en) plus one prewarmed, and the after-session
+`large-v3-turbo` pass (~1.7 GB) runs only when no room is live. A room beyond the limit is not
+picked up and keeps on-device captions; the re-dispatch above takes it in when a slot frees.
+
+base.en is ≈ 0.3–0.4 of a core per actively transcribed speaker, at most 2 speakers per room, and
+~0 in silence (energy gate). Interim captions (`CAPTIONS_PARTIALS`, on) add up to ~0.3 while the
+main speaker talks. These are estimates from the small.en measurement (0.66 cores on 24 Oct) and
+the model sizes, not a load test:
+
+| Captions box | $/hour | Rooms, typical (one person talking at a time) | Rooms, worst case (two talking continuously) | Default `MAX_ROOMS` |
+|---|---|---|---|---|
+| `s-2vcpu-4gb` (default) | $0.036 | 4–5 | 2–3 | 4 |
+| `c-2` (dedicated vCPUs, 4 GB) | $0.0625 | 4–5 | 2–3 | 4 |
+| `c-4` | $0.125 | 8–10 | 5–6 | 8 |
+
+Above ~85 % host CPU the agent's guard steps down (one speaker per room, stale windows skipped),
+and above 95 % it pauses (rooms fall back to on-device). **The video box is the tighter limit**:
+an edge webinar's mix costs ≈ 0.7–1.8 cores on the c-4, so about 2 edge webinars at once fit
+beside LiveKit. The default captions box already covers more rooms than the video box can hold.
+Choose `c-2` if shared vCPUs show steal time under load.
+
+**Cost.** It runs exactly when the video box does: c-4 $0.125/h + s-2vcpu-4gb $0.036/h = $0.161/h
+(+29 %). For a 1-hour session (box up ~2 h with the warm lead and idle grace) that is +$0.07. The
+`webinar-captions-image` snapshots (~7 GB each, newest 2 kept) cost ~$0.85/month, and each image
+build ~$0.02 (a c-2 builder for ~15 min). Snapshots are built on a c-2 because its 25 GB disk fits
+every size above.
+
+**To turn it on** (manual steps; the API creates and deletes nothing until step 4):
+
+1. Merge the base.en PR first (it adds the baked-model seed to `deploy/captions/Dockerfile` and
+   `webcaptions/download.py`), then this one.
+2. Run **Actions → "Video server image (DigitalOcean snapshot)" → Run workflow**. It now builds
+   both `webinar-sfu-image` and `webinar-captions-image`. Check the captions snapshot exists:
+   `doctl compute snapshot list | grep webinar-captions-image`.
+3. Create the firewall (inbound SSH only; the agent only connects out to LiveKit on 443/7881 and
+   UDP 50000–60000, to the API on 443, and to GitHub at boot):
+
+   ```bash
+   doctl compute firewall create --name captions-box --tag-names webinar-captions \
+     --inbound-rules "protocol:tcp,ports:22,address:0.0.0.0/0,address:::/0" \
+     --outbound-rules "protocol:tcp,ports:all,address:0.0.0.0/0,address:::/0 protocol:udp,ports:all,address:0.0.0.0/0,address:::/0 protocol:icmp,address:0.0.0.0/0,address:::/0"
+   ```
+
+   Narrow the SSH source to your own IP if you like, or drop the inbound rule entirely (the box
+   needs no inbound at all). Do **not** give it the `webinar-sfu` tag: that is the media firewall
+   and the video box's alerts. The API refuses `CAPTIONS_BOX_TAGS` that include it.
+4. Set repository variable `CAPTIONS_BOX_ENABLED=true` (optionally `CAPTIONS_BOX_SIZE`,
+   `CAPTIONS_BOX_MAX_ROOMS`, `CAPTIONS_BOX_CPUS`, `CAPTIONS_BOX_IMAGE`, `CAPTIONS_BOX_MODEL`) and
+   redeploy the API ("Deploy API (Cloud Run)"). `CAPTIONS_SECRET` and `DO_API_TOKEN` are already
+   there; the token needs nothing new.
+5. A video box that is already running keeps its own agent until it is next created, and the
+   captions box joins beside it. To free its CPU at once, add `CAPTIONS_REMOTE=true` to
+   `/opt/livekit/.env` and run `redeploy.sh`.
+
+**Check it** during a session: `doctl compute droplet list --tag-name webinar-captions-ondemand`;
+on the box, `docker compose -p captions logs -f` (the worker registers, then "job" per room) and
+`/var/log/webinarliv-captions-boot.log`. The API logs `captions box: state` transitions and
+`dispatch re-sent to the captions worker`. Grafana Alloy does not run on the captions box.
+
+**Rollback.** Unset `CAPTIONS_BOX_ENABLED` (or set it to `false`) and redeploy the API. The captions
+droplet is deleted at the next tick, and the next video droplet runs its own agent again. A video
+box still running with `CAPTIONS_REMOTE=true` runs no agent until it is replaced, so rooms caption
+on-device until then; to get the agent back sooner, remove that line from `/opt/livekit/.env` and
+run `redeploy.sh`.
 
 ## Webinars here are always edge
 
