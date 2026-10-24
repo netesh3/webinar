@@ -1,6 +1,7 @@
-# Build or refresh the on-demand video server's image: the 'webinar-sfu-image' DigitalOcean
-# snapshot the API creates every droplet from (api/internal/api/sfu_box.go,
-# deploy/digitalocean/README.md, "The image").
+# Build or refresh the on-demand servers' images: the 'webinar-sfu-image' DigitalOcean snapshot
+# the API creates every video server droplet from (api/internal/api/sfu_box.go,
+# deploy/digitalocean/README.md, "The image"), and the 'webinar-captions-image' one for the
+# captions box (api/internal/api/captions_box.go, README "Captions box"). One matrix job each.
 #
 # The stack is synced from the repo at every boot (deploy/digitalocean/sfu-boot.sh), so the
 # image mainly saves time: Docker, the host firewall and every image pulled or built in
@@ -11,6 +12,8 @@
 #   2. the builder is snapshotted as webinar-sfu-image-<date>-<sha> and tagged webinar-sfu-image;
 #   3. older webinar-sfu-image-* snapshots beyond KEEP (2) are deleted, then the builder.
 # Cost per run: ~20 minutes of a c-4 (~$0.04); each snapshot ~$0.06/GB-month (~$0.60).
+# The captions image: a c-2 builder (25 GB disk, so the snapshot fits any size with >= 25 GB:
+# s-2vcpu-4gb, c-2, c-4), ~15 minutes (~$0.02), ~7 GB snapshot (~$0.40/month).
 #
 # Triggers: manual, and after a successful "Deploy LiveKit (DigitalOcean)" run on main (new
 # images in the compose files should be in the next image).
@@ -24,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       keep:
-        description: "How many webinar-sfu-image snapshots to keep"
+        description: "How many snapshots of each image to keep"
         type: number
         default: 2
   workflow_run:
@@ -44,10 +47,19 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: sfu, size: c-4, tag: webinar-sfu-image, script: deploy/digitalocean/build-image.sh }
+          - { name: captions, size: c-2, tag: webinar-captions-image, script: deploy/digitalocean/build-captions-image.sh }
+    name: image (${{ matrix.name }})
     env:
       REGION: blr1
-      SIZE: c-4
-      TAG: webinar-sfu-image
+      SIZE: ${{ matrix.size }}
+      TAG: ${{ matrix.tag }}
+      SCRIPT: ${{ matrix.script }}
+      KIND: ${{ matrix.name }}
       KEEP: ${{ inputs.keep || 2 }}
       REF: ${{ github.event.workflow_run.head_sha || github.sha }}
       SSH_KEYS: ${{ vars.SFU_BOX_SSH_KEYS }}
@@ -74,11 +86,11 @@ jobs:
         if: env.SKIP != 'true'
         run: |
           set -euo pipefail
-          name="sfu-image-builder-${GITHUB_RUN_ID}"
+          name="${KIND}-image-builder-${GITHUB_RUN_ID}"
           {
             echo '#!/bin/bash'
             echo "export SFU_REPO=${GITHUB_REPOSITORY} SFU_REF=${REF}"
-            tail -n +2 deploy/digitalocean/build-image.sh
+            tail -n +2 "$SCRIPT"
           } > builder-user-data.sh
           # Optional repo variable SFU_BOX_SSH_KEYS (key ids): lets you SSH in to read the build
           # log; without it DigitalOcean mails a root password instead.

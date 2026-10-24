@@ -183,6 +183,16 @@ func ForgetBoxCache(s *Server) {
 	s.box.mu.Unlock()
 }
 
+// SetCaptionsOn flips CAPTIONS_BOX_ENABLED on a running server (as a restart with it would).
+func SetCaptionsOn(s *Server, on bool) { s.box.cfg.Captions.On = on }
+
+// ForgetCaptionsSweep lets the next step check for a stray captions droplet at once.
+func ForgetCaptionsSweep(s *Server) {
+	s.box.mu.Lock()
+	s.box.lastCaptionsSweep = time.Time{}
+	s.box.mu.Unlock()
+}
+
 // SweepClipBlobs is the maintenance pass that deletes the files of deleted clips.
 func SweepClipBlobs(s *Server, ctx context.Context) { s.sweepClipBlobs(ctx) }
 

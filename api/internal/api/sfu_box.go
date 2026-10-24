@@ -110,6 +110,8 @@ type boxManager struct {
 	// while down.
 	lastSkipLog   time.Time
 	lastParkCheck time.Time
+	// lastCaptionsSweep throttles the check for a stray captions droplet (captions_box.go).
+	lastCaptionsSweep time.Time
 }
 
 func (b *boxManager) invalidate() {
@@ -140,6 +142,7 @@ func (s *Server) newBoxManager() *boxManager {
 	if bc.MaxFailures < 1 {
 		bc.MaxFailures = 3
 	}
+	bc.Captions = bc.Captions.WithDefaults()
 	b := &boxManager{cfg: bc, cloud: doapi.New(bc.Token), now: time.Now}
 	b.probe = s.boxProbe
 	b.activity = s.boxLiveKitActivity
@@ -327,7 +330,10 @@ func (s *Server) boxStep(ctx context.Context) {
 
 	if err := s.store.SaveSFUBox(ctx, holder, st); err != nil {
 		s.log.Error("sfu box: save", "project", project, "error", err)
+		return
 	}
+	// The captions droplet follows, once the video box's step is saved (captions_box.go).
+	s.captionsBoxStep(ctx, holder, st)
 }
 
 func orNone(s string) string {
@@ -732,7 +738,10 @@ const boxGrafanaFile = "/run/webinarliv-grafana.env"
  * boxGrafanaFile (root only) and points SFU_GRAFANA_ENV at it; sfu-boot.sh merges them into the
  * volume's .env so Alloy starts with the stack, then removes the file. The values are checked
  * plain (config) and go in a quoted heredoc, so nothing in them is expanded or echoed. The
- * script is never logged (the create log names the image, size and region only). */
+ * script is never logged (the create log names the image, size and region only).
+ *
+ * SFU_CAPTIONS_REMOTE=true (CAPTIONS_BOX_ENABLED) tells sfu-boot.sh the caption agent runs on the
+ * captions box (captions_box.go), so this box does not start its own. */
 func boxUserData(c config.SFUBox) (string, error) {
 	for _, v := range []string{c.Repo, c.Ref, c.Volume} {
 		if !boxSafe.MatchString(v) {
@@ -754,7 +763,7 @@ func boxUserData(c config.SFUBox) (string, error) {
 	return fmt.Sprintf(`#!/bin/bash
 # Webinar Liv on-demand video server, first boot. Written by the API (api/internal/api/sfu_box.go).
 set -uo pipefail
-export SFU_DATA_DIR=/mnt/sfu-data SFU_VOLUME_NAME=%s SFU_REPO=%s SFU_REF=%s
+export SFU_DATA_DIR=/mnt/sfu-data SFU_VOLUME_NAME=%s SFU_REPO=%s SFU_REF=%s SFU_CAPTIONS_REMOTE=%t
 %sboot=/usr/local/sbin/webinarliv-sfu-boot.sh
 tmp="$(mktemp)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 60 "https://raw.githubusercontent.com/${SFU_REPO}/${SFU_REF}/deploy/digitalocean/sfu-boot.sh" -o "$tmp" && bash -n "$tmp"; then
@@ -762,7 +771,7 @@ if curl -fsSL --retry 5 --retry-delay 3 -m 60 "https://raw.githubusercontent.com
 fi
 rm -f "$tmp"
 exec "$boot" >>/var/log/webinarliv-boot.log 2>&1
-`, c.Volume, c.Repo, c.Ref, grafana), nil
+`, c.Volume, c.Repo, c.Ref, c.Captions.On, grafana), nil
 }
 
 // ---------------------------------------------------------------- readiness

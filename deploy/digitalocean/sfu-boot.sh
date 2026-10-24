@@ -12,7 +12,8 @@
 #   4. syncs the latest deploy files from the repo at SFU_REF, as the deploy workflow does, so a
 #      box that was down during a deploy still comes up current;
 #   5. merges the Grafana Cloud settings the API passed in the user data (SFU_GRAFANA_ENV) into
-#      .env, so Alloy reports from first boot;
+#      .env, so Alloy reports from first boot, and records whether captions run on the separate
+#      captions box (SFU_CAPTIONS_REMOTE → CAPTIONS_REMOTE in .env: then this box runs none);
 #   6. runs redeploy.sh with SFU_DATA_DIR and OPS_BOX=true (the ops box runs the API tick).
 #
 # Docker, the images and the host firewall come from the snapshot (build-image.sh). Output goes to
@@ -110,6 +111,21 @@ if [[ -n "$grafana_file" && -f "$grafana_file" ]]; then
   fi
   rm -f "$grafana_file"
 fi
+
+# Captions on the separate captions box (CAPTIONS_BOX_ENABLED on the API; captions_box.go): the
+# API says so in SFU_CAPTIONS_REMOTE, and redeploy.sh then leaves this box's caption agent off
+# (CAPTIONS_REMOTE=true in .env; the deploy workflow's redeploy reads the same line). User data
+# from an API before this setting leaves .env as it is.
+case "${SFU_CAPTIONS_REMOTE:-}" in
+  true | false)
+    tmp_env="$(mktemp "${TARGET}/.env.XXXXXX")"
+    grep -v '^CAPTIONS_REMOTE=' "${TARGET}/.env" >"$tmp_env" || :
+    [[ "$SFU_CAPTIONS_REMOTE" == true ]] && echo "CAPTIONS_REMOTE=true" >>"$tmp_env"
+    chmod --reference="${TARGET}/.env" "$tmp_env" 2>/dev/null || chmod 600 "$tmp_env"
+    mv "$tmp_env" "${TARGET}/.env"
+    log "captions: $([[ "$SFU_CAPTIONS_REMOTE" == true ]] && echo 'on the captions box, not here' || echo 'as .env says')"
+    ;;
+esac
 
 systemctl start docker
 chmod +x "${TARGET}/redeploy.sh" "${TARGET}/install.sh"
