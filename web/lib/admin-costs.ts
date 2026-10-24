@@ -71,9 +71,11 @@ export const FEATURE_COSTS: Record<string, string> = {
     "An encode while recording (a worker ≈ $0.18/hour on pooled servers) and ~1.5–2 GB stored " +
     "per recorded hour ≈ $0.01 per hour of recording per month.",
   [FeatureClips]:
-    "Picking highlights: one gpt-5-nano call per hour of recording (≈ $0.002), inside the AI " +
-    "caps. Cutting the clips themselves is not built yet; it is planned for the video server, " +
-    "with each clip counted against the host's recording storage.",
+    "AI on gpt-5-mini (AI_MODEL_HIGHLIGHTS): picking highlights and planning reels ≈ $0.01 each " +
+    "per hour of recording, post text ≈ $0.003 per clip, inside the AI caps. The videos are made " +
+    "on the video server between sessions, at no extra server cost; an admin's \"Make it now\" " +
+    "starts the on-demand server for them (its hourly rate until the queue is made). Each video " +
+    "counts against the host's recording storage.",
   [FeatureWhatsAppCRM]:
     "Messages are billed by Meta to the host's own WhatsApp Business account; to us, only the " +
     "media library's storage.",

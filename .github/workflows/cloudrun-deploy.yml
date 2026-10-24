@@ -54,6 +54,8 @@
 #     fallbacks. All optional; without any the chat hands every visitor to a person.
 #     *_MODEL (OPENAI_MODEL, …) as repo Variables. AI_MONTHLY_USD (default 20) and
 #     AI_HOST_MONTHLY_USD (default 2), repo Variables, cap the estimated monthly spend.
+#     AI_MODEL_HIGHLIGHTS, optional repo Variable: the OpenAI model the clip features use
+#     (highlights, reels, hook titles, post text); gpt-5-mini when unset.
 #   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET — self-serve plans (Buy on /pricing).
 #     Both or neither. RAZORPAY_WEBHOOK_SECRET signs POST /api/webhooks/razorpay.
 #     BILLING_GST_PERCENT (repo Variable, default 18) is added to INR prices.
@@ -223,6 +225,7 @@ jobs:
       AI_PROVIDERS: ${{ secrets.AI_PROVIDERS }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      AI_MODEL_HIGHLIGHTS: ${{ vars.AI_MODEL_HIGHLIGHTS }}
       AI_MONTHLY_USD: ${{ vars.AI_MONTHLY_USD }}
       AI_HOST_MONTHLY_USD: ${{ vars.AI_HOST_MONTHLY_USD }}
       CLOUDFLARE_AI_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_AI_ACCOUNT_ID }}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -76,6 +77,13 @@ type Request struct {
 	// AttemptTimeout overrides how long one provider gets. Zero means the chain's
 	// default (12s), which suits a chat turn; a long structured answer needs more.
 	AttemptTimeout time.Duration
+	/* Model, when set, is asked of OpenAI's own API (api.openai.com) instead of that
+	 * provider's configured model: a per-feature choice (AI_MODEL_HIGHLIGHTS). Every other
+	 * provider keeps its own model, since a model name means nothing across providers. When
+	 * OpenAI refuses the override (a typo, say) the provider's own model is asked next, and
+	 * that refusal never benches the provider: one feature's setting cannot take AI away
+	 * from the rest. */
+	Model string
 }
 
 // Reply is the answer and who gave it.
@@ -188,7 +196,7 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
 			tried = append(tried, p.ID+": benched ("+b.reason+")")
 			continue
 		}
-		reply, f := c.attempt(ctx, p, req)
+		reply, f := c.attemptWith(ctx, p, req)
 		if f == nil && req.Schema != nil {
 			var err error
 			if reply.Text, err = req.Schema.Extract(reply.Text); err != nil {
@@ -196,7 +204,10 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
 			}
 		}
 		if f == nil {
-			reply.Provider, reply.Model = p.ID, p.Model
+			reply.Provider = p.ID
+			if reply.Model == "" {
+				reply.Model = p.Model
+			}
 			return reply, nil
 		}
 		tried = append(tried, p.ID+": "+f.String())
@@ -212,6 +223,63 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
 	}
 	c.log.Warn("ai: no provider answered", "tried", strings.Join(tried, "; "))
 	return Reply{}, ErrUnavailable
+}
+
+/* attemptWith is one provider's turn: the request's Model override first when it applies to
+ * this provider, then (if the override fails) the provider's own model. Reply.Model is set
+ * only when the override answered. */
+func (c *Chain) attemptWith(ctx context.Context, p Provider, req Request) (Reply, *failure) {
+	if op, ok := p.withModel(req.Model); ok {
+		reply, f := c.attempt(ctx, op, req)
+		if f == nil && req.Schema != nil {
+			if _, err := req.Schema.Extract(reply.Text); err != nil {
+				f = &failure{invalid: err}
+			}
+		}
+		if f == nil {
+			reply.Model = op.Model
+			return reply, nil
+		}
+		c.log.Warn("ai: model override did not answer, asking the provider's own model",
+			"provider", p.ID, "model", op.Model, "reason", f.String())
+		if ctx.Err() != nil {
+			return Reply{}, f
+		}
+	}
+	return c.attempt(ctx, p, req)
+}
+
+/* withModel is p asked for model instead of its own: only OpenAI's own API, and only a
+ * different model. The body style follows the model, as config decides it for OPENAI_MODEL
+ * (a gpt-5 or o-series model takes the reasoning body). */
+func (p Provider) withModel(model string) (Provider, bool) {
+	model = strings.TrimSpace(model)
+	if model == "" || strings.EqualFold(model, p.Model) || !p.isOpenAI() {
+		return p, false
+	}
+	p.Model = model
+	p.Style = StyleChat
+	if reasoningModel(model) {
+		p.Style = StyleOpenAIReasoning
+	}
+	return p, true
+}
+
+func (p Provider) isOpenAI() bool {
+	u, err := url.Parse(p.BaseURL)
+	return err == nil && strings.EqualFold(u.Hostname(), openAIHost)
+}
+
+// openAIHost is OpenAI's API host; a var so a test can point it at its fake.
+var openAIHost = "api.openai.com"
+
+// reasoningModel is OpenAI's reasoning families: gpt-5* and the o-series (o1, o3, o4 …).
+func reasoningModel(model string) bool {
+	m := strings.ToLower(model)
+	if strings.HasPrefix(m, "gpt-5") {
+		return true
+	}
+	return len(m) >= 2 && m[0] == 'o' && m[1] >= '1' && m[1] <= '9'
 }
 
 // Status is every provider and whether it is taking requests, in priority order.

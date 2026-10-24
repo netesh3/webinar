@@ -26,6 +26,8 @@ import (
  *   MIXREC_API_URL     the API's base URL, default https://webinarliv.com
  *   MIXREC_LISTEN      default 127.0.0.1:7895 (Caddy proxies /mixrec/* here)
  *   MIXREC_RECORD_DIR  MediaMTX's record root as mounted here, default /recordings
+ *   MIXREC_CLIPS       "off" stops this box making clips (clips.go); on by default
+ *   MIXREC_CLIP_THREADS  the clip encoder's threads, default 2
  */
 
 func env(key, def string) string {
@@ -44,9 +46,9 @@ func main() {
 	}
 	apiURL := strings.TrimRight(env("MIXREC_API_URL", "https://webinarliv.com"), "/")
 
-	rec := NewRecorder(Settings{RecordDir: env("MIXREC_RECORD_DIR", "/recordings")},
-		&apiClient{base: apiURL, secret: secret, http: &http.Client{Timeout: 30 * time.Second}},
-		ffmpegRemuxer{}, httpUploader{}, log)
+	api := &apiClient{base: apiURL, secret: secret, http: &http.Client{Timeout: 30 * time.Second}}
+	recordDir := env("MIXREC_RECORD_DIR", "/recordings")
+	rec := NewRecorder(Settings{RecordDir: recordDir}, api, ffmpegRemuxer{}, httpUploader{}, log)
 	if err := rec.Load(); err != nil {
 		log.Error("load state", "error", err)
 	}
@@ -54,6 +56,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 	go rec.Run(ctx, 2*time.Second)
+	if env("MIXREC_CLIPS", "on") != "off" {
+		threads, err := strconv.Atoi(env("MIXREC_CLIP_THREADS", "2"))
+		if err != nil || threads < 1 {
+			threads = 2
+		}
+		render := ffmpegClips{Threads: threads, Ionice: ioniceWorks(ctx)}
+		clipper := NewClipper(ClipSettings{Dir: filepath.Join(recordDir, ".clips")}, api, render, httpUploader{}, rec.Active, log)
+		go clipper.Run(ctx)
+		log.Info("clip maker on", "threads", threads, "ionice", render.Ionice)
+	}
 
 	srv := &http.Server{
 		Addr:              env("MIXREC_LISTEN", "127.0.0.1:7895"),
@@ -135,7 +147,7 @@ func (a *apiClient) post(ctx context.Context, path string, body, out any) error 
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 512))
 		return fmt.Errorf("%s: %d %s", path, res.StatusCode, strings.TrimSpace(string(msg)))
 	}
-	if out != nil {
+	if out != nil && res.StatusCode != http.StatusNoContent {
 		return json.NewDecoder(res.Body).Decode(out)
 	}
 	return nil
@@ -157,6 +169,45 @@ func (a *apiClient) UploadURL(ctx context.Context, id string) (string, string, e
 
 func (a *apiClient) Complete(ctx context.Context, id string, res Result) error {
 	return a.post(ctx, "/api/internal/mix-recordings/"+id+"/complete", res, nil)
+}
+
+// The clip maker's calls (clips.go), to /api/internal/clip-jobs.
+
+func (a *apiClient) ClaimClip(ctx context.Context) (*ClipJob, string, error) {
+	var out struct {
+		Job  *ClipJob `json:"job"`
+		Wait string   `json:"wait"`
+	}
+	if err := a.post(ctx, "/api/internal/clip-jobs/claim", struct{}{}, &out); err != nil {
+		return nil, "", err
+	}
+	return out.Job, out.Wait, nil
+}
+
+func (a *apiClient) ClipProgress(ctx context.Context, id string, percent int) (string, error) {
+	var out struct {
+		Stop string `json:"stop"`
+	}
+	err := a.post(ctx, "/api/internal/clip-jobs/"+id+"/progress", map[string]int{"percent": percent}, &out)
+	return out.Stop, err
+}
+
+func (a *apiClient) ClipUploadURL(ctx context.Context, id string) (string, string, error) {
+	var out struct {
+		URL         string `json:"url"`
+		ContentType string `json:"contentType"`
+	}
+	if err := a.post(ctx, "/api/internal/clip-jobs/"+id+"/upload-url", struct{}{}, &out); err != nil {
+		return "", "", err
+	}
+	if out.URL == "" {
+		return "", "", errors.New("no upload url")
+	}
+	return out.URL, out.ContentType, nil
+}
+
+func (a *apiClient) ClipComplete(ctx context.Context, id string, res ClipResult) error {
+	return a.post(ctx, "/api/internal/clip-jobs/"+id+"/complete", res, nil)
 }
 
 // maxPut is one S3 PUT's limit.
@@ -213,16 +264,7 @@ func (ffmpegRemuxer) Remux(ctx context.Context, segments []string, out string) (
 	if msg, err := cmd.CombinedOutput(); err != nil {
 		return 0, fmt.Errorf("ffmpeg: %w: %s", err, strings.TrimSpace(string(msg)))
 	}
-	probe, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1", out).Output() // #nosec G204 -- our own path
-	if err != nil {
-		return 0, fmt.Errorf("ffprobe: %w", err)
-	}
-	secs, err := strconv.ParseFloat(strings.TrimSpace(string(probe)), 64)
-	if err != nil {
-		return 0, fmt.Errorf("ffprobe duration %q: %w", probe, err)
-	}
-	return int64(secs * 1000), nil
+	return probeDurationMs(ctx, out)
 }
 
 // concatList is an ffmpeg concat script. Paths are our own (RecordDir/rec/<slug>/<time>.mp4),

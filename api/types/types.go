@@ -1530,7 +1530,7 @@ var Features = []Feature{
 	{
 		Key:         FeatureClips,
 		Label:       "Highlight clips",
-		Description: "Suggest the best moments of a recorded session (from reactions, chat, questions, polls and what was said, picked by AI) for this host to preview and cut into short clips. Counts against the monthly AI limit; in effect only with AI and Cloud recording. Off by default.",
+		Description: "Suggest the best moments and reels of a recorded session (from reactions, chat, questions, polls and what was said, picked by AI) and let this host make them into captioned vertical, square and wide videos with suggested post text, made on the video server between sessions. Counts against the monthly AI limit and the host's recording storage; in effect only with AI and Cloud recording. Off by default.",
 		Group:       FeatureGroupDelivery,
 		Requires:    []string{FeatureAI, FeatureCloudRecording},
 	},

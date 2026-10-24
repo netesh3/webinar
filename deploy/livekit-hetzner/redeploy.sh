@@ -314,6 +314,11 @@ if [[ -n "$MIXREC_SECRET_VALUE" ]]; then
     {
       echo "MIXREC_SECRET=${MIXREC_SECRET_VALUE}"
       echo "MIXREC_API_URL=$(env_value MIXREC_API_URL | sed 's|/*$||' | grep . || echo https://webinarliv.com)"
+      # Clip making (mixrec/clips.go): on unless MIXREC_CLIPS=off; MIXREC_CLIP_THREADS, default 2.
+      for v in MIXREC_CLIPS MIXREC_CLIP_THREADS; do
+        val="$(env_value "$v")"
+        if [[ -n "$val" ]]; then echo "${v}=${val}"; fi
+      done
     } >mixrec.env
     umask 022
     mkdir -p recordings

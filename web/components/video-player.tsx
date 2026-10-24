@@ -26,11 +26,25 @@ interface VideoSource {
   captions?: string;
 }
 
-/** What a parent can do to the player: jump to a moment (a chapter) and play from it, or
- *  play one stretch (a highlight) and pause at its end. */
+/** What a parent can do to the player: jump to a moment (a chapter) and play from it, play
+ *  one stretch (a highlight) and pause at its end, or play several back to back (the moments
+ *  a reel stitches), told which one is playing (-1 once they are over or abandoned). */
 export interface VideoPlayerHandle {
   seek: (sec: number) => void;
   playRange: (startSec: number, endSec: number) => void;
+  playRanges: (ranges: { startSec: number; endSec: number }[], onStep?: (index: number) => void) => void;
+}
+
+/** A stretch being previewed, and the ones queued after it. armed is false between a jump
+ *  and the first moment the playhead is seen inside it (a timeupdate can still report where
+ *  the playhead was). */
+interface PreviewRange {
+  start: number;
+  end: number;
+  index: number;
+  rest: { startSec: number; endSec: number }[];
+  armed: boolean;
+  onStep?: (index: number) => void;
 }
 
 interface VideoPlayerProps {
@@ -86,7 +100,7 @@ export function VideoPlayer({
   const playAfterLoadRef = useRef(false);
   /* A stretch being previewed (playRange): pause at its end. Forgotten once the viewer moves
    * the playhead outside it, so a seek elsewhere plays on as usual. */
-  const rangeRef = useRef<{ start: number; end: number } | null>(null);
+  const rangeRef = useRef<PreviewRange | null>(null);
   // The session's own captions on the file now playing, and whether they are shown.
   const captionTrack = useCaptionTrack(playlist[partIndex]?.captions);
   const [ccOn, setCcOn] = useState(true);
@@ -178,13 +192,23 @@ export function VideoPlayer({
     const now = origin + video.currentTime;
     setCurrentTime(now);
     const range = rangeRef.current;
-    if (range) {
+    if (range && !range.armed && now >= range.start - 1.5 && now < range.end) range.armed = true;
+    if (range?.armed) {
       if (now >= range.end) {
-        rangeRef.current = null;
-        video.pause();
-        setPlaying(false);
+        const next = range.rest[0];
+        if (next) {
+          rangeRef.current = { ...range, start: next.startSec, end: next.endSec, index: range.index + 1, rest: range.rest.slice(1), armed: false };
+          range.onStep?.(range.index + 1);
+          seekGlobal(next.startSec);
+        } else {
+          rangeRef.current = null;
+          video.pause();
+          setPlaying(false);
+          range.onStep?.(-1);
+        }
       } else if (now < range.start - 1.5) {
         rangeRef.current = null;
+        range.onStep?.(-1);
       }
     }
 
@@ -253,8 +277,26 @@ export function VideoPlayer({
     seekGlobal(currentTime + seconds);
   }
 
+  function startRanges(ranges: { startSec: number; endSec: number }[], onStep?: (index: number) => void) {
+    rangeRef.current?.onStep?.(-1);
+    const [first, ...rest] = ranges;
+    if (!first) {
+      rangeRef.current = null;
+      return;
+    }
+    rangeRef.current = { start: first.startSec, end: first.endSec, index: 0, rest, armed: false, onStep };
+    onStep?.(0);
+    seekGlobal(first.startSec);
+    const video = videoRef.current;
+    if (video?.paused) {
+      playAfterLoadRef.current = true;
+      void video.play().catch(() => {});
+    }
+  }
+
   useImperativeHandle(ref, () => ({
     seek: (sec: number) => {
+      rangeRef.current?.onStep?.(-1);
       rangeRef.current = null;
       seekGlobal(sec);
       const video = videoRef.current;
@@ -263,15 +305,8 @@ export function VideoPlayer({
         void video.play().catch(() => {});
       }
     },
-    playRange: (startSec: number, endSec: number) => {
-      rangeRef.current = { start: startSec, end: endSec };
-      seekGlobal(startSec);
-      const video = videoRef.current;
-      if (video?.paused) {
-        playAfterLoadRef.current = true;
-        void video.play().catch(() => {});
-      }
-    },
+    playRange: (startSec: number, endSec: number) => startRanges([{ startSec, endSec }]),
+    playRanges: startRanges,
   }));
 
   function handleVolumeChange(val: number) {

@@ -114,6 +114,13 @@ func NewRecorder(set Settings, api API, remux Remuxer, up Uploader, log *slog.Lo
 func (r *Recorder) stateDir() string  { return filepath.Join(r.set.RecordDir, ".mixrec") }
 func (r *Recorder) statePath() string { return filepath.Join(r.stateDir(), "jobs.json") }
 
+// Active is whether a mix recording is in progress here (the clip maker waits while one is).
+func (r *Recorder) Active() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.jobs) > 0
+}
+
 // Load restores the jobs a previous run left.
 func (r *Recorder) Load() error {
 	raw, err := os.ReadFile(r.statePath())

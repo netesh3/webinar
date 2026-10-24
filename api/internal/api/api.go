@@ -406,6 +406,8 @@ func (s *Server) Routes() http.Handler {
 		/* The mix recorder's endpoints (deploy/livekit-hetzner/mixrec). Not mounted without
 		 * MIXREC_SECRET. See mixrec.go. */
 		s.mountMixRecInternal(r)
+		// The video server's clip renderer, under the same secret. See clip_jobs.go.
+		s.mountClipJobsInternal(r)
 
 		/* One webinar BY SLUG stays public; the LIST does not.
 		 *
@@ -624,6 +626,8 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/costs", s.handleAdminCosts)
 			// The on-demand video server's state and hours (sfu_box.go).
 			r.Get("/sfu-box", s.handleAdminSFUBox)
+			// "Make it now": start the on-demand video server for the waiting clips (clip_jobs.go).
+			r.Post("/clips/make-now", s.handleAdminClipsMakeNow)
 			r.Get("/costs/hosts/{id}", s.handleAdminCostHost)
 			r.Get("/costs/ignore", s.handleCostIgnoreList)
 			r.Post("/costs/ignore", s.handleCostIgnoreAdd)
@@ -856,6 +860,15 @@ func (s *Server) Routes() http.Handler {
 				// rest of the stage. See highlights.go.
 				r.Get("/recordings/{id}/highlights", s.handleGetHighlights)
 				r.Post("/recordings/{id}/highlights", s.handleFindHighlights)
+				// Suggested reels, and the clips and reels made from a recording. See reels.go
+				// and clip_jobs.go.
+				r.Get("/recordings/{id}/reels", s.handleGetReels)
+				r.Post("/recordings/{id}/reels", s.handleFindReels)
+				r.Get("/recordings/{id}/clips", s.handleListClips)
+				r.Post("/recordings/{id}/clips", s.handleCreateClips)
+				r.Get("/recordings/{id}/clips/{clipId}/file", s.handleClipFile)
+				r.Post("/recordings/{id}/clips/{clipId}/posts", s.handleRewriteClipPosts)
+				r.Delete("/recordings/{id}/clips/{clipId}", s.handleDeleteClip)
 				// The AI recap, written automatically after the session. See recap.go.
 				r.Get("/recap", s.handleGetRecap)
 				// "Generate recap now": stop waiting for the transcript (pending only).

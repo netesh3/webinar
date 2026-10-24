@@ -19,9 +19,9 @@ import (
  * and found again on request. */
 
 const highlightsReply = `{"moments": [
-  {"startSec": 122, "endSec": 150, "title": "Pay yourself first", "why": "A clear rule the room reacted to.", "interest": 8},
-  {"startSec": 700, "endSec": 730, "title": "The emergency fund", "why": "A short story with a number.", "interest": 6},
-  {"startSec": 5000, "endSec": 5030, "title": "Not in the recording", "why": "Out of range.", "interest": 9}
+  {"startSec": 122, "endSec": 150, "title": "Pay yourself first", "why": "A clear rule the room reacted to.", "hook": "The one money rule that works", "interest": 8},
+  {"startSec": 700, "endSec": 730, "title": "The emergency fund", "why": "A short story with a number.", "hook": "How big should your fund be?", "interest": 6},
+  {"startSec": 5000, "endSec": 5030, "title": "Not in the recording", "why": "Out of range.", "hook": "", "interest": 9}
 ]}`
 
 type highlightFixture struct {
@@ -111,7 +111,7 @@ func TestHighlightsArePickedSnappedAndKept(t *testing.T) {
 		t.Fatalf("highlights = %+v", got)
 	}
 	first := got.Highlights[0]
-	if first.Title != "Pay yourself first" || first.ID != "h1" || first.PartID != f.rec {
+	if first.Title != "Pay yourself first" || first.ID != "h1" || first.PartID != f.rec || first.Hook != "The one money rule that works" {
 		t.Fatalf("first = %+v", first)
 	}
 	if d := first.EndSec - first.StartSec; d < types.HighlightMinSec || d > types.HighlightMaxSec {

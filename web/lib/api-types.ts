@@ -699,6 +699,302 @@ export interface VerifyBillingPaymentResponse {
 }
 
 //////////
+// source: clip_jobs.go
+
+/**
+ * AIFeatureReels is the ai_usage feature name for planning a recording's suggested reels.
+ */
+export const AIFeatureReels = "reels";
+/**
+ * AIFeatureClipPosts is the ai_usage feature name for writing a clip's suggested post text.
+ */
+export const AIFeatureClipPosts = "clip_posts";
+/**
+ * Formats (Clip.Format): the frame a clip is made in.
+ */
+export const ClipFormatVertical = "9x16"; // 1080x1920: Reels, Shorts, TikTok
+/**
+ * Formats (Clip.Format): the frame a clip is made in.
+ */
+export const ClipFormatSquare = "1x1"; // 1080x1080: LinkedIn
+/**
+ * Formats (Clip.Format): the frame a clip is made in.
+ */
+export const ClipFormatWide = "16x9"; // 1920x1080: YouTube, LinkedIn
+/**
+ *  Framings (Clip.Framing): how a 16:9 recording fills a 9:16 or 1:1 frame. A recording is
+ *  * one mixed picture (the session's layout as the audience saw it), never a separate camera
+ *  * file, so the speaker cannot be found automatically: "fit" keeps the whole picture over a
+ *  * blurred copy of itself, and the others fill the frame with one part of the picture (the
+ *  * middle, the left or the right) for when a camera fills that part. 16:9 is always whole.
+ */
+export const ClipFramingFit = "fit";
+/**
+ *  Framings (Clip.Framing): how a 16:9 recording fills a 9:16 or 1:1 frame. A recording is
+ *  * one mixed picture (the session's layout as the audience saw it), never a separate camera
+ *  * file, so the speaker cannot be found automatically: "fit" keeps the whole picture over a
+ *  * blurred copy of itself, and the others fill the frame with one part of the picture (the
+ *  * middle, the left or the right) for when a camera fills that part. 16:9 is always whole.
+ */
+export const ClipFramingCenter = "center";
+/**
+ *  Framings (Clip.Framing): how a 16:9 recording fills a 9:16 or 1:1 frame. A recording is
+ *  * one mixed picture (the session's layout as the audience saw it), never a separate camera
+ *  * file, so the speaker cannot be found automatically: "fit" keeps the whole picture over a
+ *  * blurred copy of itself, and the others fill the frame with one part of the picture (the
+ *  * middle, the left or the right) for when a camera fills that part. 16:9 is always whole.
+ */
+export const ClipFramingLeft = "left";
+/**
+ *  Framings (Clip.Framing): how a 16:9 recording fills a 9:16 or 1:1 frame. A recording is
+ *  * one mixed picture (the session's layout as the audience saw it), never a separate camera
+ *  * file, so the speaker cannot be found automatically: "fit" keeps the whole picture over a
+ *  * blurred copy of itself, and the others fill the frame with one part of the picture (the
+ *  * middle, the left or the right) for when a camera fills that part. 16:9 is always whole.
+ */
+export const ClipFramingRight = "right";
+/**
+ * Kinds (Clip.Kind).
+ */
+export const ClipKindClip = "clip";
+/**
+ * Kinds (Clip.Kind).
+ */
+export const ClipKindReel = "reel";
+/**
+ * Statuses (Clip.Status).
+ */
+export const ClipQueued = "queued";
+/**
+ * Statuses (Clip.Status).
+ */
+export const ClipProcessing = "processing";
+/**
+ * Statuses (Clip.Status).
+ */
+export const ClipReady = "ready";
+/**
+ * Statuses (Clip.Status).
+ */
+export const ClipFailed = "failed";
+/**
+ * Post text statuses (Clip.PostStatus).
+ */
+export const ClipPostPending = "pending";
+/**
+ * Post text statuses (Clip.PostStatus).
+ */
+export const ClipPostReady = "ready";
+/**
+ * Post text statuses (Clip.PostStatus).
+ */
+export const ClipPostFailed = "failed";
+/**
+ * ClipPostOff is no post text: AI is off for the account or the session.
+ */
+export const ClipPostOff = "off";
+/**
+ * ClipMinSec and ClipMaxSec bound a single-moment clip.
+ */
+export const ClipMinSec = 5;
+/**
+ * Bounds, in seconds and characters.
+ */
+export const ClipMaxSec = 120;
+/**
+ * ReelMomentMinSec and ReelMomentMaxSec bound one moment of a reel.
+ */
+export const ReelMomentMinSec = 4;
+/**
+ * Bounds, in seconds and characters.
+ */
+export const ReelMomentMaxSec = 25;
+/**
+ * ReelMinSec and ReelMaxSec bound a whole reel (30-60 s is the aim).
+ */
+export const ReelMinSec = 20;
+/**
+ * Bounds, in seconds and characters.
+ */
+export const ReelMaxSec = 75;
+/**
+ * ReelMinMoments and ReelMaxMoments bound how many moments a reel stitches.
+ */
+export const ReelMinMoments = 2;
+/**
+ * Bounds, in seconds and characters.
+ */
+export const ReelMaxMoments = 4;
+/**
+ * ClipHookMaxRunes is the longest hook title.
+ */
+export const ClipHookMaxRunes = 70;
+/**
+ * ClipTitleMaxRunes is the longest clip title.
+ */
+export const ClipTitleMaxRunes = 100;
+/**
+ * Platforms (ClipPost.Platform) the suggested post text is written for.
+ */
+export const ClipPlatformReels = "instagram_reels";
+/**
+ * Platforms (ClipPost.Platform) the suggested post text is written for.
+ */
+export const ClipPlatformShorts = "youtube_shorts";
+/**
+ * Platforms (ClipPost.Platform) the suggested post text is written for.
+ */
+export const ClipPlatformTikTok = "tiktok";
+/**
+ * Platforms (ClipPost.Platform) the suggested post text is written for.
+ */
+export const ClipPlatformLinkedIn = "linkedin";
+/**
+ * Platforms (ClipPost.Platform) the suggested post text is written for.
+ */
+export const ClipPlatformYouTube = "youtube";
+/**
+ *  ReelMoment is one stretch a suggested reel stitches. StartSec and EndSec are on the
+ *  * recording's player timeline; PartID is the take it lies in.
+ */
+export interface ReelMoment {
+  startSec: number /* float64 */;
+  endSec: number /* float64 */;
+  partId: string;
+  /**
+   * Quote is the first sentence said in it.
+   */
+  quote?: string;
+}
+/**
+ *  Reel is one suggested reel: 2-4 short moments on one theme, in the order they play.
+ */
+export interface Reel {
+  id: string;
+  title: string;
+  /**
+   * Hook is the line shown over the first seconds.
+   */
+  hook: string;
+  why: string;
+  moments: ReelMoment[];
+  durationSec: number /* float64 */;
+}
+/**
+ *  ReelsResponse is GET /api/host/webinars/{slug}/recordings/{id}/reels, the suggested reels.
+ *  * Status is as HighlightsResponse's.
+ */
+export interface ReelsResponse {
+  status: string;
+  reels: Reel[];
+  generatedAt?: string;
+}
+/**
+ * ClipRange is one stretch of a clip, on the recording's player timeline.
+ */
+export interface ClipRange {
+  startSec: number /* float64 */;
+  endSec: number /* float64 */;
+}
+/**
+ *  ClipPost is the suggested post text for one platform: Title only where the platform has
+ *  * one (YouTube, Shorts), Text the caption or description, Hashtags without the "#".
+ */
+export interface ClipPost {
+  platform: string;
+  title?: string;
+  text: string;
+  hashtags: string[];
+}
+/**
+ *  CreateClipsRequest is POST …/recordings/{id}/clips: one job per format. Ranges are on the
+ *  * player timeline: one for a clip, 2-4 for a reel (played in the order given). SourceID is
+ *  * the highlight or suggested reel it came from, when it did.
+ */
+export interface CreateClipsRequest {
+  kind: string;
+  sourceId?: string;
+  title: string;
+  ranges: ClipRange[];
+  formats: string[];
+  framing: string;
+  captions: boolean;
+  hook: string;
+}
+/**
+ *  Clip is one clip job and, once made, its file. Status queued (waiting for the video
+ *  * server), processing (Progress 0-100), ready (download it) or failed (Error says why, in
+ *  * plain words).
+ */
+export interface Clip {
+  id: string;
+  kind: string;
+  sourceId?: string;
+  title: string;
+  format: string;
+  framing: string;
+  captions: boolean;
+  hook: string;
+  ranges: ClipRange[];
+  durationSec: number /* float64 */;
+  status: string;
+  error?: string;
+  progress: number /* int */;
+  sizeBytes: number /* int64 */;
+  posts: ClipPost[];
+  postStatus: string;
+  createdAt: string;
+  finishedAt?: string;
+}
+/**
+ * ClipServerReady is the video server up and free: queued clips start shortly.
+ */
+export const ClipServerReady = "ready";
+/**
+ * ClipServerBusy is a live session on it: clips wait until it ends.
+ */
+export const ClipServerBusy = "busy";
+/**
+ * ClipServerWaiting is the video server off until the next session (or "Make it now").
+ */
+export const ClipServerWaiting = "waiting";
+/**
+ * ClipServerStarting is the video server starting.
+ */
+export const ClipServerStarting = "starting";
+/**
+ *  ClipServer is where the queue stands, for the "Waiting for the video server" line. Text is
+ *  * the plain sentence for the host.
+ */
+export interface ClipServer {
+  state: string;
+  text: string;
+}
+/**
+ *  ClipsResponse is GET …/recordings/{id}/clips: the recording's clips, newest first, and the
+ *  * video server's state. CanMakeNow is true for an admin when clips are waiting for a server
+ *  * that is off: they may start it to make them (POST /api/admin/clips/make-now).
+ */
+export interface ClipsResponse {
+  clips: Clip[];
+  server: ClipServer;
+  canMakeNow: boolean;
+  /**
+   * Available is false when this instance cannot make clips at all (no video server
+   * worker or no cloud storage); Reason says so in plain words.
+   */
+  available: boolean;
+  reason?: string;
+}
+/**
+ * ClipMakeNowResponse is POST /api/admin/clips/make-now.
+ */
+export interface ClipMakeNowResponse {
+  queued: number /* int */;
+  text: string;
+}
+
+//////////
 // source: clips.go
 
 /**
@@ -750,6 +1046,11 @@ export interface Highlight {
    * Quote is the first sentence said in it, from the transcript, for the list.
    */
   quote?: string;
+  /**
+   * Hook is a short line for the first seconds of a clip made from it (older suggestions have
+   * none: the title stands in).
+   */
+  hook?: string;
 }
 /**
  *  HighlightsResponse is GET /api/host/webinars/{slug}/recordings/{id}/highlights. Status is

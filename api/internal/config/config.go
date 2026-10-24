@@ -450,6 +450,14 @@ type Config struct {
 	AIMonthlyUSD     float64
 	AIHostMonthlyUSD float64
 
+	/* AIModelHighlights is the OpenAI model for the clip features: picking a recording's
+	 * highlights, planning reels, their hook titles and the suggested post text
+	 * (AI_MODEL_HIGHLIGHTS, default gpt-5-mini). Choosing moments is judgement over a whole
+	 * transcript, where the small default model is weakest; every other feature stays on
+	 * OPENAI_MODEL. Only OpenAI's own API is asked for it (ai.Request.Model); set it to the
+	 * same value as OPENAI_MODEL to keep the clip features on that model too. */
+	AIModelHighlights string
+
 	/* AIEmbeddings is the endpoint the AI knowledge embeds its chunks and questions with
 	 * (text-embedding-3-small): OpenAI's, from OPENAI_API_KEY or the AI_PROVIDERS entry on
 	 * api.openai.com. Nil means no embeddings: retrieval is full-text search alone. */
@@ -615,6 +623,7 @@ func Load() (Config, error) {
 	c.AIEmbeddings = embeddingsProvider(aiProviders)
 	c.AIMonthlyUSD = envFloatStrict("AI_MONTHLY_USD", 20)
 	c.AIHostMonthlyUSD = envFloatStrict("AI_HOST_MONTHLY_USD", 2)
+	c.AIModelHighlights = env("AI_MODEL_HIGHLIGHTS", "gpt-5-mini")
 
 	// Default the public URL to the first allowed origin. That is already the
 	// frontend's address in every correct deployment, so share links are right

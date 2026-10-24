@@ -220,6 +220,34 @@ finished once its segments have been idle for 3 minutes. Segments are deleted af
 MediaMTX deletes anything left after 72 h. One PUT is at most 5 GiB (about 6 h at the default
 edge bitrate).
 
+### Clips and reels
+
+The same container makes hosts' clips and reels (`mixrec/clips.go`; API side
+`api/internal/api/clip_jobs.go`, behind the per-host `clips` switch). It asks the API for a
+job every 30 s over `/api/internal/clip-jobs` with the same `MIXREC_SECRET`; the API hands out
+none while a session is live or about to start on this box, and none while a mix recording
+is in progress here. A job is ffmpeg reading just its stretches from signed URLs of the
+recording, framing them for 9:16, 1:1 or 16:9, burning in captions and the hook title (libass
+with Inter, `font-inter` in the image), normalising loudness to -14 LUFS, writing H.264/AAC
+with `+faststart`, then a signed PUT. Under `nice 19` and `ionice -c 3`, 2 encoder threads,
+inside `MIXREC_CPUS`; a 1080x1920 render peaks near 500 MB, hence the 1 GiB `mem_limit`
+(`MIXREC_MEM`). Roughly 2x real time on one core. Progress every 20 s renews the job's lease; a
+session going live sends the job back to the queue. Optional in `.env`: `MIXREC_CLIPS=off`,
+`MIXREC_CLIP_THREADS`.
+
+What the clips can frame: every recording is one mixed picture of the session as the audience
+saw it (LiveKit room composite, the edge mix, or the browser's own canvas), never a separate
+camera or per-person file, and the layout is not stored per recording (the host can change
+it mid-session). So a vertical or square clip either keeps the whole picture over a blurred
+copy of itself ("Whole picture", the default) or fills the frame with the middle, left or
+right of it, chosen by the host. A 720p recording filled to 9:16 is upscaled about 2.7x and
+looks soft; "Whole picture" does not upscale.
+
+On the on-demand DigitalOcean box nothing starts the server for clips: they wait for the
+next time it is up for a session. A clip being made keeps it up (never deleted mid-render),
+and an admin's "Make it now" (`POST /api/admin/clips/make-now`) starts it for the queue; it
+goes again as soon as the queue is made, without the 40-minute idle grace.
+
 Until 2026-10-20 this box was also the **WHEP** origin of the CDN Broadcast mode (WebRTC on
 UDP 8189, plus an ffmpeg per live mix re-encoding the audio to Opus). That mode was retired;
 `redeploy.sh` closes 8189 on boxes that still had it open.

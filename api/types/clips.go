@@ -5,7 +5,7 @@ package types
  * to cut into short videos. See api/internal/api/highlights.go and internal/highlights.
  *
  * The suggestions are counted and then chosen: the engagement around every stretch of the
- * recording is counted in Go, and gpt-5-nano, given the transcript with those counts beside
+ * recording is counted in Go, and AI (AI_MODEL_HIGHLIGHTS), given the transcript with those counts beside
  * it, picks and titles the moments worth a clip. Each is snapped to sentence boundaries and
  * kept to 20–90 seconds inside one take of the recording, so it can be cut from one file. */
 
@@ -49,6 +49,9 @@ type Highlight struct {
 	Signals      HighlightSignals `json:"signals"`
 	// Quote is the first sentence said in it, from the transcript, for the list.
 	Quote string `json:"quote,omitempty"`
+	// Hook is a short line for the first seconds of a clip made from it (older suggestions have
+	// none: the title stands in).
+	Hook string `json:"hook,omitempty"`
 }
 
 /* HighlightsResponse is GET /api/host/webinars/{slug}/recordings/{id}/highlights. Status is

@@ -19,6 +19,10 @@ import type {
   WebinarStreamDestination,
   AIStatus,
   HighlightsResponse,
+  ReelsResponse,
+  ClipsResponse,
+  CreateClipsRequest,
+  ClipMakeNowResponse,
   AIWebinarSetup,
   AIWebinarSetupRequest,
   QAClustersResponse,
@@ -1356,6 +1360,30 @@ export const api = {
   /** "Find them again": the suggestions picked once more. 409 with the reason, 429 ai_limit. */
   findHighlights: (slug: string, id: string) =>
     post<HighlightsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/highlights`),
+
+  /** Suggested reels on a recording: 2-4 short moments on one theme each, planned by AI the
+   *  first time they are asked for. POST is "Find them again". */
+  recordingReels: (slug: string, id: string, signal?: AbortSignal) =>
+    request<ReelsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/reels`, { ...fresh, signal }),
+  findReels: (slug: string, id: string) =>
+    post<ReelsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/reels`),
+
+  /** The clips and reels made from a recording, and where the video server stands. */
+  recordingClips: (slug: string, id: string, signal?: AbortSignal) =>
+    request<ClipsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/clips`, { ...fresh, signal }),
+  /** Queue a clip or reel, one per format; the post text is written inside the request. */
+  createClips: (slug: string, id: string, body: CreateClipsRequest) =>
+    post<ClipsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/clips`, body),
+  deleteClip: (slug: string, id: string, clipId: string) =>
+    del<void>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/clips/${seg(clipId)}`),
+  /** "Write it again": the clip's post text, once more. */
+  rewriteClipPosts: (slug: string, id: string, clipId: string) =>
+    post<ClipsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/clips/${seg(clipId)}/posts`),
+  /** The MP4, a plain link so the browser downloads it. */
+  clipFileUrl: (slug: string, id: string, clipId: string) =>
+    `${API_BASE}/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/clips/${seg(clipId)}/file`,
+  /** Admin only: start the on-demand video server to make the waiting clips now. */
+  makeClipsNow: () => post<ClipMakeNowResponse>("/api/admin/clips/make-now"),
 
   /** A simulive's CC: its recording's original captions. Same credential as the replay. */
   simuliveCaptionsURL: (slug: string, joinKey?: string) =>

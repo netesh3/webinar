@@ -29,6 +29,7 @@ func TestDecideBox(t *testing.T) {
 		{"inside the idle grace", boxInputs{LastNeeded: ago(39 * time.Minute)}, "up", false},
 		{"grace over", boxInputs{LastNeeded: ago(41 * time.Minute)}, "down", false},
 		{"grace over but live again", boxInputs{LastNeeded: ago(3 * time.Hour), Live: 1}, "up", true},
+		{"a clip being made (or rushed by an admin)", boxInputs{Clips: 1}, "up", true},
 	} {
 		in := tc.in
 		in.Now, in.IdleGrace = now, grace
@@ -39,6 +40,22 @@ func TestDecideBox(t *testing.T) {
 		if got.Reason == "" {
 			t.Errorf("%s: no reason", tc.name)
 		}
+	}
+}
+
+/* Clips keep the box up while they are made, and never start the idle grace: once the queue is
+ * made the box goes as soon as nothing else needs it. With a session as well, it is the
+ * session that decides. */
+func TestDecideBoxClipsOnly(t *testing.T) {
+	now := time.Date(2026, 10, 23, 18, 0, 0, 0, time.UTC)
+	if d := decideBox(boxInputs{Now: now, Clips: 2}); !d.ClipsOnly || !d.Needed {
+		t.Fatalf("clips alone: %+v", d)
+	}
+	if d := decideBox(boxInputs{Now: now, Clips: 2, Live: 1}); d.ClipsOnly || !d.Needed {
+		t.Fatalf("clips and a session: %+v", d)
+	}
+	if d := decideBox(boxInputs{Now: now, Live: 1}); d.ClipsOnly {
+		t.Fatalf("a session alone: %+v", d)
 	}
 }
 

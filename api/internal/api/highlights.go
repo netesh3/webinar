@@ -27,7 +27,7 @@ import (
  *             the recording's own player timeline (its takes end to end, captionvtt.Spans),
  *             so a suggestion's times are the player's. What was said while AI was paused is
  *             left out of what the model reads; the counts keep it (they are arithmetic).
- *   pick      gpt-5-nano through aiComplete (feature "highlights"), one call for a session up
+ *   pick      AI_MODEL_HIGHLIGHTS through aiComplete (feature "highlights"), one call for a session up
  *             to about two hours, a call per part side by side for a longer one, each told
  *             where the audience reacted most (highlights.Peaks).
  *   snap      every pick starts and ends on a sentence, lasts 20–90 s and lies inside one take
@@ -196,7 +196,7 @@ func (s *Server) writeHighlights(ctx context.Context, wb types.Webinar, m highli
 			if !ok {
 				continue
 			}
-			picks = append(picks, highlights.Pick{StartSec: start, EndSec: end, Part: part, Title: mo.Title, Why: mo.Why, Interest: mo.Interest})
+			picks = append(picks, highlights.Pick{StartSec: start, EndSec: end, Part: part, Title: mo.Title, Why: mo.Why, Hook: mo.Hook, Interest: mo.Interest})
 		}
 	}
 	ranked := highlights.Rank(picks, m.moments, m.sentences, highlightsWant)
