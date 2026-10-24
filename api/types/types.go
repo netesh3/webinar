@@ -1528,6 +1528,13 @@ var Features = []Feature{
 		Group:       FeatureGroupDelivery,
 	},
 	{
+		Key:         FeatureClips,
+		Label:       "Highlight clips",
+		Description: "Suggest the best moments of a recorded session (from reactions, chat, questions, polls and what was said, picked by AI) for this host to preview and cut into short clips. Counts against the monthly AI limit; in effect only with AI and Cloud recording. Off by default.",
+		Group:       FeatureGroupDelivery,
+		Requires:    []string{FeatureAI, FeatureCloudRecording},
+	},
+	{
 		Key:         FeatureEdgeDelivery,
 		Label:       "Edge delivery (beta)",
 		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery. Only matters on Hetzner video servers: on GCP and DigitalOcean every webinar is edge for every host.",

@@ -18,6 +18,7 @@ import type {
   SetWebinarStreamPausedRequest,
   WebinarStreamDestination,
   AIStatus,
+  HighlightsResponse,
   AIWebinarSetup,
   AIWebinarSetupRequest,
   QAClustersResponse,
@@ -1343,6 +1344,18 @@ export const api = {
   /** The stage's preview of the same, whether or not the host shows them on replays. */
   recordingCaptionsURL: (slug: string, id: string, part?: string) =>
     captionsURL(`${API_BASE}/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/captions.vtt`, { part }),
+
+  /** Suggested highlights on a recording (the clips switch): picked by AI the first time
+   *  they are asked for, inside this request. status says why there are none. */
+  recordingHighlights: (slug: string, id: string, signal?: AbortSignal) =>
+    request<HighlightsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/highlights`, {
+      ...fresh,
+      signal,
+    }),
+
+  /** "Find them again": the suggestions picked once more. 409 with the reason, 429 ai_limit. */
+  findHighlights: (slug: string, id: string) =>
+    post<HighlightsResponse>(`/api/host/webinars/${seg(slug)}/recordings/${seg(id)}/highlights`),
 
   /** A simulive's CC: its recording's original captions. Same credential as the replay. */
   simuliveCaptionsURL: (slug: string, joinKey?: string) =>

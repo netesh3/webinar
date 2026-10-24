@@ -4,6 +4,7 @@
 
 import assert from "node:assert/strict";
 import {
+  clipsOffered,
   followupSendOffered,
   hasFeature,
   instantOffered,
@@ -31,6 +32,11 @@ assert.equal(meetingsOffered({ features: ["whiteboard"] }), false);
 // Instant meetings and webinars: an admin's per-host switch, off by default.
 assert.equal(instantOffered({ features: ["meetings"] }), false);
 assert.equal(instantOffered({ features: ["meetings", "instant_webinar"] }), true);
+
+// Highlight clips: an admin's per-host switch, off by default (the server drops it without
+// ai and cloud_recording).
+assert.equal(clipsOffered({ features: ["ai", "cloud_recording"] }), false);
+assert.equal(clipsOffered({ features: ["ai", "cloud_recording", "clips"] }), true);
 
 assert.equal(followupSendOffered({ features: ["ai", "followup_send"] }), true);
 assert.equal(followupSendOffered({ features: ["ai"] }), false);

@@ -70,6 +70,13 @@ func SetSpamEvery(d time.Duration) func() {
 // RunSpamLane is the spam lane of RunTick on its own.
 func RunSpamLane(s *Server, ctx context.Context) { s.runSpamLane(ctx) }
 
+// SetHighlightsRetryAfter sets how long a failed pick waits; the returned func restores it.
+func SetHighlightsRetryAfter(d time.Duration) func() {
+	old := highlightsRetryAfter
+	highlightsRetryAfter = d
+	return func() { highlightsRetryAfter = old }
+}
+
 // RunRecaps is the recap lane of RunTick on its own.
 func RunRecaps(s *Server, ctx context.Context) { s.runRecaps(ctx) }
 
