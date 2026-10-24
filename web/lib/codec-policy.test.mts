@@ -7,7 +7,15 @@
  */
 
 import assert from "node:assert/strict";
-import { av1Verdict, isAppleWebKit, type Av1Inputs } from "./codec-policy.ts";
+import {
+  av1Now,
+  av1RoomVerdict,
+  av1Verdict,
+  isAppleWebKit,
+  parseAv1PublishMode,
+  setAv1RoomVerdict,
+  type Av1Inputs,
+} from "./codec-policy.ts";
 import { shareCodec, isSvcShareCodec } from "./share-mode.ts";
 
 let checks = 0;
@@ -127,5 +135,45 @@ for (const ua of [UA.safariMac, UA.iphoneSafari, UA.iphoneChrome, UA.ipadUa, UA.
 }
 check(() => assert.equal(isSvcShareCodec("av1"), true));
 check(() => assert.equal(isSvcShareCodec("h264"), false));
+
+// ---------------------------------------------------------------- the room gate (AV1_PUBLISH)
+/* The server's kill switch fails safe: missing, empty, misspelt = off. */
+for (const raw of [undefined, null, "", "off", "OFF", "of", "true", "1", "enabled", 1, true]) {
+  check(() => assert.equal(parseAv1PublishMode(raw), "off", String(raw)));
+}
+check(() => assert.equal(parseAv1PublishMode("on"), "on"));
+check(() => assert.equal(parseAv1PublishMode(" On "), "on"));
+check(() => assert.equal(parseAv1PublishMode("meetings"), "meetings"));
+
+const room = (mode: "off" | "meetings" | "on", meeting: boolean, compositor: boolean) =>
+  av1RoomVerdict({ mode, meeting, compositor });
+// Off is off everywhere.
+for (const meeting of [false, true]) {
+  for (const compositor of [false, true]) {
+    check(() => assert.deepEqual(room("off", meeting, compositor), { av1: false, reason: "server-off" }));
+  }
+}
+/* A compositor (the edge mix's egress Chrome) never takes AV1, so an AV1 track in its room
+ * regresses to the backup at once — the 2026-10-24 incident. Never, whatever the switch. */
+check(() => assert.deepEqual(room("on", false, true), { av1: false, reason: "room-compositor" }));
+check(() => assert.deepEqual(room("on", true, true), { av1: false, reason: "room-compositor" }));
+check(() => assert.deepEqual(room("meetings", true, true), { av1: false, reason: "room-compositor" }));
+// "meetings": meetings only.
+check(() => assert.deepEqual(room("meetings", false, false), { av1: false, reason: "server-meetings-only" }));
+check(() => assert.deepEqual(room("meetings", true, false), { av1: true, reason: "allowed" }));
+// "on": any room without a compositor.
+check(() => assert.deepEqual(room("on", false, false), { av1: true, reason: "allowed" }));
+check(() => assert.deepEqual(room("on", true, false), { av1: true, reason: "allowed" }));
+
+/* The runtime gate: closed until a room opens it, and a closed room wins over everything —
+ * av1Now is what roomOptions and the share publish read. */
+check(() => assert.equal(av1Now("camera").av1, false));
+check(() => assert.equal(av1Now("camera").reason, "server-off"));
+setAv1RoomVerdict(room("on", false, true));
+check(() => assert.deepEqual(av1Now("camera"), { av1: false, reason: "room-compositor" }));
+check(() => assert.deepEqual(av1Now("share"), { av1: false, reason: "room-compositor" }));
+setAv1RoomVerdict(room("on", true, false));
+// Open room, no probe answer yet (none runs under node): still no.
+check(() => assert.deepEqual(av1Now("camera"), { av1: false, reason: "probe-pending" }));
 
 console.log(`PASS codec-policy (${checks} checks)`);

@@ -33,6 +33,33 @@
  * offer it in its SDP) get the backup codec — VP8 for cameras, H264 for shares — which the
  * SFU asks the publisher for (livekit-server backup codec, `backupCodec` in the publish
  * options). Pure apart from probeAv1 at the bottom, so it is tested under node.
+ *
+ * ---- The room gate, and why AV1 is off by default (incident 2026-10-24) ----
+ *
+ * Before any of the device gate, the ROOM has to allow it (av1RoomVerdict), and the server
+ * decides that: AppConfig.av1Publish, env AV1_PUBLISH on the API — "off" (the default),
+ * "meetings" or "on". It is read before the room's first publish, so flipping the env var
+ * on the API turns AV1 off for every later join with no web deploy.
+ *
+ * Why: a backup codec is not a free fallback. livekit-server (pkg/rtc/mediatrack.go,
+ * backupCodecPolicy PREFER_REGRESSION, livekit-client's default) REGRESSES the whole track
+ * the moment any subscriber negotiates the backup: every subscriber is moved to VP8 / H264
+ * and the publisher is asked to start a second, cloned sender for it. The edge mix's egress
+ * Chrome never takes AV1 (receive-codecs.ts: the recorder is always excluded), so in an edge
+ * webinar EVERY AV1 track regressed within half a second of publishing — the host camera at
+ * 15:38:24, each promoted panelist, the host's share — and AV1 bought nothing. And the
+ * regression is where it broke: for about a minute the mix (and the panel) had no picture of
+ * the host, although the VP8 layers reached the SFU 0.4 s after the AV1 ones, until the host
+ * turned the camera off and on (a mute / unmute: every down track resynced on a keyframe).
+ * The backup also runs on a CLONE of the camera track taken at that moment
+ * (LocalVideoTrack.addSimulcastTrack), which stopProcessor / a processor restart never
+ * update — a second way for it to go black. So:
+ *
+ *   - AV1 is never published in a room with a compositor (edge webinar, a mixed program),
+ *     whatever the switch says: it would regress at once.
+ *   - the switch is off until the regression path is proven; "meetings" is the first step.
+ *   - codec-watchdog.ts catches a camera whose backup stalls anyway (a recording or a Safari
+ *     guest joining a meeting later) and republishes it as plain VP8.
  */
 
 import { logCodecDecision } from "./adapt-governor.ts";
@@ -55,11 +82,38 @@ export type Av1Inputs = {
   height: number;
   /** AV1 was turned off for CPU earlier this session. */
   demoted: boolean;
-  /** AV1 not switched on at build time (NEXT_PUBLIC_AV1 is not "1"). */
+  /** NEXT_PUBLIC_AV1=0 at build time. */
   disabled?: boolean;
 };
 
 export type Av1Verdict = { av1: boolean; reason: string };
+
+/** AppConfig.av1Publish (env AV1_PUBLISH). */
+export type Av1PublishMode = "off" | "meetings" | "on";
+
+/** Anything that is not exactly "on" or "meetings" — missing, empty, a typo — is off. */
+export function parseAv1PublishMode(value: unknown): Av1PublishMode {
+  const v = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return v === "on" || v === "meetings" ? v : "off";
+}
+
+/** What decides whether this ROOM may carry AV1 at all. Read off the join response. */
+export type Av1RoomInputs = {
+  mode: Av1PublishMode;
+  /** A meeting room (JoinResponse.meeting). */
+  meeting: boolean;
+  /** An egress compositor subscribes to every stage track: an edge webinar's mix
+   *  (JoinResponse.edgeWebinar) or a mixed program (cdnBroadcast). */
+  compositor: boolean;
+};
+
+export function av1RoomVerdict(p: Av1RoomInputs): Av1Verdict {
+  if (p.mode === "off") return { av1: false, reason: "server-off" };
+  // The compositor never decodes AV1, so every AV1 track would regress to its backup at once.
+  if (p.compositor) return { av1: false, reason: "room-compositor" };
+  if (p.mode === "meetings" && !p.meeting) return { av1: false, reason: "server-meetings-only" };
+  return { av1: true, reason: "allowed" };
+}
 
 /** Apple WebKit: desktop Safari, every iOS browser, and iPadOS's Mac-shaped UA. Never AV1. */
 export function isAppleWebKit(ua: string, maxTouchPoints: number): boolean {
@@ -147,24 +201,33 @@ export function av1Demoted(): boolean {
   return readDemoted();
 }
 
-/* HOTFIX 2026-10-24: AV1 publishing is OFF unless a build sets NEXT_PUBLIC_AV1=1. In edge
- * webinars the mix's egress Chrome never takes AV1, so livekit-server regressed every AV1
- * track to its VP8 / H264 backup, and the mix showed black video for the host and panelists.
- * Cameras go out VP8 and shares VP9 / H264 again, as before AV1. */
+/* A build-time veto (NEXT_PUBLIC_AV1=0), on top of the server's switch. The 2026-10-24 hotfix
+ * made this default-off; the runtime switch (AV1_PUBLISH, default off, setAv1RoomVerdict
+ * below) is now what keeps AV1 off, so a build no longer has to be cut to turn it back on. */
 const AV1_DISABLED =
-  (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_AV1) !== "1";
+  (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_AV1) === "0";
+
+/* The room gate (av1RoomVerdict), set by the room before it builds its publish defaults.
+ * Closed until a room opens it: a page that never asks gets no AV1. */
+let roomVerdict: Av1Verdict = { av1: false, reason: "server-off" };
+
+/** Sets this page's room gate; call before the Room's publish defaults are built. */
+export function setAv1RoomVerdict(v: Av1Verdict): void {
+  roomVerdict = v;
+  logCodecDecision("room", v.av1, v.reason);
+}
 
 /** The verdict if the probe has finished, else "no" — a publish never waits on it. */
 export function av1Now(kind: Av1Kind): Av1Verdict {
   if (AV1_DISABLED) return { av1: false, reason: "disabled" };
+  if (!roomVerdict.av1) return roomVerdict;
   if (readDemoted()) return { av1: false, reason: "cpu-demoted" };
   return verdicts.get(kind) ?? { av1: false, reason: "probe-pending" };
 }
 
 /** Runs (once per kind) the capability probe; resolves to the verdict and caches it. */
 export function probeAv1(kind: Av1Kind): Promise<Av1Verdict> {
-  const known = verdicts.get(kind);
-  if (known) return Promise.resolve(known);
+  if (verdicts.has(kind)) return Promise.resolve(av1Now(kind));
   const inFlight = pending.get(kind);
   if (inFlight) return inFlight;
   const run = (async (): Promise<Av1Verdict> => {

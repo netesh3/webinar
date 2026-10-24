@@ -4781,6 +4781,10 @@ type AppConfig struct {
 	// before attaching a single listener or sampling a single stat, so turning
 	// the flag off also turns off the client-side work, not just the endpoint.
 	TelemetryEnabled bool `json:"telemetryEnabled,omitempty"`
+	// AV1Publish is the AV1 kill switch (config.Config.AV1Publish, env AV1_PUBLISH):
+	// "off", "meetings" or "on". The room reads it before its first publish
+	// (web/lib/codec-policy.ts av1RoomVerdict); anything else, or missing, means off.
+	AV1Publish string `json:"av1Publish"`
 	/* FeatureCatalogue is every per-account switch this server has, with the sentence
 	 * that explains each one — see Features. Sent here rather than with the accounts
 	 * list so that adding a switch does not change the shape of that response, and so

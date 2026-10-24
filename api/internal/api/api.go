@@ -1004,6 +1004,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		RecordingsRetentionDays: s.cfg.RecordingsRetentionDays,
 		EmailConfigured:         s.mail.Configured(),
 		TelemetryEnabled:        s.cfg.TelemetryEnabled,
+		AV1Publish:              config.AV1PublishMode(s.cfg.AV1Publish),
 		// The admin screen renders one switch per entry, so the list of switches
 		// travels with the operator settings rather than with the accounts.
 		FeatureCatalogue: types.Features,

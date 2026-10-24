@@ -529,3 +529,33 @@ func TestEdgePlaybackURL(t *testing.T) {
 		t.Errorf("project without edge base: %q", got)
 	}
 }
+
+/* AV1_PUBLISH is a kill switch, so the dangerous value is the convenient one: AV1 on by
+ * accident. Unset, empty and anything misspelt all read as off. */
+func TestAV1PublishFailsSafe(t *testing.T) {
+	cases := map[string]string{
+		"":          AV1PublishOff,
+		"off":       AV1PublishOff,
+		"false":     AV1PublishOff,
+		"0":         AV1PublishOff,
+		"of":        AV1PublishOff,
+		"enabled":   AV1PublishOff,
+		"on":        AV1PublishOn,
+		" ON ":      AV1PublishOn,
+		"true":      AV1PublishOn,
+		"1":         AV1PublishOn,
+		"meetings":  AV1PublishMeetings,
+		"Meetings ": AV1PublishMeetings,
+	}
+	for in, want := range cases {
+		if got := AV1PublishMode(in); got != want {
+			t.Errorf("AV1PublishMode(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if c := load(t, map[string]string{"AV1_PUBLISH": ""}); c.AV1Publish != AV1PublishOff {
+		t.Errorf("AV1_PUBLISH unset: AV1Publish = %q, want off", c.AV1Publish)
+	}
+	if c := load(t, map[string]string{"AV1_PUBLISH": "on"}); c.AV1Publish != AV1PublishOn {
+		t.Errorf("AV1_PUBLISH=on: AV1Publish = %q, want on", c.AV1Publish)
+	}
+}
