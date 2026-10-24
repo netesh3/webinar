@@ -97,11 +97,13 @@ func (s *Store) PGNotify(ctx context.Context, channel, payload string) error {
 }
 
 /* ListenConn opens a connection outside the pool, for a LISTEN that runs as long as the
- * process does. Same settings as the pool's connections. Needs a session-mode connection:
- * Supabase's session pooler (:5432) and a direct connection both work; the transaction
- * pooler (:6543) does not deliver notifications. */
+ * process does. Needs a session-mode connection: Supabase's session pooler (:5432) and a
+ * direct connection both work; the transaction pooler (:6543) does not deliver
+ * notifications. So it uses DATABASE_LISTEN_URL when one is configured (see dbconfig.go),
+ * and the pool's own settings otherwise. NOTIFY itself (PGNotify) is a plain statement and
+ * goes through the query pool in either mode. */
 func (s *Store) ListenConn(ctx context.Context) (*pgx.Conn, error) {
-	return pgx.ConnectConfig(ctx, s.pool.Config().ConnConfig.Copy())
+	return pgx.ConnectConfig(ctx, s.listenCfg.Copy())
 }
 
 /* edgeVisitStale is how long an edge visit stays open without a beat from the browser.
