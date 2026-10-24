@@ -17,6 +17,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# The live model, baked in (~150 MB) and copied into the weights volume on a start that finds
+# it missing (webcaptions/download.py), so a fresh volume or a fresh captions box does not wait
+# on Hugging Face before the first caption. Before the code COPY so a code change keeps this
+# layer cached. CAPTIONS_SEED_MODELS="" skips it; "base.en small.en" adds one.
+ARG CAPTIONS_SEED_MODELS=base.en
+ENV CAPTIONS_MODEL_SEED_DIR=/opt/models-seed
+RUN for m in ${CAPTIONS_SEED_MODELS}; do \
+      HF_HOME=/tmp/hf python -c "import sys; from faster_whisper import download_model; download_model(sys.argv[1], cache_dir='/opt/models-seed')" "$m" || exit 1; \
+    done; rm -rf /tmp/hf
+
 COPY webcaptions ./webcaptions
 
 # Weights and spooled audio live on volumes (see the compose service), owned by this user.

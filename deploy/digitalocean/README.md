@@ -268,14 +268,17 @@ Set 2026-10-22. Both kinds email the account owner.
 
 ## Server captions (optional, off)
 
-The caption agent (`deploy/captions`: faster-whisper, English only: `small.en` live,
-`base.en` fallback) can run on this box beside egress. Not enabled. To try it: the same 32+ character
+The caption agent (`deploy/captions`: faster-whisper, English only: `base.en` live by default,
+`CAPTIONS_MODEL=small.en` for the larger model) can run on this box beside egress. Not enabled. To try it: the same 32+ character
 `CAPTIONS_SECRET` on the API (Cloud Run env) and in `/opt/livekit/.env` with
 `CAPTIONS_ENABLED=true`, sync `deploy/captions/` to `/opt/livekit/captions/` (the Hetzner
 workflow does this; here it is a manual `rsync`), then `redeploy.sh`. It is capped at 2 of the
 4 vCPUs (`CAPTIONS_CPUS`) at low priority and pauses itself above 95 % host CPU, but on a c-4
-that already carries the SFU and an edge composite the live `small.en` model (~1.5–2 cores for 1–2
-speakers) is the first thing to load-test; `CAPTIONS_MODEL=base.en` halves it. Memory: up to 4 GB
+that already carries the SFU and an edge composite captions are the first thing to load-test. On
+24 Oct 2026 `small.en` took 0.66 cores beside the composite's 1.84 and the box ran at 70–91 %
+(audience stalls), so the default is now `base.en` (~a third of the CPU; it is baked into the
+captions image, so a box does not download it). If `/opt/livekit/.env` on the volume still has
+`CAPTIONS_MODEL=small.en`, delete that line to get the default. Memory: up to 4 GB
 (`CAPTIONS_MEMORY`) of the 8. Sizing in `deploy/captions/README.md`.
 
 ## Webinars here are always edge

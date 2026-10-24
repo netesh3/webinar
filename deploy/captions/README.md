@@ -70,7 +70,7 @@ All three internal endpoints check `X-Captions-Secret` against the API's `CAPTIO
 | `cpu_shares: 256` | a quarter of egress/LiveKit's weight under contention |
 | `nice -n 10` | in the image's command |
 | `oom_score_adj: 800`, `mem_limit` | the first thing the kernel kills, never the SFU |
-| CPU guard | samples **host** `/proc/stat` every 2 s: > 85 % for 10 s → **degraded** (small.en → base.en, one speaker, stale windows skipped); > 95 % → **paused** (no decoding; the API is told, browsers caption themselves); back one step after < 70 % for 20 s |
+| CPU guard | samples **host** `/proc/stat` every 2 s: > 85 % for 10 s → **degraded** (the fallback model if it differs from the live one, one speaker, stale windows skipped); > 95 % → **paused** (no decoding; the API is told, browsers caption themselves); back one step after < 70 % for 20 s |
 | Active speakers only | every mic is subscribed (LiveKit only reports active speakers a participant is subscribed to), but only `CAPTIONS_MAX_SPEAKERS` of them reach the model; silence stops at an RMS gate, so a 50-person room costs what a 5-person one does |
 | One decode at a time per room | overlapping speakers queue; a backlog is dropped, not grown |
 
@@ -88,7 +88,7 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_SECRET` | – | **required**, ≥ 32 chars, same value as the API's |
 | `CAPTIONS_API_URL` | `https://webinarliv.com` | where lines are posted |
 | `CAPTIONS_AGENT_NAME` | `webinar-captions` | must match the API's |
-| `CAPTIONS_MODEL` | `small.en` | live model (`small.en`, `base.en`, `medium.en`…) |
+| `CAPTIONS_MODEL` | `base.en` | live model (`base.en`, `small.en`, `medium.en`…); `small.en` is ~2–3× the CPU for somewhat better words |
 | `CAPTIONS_FALLBACK_MODEL` | `base.en` | used while the CPU guard is degraded |
 | `CAPTIONS_FINAL_MODEL` | `large-v3-turbo` | after-session pass, decoded as English (see Models) |
 | `CAPTIONS_FINAL_ENABLED` | `true` | `false`: no audio kept, no final transcript |
@@ -111,6 +111,7 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_CPU_HIGH_FOR_S` / `_LOW_FOR_S` / `_SAMPLE_S` | `10` / `20` / `2` | guard timing |
 | `CAPTIONS_SPOOL_DIR` / `CAPTIONS_SPOOL_MAX_MB` | `/var/lib/captions/spool` / `4096` | audio kept for the final pass |
 | `CAPTIONS_MODEL_DIR` | `/models` | weights cache (volume `captions_models`) |
+| `CAPTIONS_MODEL_SEED_DIR` | `/opt/models-seed` | weights baked into the image (build arg `CAPTIONS_SEED_MODELS`, default `base.en`), copied into the cache when it lacks them |
 | `CAPTIONS_HEALTH_PORT` | `8091` | the worker's health endpoint (host network) |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | – | written by redeploy.sh / startup.sh |
 
@@ -127,8 +128,8 @@ caption worker unless the box itself has `CAPTIONS_ENABLED=true`.
 
 | | CPU | Memory |
 |---|---|---|
-| live `small.en`, 1–2 active speakers | ≈ 1.5–2 cores while people talk, ~0 in silence | ~0.6 GB per room process (+1 idle prewarmed) |
-| live `base.en` (degraded / 2-vCPU workers) | ≈ 0.5–0.8 cores | ~0.3 GB |
+| live `base.en` (the default), 1–2 active speakers | ≈ 0.5–0.8 cores while people talk, ~0 in silence | ~0.3 GB per room process (+1 idle prewarmed) |
+| live `small.en` (`CAPTIONS_MODEL=small.en`) | ≈ 1.5–2 cores (measured 24 Oct 2026 on the shared c-4: 0.66 cores average over a session, which pushed the box to 70–91 % beside the composite) | ~0.6 GB |
 | interim captions (`base.en` once a second, main speaker, NORMAL only) | ≈ +0.3–0.6 cores while they talk (inside the same docker cap) | none extra (shares the fallback model) |
 | final `large-v3-turbo` | slower than real time at 2 cores (≈ 1–2× the session length) | ~1.7 GB while running, freed after |
 | disk | 32 KB/s per speaker while they talk (~115 MB/speaking-hour) | deleted after the final pass |
@@ -137,8 +138,9 @@ Load test on the real box: a 1080p edge composite + two people talking continuou
 English, watching `docker stats`, egress frame drops and caption latency; then the same with
 the guard thresholds forced low (`CAPTIONS_CPU_HIGH=20`) to see degrade/pause/resume.
 
-First start downloads small.en (~480 MB), base.en (~150 MB) and large-v3-turbo (~1.6 GB) into the
-`captions_models` volume; later starts are instant.
+base.en (~150 MB) is baked into the image and copied into the `captions_models` volume when it
+is missing; the first start downloads large-v3-turbo (~1.6 GB, the after-session pass) and
+`CAPTIONS_MODEL` if it is another model (small.en ~480 MB). Later starts are instant.
 
 ## Latency
 
@@ -174,7 +176,7 @@ is `api/internal/api/server_captions_test.go`.
 
 ## Models
 
-Live: `small.en` and `base.en`. On English the English-only checkpoints are more accurate
+Live: `base.en` (default) or `small.en`. On English the English-only checkpoints are more accurate
 than the multilingual ones of the same size (OpenAI's own results; the gap is largest at
 `base`/`small`), cost the same to decode, and never need a language-detection pass. They
 also cannot drift into another language or script, which is what the old multilingual

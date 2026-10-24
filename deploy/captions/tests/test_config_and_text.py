@@ -9,7 +9,7 @@ ENV = {"CAPTIONS_API_URL": "https://webinarliv.com/", "CAPTIONS_SECRET": "k" * 4
 def test_defaults_are_english_only():
     c = Config.from_env(ENV)
     assert c.api_url == "https://webinarliv.com"
-    assert c.model == "small.en" and c.fallback_model == "base.en" and c.final_model == "large-v3-turbo"
+    assert c.model == "base.en" and c.fallback_model == "base.en" and c.final_model == "large-v3-turbo"
     assert c.partial_model_name == "base.en"
     assert c.language == "en" and c.whisper_language == "en"
     assert c.max_speakers == 2 and c.cpus == 2.0 and c.cpu_threads == 2

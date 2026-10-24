@@ -111,13 +111,13 @@ sed -i "s/__SFU_PRIVATE_IP__/${SFU_PRIVATE_IP}/" docker-compose.yml.new
 
 # Server captions beside egress, when the metadata asks for them. Half the vCPUs at most
 # (2 of 4, 1 of 2), cpu_shares 256 against egress's 1024, nice 10 in the image, and the
-# agent's own CPU guard: the composite this worker exists for always wins. On a 2 vCPU
-# worker the live model drops to base.en, which is what one core can keep up with.
+# agent's own CPU guard: the composite this worker exists for always wins. The live model
+# is base.en, the agent's default (small.en cost ~2-3x the CPU beside a composite).
 CAPTIONS=0
 if [[ -n "$CAPTIONS_IMAGE" && ${#CAPTIONS_SECRET} -ge 32 ]]; then
   CAPTIONS=1
   CAPTIONS_CPUS=$(( CPUS / 2 > 0 ? CPUS / 2 : 1 ))
-  if (( CPUS >= 4 )); then CAPTIONS_MODEL=small.en; else CAPTIONS_MODEL=base.en; fi
+  CAPTIONS_MODEL=base.en
   cat >>docker-compose.yml.new <<YAML
   captions:
     image: ${CAPTIONS_IMAGE}
