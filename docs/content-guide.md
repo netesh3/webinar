@@ -65,7 +65,7 @@ The body is a small Markdown subset (`web/lib/blog-markdown.ts`). No raw HTML.
 | `\| a \| b \|` then `\|---\|---\|` | A table (an all-blank header row means no header) |
 | `---` | A divider |
 
-Because the body is a template string, write a backtick as `` \` `` and `${` as `\${`.
+Because the body is a template string, write a backtick as `` ` `` and `${` as `\${`.
 Use `~~~` for code fences so you do not have to escape them.
 
 ### Images
@@ -147,31 +147,28 @@ which should say so up front.
 
 ### Tutorials
 
-1. **Run a meeting** — instant and scheduled meetings, the link-and-name lobby, the
-   default cap, mic muted and camera on at entry
-2. **Co-hosts and panelists** — inviting panelists by email, stage links, promoting an
-   attendee, Assign host & leave
-3. **Recordings and retention** — cloud vs on-this-computer recording, the Recording tab,
-   chapters, how long recordings are kept and how to keep them longer (cloud: on request)
-4. **Live captions** — turning captions on, what viewers see, captions on recordings
-5. **Follow up by email and WhatsApp** — confirmation, reminders, replay link, the Follow
+Done: **Run a meeting** (`run-a-meeting`), **Co-hosts and panelists**
+(`co-hosts-and-panelists`), **Recordings and retention** (`recordings-and-retention`),
+**Live captions** (`live-captions`).
+
+1. **Follow up by email and WhatsApp** — confirmation, reminders, replay link, the Follow
    up tab, WhatsApp consent (WhatsApp: on request)
-6. **Your audience (CRM)** — the Audience tab, registrants across webinars, exports
-7. **AI recap and insights** — the AI insights tab, Generate recap now, key points,
+2. **Your audience (CRM)** — the Audience tab, registrants across webinars, exports
+3. **AI recap and insights** — the AI insights tab, Generate recap now, key points,
    action items, chapters, top questions (AI: on request, off by default)
-8. **AI knowledge base** — adding material, how answers stay grounded, past-Q&A
+4. **AI knowledge base** — adding material, how answers stay grounded, past-Q&A
    follow-ups (AI: on request)
-9. **Auto mode for Simulive** — what the assistant answers, how it is signed, retracting
+5. **Auto mode for Simulive** — what the assistant answers, how it is signed, retracting
    an answer (on request; needs AI, engagement replay and Simulive)
-10. **Spam detection** — flags, Remove person, Mute chat, auto-hide, links
-11. **Highlights, reels and Studio** — starting highlights, clips, the content plan
+6. **Spam detection** — flags, Remove person, Mute chat, auto-hide, links
+7. **Highlights, reels and Studio** — starting highlights, clips, the content plan
     (on request)
-12. **Repurpose your content** — turning a session into posts and emails (on request)
-13. **Integrations** — Zoom meetings and webinars, Stream to YouTube, the email inbox,
+8. **Repurpose your content** — turning a session into posts and emails (on request)
+9. **Integrations** — Zoom meetings and webinars, Stream to YouTube, the email inbox,
     WhatsApp (Zoom and WhatsApp: on request)
-14. **Install the app and get notifications** — PWA install on desktop, Android and iOS
+10. **Install the app and get notifications** — PWA install on desktop, Android and iOS
     (16.4+, from the Home Screen), Web Push
-15. **Admin features** — for operators: account switches, approvals, storage, usage
+11. **Admin features** — for operators: account switches, approvals, storage, usage
 
 ### Engineering
 
