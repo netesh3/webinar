@@ -3119,6 +3119,94 @@ export interface SessionRecapResponse {
 }
 
 //////////
+// source: recording_purge.go
+
+/**
+ * RecordingPurgeConfirm is the exact phrase the admin types; anything else is refused.
+ */
+export const RecordingPurgeConfirm = "DELETE ALL RECORDINGS";
+/**
+ * RecordingPurgeRequest is POST /api/admin/recordings/purge.
+ */
+export interface RecordingPurgeRequest {
+  confirm: string;
+}
+/**
+ * RecordingPurgePhase is how far a run has got.
+ */
+export type RecordingPurgePhase = string;
+export const PurgeStopping: RecordingPurgePhase = "stopping";
+export const PurgeDeleting: RecordingPurgePhase = "deleting";
+export const PurgeSweeping: RecordingPurgePhase = "sweeping";
+export const PurgeDone: RecordingPurgePhase = "done";
+/**
+ * RecordingPurgeSummary is what a run has done so far (all of it, once Phase is done).
+ */
+export interface RecordingPurgeSummary {
+  /**
+   * Recordings is recording rows deleted: every take, and uploaded videos.
+   */
+  recordings: number /* int */;
+  /**
+   * Files is storage objects deleted: recording files, clip files and orphans.
+   */
+  files: number /* int */;
+  bytes: number /* int64 */;
+  /**
+   * UploadsAborted is unfinished multipart uploads aborted (video uploads and any other).
+   */
+  uploadsAborted: number /* int */;
+  /**
+   * Clips is clip and reel rows deleted with their recordings.
+   */
+  clips: number /* int */;
+  /**
+   * SimulivesAffected is simulives that played a deleted recording and were put back to
+   * draft (scheduled or draft) or ended (playing it live).
+   */
+  simulivesAffected: number /* int */;
+  /**
+   * RecordingsStopped is recordings that were in progress and were stopped first.
+   */
+  recordingsStopped: number /* int */;
+}
+/**
+ * RecordingPurge is one run.
+ */
+export interface RecordingPurge {
+  id: string;
+  phase: RecordingPurgePhase;
+  requestedBy: string;
+  startedAt: string;
+  finishedAt?: string;
+  /**
+   * SettleUntil: the sweep waits until then for stopped recorders to upload their last file.
+   */
+  settleUntil?: string;
+  lastError?: string;
+  summary: RecordingPurgeSummary;
+}
+/**
+ * RecordingStorageTotals is what the database says is stored, across every host.
+ */
+export interface RecordingStorageTotals {
+  recordings: number /* int */;
+  bytes: number /* int64 */;
+  clips: number /* int */;
+  uploads: number /* int */;
+}
+/**
+ * RecordingPurgeStatus is GET (and POST) /api/admin/recordings/purge.
+ */
+export interface RecordingPurgeStatus {
+  totals: RecordingStorageTotals;
+  /**
+   * Latest is the most recent run, finished or not; absent when there has been none.
+   */
+  latest?: RecordingPurge;
+}
+
+//////////
 // source: repurpose.go
 
 /**
@@ -5035,6 +5123,12 @@ export interface Webinar {
    * 	 * audience leaves the recording for the ordinary live room. Empty while it plays.
    */
   simuliveLiveAt?: string;
+  /**
+   *  SimuliveRecordingDeleted: the recording this simulive played was deleted by an admin
+   * 	 * (recording_purge.go), and the session was put back to draft. Until another recording is
+   * 	 * picked the host is told why it has nothing to play.
+   */
+  simuliveRecordingDeleted?: boolean;
   host: Person;
   panelists: Person[];
   /**

@@ -140,6 +140,7 @@ export function WebinarTab({
             fields={fields}
             editing={editing}
             slug={webinar?.id}
+            recordingDeleted={!!webinar?.simuliveRecordingDeleted}
           />
         )}
         {form.kind === "simulive" && <SimuliveStartSection form={form} set={set} editing={editing} />}

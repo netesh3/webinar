@@ -211,6 +211,7 @@ import {
   writeCache,
 } from "./http";
 import type { ClipPlan, ClipPlanInput, StudioClipsResponse, StudioRecordingsResponse } from "./api-types";
+import type { RecordingPurgeStatus } from "./api-types";
 
 /** "?a=1&b=2" from the set values, or "". */
 function query(opts: Record<string, string | number | undefined>): string {
@@ -1680,6 +1681,12 @@ export const api = {
   /** One host's usage and their sessions, for the drill-down. */
   adminCostHost: (id: string, q: { from?: string; to?: string; provider?: string; fresh?: boolean }) =>
     request<AdminCostHostDetail>(`/api/admin/costs/hosts/${seg(id)}?${costQuery(q)}`, fresh),
+  /** What recordings are stored across every host, and the latest "Delete all recordings" run. */
+  adminRecordingPurge: () => request<RecordingPurgeStatus>("/api/admin/recordings/purge", fresh),
+  /** Starts "Delete all recordings", or does the next step of the run in progress. confirm
+   *  must be exactly RecordingPurgeConfirm; call again until latest.phase is "done". */
+  adminRunRecordingPurge: (confirm: string) =>
+    post<RecordingPurgeStatus>("/api/admin/recordings/purge", { confirm }),
   /** The on-demand video server: its state, recent droplets and hours in the last 30 days. */
   adminSfuBox: () => request<AdminSFUBox>("/api/admin/sfu-box", fresh),
   /** The report's ignore list (test and staff accounts), with rules worth adding. */

@@ -286,6 +286,8 @@ func (s *Server) runMaintenance(ctx context.Context) {
 		s.maintenanceJob(ctx, "test hook", s.maintenanceHook)
 	}
 	s.maintenanceJob(ctx, "egress reconcile", s.reconcileEgressRecordings)
+	// An admin's "Delete all recordings" still under way (recording_purge.go).
+	s.maintenanceJob(ctx, "recording purge", s.continueRecordingPurge)
 	// The CRM's media copies, token checks and cleanup. See Engage.Maintain.
 	s.maintenanceJob(ctx, "crm maintenance", s.engage.Maintain)
 
