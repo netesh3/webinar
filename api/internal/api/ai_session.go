@@ -59,49 +59,101 @@ func (s *Server) sessionAIBlock(ctx context.Context, wb types.Webinar) string {
 	return ""
 }
 
-/* syncAITranscript brings the caption agent in line with the session's switches, for a live
- * session: dispatched (transcript only, captions left as they are) while AI is on; removed when
- * AI is off and captions are not shown either; dispatched again when AI is resumed. With captions
- * shown the agent stays, as it would have without AI, and its lines while paused are stored for
- * the captions but left out of the AI's reads. Nothing to do where no agent is set up: the browsers capture instead.
+/* syncCaptionAgent brings the caption agent in line with the session's two switches, for a
+ * live session. Either one wants it in the room:
+ *
+ *   captions shown  controls.captionsEnabled, and the host has server captions
+ *                   (types.FeatureCaptions). Server captions are their own feature: they do
+ *                   not use the paid AI, so a session with AI off still gets them. Dispatched
+ *                   for the captions (SetServerCaptions).
+ *   AI on           sessionAIAllowed: dispatched transcript only, captions left as they are
+ *                   (RequestCaptionAgent). The agent shows its lines only while captions are.
+ *
+ * With neither, the agent is removed. Where it cannot run (no CAPTIONS_SECRET, a project with
+ * no agent dispatch, the feature off, or the dispatch failing) the speakers' browsers caption
+ * on-device instead (web/lib/ai-session.ts captionEngine), and the reason is logged here so an
+ * operator can tell which source a room ran on. Idempotent: an agent already asked for is left
+ * alone, so the host's join can call it to retry a dispatch that failed.
  * Reports whether the stored state changed, so the caller re-reads before pushing metadata. */
-func (s *Server) syncAITranscript(ctx context.Context, wb types.Webinar, sfu RoomManager) bool {
+func (s *Server) syncCaptionAgent(ctx context.Context, wb types.Webinar, sfu RoomManager) bool {
 	// A simulive has no speakers: its captions are the original session's, never the agent's.
 	if wb.Status != types.StatusLive || sfu == nil || wb.Kind == types.KindSimulive {
 		return false
 	}
 	slug := wb.ID
-	if !s.sessionAIAllowed(ctx, wb) {
+	transcript := s.sessionAIAllowed(ctx, wb)
+	display := wb.Controls.CaptionsEnabled && s.hostHas(ctx, wb.Host.ID, types.FeatureCaptions)
+	if !display && !transcript {
 		if wb.Controls.CaptionsEnabled {
-			return false
+			s.log.Info("server captions unavailable, captions run on-device",
+				"slug", slug, "reason", "feature_off")
 		}
 		return s.turnOffServerCaptions(ctx, slug, sfu)
 	}
 	if !s.serverCaptionsConfigured() {
+		if display {
+			s.log.Info("server captions unavailable, captions run on-device",
+				"slug", slug, "reason", "not_configured")
+		}
 		return false
 	}
 	d, ok := dispatcherFor(sfu)
 	if !ok {
+		if display {
+			s.log.Warn("server captions unavailable, captions run on-device",
+				"slug", slug, "reason", "no_agent_dispatch", "sfu_project", wb.SFUProject)
+		}
 		return false
 	}
 	already, err := s.store.ServerCaptionsRequested(ctx, slug)
-	if err != nil || already {
+	if err != nil {
+		s.log.Warn("caption agent: could not read the request", "slug", slug, "error", err)
 		return false
 	}
-	if err := s.store.RequestCaptionAgent(ctx, slug); err != nil {
-		s.log.Warn("ai transcript: could not record the request", "slug", slug, "error", err)
+	if already {
+		return false
+	}
+	mode := "captions"
+	if display {
+		err = s.store.SetServerCaptions(ctx, slug, true)
+	} else {
+		mode = "transcript"
+		err = s.store.RequestCaptionAgent(ctx, slug)
+	}
+	if err != nil {
+		s.log.Warn("caption agent: could not record the request", "slug", slug, "mode", mode, "error", err)
 		return false
 	}
 	room := lk.RoomName(slug)
-	meta, _ := json.Marshal(map[string]string{"slug": slug, "room": room, "mode": "transcript"})
+	md := map[string]string{"slug": slug, "room": room}
+	if !display {
+		md["mode"] = "transcript"
+	}
+	meta, _ := json.Marshal(md)
 	if _, err := d.DispatchAgent(ctx, room, s.captionAgentName(), string(meta)); err != nil {
-		// The browsers capture instead: they do whenever the agent is not live.
-		s.log.Warn("ai transcript: dispatch failed", "slug", slug, "error", err)
+		// The browsers caption instead: they do whenever the agent is not live.
+		s.log.Warn("server captions unavailable, captions run on-device",
+			"slug", slug, "reason", "dispatch_failed", "mode", mode,
+			"agent", s.captionAgentName(), "error", err)
 		_ = s.store.SetServerCaptions(ctx, slug, false)
 		return true
 	}
-	s.log.Info("ai transcript: caption agent dispatched", "slug", slug, "agent", s.captionAgentName())
+	s.log.Info("caption agent dispatched", "slug", slug, "mode", mode, "agent", s.captionAgentName())
 	return true
+}
+
+// hostHas reports whether the account behind hostID has the feature key. False when the
+// account cannot be read: the room then falls back to what needs no feature.
+func (s *Server) hostHas(ctx context.Context, hostID, key string) bool {
+	if hostID == "" {
+		return false
+	}
+	host, err := s.store.UserByID(ctx, hostID)
+	if err != nil {
+		s.log.Warn("feature check: could not load the host", "host", hostID, "feature", key, "error", err)
+		return false
+	}
+	return host.HasFeature(key)
 }
 
 // aiPausedMin is how long AI was paused during the session behind slug, for the Results

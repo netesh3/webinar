@@ -252,7 +252,8 @@ export function initialState(
       raiseHandEnabled: true,
       reactionsEnabled: true,
       // Follows the "Live captions" option above: the API seeds the control from
-      // it on create, so the form does not have to keep the two in step itself.
+      // it on create, and an edit that changes the option changes the control too, so the
+      // form does not have to keep the two in step itself.
       captionsEnabled: false,
       serverCaptions: false,
       aiEnabled: false,

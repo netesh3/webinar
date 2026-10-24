@@ -32,7 +32,11 @@ export function RoomSection({
   const autoRecordReady = cloudRecording && config.recordingMode === "egress";
   const extras = (
     [
-      ["captions", "Live captions"],
+      // Not captioned live for a simulive: nobody speaks in it, and it shows the original
+      // session's captions (the API drops the option for one).
+      ...(form.kind !== "simulive"
+        ? ([["captions", "Live captions"]] as const)
+        : []),
       // Nor streamed out: a simulive has no mix of the room to send (mix_destinations.go).
       ...(form.kind !== "simulive"
         ? ([["multistream", "Stream to YouTube"]] as const)
