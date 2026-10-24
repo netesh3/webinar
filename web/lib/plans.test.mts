@@ -31,7 +31,7 @@ assert.equal(yearlyPrice(49, "USD"), 490);
 assert.equal(yearlyPrice(3999, "INR"), 3329 * 12);
 assert.equal(yearlyPrice(9999, "INR"), 8329 * 12);
 assert.equal(yearlyPrice(24999, "INR"), 20829 * 12);
-for (const m of [799, 1999, 3999, 9999, 24999, 39999]) {
+for (const m of [799, 1999, 3999, 4999, 9999, 24999, 39999]) {
   const y = yearlyPrice(m, "INR");
   assert.ok(y <= m * 10, `₹${m}: yearly ${y} is over ten months`);
   assert.equal((y / 12) % 10, 9, `₹${m}: per month should end in 9`);
@@ -39,9 +39,9 @@ for (const m of [799, 1999, 3999, 9999, 24999, 39999]) {
 
 // Prices and the per-month headline.
 const starter = findPlan("starter");
-assert.equal(priceFor(starter, "INR", "monthly"), 3999);
-assert.equal(perMonth(starter, "INR", "yearly"), 3329);
-assert.equal(perMonth(starter, "USD", "yearly"), 41);
+assert.equal(priceFor(starter, "INR", "monthly"), 4999);
+assert.equal(perMonth(starter, "INR", "yearly"), 4159);
+assert.equal(perMonth(starter, "USD", "yearly"), 49);
 assert.equal(priceFor(findPlan("enterprise"), "INR", "monthly"), null);
 assert.equal(perMonth(findPlan("enterprise"), "USD", "yearly"), null);
 assert.equal(yearlySavingPercent(starter, "USD"), 17);

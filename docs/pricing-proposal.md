@@ -61,8 +61,8 @@ The pages do not promise "host seats". Every account is one host who invites co-
 
 | | **Starter** | **Pro** (most popular) | **Business** | **Enterprise** |
 |---|---|---|---|---|
-| Monthly, before GST | **₹3,999 / $49** | **₹9,999 / $149** | **₹24,999 / $349** | Contact |
-| Yearly (2 months free) | ₹39,948 / $490 (₹3,329 a month) | ₹99,948 / $1,490 (₹8,329) | ₹2,49,948 / $3,490 (₹20,829) | Contact |
+| Monthly, before GST | **₹4,999 / $59** | **₹9,999 / $149** | **₹24,999 / $349** | Contact |
+| Yearly (2 months free) | ₹49,908 / $590 (₹4,159 a month) | ₹99,948 / $1,490 (₹8,329) | ₹2,49,948 / $3,490 (₹20,829) | Contact |
 | Attendees per webinar | 200 | 500 | 1,000 | 1,000+ |
 | Attendee-hours a month | 2,500 | 10,000 | 25,000 | Custom |
 | People on stage | 3 | 5 | 10 | Custom |
@@ -144,7 +144,7 @@ Each plan also runs its meetings in this scenario (10×10, 20×10 or 40×25 pers
 
 |---|---|---|---|---|---|---|---|---|
 |---|---|---|---|---|---|---|---|---|
-| Starter ₹3,999 / $49 | 2,500 | $16.1 | **51%** | 60% | 31% | 63% | −13% | 66% |
+| Starter ₹4,999 / $59 (margins below were computed at ₹3,999; higher now) | 2,500 | $16.1 | **51%** | 60% | 31% | 63% | −13% | 66% |
 | Pro ₹9,999 / $149 | 10,000 | $40.8 | **55%** | 70% | 44% | 57% | −20% | 62% |
 | Business ₹24,999 / $349 | 25,000 | $108.5 | **55%** | 67% | 53% | 55% | −76% | 66% |
 
