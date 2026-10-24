@@ -10,8 +10,8 @@ import { HostPortalFrame } from "@/components/host-portal-frame";
  * non-admin from rendering this at all, the API's requireAdmin refuses every request behind it,
  * and the database column is the fact both consult. A page guard alone would be decoration.
  *
- * Dashboard, Accounts and Webinars stay tabs on this page. The sidebar Admin
- * item is the way in; it is not a second navigation column.
+ * Dashboard, Accounts and Webinars stay tabs on this page. Nothing links here: an admin types
+ * /admin. Hiding the link is tidiness, not security — the checks above are what keep others out.
  */
 export default function AdminPage() {
   return (

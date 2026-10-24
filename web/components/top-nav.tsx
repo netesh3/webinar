@@ -149,15 +149,6 @@ export function TopNav() {
               }
               items={[
                 { kind: "label", text: account.email },
-                ...(account.isAdmin
-                  ? [
-                      {
-                        kind: "action" as const,
-                        label: "Admin",
-                        onSelect: () => router.push("/admin"),
-                      },
-                    ]
-                  : []),
                 {
                   kind: "action",
                   label: "Settings",

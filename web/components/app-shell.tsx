@@ -36,8 +36,9 @@ import { InstallAppItem } from "./pwa";
  * a menu. Webinars, Audience and Integrations stay in the rail. Settings and
  * a one-click light/dark button are pinned to the bottom of that same pane,
  * with the nav above and empty space between. The bell stays at the top-right
- * of the main column. The avatar opens Admin (for admins), the account and
- * sign-out. A nav click never toggles the rail. */
+ * of the main column. The avatar opens the account and sign-out. Admin is
+ * linked from nowhere: an admin types /admin, which checks isAdmin itself.
+ * A nav click never toggles the rail. */
 
 function subscribeChrome(onChange: () => void) {
   const obs = new MutationObserver(onChange);
@@ -252,7 +253,6 @@ function PrimaryNav() {
  *  are host tools; showing them leads to a page that says hosting is off. */
 function AttendeeNav() {
   const pathname = usePathname();
-  const { account } = useSession();
   const { registrations } = useRegistrations();
   const count = registrations?.length ?? 0;
 
@@ -265,15 +265,6 @@ function AttendeeNav() {
         icon={<BookmarkIcon />}
         badge={count > 0 ? String(count) : undefined}
       />
-      {/* An admin need not be a host. The rest of the host nav stays hidden. */}
-      {account?.isAdmin && (
-        <Item
-          href="/admin"
-          label="Admin"
-          active={pathname === "/admin" || pathname.startsWith("/admin/")}
-          icon={<AdminGlyph className="" />}
-        />
-      )}
     </nav>
   );
 }
@@ -443,14 +434,6 @@ function HostPrimaryNav() {
           </div>
         </div>
       </div>
-      {account?.isAdmin && (
-        <Item
-          href="/admin"
-          label="Admin"
-          active={pathname === "/admin" || pathname.startsWith("/admin/")}
-          icon={<AdminGlyph className="" />}
-        />
-      )}
     </nav>
   );
 }
@@ -619,24 +602,6 @@ export function AccountMenu() {
           aria-label="Account"
           className="absolute top-full right-0 z-[70] mt-2 w-64 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-line bg-surface py-1.5 shadow-xl"
         >
-          {account.isAdmin && (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  close();
-                  router.push("/admin");
-                }}
-                className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
-              >
-                <span className="grid size-4 place-items-center text-ink-2" aria-hidden>
-                  <AdminGlyph />
-                </span>
-                Admin
-              </button>
-              <div className="my-1 h-px bg-line" role="separator" />
-            </>
-          )}
           <div className="flex items-center gap-2.5 px-3 py-2.5">
             <AccountAvatar
               initials={account.initials}
@@ -742,23 +707,6 @@ function YouTubeGlyph() {
     <svg viewBox="0 0 24 24" aria-hidden focusable="false">
       <rect width="24" height="24" rx="6" fill="#FF0000" />
       <path fill="#fff" d="M10 8v8l7-4-7-4z" />
-    </svg>
-  );
-}
-
-function AdminGlyph({ className = "size-4" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M12 3 5 6v5c0 4.2 2.8 7.4 7 9 4.2-1.6 7-4.8 7-9V6l-7-3z" />
     </svg>
   );
 }
