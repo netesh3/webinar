@@ -7,12 +7,17 @@ import { useServerClockOffset } from "@/lib/edge-events";
 import {
   audienceLayoutFromMetadata,
   cameraIsOn,
+  decodeParticipantLeft,
+  hasLeft,
   isEdgeTemplatePath,
   isStageTile,
   placeStage,
   SHARE_ID,
+  noteJoined,
+  noteLeft,
   usesSpeakerView,
   type AudienceLayoutId,
+  type LeftConnections,
   type Placement,
 } from "@/lib/composite-layouts";
 import {
@@ -47,6 +52,7 @@ import {
   ParticipantKind,
   VideoQuality,
   type Participant,
+  type RemoteParticipant,
   type RemoteTrackPublication,
   type Room,
 } from "livekit-client";
@@ -236,9 +242,20 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
   /* The tiles: who is on the stage (lib/composite-layouts.ts isStageTile) — not this egress,
    * not the caption agent, not an attendee watching over WebRTC. useTracks with
    * onlySubscribed false returns a placeholder for every participant, this one included. */
+  const left = useLeftConnections(room);
   const cameraRefs = useMemo(() => {
     const cams = trackRefs.filter(
-      (ref) => ref.source === Track.Source.Camera && onStage(ref.participant),
+      (ref) =>
+        ref.source === Track.Source.Camera &&
+        onStage(ref.participant) &&
+        !hasLeft(
+          {
+            identity: ref.participant.identity,
+            sid: ref.participant.sid,
+            hasPublications: ref.participant.trackPublications.size > 0,
+          },
+          left,
+        ),
     );
     // Sort cameras: active speaker on top, then by identity
     return [...cams].sort((a, b) => {
@@ -248,7 +265,7 @@ function ZoomRecordingStage({ edgeLayout = false }: { edgeLayout?: boolean }) {
       if (!aActive && bActive) return 1;
       return a.participant.identity.localeCompare(b.participant.identity);
     });
-  }, [trackRefs, activeSpeakerId]);
+  }, [trackRefs, activeSpeakerId, left]);
 
   /* The host's layout (SessionControls.audienceLayout, from room metadata) turns the stage
    * into boxes, and every box is drawn in ONE tree of absolutely positioned elements keyed by
@@ -539,6 +556,36 @@ function onStage(p: Participant): boolean {
     canPublishVideo:
       Boolean(perm?.canPublish) && (sources.length === 0 || sources.includes(Track.Source.Camera)),
   });
+}
+
+/** Who the SFU says has left (lib/composite-layouts.ts LeftConnections), from the API's
+ *  participant-left packet, and forgotten again when that identity joins anew. */
+function useLeftConnections(room: Room | undefined): LeftConnections {
+  const [left, setLeft] = useState<LeftConnections>(() => new Map());
+  useEffect(() => {
+    if (!room) return;
+    const decoder = new TextDecoder();
+    const onData = (payload: Uint8Array, _from?: unknown, _kind?: unknown, topic?: string) => {
+      // lib/realtime.ts DATA_TOPIC; not imported, for one string, into the egress page.
+      if (topic !== "webcast") return;
+      let msg: unknown;
+      try {
+        msg = JSON.parse(decoder.decode(payload));
+      } catch {
+        return;
+      }
+      const gone = decodeParticipantLeft(msg);
+      if (gone) setLeft((l) => noteLeft(l, gone.identity, gone.sid));
+    };
+    const onJoined = (p: RemoteParticipant) => setLeft((l) => noteJoined(l, p.identity, p.sid));
+    room.on(RoomEvent.DataReceived, onData);
+    room.on(RoomEvent.ParticipantConnected, onJoined);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+      room.off(RoomEvent.ParticipantConnected, onJoined);
+    };
+  }, [room]);
+  return left;
 }
 
 /** The host's layout, from room metadata, live: RoomMetadataChanged re-lays the composite

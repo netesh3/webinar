@@ -8,12 +8,16 @@ import assert from "node:assert/strict";
 import {
   audienceLayoutFromMetadata,
   cameraIsOn,
+  decodeParticipantLeft,
   GRID_MAX,
+  hasLeft,
   gridRects,
   isEdgeTemplatePath,
   isStageTile,
   LAYOUTS,
   layoutById,
+  noteJoined,
+  noteLeft,
   placeStage,
   SHARE_ID,
   thumbnailFor,
@@ -225,6 +229,32 @@ assert.equal(isStageTile({ ...who, isAgentOrEgress: true, canPublishVideo: true 
 assert.equal(isStageTile(who), false);
 assert.equal(isStageTile({ ...who, hasVideoPublication: true }), true);
 assert.equal(isStageTile({ ...who, canPublishVideo: true }), true);
+
+// Who has left, by the SFU's word (participant-left): the connection that left, not a rejoin.
+assert.deepEqual(decodeParticipantLeft({ kind: "participant-left", identity: "att_A", sid: "PA_1" }), {
+  identity: "att_A",
+  sid: "PA_1",
+});
+assert.equal(decodeParticipantLeft({ kind: "participant-left", identity: "att_A" }), null);
+assert.equal(decodeParticipantLeft({ kind: "chat", identity: "att_A", sid: "PA_1" }), null);
+assert.equal(decodeParticipantLeft(null), null);
+{
+  let left = noteLeft(new Map(), "att_A", "PA_1");
+  // That connection, camera or not, is gone.
+  assert.equal(hasLeft({ identity: "att_A", sid: "PA_1", hasPublications: true }, left), true);
+  // A stale copy with nothing published, under a sid the packet never named: gone too.
+  assert.equal(hasLeft({ identity: "att_A", sid: "PA_0", hasPublications: false }, left), true);
+  // ...but one still publishing is a live connection, not a ghost.
+  assert.equal(hasLeft({ identity: "att_A", sid: "PA_0", hasPublications: true }, left), false);
+  // Nobody else is touched.
+  assert.equal(hasLeft({ identity: "att_B", sid: "PA_9", hasPublications: false }, left), false);
+  // A late join event for the sid that left changes nothing...
+  assert.equal(noteJoined(left, "att_A", "PA_1"), left);
+  // ...a rejoin, a new sid, forgets the departure, camera off or on.
+  left = noteJoined(left, "att_A", "PA_2");
+  assert.equal(hasLeft({ identity: "att_A", sid: "PA_2", hasPublications: false }, left), false);
+  assert.equal(left.has("att_A"), false);
+}
 
 // Kept from composite-layout.test.mts.
 assert.equal(cameraIsOn({ publication: { isMuted: false, isSubscribed: true } }), true);

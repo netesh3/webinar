@@ -409,6 +409,53 @@ export function isStageTile(p: {
   return p.hasVideoPublication || p.canPublishVideo;
 }
 
+/* Connections the SFU says have left, from the API's participant-left packet (the
+ * participant_left webhook, repeated to the room), by identity.
+ *
+ * The mix kept a co-host who had left on the audience stream, an avatar tile with the mic
+ * off, for twenty minutes, while the SFU listed him gone and a fresh mix did not show him
+ * (instant-webinar-2050, 2026-10-24): its own copy of the room had missed the departure.
+ * The packet carries the sid that left, so a rejoin, which is a new sid, is never dropped
+ * with it; a join forgets the identity's entry for the same reason. */
+export type LeftConnections = ReadonlyMap<string, ReadonlySet<string>>;
+
+/** The participant-left packet, decoded; null for anything else on the topic. */
+export function decodeParticipantLeft(raw: unknown): { identity: string; sid: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const msg = raw as Record<string, unknown>;
+  if (msg.kind !== "participant-left") return null;
+  const identity = typeof msg.identity === "string" ? msg.identity.slice(0, 200) : "";
+  const sid = typeof msg.sid === "string" ? msg.sid.slice(0, 100) : "";
+  return identity && sid ? { identity, sid } : null;
+}
+
+export function noteLeft(left: LeftConnections, identity: string, sid: string): LeftConnections {
+  const next = new Map(left);
+  next.set(identity, new Set([...(left.get(identity) ?? []), sid]));
+  return next;
+}
+
+/** Somebody joined: a new connection for that identity, so its old departures no longer
+ *  describe them. A join for a sid already reported gone (a late event) changes nothing. */
+export function noteJoined(left: LeftConnections, identity: string, sid: string): LeftConnections {
+  const gone = left.get(identity);
+  if (!gone || gone.has(sid)) return left;
+  const next = new Map(left);
+  next.delete(identity);
+  return next;
+}
+
+/** Whether a tile is somebody the SFU said has left: that very connection, or, with nothing
+ *  published, the identity a departure named (the copy kept a sid the packet never saw). */
+export function hasLeft(
+  p: { identity: string; sid: string; hasPublications: boolean },
+  left: LeftConnections,
+): boolean {
+  const gone = left.get(p.identity);
+  if (!gone) return false;
+  return gone.has(p.sid) || !p.hasPublications;
+}
+
 /** Whether a template path asks for the edge layout: <template>/edge or <template>/edge/clock. */
 export function isEdgeTemplatePath(path: string): boolean {
   return /\/edge(\/|$)/.test(path);
