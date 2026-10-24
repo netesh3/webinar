@@ -43,6 +43,7 @@ export function EngagementDashboard({
   initialSection,
   followUp,
   onFollowUp,
+  attendeeExport,
 }: {
   source: EngagementSource;
   sample?: boolean;
@@ -62,6 +63,8 @@ export function EngagementDashboard({
   followUp?: (tiers: EngagementSummary["tiers"], levels: ReactNode) => ReactNode;
   /** Where the header's Follow up button goes, when following up is another tab. */
   onFollowUp?: () => void;
+  /** Shown at the top of the Attendees section: the host screen's CSV export. */
+  attendeeExport?: ReactNode;
 }) {
   const { notify } = useToast();
   const summary = useEngagementSummary(source);
@@ -270,6 +273,7 @@ export function EngagementDashboard({
         hint={`One row per person across the ${s.webinar.sessionMin}-minute session, with when they came in and left. Sort, filter, or open a row for their full timeline.`}
         summary={`${plural(k.attended, "person", "people")} · ${t.high} highly engaged · ${t.risk} at risk`}
       >
+        {attendeeExport}
         <Deferred minHeight={480}>
           <Card className={card}>
             <AttendeeHeatmap
