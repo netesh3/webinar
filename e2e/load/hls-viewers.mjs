@@ -47,6 +47,8 @@ function viewerOptions(o, joinKey) {
     variant: o.variant || "first",
     events: o.events !== false,
     backlog: o.events !== false,
+    // The captions gauge needs the step's ramp (lib/viewer.mjs captionGauges).
+    rampMs: o.rampMs ?? 0,
   };
 }
 

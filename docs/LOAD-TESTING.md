@@ -10,11 +10,12 @@ It runs from a generator droplet in BLR1 (or a laptop, at small scale). It goes 
 |---|---|---|
 | `run.mjs` | One command for the whole test: test host and edge webinar → seats → go live → wait for the video box → presenters → (cloud recording) → ramp viewers here and on other generators (+ API load, + engagement check, + WebRTC tabs) → summary → end → delete | Everything below, plus the server's own viewer count (`GET /host/webinars/{slug}/edge`) every 30 s, PASS/FAIL checks, and optional Grafana numbers per step |
 | `hls-viewers.mjs` | N simulated edge viewers, in steps, over several processes | See the next table |
-| `presenter.mjs` | Headless Chrome on the stage at `/host/<slug>/room`, publishing a looping 720p30 test video (ffmpeg `testsrc2`) and a 440 Hz tone; optional screen share | Outbound resolution, fps, kbit/s, and `qualityLimitationReason` (cpu/bandwidth) |
+| `presenter.mjs` | Headless Chrome on the stage at `/host/<slug>/room`, publishing a looping 720p30 test video (ffmpeg `testsrc2`) and a 440 Hz tone, or with `--captions` a spoken script; optional screen share | Outbound resolution, fps, kbit/s, and `qualityLimitationReason` (cpu/bandwidth) |
 | `api-load.mjs` | What an audience does besides watching, at rates you set: chat, questions, upvotes, poll votes, joins, public registrations, extra event streams | Latency p50/p95/p99 and errors per action, in 30 s windows |
 | `engage.mjs` | The engagement check (`run.mjs --engage`, or on its own against a run in progress): a tagged chat burst, questions and upvotes, polls and quizzes opened, voted and closed one at a time | Whether the server stored exactly what it accepted: a PASS/FAIL table |
 | `webrtc-attendees.mjs` | Flags around the existing `e2e/probe-load.mjs`: N Chrome tabs, steps, meeting or webinar | Per-tab inbound bitrate, fps, freezes, loss, resolution |
-| `setup-generator.sh` | cloud-init for a fresh Ubuntu 24.04 droplet: Node 22, Chrome, ffmpeg, the kit, file and port limits, TCP tuning | (none) |
+| `captions.mjs` | The captions check (`run.mjs --captions`): captions on, which source serves them, an edge tap, the stored transcript, scored against the presenters' scripts (`lib/captions.mjs`, `lib/voice.mjs`) | Delivery, phrase latency and word error rate: a PASS/FAIL table |
+| `setup-generator.sh` | cloud-init for a fresh Ubuntu 24.04 droplet: Node 22, Chrome, ffmpeg, espeak-ng, the kit, file and port limits, TCP tuning | (none) |
 
 ### What one HLS viewer does
 
@@ -54,6 +55,7 @@ Per step, the summary table and the JSON report:
 | `stalls`, `stalledNow` | Stalls in the step, and viewers stalled at the moment the step closed |
 | `live50s`, `live95s` | Live latency (s) |
 | `sseOpen`, `beatFail` | Event streams open at step end; failed beats |
+| `captions` | Caption lines (finals) received over the event streams, all viewers together (`--captions`; partials are `captionPartial` in the JSON) |
 | `Mbit/s` | What the generator pulled |
 | `cpu%`, `loop99` | The generator's own health (see "Honest limits") |
 | `errors` | `<what> <status>` × count, e.g. `part 404x3`, `join 429x10`, `events timeout` |
@@ -78,7 +80,7 @@ Everything is logged as an `admin action`. The public registration path has no b
 
 An admin account. Set `PROBE_ADMIN_EMAIL` and `PROBE_ADMIN_PASSWORD` to an account listed in the API's `ADMIN_EMAILS`. With it, the kit makes and later deletes:
 
-- the test host: signup, then verify-email, `canHost`, and `instant_webinar` granted (the `e2e/grant-host.mjs` pattern);
+- the test host: signup, then verify-email, `canHost`, and `instant_webinar` granted (the `e2e/grant-host.mjs` pattern); with `--captions` also the `captions` feature (on by default anyway);
 - for `--presenters 2..3`, panelist accounts;
 - the webinar, marked as a load test;
 - the seats.
@@ -150,6 +152,7 @@ Before each run against production:
 | 4 | `... --steps 50,200,500,1000 --ramp 30s --hold 120s --api-load --presenters 3 --screen-share --workers 8` | The target. If `Mbit/s` flattens or the generator warns, split the viewers (below) |
 | 5 | `... --steps 50,200,500 --origin https://<box>.sslip.io/live` | The box alone, without the CDN: its own LL-HLS ceiling |
 | 6 | `node webrtc-attendees.mjs --web https://webinarliv.com --kind meeting --steps 3,6,9 --hold 60s --i-know-this-is-prod` | A 10-person meeting (host + 9), camera on, mic muted |
+| 7 | `node run.mjs ... --steps 50,200 --ramp 30s --hold 180s --presenters 2 --captions` | Captions under load: the server agent live, every viewer gets the lines, latency and WER under the thresholds. Hold at least one voice loop (about 90 s for two presenters) |
 
 Add `--low-latency` to steps 1–5 to measure LL playback, which is what the box serves (`hlsVariant: lowLatency`, 1 s segments, 500 ms parts).
 
@@ -171,7 +174,7 @@ Without `--generators`, `--extra-seats N` prints the `hls-viewers.mjs` command a
 
 ### Checks: what PASS and FAIL mean
 
-Two optional checks end in a PASS/FAIL table (and `checks`/`checksPass` in `results.json`; the exit code is 1 on a FAIL). Cleanup runs either way.
+Three optional checks end in a PASS/FAIL table (and `checks`/`checksPass` in `results.json`; the exit code is 1 on a FAIL). Cleanup runs either way.
 
 **`--engage`** runs `engage.mjs` once the top step's ramp is done (`(steps − 1) × (ramp + hold) + ramp` after the viewers start), from the viewers' seats:
 
@@ -200,6 +203,39 @@ A send the server refused (429 rate limit, 409) is reported in the JSON but is n
 | playable | `GET .../recordings/{id}/file` with `Range: bytes=0-4095` (following the redirect to the CDN or a presigned URL) answers 200/206 with MP4 (`ftyp`/`moof`) or WebM (EBML) bytes |
 
 The recording is deleted with the webinar at cleanup (`--keep` keeps both).
+
+**`--captions`** makes the presenters speak and checks the captions of what they said. It needs `--presenters 1`–`3` and a text-to-speech engine on the generator.
+
+*The voices.* `lib/voice.mjs` holds one script per presenter: twelve plain webinar sentences each (about 150 words), no contractions, numbers spelled out ("forty five minutes", "twenty percent"). Each sentence is synthesised on its own with `espeak-ng` (`setup-generator.sh` installs it; voices `en-us`, `en-gb`, `en-us+f3`) or, on a Mac, `say` (Samantha, Daniel, Karen; `LOAD_TTS` picks the engine). The sentences are laid end to end into one 48 kHz mono 16-bit WAV per presenter, so each sentence's start and end in the file are known to the millisecond. The presenters take turns: presenter 2 starts 8 s before presenter 1 finishes, presenter 3 8 s before presenter 2 finishes, and every file is padded with silence to one shared loop (about 130 s for three, 90 s for two). Chrome plays the file, looping, as the microphone (`--use-file-for-fake-audio-capture`); the fake video stays. Nothing is committed: the WAVs are made at start (about 20 s, cached under the temp directory).
+
+*When each file started.* Chrome starts the file when the page opens the microphone. The presenter page records every `getUserMedia` audio track's open time (and clones'), and which track it sends. The analysis picks, from those times, the one the agent's own speech-start times (`startedAt` on each server line) agree with, and reports how far off the agent's starts are (`agent start N ms off`: its speech detection plus the clocks' difference). The presenters' phases therefore come from when each Chrome opened its microphone, not from the schedule. A sentence spoken while two other presenters were also talking (each stretched by the agent's 3 s speaker linger) is left out of coverage and WER, since the agent captions only the two most active speakers.
+
+*How the run turns them on.* The webinar is created with **Live captions** ticked (`options.captions`, `controls.captionsEnabled`), so go-live asks for the server caption agent; once the presenters publish, `PATCH /host/webinars/{slug}/controls {captionsEnabled: true}` brings it in if the box was still booting at go-live. AI stays off: since PR #711 the agent joins for captions whenever the host has the `captions` feature, AI or not. Without `CAPTIONS_SECRET` on the API, or with no caption worker taking the job, the room falls back to on-device captions (Whisper tiny.en in each presenter's tab), and the source check says so.
+
+*Where captions travel, and how each is observed.*
+
+| Path | Carries | Observed by |
+|---|---|---|
+| WebRTC participants | the agent publishes `{kind: "caption", from, text, id, startedAt, endedAt, lagMs, partial?}` as a LiveKit data packet (topic `webcast`) itself; the API relays it only when the agent could not | the host presenter's page: every data-channel message with a caption packet in it is recorded with its arrival time (`lib/captions.mjs` `CAPTION_TAP`) |
+| Edge (LL-HLS) viewers | the agent posts each line to the API, which puts the same packet on the events stream (SSE `event: packet`); partials too, edge only | every simulated viewer counts them (`captions` column); one more seat, the tap, keeps every one with its arrival time |
+| Stored | each final line in `session_captions` | `GET /host/webinars/{slug}/transcript.txt`, after the run ends the session |
+
+*The checks* (thresholds are flags):
+
+| Check | PASS when |
+|---|---|
+| source | `GET /host/webinars/{slug}/` said `controls.serverCaptions` (the agent reported live) in at least 90 % of the samples after it first did. `--captions-source any` accepts on-device. Not live after `--captions-wait` (3 min) is a warning saying whether it was asked for (`serverCaptionsPending`) or not at all |
+| delivery: WebRTC observer | the host page received at least one final |
+| delivery: edge tap | the tap received at least one final |
+| delivery: edge viewers | over the top step's hold, the viewers whose events stream was open since before the hold received, on average, at least `--captions-delivery` (90 %) of the finals the tap received in the same window (all generators together) |
+| latency: WebRTC p95 | for each sentence, the time from when it was spoken to the first caption event (partial or final) whose words include its first word: p95 at most `--captions-latency` (4 s) |
+| latency: edge p95 (on screen) | the same from the tap's arrival times plus the page's hold (`web/lib/caption-sync.ts` `edgeHoldMs`: the player's delay + 0.5 s − the line's `lagMs`, with the delay taken as the viewers' measured live latency p50): p95 at most that live latency + `--captions-edge-slack` (4 s) |
+| live WER, per presenter | word error rate of the finals, in order, against the stretch of the script they cover: at most `--captions-live-wer` (25 %). From the WebRTC page if it heard that presenter, else the tap |
+| stored WER, per presenter | the same for transcript.txt's lines: at most `--captions-stored-wer` (20 %) |
+
+WER is (substitutions + deletions + insertions) / reference words, after normalising both sides: lower case, punctuation and fillers dropped, contractions expanded, digits to words (`45%` = "forty five percent", `24` = "twenty four"). Each line is placed in the script by alignment, so lines missing in the middle count as deletions; the coverage (sentences with a caption / sentences in the stretch) is in the detail. `results.json` has it all under `captions` (`report.webrtc`, `report.edge`, `report.stored`, `report.anchors`, `report.sourceSamples`).
+
+*Captions box.* Until PR #725 lands, the agent runs on the video box itself, so the captions load adds to the box's CPU (24 Oct: 0.66 core for small.en; base.en, PR #724, needs about a third of that). With `CAPTIONS_BOX_ENABLED=true` there is one captions droplet per video box, created and deleted with it, shared by every room on it (4 rooms on the default `s-2vcpu-4gb`); a run then tests that box too, and a cold one adds its own boot time before the agent goes live (watch the source line and `--captions-wait`).
 
 **The playback URL.** If the audience stream's playback URL is the box itself (a bare IP or `*.sslip.io`) and you did not ask for `--origin`, `run.mjs` prints a banner and repeats it under **Warnings** at the end: every viewer loaded the origin, so the numbers are the box's, not the CDN's.
 
@@ -230,6 +266,8 @@ With `GRAFANA_PROM_URL` (the stack's Prometheus base, e.g. `https://prometheus-p
 PROBE_ADMIN_EMAIL=... PROBE_ADMIN_PASSWORD=... node e2e/load/run.mjs --web http://127.0.0.1:3000 \
   --api http://127.0.0.1:8080/api --steps 3,6 --ramp 2s --hold 30s --presenters 2 --api-load --low-latency
 ```
+
+For `--captions` locally, either run the caption agent (`deploy/captions`, with the API's `CAPTIONS_SECRET`) or pass `--captions-source any` and let the presenters' browsers caption on-device. The fake origin's video carries no audio, so only the event-stream and WebRTC paths are real there.
 
 ## What to watch
 
@@ -283,5 +321,6 @@ Results are written to `results/<run>/`: `plan.json`, `results.json` and `keys.j
 - **Retries.** After a failed blocking playlist reload, a kit viewer waits 1 s and retries the same URL indefinitely. hls.js has its own retry and back-off policy, so a browser may recover differently. Confirm stalls with a real browser tab.
 - **No decoding, no ABR, no LL step-up.** The model follows the playlist and the network only. A viewer's CPU or a bad Wi-Fi link is not represented. Force `--low-latency` to test LL playback.
 - **Presenters** run in the same datacenter as the box (a perfect uplink), and their Chrome encodes in software on the generator.
+- **Captions** are scored on synthetic voices (espeak-ng is robotic; Whisper does better on people), from one WebRTC page and one edge tap, so per-viewer latency is not measured, only per-viewer delivery. The phrase latency starts at the sentence's first word and ends at the first partial with it in, so it includes the agent's interim decode interval. On a Mac, Chrome's sandboxed audio service cannot read the voice file (it captures silence), so presenters with a voice run with `--disable-features=AudioServiceSandbox`.
 - **WebRTC webinar audiences** cannot be tested on the DigitalOcean box: every webinar there is edge. `webrtc-attendees --kind webinar` is for a server with standard delivery. Meetings (`--kind meeting`) are WebRTC everywhere. The default meeting cap is 10 (host included); probe-load raises the host's cap (admin `meeting-cap`, up to 50) when you ask for more.
 - **Production runs so far:** [2026-10-24-report.md](load-tests/2026-10-24-report.md) (runs 1-5, origin-direct: read its correction note) and [2026-10-24-run6-cdn-1000.md](load-tests/2026-10-24-run6-cdn-1000.md) (1,010 viewers through the CDN).

@@ -48,6 +48,14 @@
  *   --record              cloud-record the session (grants the test host cloud_recording), stop
  *                         at the end and verify: ready (within --record-wait 10m), size,
  *                         duration, the file plays
+ *   --captions            the presenters speak known scripts (espeak-ng / macOS say, lib/voice.mjs)
+ *                         and the live captions are checked (captions.mjs): the source (server
+ *                         agent or on-device), delivery to a WebRTC page, an edge tap and every
+ *                         edge viewer, phrase latency, word error rate live and stored. Options:
+ *                         --captions-source server|any  --captions-wait 3m (agent live by then)
+ *                         --captions-live-wer 0.25 --captions-stored-wer 0.2
+ *                         --captions-latency 4s (WebRTC p95) --captions-edge-slack 4s (edge p95
+ *                         on screen <= edge live latency + this) --captions-delivery 0.9
  *   GRAFANA_PROM_URL + GRAFANA_PROM_TOKEN (+ GRAFANA_PROM_USER)   box CPU/network per step
  *                         from Grafana Cloud into results.json (lib/metrics.mjs)
  * Safety
@@ -82,7 +90,10 @@ import { runHlsViewers } from "./hls-viewers.mjs";
 import { runApiLoad } from "./api-load.mjs";
 import { runWebrtcAttendees } from "./webrtc-attendees.mjs";
 import { runEngage, verdictTable, ENGAGE_DEFAULTS } from "./engage.mjs";
-import { startPresenter, testMediaFlags } from "./presenter.mjs";
+import { startPresenter, testMediaFlags, withVoice } from "./presenter.mjs";
+import { makeVoices } from "./lib/voice.mjs";
+import { CAPTION_THRESHOLDS } from "./lib/captions.mjs";
+import { enableCaptions, captionSource, EdgeCaptionTap, pageCaptions, edgeDelivery, analyseCaptions } from "./captions.mjs";
 import { hlsTable, apiTable, writeResults } from "./lib/report.mjs";
 import { BOX_WAIT_MS, waitForVideoServer } from "./lib/box.mjs";
 import { grantCloudRecording, startRecording, stopRecording, waitReady, probePlayable, checkRecording } from "./lib/recording.mjs";
@@ -154,13 +165,16 @@ export function plan(f) {
   };
   const durationMs = steps.length * (rampMs + holdMs);
   // Seats: one per HLS viewer, then the WebRTC tabs, then spare ones for API load's votes and
-  // joins, then the other generators'.
+  // joins, then the captions tap (an edge viewer that keeps every caption), then the other
+  // generators'.
   const webrtc = webrtcSteps.length ? webrtcSteps[webrtcSteps.length - 1] : 0;
-  if (viewers + webrtc + extra > ABSOLUTE_MAX_VIEWERS) throw new Error(`${viewers + webrtc + extra} seats is over the hard cap ${ABSOLUTE_MAX_VIEWERS}`);
-  const spare = apiLoad ? Math.max(0, Math.min(1000, ABSOLUTE_MAX_VIEWERS - viewers - webrtc - extra, Math.max(50, Math.ceil((rates.vote * durationMs) / 1000)))) : 0;
+  const captions = f.captions ? captionsPlan(f, presenters) : null;
+  const tap = captions && delivery === "edge" ? 1 : 0;
+  if (viewers + webrtc + extra + tap > ABSOLUTE_MAX_VIEWERS) throw new Error(`${viewers + webrtc + extra + tap} seats is over the hard cap ${ABSOLUTE_MAX_VIEWERS}`);
+  const spare = apiLoad ? Math.max(0, Math.min(1000, ABSOLUTE_MAX_VIEWERS - viewers - webrtc - extra - tap, Math.max(50, Math.ceil((rates.vote * durationMs) / 1000)))) : 0;
   const extraSteps = scaleSteps(steps, extra);
   const generators = hosts.length ? generatorPlan(extra, extraSteps, hosts) : [];
-  const seats = viewers + webrtc + spare + extra;
+  const seats = viewers + webrtc + spare + tap + extra;
   const engage = f.engage
     ? {
         chat: intFlag(f.engageChat, ENGAGE_DEFAULTS.chat, "engage-chat"),
@@ -174,16 +188,43 @@ export function plan(f) {
     : null;
   return {
     steps, rampMs, holdMs, viewers, maxViewers, presenters, webrtcSteps, webrtc, delivery, apiLoad, rates, durationMs,
-    seats, spare: seats - viewers - webrtc - extra, extra, extraSteps, generators,
-    boxWaitMs: parseDuration(f.boxWait, BOX_WAIT_MS), record: !!f.record, engage, notes,
+    seats, spare, tap, extra, extraSteps, generators,
+    boxWaitMs: parseDuration(f.boxWait, BOX_WAIT_MS), record: !!f.record, engage, captions, notes,
   };
 }
 
-/* checksRows(results) -> the PASS/FAIL lines of a run: engagement and recording. */
-function checksRows(results) {
+/* --captions: the presenters speak (lib/voice.mjs) and the captions are checked (captions.mjs).
+ * The thresholds, from the flags, over CAPTION_THRESHOLDS. */
+export function captionsPlan(f, presenters) {
+  if (presenters < 1) throw new Error("--captions needs --presenters 1-3: the presenters speak the scripts");
+  const ratio = (v, def, name) => {
+    if (v === undefined || v === true) return def;
+    const s = String(v).trim();
+    const x = s.endsWith("%") ? Number(s.slice(0, -1)) / 100 : Number(s);
+    if (!Number.isFinite(x) || x < 0 || x > 1) throw new Error(`--${name} is a fraction (0.25) or a percentage (25%)`);
+    return x;
+  };
+  const source = f.captionsSource === undefined ? CAPTION_THRESHOLDS.source : String(f.captionsSource);
+  if (!["server", "any"].includes(source)) throw new Error("--captions-source is server or any");
+  return {
+    waitMs: parseDuration(f.captionsWait, 180_000),
+    thresholds: {
+      liveWer: ratio(f.captionsLiveWer, CAPTION_THRESHOLDS.liveWer, "captions-live-wer"),
+      storedWer: ratio(f.captionsStoredWer, CAPTION_THRESHOLDS.storedWer, "captions-stored-wer"),
+      webrtcP95Ms: parseDuration(f.captionsLatency, CAPTION_THRESHOLDS.webrtcP95Ms),
+      edgeSlackMs: parseDuration(f.captionsEdgeSlack, CAPTION_THRESHOLDS.edgeSlackMs),
+      edgeDelivery: ratio(f.captionsDelivery, CAPTION_THRESHOLDS.edgeDelivery, "captions-delivery"),
+      source,
+    },
+  };
+}
+
+/* checksRows(results) -> the PASS/FAIL lines of a run: engagement, recording and captions. */
+export function checksRows(results) {
   const rows = [];
   for (const c of results.engage?.checks ?? []) rows.push({ ...c, area: `engage ${c.area}` });
   for (const c of results.recording?.checks ?? []) rows.push({ ...c, area: "recording" });
+  for (const c of results.captions?.checks ?? []) rows.push({ ...c, area: `captions ${c.area}` });
   return rows;
 }
 
@@ -217,6 +258,13 @@ async function main() {
   if (p.apiLoad) console.log(`  API load: ${JSON.stringify(p.rates)} per second`);
   if (p.engage) console.log(`  engagement check at the top step (+${Math.round(p.engage.atMs / 1000)}s): ${JSON.stringify({ ...p.engage, atMs: undefined })}`);
   if (p.record) console.log("  cloud recording: on, verified at the end");
+  let voices = null;
+  if (p.captions) {
+    // Made before anything is created: no TTS engine is a reason not to start.
+    voices = makeVoices(p.presenters);
+    console.log(`  captions: on; ${p.presenters} presenter(s) speak scripts (${voices.engine}, ${Math.round(voices.loopMs / 1000)} s loop), ` +
+      `checked against ${JSON.stringify(p.captions.thresholds)}`);
+  }
   if (p.webrtc) console.log(`  WebRTC tabs ${p.webrtcSteps.join(" -> ")}`);
   console.log(`  server metrics: ${prom ? `${prom.base} (box ${prom.box})` : "off (set GRAFANA_PROM_URL and GRAFANA_PROM_TOKEN)"}`);
   console.log(`  ${p.seats} seat(s), at most ${p.viewers + p.extra} viewers (--max-viewers ${p.maxViewers}); results in ${out}`);
@@ -250,9 +298,10 @@ async function main() {
   };
   let host = null;
   let rec = null; // the cloud recording while it runs
+  let capTap = null; // the captions tap (--captions), stopped in finally if the run fails
   try {
     const admin = await adminSession(api);
-    state.host = await createTestHost(api, admin, run, { sfuProject: f.sfuProject });
+    state.host = await createTestHost(api, admin, run, { sfuProject: f.sfuProject, captions: !!p.captions });
     saveState(statePath, state);
     console.log(`${stamp()} test host ${state.host.email}`);
     if (p.record) {
@@ -260,7 +309,7 @@ async function main() {
       console.log(`${stamp()} test host granted cloud_recording`);
     }
     host = await new Session(api, "host").login(state.host.email, state.host.password);
-    const wb = await createWebinar(host, `Load test ${run}`, { delivery: p.delivery });
+    const wb = await createWebinar(host, `Load test ${run}`, { delivery: p.delivery, captions: !!p.captions });
     state.slug = wb.id;
     saveState(statePath, state);
     console.log(`${stamp()} webinar ${wb.id} (delivery ${wb.delivery ?? "?"})`);
@@ -278,7 +327,8 @@ async function main() {
     writeFileSync(keysFile, JSON.stringify(keys));
     const viewerKeys = keys.slice(0, p.viewers);
     const webrtcKeys = keys.slice(p.viewers, p.viewers + p.webrtc);
-    const spareKeys = keys.slice(p.viewers + p.webrtc, p.seats - p.extra);
+    const spareKeys = keys.slice(p.viewers + p.webrtc, p.viewers + p.webrtc + p.spare);
+    const tapKey = p.tap ? keys[p.viewers + p.webrtc + p.spare] : null;
     const extraKeys = keys.slice(p.seats - p.extra);
     console.log(`${stamp()} ${keys.length} seat(s) minted`);
 
@@ -296,9 +346,41 @@ async function main() {
       presenters.push(
         await startPresenter({
           web, api, slug: wb.id, email: x.email, password: x.password, label: x.label, port: 9700 + i,
-          screenShare: i === 0 && !!f.screenShare, mediaFlags, boxWaitMs: p.boxWaitMs,
+          screenShare: i === 0 && !!f.screenShare, boxWaitMs: p.boxWaitMs,
+          // --captions: each presenter's microphone is its own script, in its own voice.
+          mediaFlags: voices ? withVoice(mediaFlags, voices.presenters[i].wav) : mediaFlags, voice: !!voices,
         }),
       );
+    }
+
+    /* --captions: the room's Captions switch on (the webinar was made with "Live captions", so
+     * go-live asked for the agent already; this also brings it in if the box was still booting
+     * then), then, every 5 s until the end: the caption packets each presenter's page received
+     * (WebRTC), and every 10 s which source serves them. */
+    const cap = { pages: presenters.map(() => []), source: [], tap: null, collect: null };
+    if (p.captions) {
+      await enableCaptions(host, wb.id).catch((e) => warn(`turning captions on: ${e.message}`));
+      console.log(`${stamp()} captions on; waiting up to ${Math.round(p.captions.waitMs / 1000)} s for the server caption agent (on-device captions meanwhile)`);
+      cap.collect = (async () => {
+        const t0 = Date.now();
+        let said = false;
+        for (let n = 0; !ctl.signal.aborted; n++) {
+          for (const [i, x] of presenters.entries()) cap.pages[i].push(...pageCaptions(await x.drainCaptions().catch(() => [])));
+          if (n % 2 === 0) {
+            const s = await captionSource(host, wb.id).catch(() => null);
+            if (s) cap.source.push(s);
+            if (s?.server && !said) {
+              said = true;
+              console.log(`${stamp()} captions: the server caption agent is live (${Math.round((Date.now() - t0) / 1000)} s)`);
+            } else if (!said && Date.now() - t0 > p.captions.waitMs) {
+              said = true;
+              warn(`captions: the server caption agent is not live after --captions-wait ${Math.round(p.captions.waitMs / 1000)} s ` +
+                `(${s?.pending ? "asked for, not live: no worker took the job, or its CPU guard paused it" : "not asked for: CAPTIONS_SECRET unset, the feature off, or the dispatch failed"}); captions are on-device`);
+            }
+          }
+          await sleep(5000, ctl.signal);
+        }
+      })();
     }
 
     // The audience stream (the mix) takes a little while to start after the stage publishes.
@@ -327,6 +409,9 @@ async function main() {
         console.log("!".repeat(100) + "\n");
       }
     }
+
+    // The captions tap: one more edge viewer, events stream only, keeping every caption.
+    if (tapKey) capTap = cap.tap = new EdgeCaptionTap({ api, slug: wb.id, joinKey: tapKey }).start();
 
     if (p.record && !ctl.signal.aborted) {
       try {
@@ -456,6 +541,7 @@ async function main() {
     await Promise.allSettled(jobs);
     ctl.abort();
     await monitor;
+    await cap.collect;
 
     // The recording: stop it, wait for the file, prove it plays.
     if (rec) {
@@ -485,6 +571,7 @@ async function main() {
       ]);
       console.log("\n=== HLS viewers, all generators ===\n" + hlsTable(results.hlsAll));
     }
+    if (p.captions) await finishCaptions({ results, p, cap, presenters, host, slug: wb.id, voices, warn });
     // The reservoirs were for that merge; results.json keeps the summaries.
     if (results.hls) delete results.hls.dumps;
     for (const g of results.generators ?? []) if (g.result) delete g.result.dumps;
@@ -515,6 +602,7 @@ async function main() {
       // Failed or interrupted mid-run: stop the recording so the box lets go of it.
       await stopRecording(host, state.slug, rec.id, Date.now() - rec.startedAt).catch(() => {});
     }
+    if (capTap) await capTap.stop().catch(() => {});
     await Promise.allSettled(presenters.map((x) => x.stop()));
     writeResults(join(out, "results.json"), results);
     console.log(`${stamp()} results: ${join(out, "results.json")}`);
@@ -536,6 +624,58 @@ if (process.argv[1] === SELF) {
     console.error(`${stamp()} ${e.message}`);
     process.exit(1);
   });
+}
+
+/* The captions check's end (--captions): the last packets and the microphones' open times
+ * from the pages, the tap stopped, the session ended so the transcript is the stored one, then
+ * everything scored against the scripts (captions.mjs). Into results.captions. */
+async function finishCaptions({ results, p, cap, presenters, host, slug, voices, warn }) {
+  const audio = [];
+  for (const [i, x] of presenters.entries()) {
+    cap.pages[i].push(...pageCaptions(await x.drainCaptions().catch(() => [])));
+    audio.push(await x.audioState().catch(() => null));
+  }
+  if (cap.tap) await cap.tap.stop();
+  let transcript = null;
+  let transcriptError = null;
+  try {
+    // Ending here rather than at cleanup: the transcript is read back as it is after the session.
+    await host.call("POST", `/host/webinars/${slug}/end`, undefined, { okStatuses: [409] });
+    await sleep(3000);
+    transcript = (await host.call("GET", `/host/webinars/${slug}/transcript.txt`)) ?? "";
+    if (typeof transcript !== "string") transcript = String(transcript);
+  } catch (e) {
+    transcriptError = `transcript.txt: ${e.message}`;
+    warn(`captions: ${transcriptError}`);
+  }
+  const localTop = results.hls?.steps?.[results.hls.steps.length - 1] ?? null;
+  const allTop = results.hlsAll?.[results.hlsAll.length - 1] ?? localTop;
+  const edgeLatencyMs = allTop?.latencyMs?.liveLatency?.p50 ?? null;
+  const r = analyseCaptions({
+    voices,
+    labels: presenters.map((x) => x.label),
+    webrtc: presenters.length ? cap.pages[0] : null,
+    edge: cap.tap ? cap.tap.events : null,
+    audio,
+    edgeLatencyMs,
+    delivery: p.delivery === "edge" ? edgeDelivery(localTop, allTop, cap.tap?.events ?? [], p.rampMs) : null,
+    transcript,
+    transcriptError,
+    sourceSamples: cap.source,
+    edgeRoom: p.delivery === "edge",
+    thresholds: p.captions.thresholds,
+  });
+  r.report.observers = presenters.map((x, i) => ({ label: x.label, events: cap.pages[i].length, finals: cap.pages[i].filter((e) => !e.partial).length }));
+  r.report.tap = cap.tap ? { events: cap.tap.events.length, connects: cap.tap.connects, serverCaptions: cap.tap.meta } : null;
+  r.report.sourceSamples = cap.source;
+  results.captions = r;
+  const line = (name, s) => s && `  ${name}: ${s.finals} final(s), ${s.partials} partial(s); latency p50 ${s.latency.p50 ?? "-"} ms p95 ${s.latency.p95 ?? "-"} ms; ` +
+    s.presenters.map((x) => `${x.label} WER ${x.wer.wer === null ? "-" : `${(x.wer.wer * 100).toFixed(1)}%`}`).join(", ");
+  console.log(`\n=== Captions (${r.report.source.server ? "server" : "on-device"}) ===\n` +
+    [line("WebRTC (host page)", r.report.webrtc), line("edge tap", r.report.edge),
+      r.report.stored && `  stored: ${r.report.stored.lines} line(s); ` + r.report.stored.presenters.map((x) => `${x.label} WER ${x.wer.wer === null ? "-" : `${(x.wer.wer * 100).toFixed(1)}%`}`).join(", "),
+      `  audio anchors: ${r.report.anchors.map((a) => `${a.label} ${a.anchor ?? "unknown"}${a.agentSkewMs !== null ? ` (agent start ${a.agentSkewMs} ms off)` : ""}`).join("; ")}`,
+    ].filter(Boolean).join("\n"));
 }
 
 /** The box's own address rather than a CDN: a bare IP, or an sslip.io name (which is one). */

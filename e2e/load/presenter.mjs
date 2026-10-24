@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchChrome, attach, clickButton, WATCH_PCS, PUBLISHING, OUTBOUND } from "./lib/chrome.mjs";
+import { CAPTION_TAP, DRAIN_CAPTIONS, AUDIO_STATE } from "./lib/captions.mjs";
 import { parseArgs, parseDuration, sleep, stamp } from "./lib/args.mjs";
 import { apiBase, assertSafeTarget } from "./lib/client.mjs";
 import { BOX_WAIT_MS, boxProgress, videoServerStatus } from "./lib/box.mjs";
@@ -44,8 +45,21 @@ export function testMediaFlags({ size = "1280x720", fps = 30, seconds = 10 } = {
   }
 }
 
-/* startPresenter(o) -> { label, status(): Promise<stats>, stop() }. o: { web, api, slug, email,
- * password, port, screenShare, mediaFlags, boxWaitMs, log }. Resolves once the presenter is publishing. */
+/** mediaFlags with the microphone replaced by `wav` (a presenter's voice, lib/voice.mjs). Chrome loops it. */
+export function withVoice(mediaFlags, wav) {
+  return [...(mediaFlags ?? []).filter((f) => !f.startsWith("--use-file-for-fake-audio-capture=")), `--use-file-for-fake-audio-capture=${wav}`];
+}
+
+// Expression: the microphone is being sent and nothing offers to unmute it.
+const MIC_LIVE = `(async () => {
+  const s = ${AUDIO_STATE};
+  const unmute = [...document.querySelectorAll('button')].some((b) => /^unmute( \\(m\\))?$/i.test((b.getAttribute('aria-label') || b.textContent || '').trim()));
+  return s.sent.some((x) => x.enabled && x.state === 'live') && !unmute; })()`;
+
+/* startPresenter(o) -> { label, status(): Promise<stats>, drainCaptions(), audioState(), stop() }.
+ * o: { web, api, slug, email, password, port, screenShare, mediaFlags, voice (a WAV is in
+ * mediaFlags: tap captions, make sure the mic is on), boxWaitMs, log }. Resolves once the
+ * presenter is publishing. */
 export async function startPresenter(o) {
   const log = o.log ?? console.log;
   const label = o.label ?? o.email;
@@ -56,10 +70,15 @@ export async function startPresenter(o) {
       // Screen share without a picker: the virtual screen is chosen automatically.
       "--auto-select-desktop-capture-source=Entire screen",
       "--auto-accept-this-tab-capture",
+      // The voice file: macOS Chrome's sandboxed audio service cannot read it and captures
+      // silence (on a root Linux droplet --no-sandbox covers it already).
+      ...(o.voice ? ["--disable-features=AudioServiceSandbox"] : []),
     ],
   });
   try {
-    const page = await attach(chrome.first.webSocketDebuggerUrl, label, { init: WATCH_PCS });
+    // With a voice (run.mjs --captions) the page also records the caption packets it receives
+    // and when its microphone opened (lib/captions.mjs CAPTION_TAP).
+    const page = await attach(chrome.first.webSocketDebuggerUrl, label, { init: o.voice ? WATCH_PCS + CAPTION_TAP : WATCH_PCS });
     await page.navigate(o.web, 20000);
     const login = await page.evaluate(`fetch(${JSON.stringify(o.api + "/auth/login")}, {method:'POST', credentials:'include',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify({email:${JSON.stringify(o.email)}, password:${JSON.stringify(o.password)}})})
@@ -92,6 +111,17 @@ export async function startPresenter(o) {
     }
     if (!(await page.waitFor(PUBLISHING, 60000, 1000))) throw new Error(`${label}: joined but never published video`);
     log(`${stamp()} presenter ${label} on stage and publishing`);
+    if (o.voice) {
+      /* The voice is the microphone: make sure it is on (a stage can join muted: the
+       * controls' muteOnEntry, or the device preference). Live = an enabled audio track on a
+       * sender, and no "Unmute" button showing. */
+      let live = false;
+      for (let i = 0; i < 6 && !live; i++) {
+        live = await page.waitFor(MIC_LIVE, 3000, 500);
+        if (!live) await page.evaluate(clickButton("^unmute( \\(m\\))?$"));
+      }
+      log(`${stamp()} presenter ${label}: microphone ${live ? "on, speaking its script" : "NOT on (no enabled audio sender); its captions will be missing"}`);
+    }
     if (o.screenShare) {
       await sleep(2000);
       const clicked = await page.waitFor(clickButton("^share$|share screen"), 10000);
@@ -113,6 +143,14 @@ export async function startPresenter(o) {
         }
         prev = { ...s, at: now };
         return out;
+      },
+      // The caption packets this page received since the last call: [{ at, packet }].
+      async drainCaptions() {
+        return (o.voice ? await page.evaluate(DRAIN_CAPTIONS) : null) ?? [];
+      },
+      // The microphone's open times and the track being sent (the audio anchor).
+      async audioState() {
+        return o.voice ? await page.evaluate(AUDIO_STATE) : null;
       },
       // Closing the browser is the presenter dropping off; ending the session is run.mjs's job.
       async stop() {

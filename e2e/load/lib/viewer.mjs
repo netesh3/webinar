@@ -19,6 +19,7 @@
  * latency (wall clock minus EXT-X-PROGRAM-DATE-TIME at the playhead). */
 import { timed } from "./client.mjs";
 import { readSSE } from "./sse.mjs";
+import { parseCaptionEvent } from "./captions.mjs";
 import { isMultivariant, parseMultivariant, parseMedia, nextBlockingRequest, withBlocking, pendingMedia } from "./hls.mjs";
 import { PlayerModel } from "./player.mjs";
 import { sleep } from "./args.mjs";
@@ -26,6 +27,8 @@ import { sleep } from "./args.mjs";
 const BEAT_MS = 30_000;
 // An empty buffer shorter than this is not counted as a stall (a frame or two; jitter).
 const STALL_MIN_MS = 100;
+// Arrival times of the last finals kept per viewer, for the captions delivery gauge.
+const CAPTION_TIMES = 1024;
 
 /** Origin URL for a CDN playback URL: <originBase>/<slug>/... (playback is <base>/<slug>/index.m3u8). */
 export function toOrigin(playbackUrl, slug, originBase) {
@@ -45,6 +48,9 @@ export class EdgeViewer {
     this.token = "";
     this.playback = "";
     this.serverLowLatency = false;
+    // Captions (run.mjs --captions): when the events stream first opened, and when finals came.
+    this.firstEventsAt = 0;
+    this.capTimes = [];
   }
 
   get step() {
@@ -59,7 +65,32 @@ export class EdgeViewer {
       playing: this.player.startedAt !== null ? 1 : 0,
       stalledNow: this.player.isStalled() ? 1 : 0,
       bufferMs: Math.round(this.player.bufferAhead() * 1000),
+      ...this.captionGauges(),
     };
+  }
+
+  /* Over this step's hold: a viewer whose events stream was open since before the hold began
+   * (capHoldViewers 1) and the caption finals it received in the hold (capHoldFinals). Summed
+   * over viewers, set against what one tap received in the same window (captions.mjs). A
+   * reconnect in between loses lines, which is the point: it counts against the viewer. */
+  captionGauges() {
+    const st = this.step;
+    if (!st || !this.firstEventsAt) return { capHoldViewers: 0, capHoldFinals: 0 };
+    const holdStart = st.startedAt + (this.o.rampMs ?? 0);
+    if (this.firstEventsAt > holdStart) return { capHoldViewers: 0, capHoldFinals: 0 };
+    let n = 0;
+    for (const t of this.capTimes) if (t >= holdStart) n++;
+    return { capHoldViewers: 1, capHoldFinals: n };
+  }
+
+  onCaption(c) {
+    if (c.partial) {
+      this.step.count("captionPartial");
+      return;
+    }
+    this.step.count("caption");
+    this.capTimes.push(Date.now());
+    if (this.capTimes.length > CAPTION_TIMES) this.capTimes.splice(0, this.capTimes.length - CAPTION_TIMES);
   }
 
   rec(name, r, what = name) {
@@ -147,13 +178,19 @@ export class EdgeViewer {
       }
       backoff = 2000;
       this.state.eventsOpen = true;
+      if (!this.firstEventsAt) this.firstEventsAt = Date.now();
       this.step.count("eventsOpen");
       if (this.o.backlog !== false) this.backlogs().catch(() => {});
       let reconnect = false;
       const bytes = await readSSE(r.res, {
-        onEvent: (name) => {
+        onEvent: (name, data) => {
           this.step.count(`event:${name}`);
           if (name === "reconnect") reconnect = true;
+          // A caption packet (the same JSON the stage gets on the data channel): counted.
+          else if (name === "packet") {
+            const c = parseCaptionEvent(name, data);
+            if (c) this.onCaption(c);
+          }
         },
       });
       this.step.bytes += bytes;

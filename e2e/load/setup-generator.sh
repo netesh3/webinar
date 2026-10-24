@@ -8,8 +8,9 @@
 #
 # or run it by hand on the droplet: `curl -fsSL <raw url> | sudo bash`. Safe to run again.
 #
-# It installs Node 22 and Chromium-compatible Google Chrome (for presenter.mjs and the WebRTC
-# attendees), fetches e2e/ from the repo (LOADGEN_REPO / LOADGEN_REF), raises the open-file and
+# It installs Node 22, Chromium-compatible Google Chrome (for presenter.mjs and the WebRTC
+# attendees) and espeak-ng (spoken scripts for the captions check), fetches e2e/ from the repo
+# (LOADGEN_REPO / LOADGEN_REF), raises the open-file and
 # process limits, widens the ephemeral port range and tunes TCP for many short and long-lived
 # connections. Nothing secret is needed or written: the admin credentials are given on the
 # command line of run.mjs at run time (environment variables), not stored here.
@@ -24,10 +25,11 @@ exec > >(tee -a /var/log/loadgen-setup.log) 2>&1
 export DEBIAN_FRONTEND=noninteractive
 
 # 1. Packages: Node 22 (NodeSource), Chrome stable (fake camera/mic flags need a real Chrome),
-#    ffmpeg (makes the presenter's looping test video), and tools for watching the run.
+#    ffmpeg (makes the presenter's looping test video), espeak-ng (the presenters' spoken scripts
+#    for run.mjs --captions, lib/voice.mjs), and tools for watching the run.
 log "installing packages"
 apt-get update -y
-apt-get install -y ca-certificates curl gnupg git jq htop iftop sysstat ffmpeg fonts-dejavu-core
+apt-get install -y ca-certificates curl gnupg git jq htop iftop sysstat ffmpeg espeak-ng fonts-dejavu-core
 if ! command -v node >/dev/null || [[ "$(node -v)" != v22* ]]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
