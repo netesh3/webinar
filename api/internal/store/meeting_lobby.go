@@ -38,8 +38,11 @@ const lobbyMax = 200
  * the handler has already told the caller which), ErrFull when the lobby is at lobbyMax. The
  * count is inside the transaction with the webinar row locked, for the same reason as
  * RegisterGuest's: two knocks together must not both take the last place.
+ *
+ * knockUserID is the signed-in account that knocked, or "" for a visitor with no session. It
+ * is kept apart from user_id (migrations/0164) and read only to make the guest a co-host.
  */
-func (s *Store) Knock(ctx context.Context, slug, name string) (types.Registration, error) {
+func (s *Store) Knock(ctx context.Context, slug, name, knockUserID string) (types.Registration, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return types.Registration{}, err
@@ -82,10 +85,10 @@ func (s *Store) Knock(ctx context.Context, slug, name string) (types.Registratio
 	err = tx.QueryRow(ctx, `
 		INSERT INTO registrations
 			(webinar_id, email, first_name, last_name, company, job_title, country,
-			 phone, answers, state, join_key, is_guest)
-		VALUES ($1,'',$2,'','','','','', '{}'::jsonb, 'pending', $3, true)
+			 phone, answers, state, join_key, is_guest, knock_user_id)
+		VALUES ($1,'',$2,'','','','','', '{}'::jsonb, 'pending', $3, true, NULLIF($4, '')::uuid)
 		RETURNING id::text, created_at`,
-		webinarID, reg.FirstName, reg.JoinKey,
+		webinarID, reg.FirstName, reg.JoinKey, knockUserID,
 	).Scan(&reg.ID, &createdAt)
 	if err != nil {
 		return types.Registration{}, err

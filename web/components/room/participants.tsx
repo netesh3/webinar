@@ -7,9 +7,16 @@ import {
 } from "@livekit/components-react";
 import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
-import { CO_HOST_HINT, coHostGrantedMessage, stageActions } from "@/lib/panelists";
+import {
+  CO_HOST_HINT,
+  COHOST_NEEDS_ACCOUNT,
+  canMakeCoHost,
+  coHostGrantedMessage,
+  coHostNeedsAccountMessage,
+  stageActions,
+} from "@/lib/panelists";
 import type { Realtime } from "@/lib/realtime";
 import {
   handWaitLabel,
@@ -412,11 +419,17 @@ function HostRoster() {
               ? `${p.name} is no longer a co-host.`
               : `${p.name} is back to an ordinary panelist.`,
           async () => {
-            // A panelist's identity is "user_<id>" — see hostIdentity on
-            // the API side — so this is the one place the id has to be
-            // recovered from it, for the endpoint that takes it plain.
-            const userID = p.identity.replace(/^user_/, "");
-            await api.setCoHost(slug, userID, coHost);
+            // By identity: an invited panelist ("user_") or an attendee on stage /
+            // meeting guest ("att_"). An "att_" with no account behind it cannot hold
+            // the host's tools, and the server says so (cohost_needs_account).
+            try {
+              await api.setParticipantCoHost(slug, p.identity, coHost);
+            } catch (err) {
+              if (err instanceof ApiError && err.code === COHOST_NEEDS_ACCOUNT) {
+                throw new Error(coHostNeedsAccountMessage(p.name));
+              }
+              throw err;
+            }
           },
         )
       }
@@ -663,14 +676,10 @@ function HostRosterRow({
     isHost,
     stageless,
   });
-  // Co-host needs an account behind the identity (see handleSetCoHost on the
-  // API side) — a panelist invited from the panelist list has one ("user_"
-  // identity); an attendee the host brought up on stage does not ("att_"
-  // identity), no matter that both show up as "Panelist" in this same list.
-  // Gating the menu item on the prefix means the rare mis-click never reaches
-  // the server at all, instead of surfacing as a confusing error toast.
-  const canBeCoHost =
-    p.role === "panelist" && !isHost && p.identity.startsWith("user_");
+  // Anybody on the stage but the host: an invited panelist, an attendee brought
+  // up, a meeting guest (lib/panelists.ts canMakeCoHost). Whether an "att_" has
+  // the account co-host needs is the server's answer, explained in onSetCoHost.
+  const canBeCoHost = canMakeCoHost({ identity: p.identity, role: p.role, isHost });
   // A meeting guest is not a "Panelist" to anyone; the host and co-hosts keep theirs.
   const badge = meeting && !isHost && !p.coHost ? null : rosterBadge(p);
   // Somebody the video server does not list (an edge viewer, or a dropped connection that
@@ -887,9 +896,7 @@ function HostRosterRow({
                   ]
                 : []),
               // The host's room tools, for this session; the owner-only actions
-              // stay with the owner (coHostGrantedMessage). See canBeCoHost
-              // above for why this is withheld from a promoted attendee even
-              // though they read as "Panelist" too.
+              // stay with the owner (coHostGrantedMessage). See canBeCoHost above.
               ...(canBeCoHost
                 ? [
                     {

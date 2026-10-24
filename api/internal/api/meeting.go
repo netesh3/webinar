@@ -225,7 +225,13 @@ func (s *Server) handleMeetingKnock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reg, err := s.store.Knock(r.Context(), slug, name)
+	// Whose account knocked, if anybody's: what lets the host make this guest co-host
+	// (setAttendeeCoHost). A typed name changes nothing about whose session it is.
+	knockUserID := ""
+	if user, signedIn := s.optionalUser(r); signedIn {
+		knockUserID = user.ID
+	}
+	reg, err := s.store.Knock(r.Context(), slug, name, knockUserID)
 	switch {
 	case errors.Is(err, store.ErrFull):
 		httpx.Error(w, http.StatusConflict, "lobby_full",
@@ -355,6 +361,8 @@ func (s *Server) joinMeeting(w http.ResponseWriter, r *http.Request, wb types.We
 		Identity:    identity,
 		Name:        display,
 		MutedByHost: grant.MutedByHost,
+		// A guest the host made co-host, signed in as the account it was for (attendeeCoHost).
+		CoHost: s.attendeeCoHost(r, slug, reg.JoinKey, grant),
 	}, false, false, "", false) {
 		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)

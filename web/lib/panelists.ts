@@ -111,6 +111,28 @@ export function leaveMenuItems(owner: boolean): ("assign" | "leave" | "end")[] {
   return owner ? ["assign", "end"] : ["leave", "end"];
 }
 
+/**
+ * Whether a roster row offers "Make co-host" / "Remove co-host".
+ *
+ * Anybody on the stage but the host: an invited panelist ("user_"), and an attendee brought
+ * up on stage or a meeting guest ("att_"). The server decides the rest by the account behind
+ * the identity (handleSetParticipantCoHost) — an "att_" with no account answers
+ * cohost_needs_account, which the roster explains with coHostNeedsAccountMessage. Never
+ * anybody in the audience, and never an identity that is neither (an egress, a recorder).
+ */
+export function canMakeCoHost(p: { identity: string; role: string; isHost: boolean }): boolean {
+  if (p.role !== "panelist" || p.isHost) return false;
+  return /^(user|att)_./.test(p.identity);
+}
+
+/** The error code the server answers when an attendee has no account to be co-host with. */
+export const COHOST_NEEDS_ACCOUNT = "cohost_needs_account";
+
+/** The toast when somebody cannot be made co-host until they sign in. */
+export function coHostNeedsAccountMessage(name: string): string {
+  return `${name.trim() || "This person"} needs to sign in to be a co-host — ask them to sign in with the same email and rejoin.`;
+}
+
 /** The hint on "Make co-host" in the roster. */
 export const CO_HOST_HINT = "runs the room with you";
 

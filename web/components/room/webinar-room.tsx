@@ -865,6 +865,25 @@ function ConnectedRoom({
     setEndingHere(on);
   }, []);
   const { notify } = useToast();
+  /* Somebody made co-host from the stage or a meeting's guests ("att_" identity) holds the
+   * host's tools through their account's session (handleSetParticipantCoHost on the API
+   * side), not through this connection. A browser that is not signed in is told how to get
+   * them; a signed-in rejoin brings co-host back with them. */
+  const attendeeCoHost = isCoHost && join.identity.startsWith("att_");
+  useEffect(() => {
+    if (!attendeeCoHost) return;
+    let cancelled = false;
+    api.me(true).catch(() => {
+      if (cancelled) return;
+      notify(
+        "You're a co-host. Sign in with the email you registered with, then rejoin, to use the host's tools.",
+        "info",
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attendeeCoHost, notify]);
   // The host's join toasts are fed from two places declared far apart: the server's
   // "joined" packet arrives through useRealtime (below), and the roster they turn
   // green against is read further down. This carries the first to the second.

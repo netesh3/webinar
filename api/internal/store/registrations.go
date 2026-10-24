@@ -623,6 +623,46 @@ func (s *Store) registrationForSeriesUser(ctx context.Context, slug, userID stri
 	return reg, err
 }
 
+/* RegistrantAccount is the account behind one attendee identity ("att_<joinKey>"), looked up
+ * within one webinar only: a key that belongs to another webinar's registration is
+ * ErrNotFound here, never that other registration's account. The account is the
+ * registration's user_id, or for a meeting guest who knocked signed in, knock_user_id
+ * (migrations/0164). UserID is empty for a guest nobody has an account for. */
+type RegistrantAccount struct {
+	RegistrationID string
+	Name           string
+	State          types.RegistrationState
+	UserID         string
+	// EmailVerified is the linked account's; false when there is none.
+	EmailVerified bool
+}
+
+func (s *Store) RegistrantAccount(ctx context.Context, slug, joinKey string) (RegistrantAccount, error) {
+	var (
+		a          RegistrantAccount
+		first      string
+		last       string
+		verifiedAt *time.Time
+	)
+	err := s.pool.QueryRow(ctx, `
+		SELECT r.id::text, r.first_name, r.last_name, r.state,
+		       COALESCE(COALESCE(r.user_id, r.knock_user_id)::text, ''), u.email_verified_at
+		  FROM registrations r
+		  JOIN webinars w ON w.id = r.webinar_id
+		  LEFT JOIN users u ON u.id = COALESCE(r.user_id, r.knock_user_id)
+		 WHERE w.slug = $1 AND r.join_key = $2`, slug, joinKey).
+		Scan(&a.RegistrationID, &first, &last, &a.State, &a.UserID, &verifiedAt)
+	if noRows(err) {
+		return RegistrantAccount{}, ErrNotFound
+	}
+	if err != nil {
+		return RegistrantAccount{}, err
+	}
+	a.Name = strings.TrimSpace(first + " " + last)
+	a.EmailVerified = a.UserID != "" && verifiedAt != nil
+	return a, nil
+}
+
 // ByJoinKey is the join path's authorization lookup.
 func (s *Store) ByJoinKey(ctx context.Context, key string) (types.Registration, error) {
 	row := s.pool.QueryRow(ctx, `
