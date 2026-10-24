@@ -55,7 +55,7 @@ export type Av1Inputs = {
   height: number;
   /** AV1 was turned off for CPU earlier this session. */
   demoted: boolean;
-  /** NEXT_PUBLIC_AV1=0 at build time. */
+  /** AV1 not switched on at build time (NEXT_PUBLIC_AV1 is not "1"). */
   disabled?: boolean;
 };
 
@@ -147,8 +147,12 @@ export function av1Demoted(): boolean {
   return readDemoted();
 }
 
+/* HOTFIX 2026-10-24: AV1 publishing is OFF unless a build sets NEXT_PUBLIC_AV1=1. In edge
+ * webinars the mix's egress Chrome never takes AV1, so livekit-server regressed every AV1
+ * track to its VP8 / H264 backup, and the mix showed black video for the host and panelists.
+ * Cameras go out VP8 and shares VP9 / H264 again, as before AV1. */
 const AV1_DISABLED =
-  (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_AV1) === "0";
+  (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_AV1) !== "1";
 
 /** The verdict if the probe has finished, else "no" — a publish never waits on it. */
 export function av1Now(kind: Av1Kind): Av1Verdict {
