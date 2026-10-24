@@ -4,9 +4,10 @@
 #
 # Run as the builder droplet's user data, from fresh Ubuntu 24.04, with SFU_REPO / SFU_REF set
 # (the workflow prepends them). The snapshot holds no state and no secrets: just Docker, the
-# host firewall, every image the stack runs (pulled, or built from the repo at SFU_REF:
-# captions, mixrec, the caddy-l4 build) and the boot script. Keys, certificates and models are on
-# the sfu-data volume; the deploy files are synced from the repo at every boot (sfu-boot.sh).
+# host firewall, every image the stack runs (pulled, or built from the repo at SFU_REF: mixrec,
+# the caddy-l4 build) and the boot script. Keys and certificates are on the sfu-data volume; the
+# deploy files are synced from the repo at every boot (sfu-boot.sh). No caption agent or models:
+# captions run only on the captions box (its own snapshot, build-captions-image.sh).
 #
 # On failure it does NOT power off, so the workflow times out and deletes the builder instead of
 # snapshotting a half-built image. Log: /var/log/webinarliv-build.log.
@@ -42,21 +43,19 @@ rm -rf "$src"
 mkdir -p "$src"
 curl -fsSL --retry 5 -m 300 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$src" --strip-components=1 --wildcards \
-    '*/deploy/livekit-hetzner/*' '*/deploy/captions/*' '*/deploy/digitalocean/*'
+    '*/deploy/livekit-hetzner/*' '*/deploy/digitalocean/*'
 stack="${src}/deploy/livekit-hetzner"
-rsync -a --delete --exclude 'tests' --exclude '__pycache__' "${src}/deploy/captions/" "${stack}/captions/"
 
 log "images"
 cd "$stack"
 # Placeholders only so compose can read the files; nothing is started here.
-touch captions.env mixrec.env alloy.env livekit.yaml egress.yaml mediamtx.yml redis.conf
+touch mixrec.env alloy.env livekit.yaml egress.yaml mediamtx.yml redis.conf
 export DOMAIN=image.invalid ACME_EMAIL=image@invalid GRAFANA_ADMIN_PASSWORD=image TURN_TLS_DOMAIN=turn.image.invalid
-files=(-f docker-compose.yml -f docker-compose.egress.yml -f docker-compose.captions.yml
-  -f docker-compose.mixrec.yml -f docker-compose.turn443.yml -f docker-compose.alloy.yml)
+files=(-f docker-compose.yml -f docker-compose.egress.yml -f docker-compose.mixrec.yml
+  -f docker-compose.turn443.yml -f docker-compose.alloy.yml)
 docker compose --profile local-egress "${files[@]}" pull --ignore-buildable
 # The stock Caddy too (the turn443 file replaces it with the layer4 build, so the pull above skips it).
 docker pull caddy:2-alpine
-docker build -t webinarliv-captions:local captions
 docker build -t webinarliv-mixrec:local mixrec
 docker build -t webinarliv-caddy-l4:local caddy-l4
 

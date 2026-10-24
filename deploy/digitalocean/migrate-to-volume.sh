@@ -4,9 +4,8 @@
 # volume is attached, while NOTHING is live on the box: it stops and restarts the stack.
 #
 #   /opt/livekit                    -> /mnt/sfu-data/livekit   (keys, .env, livekit.yaml, recordings)
-#   docker volumes caddy_data,      -> /mnt/sfu-data/docker/…  (certificates, caption models and spool)
-#     caddy_config, captions_models,
-#     captions_spool
+#   docker volumes caddy_data,      -> /mnt/sfu-data/docker/…  (certificates)
+#     caddy_config
 #   /root/.ssh/authorized_keys      -> /mnt/sfu-data/ssh/authorized_keys (the deploy key, for new droplets)
 #
 # then /opt/livekit becomes a link to the volume, SFU_DATA_DIR is set in .env, and redeploy.sh
@@ -38,7 +37,7 @@ docker ps -q --filter label=com.docker.compose.project=livekit | xargs -r docker
 echo "Copying ${SRC} and the docker volumes onto ${DATA}"
 mkdir -p "${DATA}/livekit" "${DATA}/ssh"
 rsync -a "${SRC}/" "${DATA}/livekit/"
-for v in caddy_data caddy_config captions_models captions_spool; do
+for v in caddy_data caddy_config; do
   mkdir -p "${DATA}/docker/${v}"
   src="/var/lib/docker/volumes/livekit_${v}/_data"
   if [[ -d "$src" ]]; then

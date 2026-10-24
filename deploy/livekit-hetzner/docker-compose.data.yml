@@ -3,8 +3,9 @@
 # adds this file when SFU_DATA_DIR is set in .env, and creates the directories first.
 #
 #   caddy_data / caddy_config   TLS certificates (no new ACME order on every boot)
-#   captions_models             the caption models (~2.7 GB, downloaded once)
-#   captions_spool              the after-session transcript spool (survives a delete mid-job)
+#
+# Captions do not run on this box (the captions box has its own volumes), so there are no
+# caption models or spool here; redeploy.sh deletes ones an older deploy left on the volume.
 #
 # Mix-recording staging (./recordings) needs nothing here: /opt/livekit itself is the volume's
 # livekit/ directory on these boxes. Prometheus and Grafana stay on the droplet's own disk.
@@ -15,9 +16,3 @@ volumes:
   caddy_config:
     driver: local
     driver_opts: { type: none, o: bind, device: "${SFU_DATA_DIR:?set SFU_DATA_DIR}/docker/caddy_config" }
-  captions_models:
-    driver: local
-    driver_opts: { type: none, o: bind, device: "${SFU_DATA_DIR:?set SFU_DATA_DIR}/docker/captions_models" }
-  captions_spool:
-    driver: local
-    driver_opts: { type: none, o: bind, device: "${SFU_DATA_DIR:?set SFU_DATA_DIR}/docker/captions_spool" }

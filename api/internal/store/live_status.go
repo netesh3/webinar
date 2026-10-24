@@ -72,11 +72,10 @@ func collectLiveSessions(rows pgx.Rows) ([]LiveSession, error) {
 // transcript wait (recapTranscriptWait, 30 min) with a little to spare.
 const finalizingFor = 35 * time.Minute
 
-/* FinalizingSessions lists the sessions whose post-session work a video-server deploy would
- * cut off (state "finalizing"): ended less than finalizingFor ago, with the AI recap still
- * waiting for the after-session transcript the box's caption agent is making (none stored
- * since the end, wait_until not yet passed). Project is resolved as in LiveSessions, so a box
- * deploy waits only for its own box's sessions. */
+/* FinalizingSessions lists the sessions whose post-session work is still running (state
+ * "finalizing"): ended less than finalizingFor ago, with the AI recap still waiting for the
+ * after-session transcript the caption agent (on the captions box) is making (none stored
+ * since the end, wait_until not yet passed). Project is resolved as in LiveSessions. */
 func (s *Store) FinalizingSessions(ctx context.Context, defaultProject string) ([]LiveSession, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT w.slug, w.kind, 'finalizing',

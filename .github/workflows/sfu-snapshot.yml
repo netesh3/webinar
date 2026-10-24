@@ -16,7 +16,10 @@
 # s-2vcpu-4gb, c-2, c-4), ~15 minutes (~$0.02), ~7 GB snapshot (~$0.40/month).
 #
 # Triggers: manual, and after a successful "Deploy LiveKit (DigitalOcean)" run on main (new
-# images in the compose files should be in the next image).
+# images in the compose files should be in the next image): both images. A push to main that
+# changes the caption agent (deploy/captions/**) or the captions box's own files: the captions
+# image only. Captions never run on the video box, so those changes neither deploy to it nor
+# rebuild its image.
 #
 # Repository secret: DO_API_TOKEN (read/write droplets, snapshots, tags). Without it the job
 # skips with a notice.
@@ -34,6 +37,13 @@ on:
     workflows: ["Deploy LiveKit (DigitalOcean)"]
     types: [completed]
     branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "deploy/captions/**"
+      - "deploy/digitalocean/build-captions-image.sh"
+      - "deploy/digitalocean/captions-boot.sh"
+      - "deploy/digitalocean/docker-compose.captions-box.yml"
 
 concurrency:
   group: sfu-snapshot
@@ -44,7 +54,7 @@ permissions:
 
 jobs:
   image:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
@@ -71,7 +81,14 @@ jobs:
       - name: Check the DigitalOcean token
         env:
           DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+          EVENT: ${{ github.event_name }}
         run: |
+          # A captions-only push rebuilds the captions image, not the video server's.
+          if [ "${EVENT}" = "push" ] && [ "${KIND}" != "captions" ]; then
+            echo "::notice::A captions change: only the captions image is rebuilt."
+            echo "SKIP=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
           if [ -z "${DO_API_TOKEN}" ]; then
             echo "::notice::DO_API_TOKEN is not set: skipping the image build (see this workflow's header)."
             echo "SKIP=true" >> "$GITHUB_ENV"

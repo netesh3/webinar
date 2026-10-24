@@ -237,9 +237,9 @@ if [[ "$EGRESS_REMOTE" == "true" ]]; then
 fi
 
 # The on-demand DigitalOcean box (deploy/digitalocean/README.md): SFU_DATA_DIR=/mnt/sfu-data in
-# .env puts Caddy's certificates and the caption models and spool on the sfu-data volume
-# (docker-compose.data.yml), so a new droplet starts with them. A named volume made before the
-# switch (on the droplet's own disk) is replaced by the bind to the volume, once. Unset: as before.
+# .env puts Caddy's certificates on the sfu-data volume (docker-compose.data.yml), so a new
+# droplet starts with them. A named volume made before the switch (on the droplet's own disk) is
+# replaced by the bind to the volume, once. Unset: as before.
 SFU_DATA_DIR="$(env_value SFU_DATA_DIR)"
 if [[ -n "$SFU_DATA_DIR" ]]; then
   [[ "$SFU_DATA_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "SFU_DATA_DIR must be an absolute path, got $SFU_DATA_DIR" >&2; exit 1; }
@@ -250,7 +250,7 @@ if [[ -n "$SFU_DATA_DIR" ]]; then
   [[ -f docker-compose.data.yml ]] || { echo "SFU_DATA_DIR set but docker-compose.data.yml is missing; sync deploy files" >&2; exit 1; }
   export SFU_DATA_DIR
   project="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
-  for v in caddy_data caddy_config captions_models captions_spool; do
+  for v in caddy_data caddy_config; do
     mkdir -p "${SFU_DATA_DIR}/docker/${v}"
     if docker volume inspect "${project}_${v}" >/dev/null 2>&1; then
       dev="$(docker volume inspect -f '{{ index .Options "device" }}' "${project}_${v}" 2>/dev/null || true)"
@@ -261,46 +261,25 @@ if [[ -n "$SFU_DATA_DIR" ]]; then
       fi
     fi
   done
-  # The caption agent runs as uid 10001 (deploy/captions/Dockerfile).
-  chown 10001:10001 "${SFU_DATA_DIR}/docker/captions_models" "${SFU_DATA_DIR}/docker/captions_spool"
-  # Added last (below), after docker-compose.captions.yml, so its definitions win.
+  # One-time cleanup: the caption models (~2.7 GB) and spool the old on-box caption agent kept
+  # on the volume. Captions run only on the captions box now, which has its own.
+  for v in captions_models captions_spool; do
+    docker ps -aq --filter "volume=${project}_${v}" | xargs -r docker rm -f >/dev/null
+    docker volume rm "${project}_${v}" >/dev/null 2>&1 || true
+    rm -rf "${SFU_DATA_DIR:?}/docker/${v}"
+  done
+  # Added last (below), so its definitions win.
   DATA_COMPOSE=1
 fi
 
-# Server-side live captions (deploy/captions, synced to ./captions). Opt-in with
-# CAPTIONS_ENABLED=true and CAPTIONS_SECRET (the API's, 32+ chars) in .env; every other
-# CAPTIONS_* line in .env is passed to the agent as is. A missing secret skips captions
-# with a warning rather than failing the LiveKit redeploy. Capped and deprioritised so it
-# cannot slow video: see docker-compose.captions.yml. CAPTIONS_REMOTE=true (written by
-# deploy/digitalocean/sfu-boot.sh when the API runs a separate captions box) keeps it off here:
-# the agent runs on that box and this one's CPU stays with LiveKit and the edge mix.
-CAPTIONS=0
-if [[ "$(env_value CAPTIONS_REMOTE)" == "true" ]]; then
-  echo "Server captions: on the separate captions box (CAPTIONS_REMOTE=true); none on this box"
-elif [[ "$(env_value CAPTIONS_ENABLED)" == "true" ]]; then
-  CAPTIONS_SECRET_VALUE="$(env_value CAPTIONS_SECRET)"
-  if (( ${#CAPTIONS_SECRET_VALUE} < 32 )); then
-    echo "CAPTIONS_ENABLED=true but CAPTIONS_SECRET is missing or under 32 characters; captions not started" >&2
-  elif [[ ! -f docker-compose.captions.yml || ! -f captions/Dockerfile ]]; then
-    echo "CAPTIONS_ENABLED=true but docker-compose.captions.yml or captions/ is missing; sync deploy files" >&2
-  else
-    umask 077
-    {
-      echo "LIVEKIT_URL=ws://127.0.0.1:7880"
-      echo "LIVEKIT_API_KEY=${API_KEY}"
-      echo "LIVEKIT_API_SECRET=${API_SECRET}"
-      echo "CAPTIONS_API_URL=$(env_value CAPTIONS_API_URL | sed 's|/*$||' | grep . || echo https://webinarliv.com)"
-      grep -E '^CAPTIONS_' .env | grep -vE '^CAPTIONS_(ENABLED|REMOTE|IMAGE|MEMORY|API_URL)=' | tr -d '"' || true
-    } >captions.env
-    umask 022
-    COMPOSE_ARGS+=("-f" "docker-compose.captions.yml")
-    CAPTIONS=1
-  fi
-fi
-if [[ "$CAPTIONS" != 1 ]]; then
-  docker ps -aq --filter label=com.docker.compose.service=captions | xargs -r docker rm -f >/dev/null
-  rm -f captions.env
-fi
+# Captions do not run on this box (they run only on the separate on-demand captions box:
+# deploy/digitalocean/README.md "Captions box"). One-time cleanup for boxes and volumes from
+# before that: remove a caption agent container left running, its image, and the stale
+# captions.env, ./captions source and docker-compose.captions.yml old deploys left here (the
+# CAPTIONS_* lines in .env are simply unused now). Harmless when there is nothing to remove.
+docker ps -aq --filter label=com.docker.compose.service=captions | xargs -r docker rm -f >/dev/null
+docker image rm webinarliv-captions:local >/dev/null 2>&1 || true
+rm -rf captions.env captions docker-compose.captions.yml
 
 # Cloud recording from the edge mix (./mixrec, docker-compose.mixrec.yml). Opt-in with
 # MIXREC_SECRET (the API's, 32+ chars) in .env; MIXREC_API_URL defaults to https://webinarliv.com.
@@ -384,10 +363,6 @@ BUILD_SERVICES=()
 if [[ "$TURN443" == 1 ]]; then
   # A few minutes the first time (xcaddy), cached after that.
   BUILD_SERVICES+=(caddy)
-fi
-if [[ "$CAPTIONS" == 1 && -z "$(env_value CAPTIONS_IMAGE)" ]]; then
-  # Built here from ./captions; the first build takes a few minutes, later ones are cached.
-  BUILD_SERVICES+=(captions)
 fi
 if [[ "$MIXREC" == 1 && -z "$(env_value MIXREC_IMAGE)" ]]; then
   BUILD_SERVICES+=(mixrec)
@@ -479,9 +454,6 @@ else
 fi
 
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
-if [[ "$CAPTIONS" == 1 ]]; then
-  echo "Server captions: on (docker compose logs captions; first start downloads the models)"
-fi
 if [[ "$MIXREC" == 1 ]]; then
   echo "Mix recorder: on (https://${DOMAIN}/mixrec/v1/health; docker compose logs mixrec)"
 fi

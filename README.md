@@ -417,7 +417,8 @@ writable storage. The API listens on Cloud Run's `PORT` when `ADDR` is unset.
 | Path changes on `main` | Workflow | Destination |
 |---|---|---|
 | `api/**`, `deploy/cloudrun-deploy.sh`, `deploy/cloudrun.env.example`, `.github/workflows/cloudrun-deploy.yml` | **Deploy API (Cloud Run)** | Cloud Run |
-| `deploy/livekit-hetzner/**`, `deploy/captions/**`, `.github/workflows/livekit-do-deploy.yml` | **Deploy LiveKit (DigitalOcean)** | `/opt/livekit` on the on-demand DO box (the Hetzner box is sunset) |
+| `deploy/livekit-hetzner/**`, `.github/workflows/livekit-do-deploy.yml` | **Deploy LiveKit (DigitalOcean)** | `/opt/livekit` on the on-demand DO box (the Hetzner box is sunset) |
+| `deploy/captions/**`, the captions box's files in `deploy/digitalocean/` | **Video server image (DigitalOcean snapshot)**, captions image only | the `webinar-captions-image` snapshot (captions never run on the video box) |
 | `web/**` | _(manual today)_ | Cloudflare Workers — `cd web && npm run deploy` |
 
 Both Cloud Run and DigitalOcean workflows also support **Manual** `workflow_dispatch` from the Actions tab.

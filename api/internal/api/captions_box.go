@@ -20,8 +20,10 @@ import (
  * On 24 Oct 2026 the caption agent took 0.66 of the c-4 video box's cores beside the edge mix's
  * 1.84, the box ran at 70–91 % and the audience stalled. With CAPTIONS_BOX_ENABLED the agent
  * runs on a droplet of its own instead (default s-2vcpu-4gb), one per video box, shared by every
- * room on it, and the video box is told not to start its own (SFU_CAPTIONS_REMOTE in its user
- * data, CAPTIONS_REMOTE in its .env, redeploy.sh).
+ * room on it. The video box never runs one (since 24 Oct 2026 its image and deploy carry no
+ * caption agent), so with CAPTIONS_BOX_ENABLED off a box room has no server captions at all:
+ * dispatcherFor reports no dispatcher, and the room captions on-device ("server captions
+ * unavailable").
  *
  * It follows the video box: wanted while the video box has a droplet that is not being deleted
  * (creating, booting, ready, draining), so it is created in the same step as the video droplet
