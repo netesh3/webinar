@@ -10,6 +10,7 @@ import {
   aiToggleConfirm,
   aiToggleVisible,
   captionEngine,
+  captionsStatus,
   sessionAIOn,
 } from "./ai-session.ts";
 
@@ -76,5 +77,29 @@ assert.equal(AI_PAUSED_NOTE, "AI is paused");
 assert.equal(aiPausedResultsNote(undefined), null);
 assert.equal(aiPausedResultsNote(0), null);
 assert.equal(aiPausedResultsNote(12), "AI was paused for 12 min; that part isn't included.");
+
+// The host's captions control says which source is captioning the room.
+const s = (captionsEnabled: boolean, serverCaptions: boolean, serverCaptionsPending: boolean) => ({
+  captionsEnabled,
+  serverCaptions,
+  serverCaptionsPending,
+});
+assert.equal(captionsStatus(s(false, false, false), false).label, "Captions off");
+assert.equal(captionsStatus(s(true, true, false), false).label, "Captions: server");
+assert.equal(captionsStatus(s(true, true, false), false).onDevice, false);
+assert.match(captionsStatus(s(true, true, false), true).title, /being recorded/);
+assert.equal(captionsStatus(s(true, false, true), false).label, "Captions: on this device (server starting)");
+assert.equal(
+  captionsStatus(s(true, false, false), false).label,
+  "Captions: on this device (server captions unavailable)",
+);
+assert.equal(captionsStatus(s(true, false, false), false).onDevice, true);
+// The server's reason, when the host's switch got one, is in the tooltip.
+assert.match(
+  captionsStatus(s(true, false, false), false, "Server captions aren't set up here.").title,
+  /aren't set up here/,
+);
+// Off ignores a stale reason.
+assert.equal(captionsStatus(s(false, false, false), false, "nope").title, "Turn on captions for everyone");
 
 console.log("ai-session: ok");

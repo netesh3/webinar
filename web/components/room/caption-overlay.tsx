@@ -5,7 +5,7 @@ import { Track } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
 import { api } from "@/lib/api";
 import type { ControlsPatch } from "@/lib/api-types";
-import { captionEngine } from "@/lib/ai-session";
+import { captionEngine, captionsStatus } from "@/lib/ai-session";
 import {
   edgeHoldMs,
   getEdgeVideoDelay,
@@ -178,7 +178,7 @@ export function CaptionsSession() {
   // Runs for every publisher, not just the host: Whisper only ever hears the
   // microphone published from this tab. Stands down while the server is
   // captioning the room (controls.serverCaptions: the caption agent on the
-  // egress host, multilingual, has said it is live) and takes over again the
+  // egress host, English only, has said it is live) and takes over again the
   // moment it is not — switched off, never picked up, or paused because the
   // box needed the CPU for video.
   // One engine for both: captions shown is the same recogniser as the AI's silent
@@ -209,10 +209,12 @@ export function useCaptionsMoreAction():
       onClick: () => void;
     }
   | undefined {
-  const { recording, slug, isHost, controls } = useRoomUI();
+  const { recording, slug, isHost, controls, join } = useRoomUI();
   const { notify } = useToast();
   const on = controls.captionsEnabled;
   const [busy, setBusy] = useState(false);
+  // Why server captions were not used the last time this switch asked for them.
+  const [unavailable, setUnavailable] = useState<string | null>(null);
 
   const toggle = useCallback(async () => {
     setBusy(true);
@@ -222,16 +224,19 @@ export function useCaptionsMoreAction():
       // other browser, which is what keeps them in agreement.
       //
       // On asks for server captions first (English, and no speaker's laptop
-      // doing the work). Where none are deployed, or the
-      // agent could not be dispatched, the ordinary switch turns on on-device
-      // captions instead. Off is the ordinary switch, which also removes the
-      // agent.
+      // doing the work). Where none are deployed, the host does not have them,
+      // or the agent could not be dispatched, the host is told why and the
+      // ordinary switch turns on on-device captions instead. Off is the
+      // ordinary switch, which also removes the agent.
       if (!on) {
         try {
           await api.setServerCaptions(slug, { on: true });
+          setUnavailable(null);
           return;
-        } catch {
-          // Fall through to on-device captions.
+        } catch (err) {
+          const why = err instanceof Error && err.message ? err.message : "Server captions didn't start.";
+          setUnavailable(why);
+          notify(`${why} Captions are on, made on each speaker's device.`, "info");
         }
       }
       await api.updateControls(slug, { captionsEnabled: !on } satisfies ControlsPatch);
@@ -242,10 +247,14 @@ export function useCaptionsMoreAction():
     }
   }, [slug, on, notify]);
 
-  if (!isHost) return undefined;
+  /* Never for a simulive: it plays a recording, nobody speaks into its room, and its CC
+   * is the original session's captions. Nor once it carries on live with the host team:
+   * the API never sends the caption agent into a simulive's room. */
+  if (!isHost || join.simulive || join.simuliveLive) return undefined;
 
+  const status = captionsStatus(controls, recording, unavailable);
   return {
-    label: "Captions",
+    label: status.label,
     icon: (
       <span className="grid size-5 place-items-center text-[11px] font-semibold leading-none">
         CC
@@ -253,16 +262,7 @@ export function useCaptionsMoreAction():
     ),
     active: on,
     busy,
-    title:
-      on && controls.serverCaptions
-        ? recording
-          ? "Captions are on for everyone, from the server. This session is being recorded."
-          : "Captions are on for everyone, from the server"
-        : on && recording
-        ? "Captions are on for everyone. This session is being recorded."
-        : on
-          ? "Captions are on for everyone"
-          : "Turn on captions for everyone",
+    title: status.title,
     onClick: () => void toggle(),
   };
 }

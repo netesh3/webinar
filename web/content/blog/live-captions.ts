@@ -18,7 +18,9 @@ export const post: Post = {
     1. In the schedule form, open **In the room** and find **Recording and extras**.
     2. Turn on **Live captions**.
 
-    Captions are then on from the moment the session starts. They are off by default.
+    Captions are then on from the moment the session starts. They are off by default. Turning **Live captions** off when you edit the webinar turns them off, even during the session.
+
+    A Simulive has no **Live captions** option: it shows the captions from the original session.
 
     ## Turn captions on or off in the room
 
@@ -27,7 +29,7 @@ export const post: Post = {
     1. Open **More** on the bar.
     2. Press **Captions**. On a phone it is in the **Present** section.
 
-    The tile shows **On** while captions are running, and its tooltip says **Captions are on for everyone**. Press it again to turn them off. On a computer, if you use captions a lot, you can drag **Captions** out of **More** and onto the bar.
+    The tile shows **On** while captions are running, and says where they come from: **Captions: server**, or **Captions: on this device** when each speaker's browser is making them. Its tooltip says **Captions are on for everyone**. Press it again to turn them off. On a computer, if you use captions a lot, you can drag **Captions** out of **More** and onto the bar.
 
     Only you and your co-hosts have this switch. It applies to the whole room: people who join late get captions too, and they stay on if you reload the page.
 
@@ -47,7 +49,7 @@ export const post: Post = {
     - A headset or a decent microphone helps more than anything else.
     - Captions appear a second or two after the words are spoken, so expect a short delay.
 
-    Captions normally run on our servers. If they cannot, each speaker's own browser makes them instead, and the first time you may see **Loading captions on this device. The first time takes a moment; after that it stays on the machine.**
+    Captions normally run on our servers. If they cannot, each speaker's own browser makes them instead, the Captions tile says **Captions: on this device (server captions unavailable)**, and the first time you may see **Loading captions on this device. The first time takes a moment; after that it stays on the machine.**
 
     ## After the session
 

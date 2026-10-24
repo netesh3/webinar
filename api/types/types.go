@@ -383,6 +383,10 @@ type SessionControls struct {
 	 * POST /api/host/webinars/{slug}/captions/server and by the agent, never by PATCH
 	 * /controls. */
 	ServerCaptions bool `json:"serverCaptions"`
+	/* ServerCaptionsPending says the caption agent has been asked into the room but is not
+	 * live in it (yet, or paused by its CPU guard): the browsers caption on-device meanwhile.
+	 * For the host's captions control, which says which source is running. Read-only. */
+	ServerCaptionsPending bool `json:"serverCaptionsPending,omitempty"`
 	/* AIEnabled is the room's "AI" switch: whether this session is in AI at all. On, a
 	 * transcript is captured for the AI recap even with captions (CaptionsEnabled, which is
 	 * only whether people SEE the lines) off — by the server caption agent in a transcript-only

@@ -30,6 +30,7 @@ const webinarColumns = `
 	w.chat_destination,
 	w.qa_enabled, w.raise_hand_enabled, w.reactions_enabled,
 	w.polls_enabled, w.captions_enabled, (w.server_captions AND w.server_captions_live),
+	(w.server_captions AND NOT w.server_captions_live),
 	w.ai_enabled, ('ai' = ANY (effective_features(effective_plan(h.id), h.features, h.features_off))),
 	w.ai_off_this_session,
 	w.locked, w.audience_layout, w.sfu_project, w.image_key,
@@ -85,7 +86,7 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 		&c.HideAttendees, &c.MuteOnEntry, &c.AllowUnmute, &c.ChatEnabled,
 		&c.ChatDestination,
 		&c.QAEnabled, &c.RaiseHandEnabled, &c.ReactionsEnabled,
-		&c.PollsEnabled, &c.CaptionsEnabled, &c.ServerCaptions,
+		&c.PollsEnabled, &c.CaptionsEnabled, &c.ServerCaptions, &c.ServerCaptionsPending,
 		&c.AIEnabled, &c.AIAvailable, &c.AIOffThisSession,
 		&c.Locked, &c.AudienceLayout, &w.SFUProject, &imageKey,
 		&simuliveID, &simStartAt, &w.SimuliveDoorsOpen,
@@ -972,6 +973,7 @@ func (s *Store) UpdateWebinar(ctx context.Context, slug string, in types.Webinar
 			chat_enabled = $21, qa_enabled = $22, raise_hand_enabled = $23,
 			reactions_enabled = $24, locked = $25, chat_destination = $26,
 			polls_enabled = $27, captions_enabled = $28,
+			captions_shown_live = captions_shown_live OR (status = 'live' AND $28),
 			simulive_recording_id = NULLIF($29,'')::uuid,
 			updated_at = now()
 		 WHERE id = $1`,
@@ -984,7 +986,9 @@ func (s *Store) UpdateWebinar(ctx context.Context, slug string, in types.Webinar
 		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
 		in.Controls.ReactionsEnabled, in.Controls.Locked,
 		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
-		in.Controls.CaptionsEnabled || in.Options.Captions,
+		// As sent, not OR-ed with Options.Captions: that kept a session once ticked captioned
+		// for good. The edit handler sets it from "Live captions" when the save changes that.
+		in.Controls.CaptionsEnabled,
 		strings.TrimSpace(in.SimuliveRecordingID),
 	); err != nil {
 		return types.Webinar{}, err

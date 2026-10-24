@@ -529,6 +529,7 @@ func updateWebinarRow(ctx context.Context, tx pgx.Tx, id, hostID string, in type
 			chat_enabled = $20, qa_enabled = $21, raise_hand_enabled = $22,
 			reactions_enabled = $23, locked = $24, chat_destination = $25,
 			polls_enabled = $26, captions_enabled = $27,
+			captions_shown_live = captions_shown_live OR (status = 'live' AND $27),
 			simulive_recording_id = NULLIF($28,'')::uuid,
 			series_exception = $29,
 			status = CASE WHEN status = 'draft' AND $30 = 'scheduled' THEN 'scheduled' ELSE status END,
@@ -542,7 +543,8 @@ func updateWebinarRow(ctx context.Context, tx pgx.Tx, id, hostID string, in type
 		in.Controls.ChatEnabled, in.Controls.QAEnabled, in.Controls.RaiseHandEnabled,
 		in.Controls.ReactionsEnabled, in.Controls.Locked,
 		string(in.Controls.ChatDestination.OrDefault()), in.Controls.PollsEnabled,
-		in.Controls.CaptionsEnabled || in.Options.Captions,
+		// As sent: the edit handler sets it from "Live captions" when the save changes that.
+		in.Controls.CaptionsEnabled,
 		strings.TrimSpace(in.SimuliveRecordingID), exception, string(in.Status),
 	); err != nil {
 		return err

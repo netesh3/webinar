@@ -1018,7 +1018,8 @@ export function ControlBar() {
     // Says which layout is in use, so the footer answers the question without
     // being opened.
     if (id === "layout") return `Layout · ${LAYOUT_LABEL[stage.mode]}`;
-    if (id === "captions") return captionsAction?.active ? "Captions on" : "Captions off";
+    // Says which source is captioning the room: the server, or the speakers' devices.
+    if (id === "captions") return captionsAction?.label ?? "Captions off";
     if (id === "sharefile") return fileShare.active ? "Sharing a video file" : "Share a video file";
     if (id === "youtube") return youtube.configured ? "YouTube stream is on" : "Stream to YouTube";
     if (id === "linkedin") return linkedin.live ? "LinkedIn Live is on" : "Stream to LinkedIn Live";

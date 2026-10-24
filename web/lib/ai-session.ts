@@ -90,3 +90,48 @@ export function captionEngine(
   const run = canPublish && !controls.serverCaptions && (display || capture);
   return { run, display: run && display, store: run };
 }
+
+export type CaptionsStatus = {
+  /** The control's label: off, or which source is captioning the room. */
+  label: string;
+  /** The longer line for its tooltip. */
+  title: string;
+  /** Captions are being made on the speakers' own devices right now. */
+  onDevice: boolean;
+};
+
+/** What the host's captions control says about the room's captions: off, from the server
+ *  (the caption agent is live: controls.serverCaptions), or on each speaker's device, either
+ *  while the agent is on its way or paused (serverCaptionsPending) or because server captions
+ *  are unavailable (refused, failed, or not set up). `reason` is the server's answer when the
+ *  host's own switch got one. */
+export function captionsStatus(
+  controls: Pick<SessionControls, "captionsEnabled" | "serverCaptions" | "serverCaptionsPending">,
+  recording: boolean,
+  reason?: string | null,
+): CaptionsStatus {
+  const rec = recording ? " This session is being recorded." : "";
+  if (controls.captionsEnabled !== true) {
+    return { label: "Captions off", title: "Turn on captions for everyone", onDevice: false };
+  }
+  if (controls.serverCaptions === true) {
+    return {
+      label: "Captions: server",
+      title: `Captions are on for everyone, from the server.${rec}`,
+      onDevice: false,
+    };
+  }
+  if (controls.serverCaptionsPending === true) {
+    return {
+      label: "Captions: on this device (server starting)",
+      title: `Captions are on for everyone. Each speaker's device makes them until server captions are live.${rec}`,
+      onDevice: true,
+    };
+  }
+  const why = reason?.trim() ? ` ${reason.trim()}` : "";
+  return {
+    label: "Captions: on this device (server captions unavailable)",
+    title: `Captions are on for everyone, made on each speaker's device: server captions are unavailable.${why}${rec}`,
+    onDevice: true,
+  };
+}

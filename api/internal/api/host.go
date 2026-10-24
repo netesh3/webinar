@@ -584,6 +584,15 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	/* "Live captions" (Options.Captions) is what the captions control starts from. A save
+	 * that changes the option changes the control with it, both ways: unticking it turns
+	 * captions off (store.UpdateWebinar writes the control as given, no longer OR-ed with the
+	 * option, which kept a session that was once ticked captioned for good). A save that
+	 * leaves the option alone keeps the control as sent. */
+	if hasPrev && in.Options.Captions != prev.Options.Captions {
+		in.Controls.CaptionsEnabled = in.Options.Captions
+	}
+
 	var wb types.Webinar
 	switch {
 	case hasPrev && prev.SeriesID != "" && in.SeriesScope == "following":
@@ -635,6 +644,16 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 		s.log.Warn("update webinar: could not resolve the livekit project",
 			"slug", wb.ID, "error", err)
 	} else {
+		/* Captions switched from the edit form during a live session apply now, as from the
+		 * room's own control: on brings the caption agent in (or the browsers caption
+		 * on-device), off removes it unless the AI switch still wants the transcript. */
+		if hasPrev && wb.Status == types.StatusLive &&
+			wb.Controls.CaptionsEnabled != prev.Controls.CaptionsEnabled &&
+			s.syncCaptionAgent(r.Context(), wb, sfu) {
+			if fresh, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+				wb = fresh
+			}
+		}
 		s.pushRoomMetadata(r, sfu, wb)
 	}
 
@@ -1097,6 +1116,12 @@ func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, pre
 	if in.Kind == types.KindSimulive && in.SimuliveRecordingID == "" {
 		fields["simuliveRecordingId"] = "Pick a recording to play as the live session."
 	}
+	/* Nor captioned live: nobody speaks in a simulive, and its CC is the original session's
+	 * captions (recording_captions.go). The form hides "Live captions" for one; dropped here
+	 * so an old save cannot leave it on. */
+	if in.Kind == types.KindSimulive {
+		in.Options.Captions = false
+	}
 	// Never recorded again: see refuseSimuliveRecording.
 	if in.Kind == types.KindSimulive && in.Options.AutoRecord {
 		fields["options.autoRecord"] = "A simulive session plays a recording, so it can't be recorded again."
@@ -1349,9 +1374,15 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 	// EnsureRoom only carries metadata when it creates the room, so an existing
 	// room needs the update pushed explicitly.
+	/* "Live captions" ticked when scheduling: the caption agent joins for them (AI or not, the
+	 * host's server captions feature decides). AI on: it joins for the transcript, captions
+	 * or not. Otherwise the browsers caption on-device (syncCaptionAgent). */
+	if s.syncCaptionAgent(r.Context(), wb, sfu) {
+		if fresh, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+			wb = fresh
+		}
+	}
 	s.pushRoomMetadata(r, sfu, wb)
-	// AI on for this session: the caption agent joins for the transcript, captions or not.
-	s.syncAITranscript(r.Context(), wb, sfu)
 
 	if wb.Kind != types.KindSimulive {
 		if wb.Options.Multistream && s.youtube != nil {
@@ -1834,14 +1865,15 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	/* The caption agent follows both switches (syncAITranscript): captions off is captions off,
-	 * whichever engine was producing them, unless the session's AI switch still wants the
-	 * transcript, in which case the agent stays and its lines are only stored. AI turned on
-	 * mid-session brings the agent in; AI off with captions off sends it away. */
+	/* The caption agent follows both switches (syncCaptionAgent): captions on brings it in
+	 * where the host has server captions; captions off is captions off, whichever engine was
+	 * producing them, unless the session's AI switch still wants the transcript, in which case
+	 * the agent stays and its lines are only stored. AI turned on mid-session brings the agent
+	 * in; AI off with captions off sends it away. */
 	if p.CaptionsEnabled != nil || p.AIEnabled != nil {
 		changed := false
 		if wb.Status == types.StatusLive {
-			changed = s.syncAITranscript(r.Context(), wb, sfu)
+			changed = s.syncCaptionAgent(r.Context(), wb, sfu)
 		} else if p.CaptionsEnabled != nil && !*p.CaptionsEnabled {
 			changed = s.turnOffServerCaptions(r.Context(), slug, sfu)
 		}

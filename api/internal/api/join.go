@@ -556,6 +556,15 @@ func (s *Server) handleHostJoin(w http.ResponseWriter, r *http.Request) {
 	if wb.Status == types.StatusLive {
 		go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 	}
+	/* The host arriving at a live session brings the caption agent in if the session wants it
+	 * and it is not there: Start cannot dispatch it while the video server is still booting,
+	 * and a dispatch that failed is retried on the host's next join. A no-op otherwise. */
+	if role == types.RoleHost && wb.Status == types.StatusLive && s.syncCaptionAgent(r.Context(), wb, sfu) {
+		if fresh, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+			wb = fresh
+			s.pushRoomMetadata(r, sfu, wb)
+		}
+	}
 
 	// Reaching here means stageRole returned host or panelist for a real
 	// account, which is the same check the recording endpoints make — so this
