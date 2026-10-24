@@ -1,0 +1,440 @@
+/* The proposed plans and the features page (components/marketing/plans-ui.tsx and
+ * features-page.tsx). Built on landing.css: everything is scoped under `.lp` and uses its
+ * tokens, so these pages look like the home page and nothing reaches the app. */
+
+/* ------------------------------------------------------------------ proposal note */
+
+.lp .pl-note {
+  border-bottom: 1px solid #f3d9a4;
+  background: #fff8e8;
+  color: #6b4400;
+  font-size: 14.5px;
+}
+
+.lp .pl-note p {
+  padding: 10px 0;
+  text-align: center;
+}
+
+.lp .pl-note a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ------------------------------------------------------------------ hero and jump nav */
+
+.lp .pl-hero {
+  padding-bottom: clamp(56px, 7vw, 96px);
+  color: #fff;
+}
+
+/* One centred column: the home hero's two-column grid has a room picture on the right. */
+.lp .pl-hero .wrap {
+  display: block;
+}
+
+.lp .pl-hero .hero-copy {
+  justify-items: center;
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.lp .pl-hero .hero-lede {
+  max-width: 720px;
+}
+
+.lp .pl-hero .cta-row,
+.lp .pl-hero .checks {
+  justify-content: center;
+}
+
+.lp .pl-hero-eyebrow {
+  color: #a5b4ff;
+}
+
+.lp .pl-jump {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+}
+
+.lp .pl-jump ul {
+  display: flex;
+  gap: 6px;
+  padding: 10px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.lp .pl-jump a {
+  display: inline-flex;
+  padding: 6px 14px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 14.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.lp .pl-jump a:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ feature sections */
+
+.lp .pl-feature-section {
+  padding: clamp(48px, 5.5vw, 76px) 0;
+  scroll-margin-top: 56px;
+}
+
+.lp .pl-alt {
+  background: var(--paper);
+}
+
+.lp .pl-section-head {
+  display: grid;
+  gap: 12px;
+  max-width: 720px;
+  margin-bottom: clamp(28px, 4vw, 44px);
+}
+
+.lp .pl-section-head .h2 {
+  font-size: clamp(28px, calc(2.2vw + 16px), 42px);
+}
+
+.lp .pl-feature-grid,
+.lp .pl-addon-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 640px) {
+  .lp .pl-feature-grid,
+  .lp .pl-addon-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .lp .pl-feature-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lp .pl-addon-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.lp .pl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+}
+
+.lp .pl-card h3 {
+  font-size: 17.5px;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.lp .pl-card p {
+  flex: 1;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.lp .pl-badge {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.lp .pl-badge-up {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+/* ------------------------------------------------------------------ plan cards */
+
+.lp .pl-limits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 14px 0;
+  border-block: 1px solid var(--line);
+}
+
+.lp .pl-limits dt {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.lp .pl-limits dd {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+@media (min-width: 700px) {
+  .lp .plans-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1180px) {
+  .lp .plans-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .lp .plans-4 .plan {
+    padding: 26px 22px;
+  }
+
+  .lp .plans-4 .price b {
+    font-size: 44px;
+  }
+
+  .lp .plans-4 .plan-pop {
+    margin-top: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ add-ons */
+
+.lp .pl-addons {
+  background: var(--paper);
+}
+
+.lp .pl-addon-price {
+  flex: none !important;
+  color: var(--ink-3) !important;
+}
+
+.lp .pl-addon-price b {
+  color: var(--ink);
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+/* ------------------------------------------------------------------ comparison table */
+
+.lp .pl-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.lp .pl-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 15px;
+}
+
+.lp .pl-table th,
+.lp .pl-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.lp .pl-table tbody th[scope="row"] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 220px;
+  background: var(--surface);
+  font-weight: 500;
+  text-align: left;
+}
+
+.lp .pl-table th small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.lp .pl-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.lp .pl-table thead th:first-child {
+  left: 0;
+  z-index: 3;
+}
+
+.lp .pl-table .pl-group th {
+  padding-top: 22px;
+  background: var(--mist);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.lp .pl-table td.pl-pop,
+.lp .pl-table thead th.pl-pop {
+  background: #f4f7ff;
+}
+
+.lp .pl-yes {
+  width: 18px;
+  height: 18px;
+  color: var(--ok);
+  stroke-width: 2.8;
+  /* Tailwind preflight makes svg a block; centre it in the cell. */
+  margin-inline: auto;
+}
+
+.lp .pl-no {
+  color: var(--ink-4);
+}
+
+.lp .pl-val {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ AI credits */
+
+.lp .pl-credits-grid {
+  display: grid;
+  gap: 32px;
+}
+
+@media (min-width: 960px) {
+  .lp .pl-credits-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+    gap: 56px;
+  }
+}
+
+.lp .pl-credits-head {
+  display: grid;
+  gap: 16px;
+}
+
+.lp .pl-credit-table {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  background: var(--surface);
+  font-size: 15.5px;
+}
+
+.lp .pl-credit-table th,
+.lp .pl-credit-table td {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.lp .pl-credit-table tr:last-child th,
+.lp .pl-credit-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.lp .pl-credit-table thead th {
+  background: var(--mist);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lp .pl-credit-table tbody th {
+  font-weight: 500;
+}
+
+.lp .pl-credit-table td {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lp .pl-credit-table td span {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* ------------------------------------------------------------------ dark theme
+ * The tokens flip with html[data-theme] (landing.css); these are the surfaces that do not
+ * read from them. */
+
+html[data-theme="dark"] .lp .pl-note {
+  border-color: #4a3a12;
+  background: #261d07;
+  color: #f5d48a;
+}
+
+html[data-theme="dark"] .lp .pl-jump {
+  background: rgba(11, 17, 32, 0.94);
+}
+
+html[data-theme="dark"] .lp .pl-table td.pl-pop,
+html[data-theme="dark"] .lp .pl-table thead th.pl-pop {
+  background: #17254a;
+}
+
+/* A phone: a narrow pinned feature column, so the plan columns start on screen and the
+ * rest is a short sideways scroll. */
+@media (max-width: 699px) {
+  .lp .pl-table {
+    min-width: 520px;
+    font-size: 14px;
+  }
+
+  .lp .pl-table th,
+  .lp .pl-table td {
+    padding: 10px 8px;
+  }
+
+  .lp .pl-table tbody th[scope="row"] {
+    width: 150px;
+    min-width: 150px;
+    max-width: 150px;
+    padding-left: 12px;
+    box-shadow: 1px 0 0 var(--line);
+  }
+
+  .lp .pl-table thead th {
+    font-size: 14px;
+  }
+
+  /* The notes double a row's height on a phone; the /features page carries them. */
+  .lp .pl-table th small {
+    display: none;
+  }
+}

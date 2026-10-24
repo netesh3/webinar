@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { indexable } from "@/lib/plans";
 import { siteOrigin } from "@/lib/site-origin";
 
 /* Public pages only. /home is the same page as / and is left out so it is not
@@ -8,6 +9,8 @@ import { siteOrigin } from "@/lib/site-origin";
 const PAGES: { path: string; changeFrequency: "weekly" | "monthly" | "yearly"; priority: number }[] = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
   { path: "/pricing", changeFrequency: "weekly", priority: 0.9 },
+  // Listed once its prices are the live ones (lib/plans.ts PLANS_STATUS); noindex until then.
+  ...(indexable() ? [{ path: "/features", changeFrequency: "weekly" as const, priority: 0.8 }] : []),
   { path: "/signup", changeFrequency: "monthly", priority: 0.8 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
   { path: "/terms", changeFrequency: "yearly", priority: 0.3 },
