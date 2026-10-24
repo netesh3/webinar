@@ -620,6 +620,9 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/webinars", s.handleAdminWebinars)
 			r.Delete("/webinars/{slug}", s.handleAdminDeleteWebinar)
+			// End a live session, or move one between draft and scheduled (admin_sessions.go).
+			r.Post("/webinars/{slug}/end", s.handleAdminEndWebinar)
+			r.Patch("/webinars/{slug}/status", s.handleAdminSetWebinarStatus)
 
 			r.Get("/ai", s.handleAdminAIStatus)
 
