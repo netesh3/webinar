@@ -40,6 +40,14 @@ def test_english_setting_does_not_warn(caplog):
     assert caplog.text == ""
 
 
+def test_metrics_port_off_by_default_and_checked():
+    assert Config.from_env(ENV).metrics_port == 0
+    assert Config.from_env({**ENV, "CAPTIONS_METRICS_PORT": "8092"}).metrics_port == 8092
+    for bad in ("8091", "70000", "-1"):  # the health port, out of range
+        with pytest.raises(ConfigError):
+            Config.from_env({**ENV, "CAPTIONS_METRICS_PORT": bad})
+
+
 def test_prompt_is_only_the_hosts():
     assert prompt_for() is None
     assert prompt_for("Webinar Liv") == "Webinar Liv"

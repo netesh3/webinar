@@ -1,0 +1,223 @@
+// Grafana Alloy on the on-demand captions box (deploy/digitalocean/README.md "Captions box"):
+// metrics and container logs to Grafana Cloud, like the video box's
+// deploy/livekit-hetzner/alloy/config.alloy, trimmed to what this droplet runs. Started by
+// captions-boot.sh with deploy/livekit-hetzner/docker-compose.alloy.yml only when the API passed
+// all five GRAFANA_CLOUD_* settings in the user data; it writes them, and ALLOY_BOX (the
+// hostname, e.g. captions-blr-1), to /opt/captions-box/alloy.env.
+//
+// Same host and container keep-lists as the video box (keep the two in step), no LiveKit or
+// MediaMTX scrape, and the caption agent's own worker metrics instead. Every series carries
+// box="<hostname>" and role="captions" (the video box: role="video").
+//
+// Budget (Grafana Cloud free tier, 10k active series for the whole stack): ~120 series for
+// this box on a 2-vCPU droplet: host ~85 (16 of them CPU modes), 2 containers x 8, the agent
+// ~8, plus up/scrape_* per target. docs/observability.md, "Series budget".
+
+// ---------------------------------------------------------------------------------- metrics
+
+// The caption agent's worker metrics (livekit-agents' prometheus_port, CAPTIONS_METRICS_PORT
+// in docker-compose.captions-box.yml): rooms held, its load as LiveKit sees it, child
+// processes. Rooms are jobs, so lk_agents_active_job_count is the live room count.
+prometheus.scrape "agent" {
+	targets = [
+		{"__address__" = "127.0.0.1:8092", "job" = "captions"},
+	]
+	scrape_interval = "30s"
+	forward_to      = [prometheus.relabel.agent.receiver]
+}
+
+prometheus.relabel "agent" {
+	// The worker's gauges and the main process's CPU and memory (cAdvisor has the whole
+	// container, the per-room children included). Nothing per room: the label set is the host.
+	rule {
+		source_labels = ["__name__"]
+		regex         = "lk_agents_(active_job_count|child_process_count|worker_load|proc_initialize_duration_seconds_(sum|count))|process_(cpu_seconds_total|resident_memory_bytes|open_fds)"
+		action        = "keep"
+	}
+
+	// nodename is the hostname, already the box label.
+	rule {
+		regex  = "nodename"
+		action = "labeldrop"
+	}
+	forward_to = [prometheus.remote_write.cloud.receiver]
+}
+
+// Host metrics (node_exporter, embedded). Only the collectors and series worth a dashboard.
+prometheus.exporter.unix "host" {
+	procfs_path = "/host/proc"
+	sysfs_path  = "/sys"
+	rootfs_path = "/host/root"
+
+	set_collectors = ["cpu", "diskstats", "filesystem", "loadavg", "meminfo", "netdev", "netstat", "pressure", "uname"]
+
+	filesystem {
+		fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|tmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+		mount_points_exclude = "^/(dev|proc|run|sys|var/lib/docker/.+|snap/.+)($|/)"
+	}
+
+	netdev {
+		// Host networking: the real NIC(s) only, not docker's bridges and veths.
+		device_exclude = "^(lo|docker.*|br-.*|veth.*)$"
+	}
+
+	disk {
+		device_exclude = "^(ram|loop|fd|(h|s|v|xv)d[a-z]|nvme\\d+n\\d+p)\\d+$"
+	}
+}
+
+prometheus.scrape "host" {
+	targets         = prometheus.exporter.unix.host.targets
+	scrape_interval = "30s"
+	forward_to      = [prometheus.relabel.host.receiver]
+}
+
+prometheus.relabel "host" {
+	rule {
+		target_label = "job"
+		replacement  = "node"
+	}
+
+	rule {
+		source_labels = ["__name__"]
+		regex         = "node_(cpu_seconds_total|load1|load5|load15|memory_(MemTotal|MemAvailable|MemFree|Buffers|Cached|SwapTotal|SwapFree)_bytes|filesystem_(size|avail|free)_bytes|filesystem_files(_free)?|disk_(read|written)_bytes_total|disk_io_time_seconds_total|disk_(reads|writes)_completed_total|network_(receive|transmit)_(bytes|packets|drop|errs)_total|netstat_(Tcp_CurrEstab|Tcp_RetransSegs|Tcp_OutSegs|Udp_InErrors|Udp_RcvbufErrors|Udp_SndbufErrors|Udp_InDatagrams|Udp_OutDatagrams)|pressure_.*|uname_info|boot_time_seconds)"
+		action        = "keep"
+	}
+
+	// Per-CPU by mode; only the guest modes (always 0 on a droplet) go. Keep nice: the caption
+	// agent runs at nice 10 (Dockerfile), so nearly all of its CPU is mode="nice", not "user".
+	rule {
+		source_labels = ["__name__", "mode"]
+		regex         = "node_cpu_seconds_total;(guest|guest_nice)"
+		action        = "drop"
+	}
+	forward_to = [prometheus.remote_write.cloud.receiver]
+}
+
+// Container metrics (cAdvisor, embedded), per compose service.
+prometheus.exporter.cadvisor "containers" {
+	docker_host      = "unix:///var/run/docker.sock"
+	docker_only      = true
+	storage_duration = "2m"
+
+	// Never keep container labels or env as metric labels (they would include settings).
+	store_container_labels       = false
+	allowlisted_container_labels = ["com.docker.compose.service"]
+	env_metadata_allowlist       = []
+
+	// Everything per-process, per-disk and per-interface; the host network makes the network
+	// series one copy of the host's for every container anyway.
+	disabled_metrics = ["advtcp", "cpu_topology", "cpuset", "disk", "diskIO", "hugetlb", "memory_numa", "network", "percpu", "perf_event", "process", "referenced_memory", "resctrl", "sched", "tcp", "udp"]
+}
+
+prometheus.scrape "containers" {
+	targets         = prometheus.exporter.cadvisor.containers.targets
+	scrape_interval = "30s"
+	forward_to      = [prometheus.relabel.containers.receiver]
+}
+
+prometheus.relabel "containers" {
+	rule {
+		target_label = "job"
+		replacement  = "cadvisor"
+	}
+
+	rule {
+		source_labels = ["__name__"]
+		regex         = "container_(cpu_usage_seconds_total|cpu_cfs_throttled_seconds_total|memory_working_set_bytes|memory_rss|spec_memory_limit_bytes|oom_events_total|start_time_seconds|last_seen)"
+		action        = "keep"
+	}
+
+	// The root cgroup and the system slices: only named (docker) containers.
+	rule {
+		source_labels = ["name"]
+		regex         = ""
+		action        = "drop"
+	}
+
+	rule {
+		source_labels = ["container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		regex  = "id|image|container_label_com_docker_compose_service"
+		action = "labeldrop"
+	}
+	forward_to = [prometheus.remote_write.cloud.receiver]
+}
+
+prometheus.remote_write "cloud" {
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_PROM_USER")
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+
+	external_labels = {
+		box  = sys.env("ALLOY_BOX"),
+		role = "captions",
+	}
+}
+
+// ------------------------------------------------------------------------------------- logs
+
+// Every container on the box, through the docker socket (read-only mount).
+discovery.docker "containers" {
+	host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "logs" {
+	targets = []
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_log_stream"]
+		target_label  = "stream"
+	}
+}
+
+loki.source.docker "containers" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.docker.containers.targets
+	relabel_rules = discovery.relabel.logs.rules
+	forward_to    = [loki.process.logs.receiver]
+}
+
+loki.process "logs" {
+	// Debug and trace lines (logfmt, JSON or plain level words) are not worth shipping.
+	stage.drop {
+		expression = "(?i)(level=(debug|trace)\\b|\"level\":\\s*\"(debug|trace)\"|^\\S*\\s*\\S*\\s*(DEBUG|TRACE|DEB)\\s)"
+	}
+
+	forward_to = [loki.write.cloud.receiver]
+}
+
+loki.write "cloud" {
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+			password = sys.env("GRAFANA_CLOUD_TOKEN")
+		}
+	}
+
+	external_labels = {
+		box  = sys.env("ALLOY_BOX"),
+		role = "captions",
+	}
+}

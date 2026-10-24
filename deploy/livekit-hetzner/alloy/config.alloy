@@ -1,6 +1,8 @@
 // Grafana Alloy on the video box (docker-compose.alloy.yml): metrics and container logs to
 // Grafana Cloud. Started by redeploy.sh only when the GRAFANA_CLOUD_* settings are in .env;
 // it writes them, and ALLOY_BOX (the label that names this droplet), to alloy.env.
+// Every series and log line carries box="$ALLOY_BOX" and role="video" (the captions box's
+// deploy/digitalocean/alloy/captions.alloy: role="captions").
 //
 // Budget: the Grafana Cloud free tier is 10k active series. Everything below is trimmed to a
 // few thousand at most: an allow-list of host metrics, a handful of per-container metrics,
@@ -159,7 +161,8 @@ prometheus.remote_write "cloud" {
 	}
 
 	external_labels = {
-		box = sys.env("ALLOY_BOX"),
+		box  = sys.env("ALLOY_BOX"),
+		role = "video",
 	}
 }
 
@@ -217,6 +220,7 @@ loki.write "cloud" {
 	}
 
 	external_labels = {
-		box = sys.env("ALLOY_BOX"),
+		box  = sys.env("ALLOY_BOX"),
+		role = "video",
 	}
 }

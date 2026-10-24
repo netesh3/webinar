@@ -44,6 +44,8 @@ on:
       - "deploy/digitalocean/build-captions-image.sh"
       - "deploy/digitalocean/captions-boot.sh"
       - "deploy/digitalocean/docker-compose.captions-box.yml"
+      - "deploy/digitalocean/alloy/**"
+      - "deploy/livekit-hetzner/docker-compose.alloy.yml"
 
 concurrency:
   group: sfu-snapshot

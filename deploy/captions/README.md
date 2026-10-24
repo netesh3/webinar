@@ -119,6 +119,7 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_MODEL_DIR` | `/models` | weights cache (volume `captions_models`) |
 | `CAPTIONS_MODEL_SEED_DIR` | `/opt/models-seed` | weights baked into the image (build arg `CAPTIONS_SEED_MODELS`, default `base.en`), copied into the cache when it lacks them |
 | `CAPTIONS_HEALTH_PORT` | `8091` | the worker's health endpoint (host network) |
+| `CAPTIONS_METRICS_PORT` | `0` (off) | livekit-agents' Prometheus `/metrics` (`lk_agents_active_job_count` = rooms held, `lk_agents_worker_load`, `lk_agents_child_process_count`); the captions box sets `8092` for Alloy |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | – | written by redeploy.sh / startup.sh |
 
 API (Cloud Run): `CAPTIONS_SECRET` (switches the feature on) and optionally

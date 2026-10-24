@@ -312,7 +312,8 @@ LiveKit's and the mix's.
 - *The agent.* The captions droplet comes from the newest `webinar-captions-image` snapshot. The
   image has Docker, a ufw that lets in SSH only, and the agent's image with **base.en and
   large-v3-turbo baked in**, so a new box downloads no models. Its user data writes
-  `/etc/webinarliv/captions.env` (root, 0600): the video box's LiveKit URL
+  `/etc/webinarliv/captions.env` (root, 0600; and `/etc/webinarliv/grafana.env` when Grafana
+  Cloud is configured, see below): the video box's LiveKit URL
   (`LIVEKIT_PROJECTS` for `do-blr`, i.e. the reserved IP's sslip.io name, through Caddy; or
   `CAPTIONS_BOX_LIVEKIT_URL`), its API key and secret, `CAPTIONS_SECRET` and the size settings.
   `captions-boot.sh` then syncs `deploy/captions` from `SFU_BOX_REF`, rebuilds the image (a cache
@@ -390,7 +391,38 @@ every size above.
 **Check it** during a session: `doctl compute droplet list --tag-name webinar-captions-ondemand`;
 on the box, `docker compose -p captions logs -f` (the worker registers, then "job" per room) and
 `/var/log/webinarliv-captions-boot.log`. The API logs `captions box: state` transitions and
-`dispatch re-sent to the captions worker`. Grafana Alloy does not run on the captions box.
+`dispatch re-sent to the captions worker`.
+
+**Grafana Cloud.** With the video box's Grafana Cloud settings configured on the API (all five
+`GRAFANA_CLOUD_*`, `config.BoxGrafana`), the captions box reports like the video box:
+
+- The API's user data writes them to `/etc/webinarliv/grafana.env` (root, 0600; a separate file,
+  so the token is never in the agent's environment). Four of five, or a value that is not plain,
+  and nothing is written. The token is never logged (`captions_box_internal_test.go`).
+- `captions-boot.sh` checks the file the way `sfu-boot.sh` does (exactly the five lines), writes
+  `/opt/captions-box/alloy.env` with `ALLOY_BOX=$(hostname -s)` (the droplet name,
+  `captions-blr-1`), and starts Grafana Alloy in the same compose project
+  (`docker compose -p captions -f docker-compose.yml -f docker-compose.alloy.yml`). Without the
+  file, no Alloy (and `--remove-orphans` removes one from an earlier run).
+- Alloy is the video box's `deploy/livekit-hetzner/docker-compose.alloy.yml` (same pinned image,
+  baked into the `webinar-captions-image` snapshot; the containerd socket mount; 0.5 CPU,
+  512 MB cap) with `deploy/digitalocean/alloy/captions.alloy`: host metrics (CPU incl. `nice`,
+  where the niced agent's CPU shows; memory, network, disk, load, pressure), cAdvisor per
+  container (`service="captions"` and `"alloy"`), the agent's worker metrics, and every
+  container's log to Loki. Same keep-lists as the video box, no LiveKit or MediaMTX scrape.
+- Labels: `box="captions-blr-1"`, `role="captions"` on every series and log stream. The video
+  box's now carry `role="video"` too.
+- The agent's metrics: livekit-agents' own Prometheus endpoint (`CAPTIONS_METRICS_PORT=8092`, set
+  in `docker-compose.captions-box.yml`; ufw and the firewall let nothing in):
+  `lk_agents_active_job_count` (rooms held: one job per room), `lk_agents_worker_load` (rooms
+  over `CAPTIONS_BOX_MAX_ROOMS`), `lk_agents_child_process_count`, and the main process's CPU and
+  memory. Per-room latency (transcribe lag, decode ms, queue) is not exported: it is measured in
+  each room's child process and logged once a minute per room (`captions latency ...` in Loki),
+  and per-room series would cost series for nothing a log query cannot answer.
+- Budget: ~120 active series while a captions box runs (docs/observability.md, "Series budget").
+
+Check it on the box: `docker compose -p captions logs alloy` and, in Grafana,
+`up{role="captions"}` (three targets: host, containers, agent).
 
 **Turning it off.** Unset `CAPTIONS_BOX_ENABLED` (or set it to `false`) and redeploy the API. The
 captions droplet is deleted at the next tick. There is no fallback to an agent on the video box:

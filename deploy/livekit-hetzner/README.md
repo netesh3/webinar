@@ -109,7 +109,8 @@ directory, so no new `ufw allow` rules are needed:
 | Container logs | every container via the docker socket (read-only), labels `container`, `service`, `stream`; debug/trace lines dropped | - |
 
 Every series and log line carries `box` (from `ALLOY_BOX` in `.env`, else the droplet's
-hostname, e.g. `sfu-blr-1`). Series are trimmed to an allow-list (Go runtime series, per-CPU
+hostname, e.g. `sfu-blr-1`) and `role="video"` (the on-demand captions box runs the same Alloy
+with `role="captions"`, `deploy/digitalocean/README.md` "Captions box"). Series are trimmed to an allow-list (Go runtime series, per-CPU
 guest modes, per-container network/disk/process series dropped) to stay well inside the free
 tier's 10k active series; check **Cost management → Metrics** after the first day.
 

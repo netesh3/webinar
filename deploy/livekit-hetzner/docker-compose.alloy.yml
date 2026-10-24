@@ -7,6 +7,10 @@
 # node_exporter, through read-only /proc, /sys and /) and the containers (embedded cAdvisor),
 # and tails every container's log through the docker socket. Its own UI listens on loopback
 # only. Low priority and capped, like the other side services: video always wins.
+#
+# The on-demand captions box runs this same file (deploy/digitalocean/captions-boot.sh, with
+# deploy/digitalocean/alloy/captions.alloy as ./alloy/config.alloy and its own alloy.env), so the
+# pinned image below is the one both boxes run and bake into their snapshots.
 services:
   alloy:
     image: grafana/alloy:v1.21.2
@@ -19,7 +23,8 @@ services:
     cpu_shares: 256
     mem_limit: 512m
     oom_score_adj: 800
-    # Written by redeploy.sh from .env (GRAFANA_CLOUD_*, ALLOY_BOX), mode 600.
+    # Written by redeploy.sh from .env (GRAFANA_CLOUD_*, ALLOY_BOX), mode 600; on the captions
+    # box by captions-boot.sh.
     env_file: alloy.env
     command:
       - run

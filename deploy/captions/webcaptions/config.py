@@ -112,6 +112,9 @@ class Config:
     spool_dir: str = "/var/lib/captions/spool"
     spool_max_mb: int = 4096
     health_port: int = 8091
+    # The worker's Prometheus endpoint (livekit-agents: rooms held, load, child processes), for
+    # Grafana Alloy on the captions box. 0 is off.
+    metrics_port: int = 0
 
     @property
     def cpu_threads(self) -> int:
@@ -180,7 +183,10 @@ class Config:
             spool_dir=env.get("CAPTIONS_SPOOL_DIR", "").strip() or "/var/lib/captions/spool",
             spool_max_mb=_int(env, "CAPTIONS_SPOOL_MAX_MB", 4096),
             health_port=_int(env, "CAPTIONS_HEALTH_PORT", 8091),
+            metrics_port=_int(env, "CAPTIONS_METRICS_PORT", 0),
         )
+        if not (0 <= cfg.metrics_port <= 65535) or (cfg.metrics_port and cfg.metrics_port == cfg.health_port):
+            raise ConfigError("CAPTIONS_METRICS_PORT must be 0 (off) or a port other than CAPTIONS_HEALTH_PORT")
         if cfg.max_speakers < 1:
             raise ConfigError("CAPTIONS_MAX_SPEAKERS must be >= 1")
         if cfg.partial_interval_s < 0.3:
