@@ -21,9 +21,12 @@ import (
 /* Suggested reels on a session's recording (the "clips" switch): 2-4 short moments on one
  * theme each, to stitch into a 30-60 second reel. Beside the highlights in the Recording tab,
  * and made the same way (highlights.go): the same transcript and engagement on the player
- * timeline, AI_MODEL_HIGHLIGHTS through aiComplete (feature "reels"), written once inside the
- * first look after the session ends and kept per recording (recording_reels), "Find them
- * again" rewriting them. Every moment is snapped to sentences (4-25 s, inside one take) and
+ * timeline, AI_MODEL_HIGHLIGHTS through aiComplete (feature "reels"), written only when the
+ * host asks (POST: "Suggest reels", then "Suggest again", inside that request) and kept per
+ * recording (recording_reels). GET never calls the AI: it reads what is kept, not_started, or
+ * why there can be none. The reels are planned from the transcript and engagement directly,
+ * not from the highlights, so either can be asked for first and neither waits on the other.
+ * Every moment is snapped to sentences (4-25 s, inside one take) and
  * every reel kept to clips.Reel's rules. */
 
 const (
@@ -142,10 +145,10 @@ func reelsResponse(row store.HighlightsRow) types.ReelsResponse {
 	return out
 }
 
-// handleGetReels is GET /api/host/webinars/{slug}/recordings/{id}/reels.
+// handleGetReels is GET /api/host/webinars/{slug}/recordings/{id}/reels: never an AI call.
 func (s *Server) handleGetReels(w http.ResponseWriter, r *http.Request) { s.serveReels(w, r, false) }
 
-// handleFindReels is POST …/reels: "Find them again".
+// handleFindReels is POST …/reels: the first plan ("Suggest reels") and every one after.
 func (s *Server) handleFindReels(w http.ResponseWriter, r *http.Request) { s.serveReels(w, r, true) }
 
 func (s *Server) serveReels(w http.ResponseWriter, r *http.Request, rewrite bool) {
@@ -170,7 +173,8 @@ func (s *Server) serveReels(w http.ResponseWriter, r *http.Request, rewrite bool
 		s.fail(w, r, "reels: read", err)
 		return
 	}
-	if err == nil && !rewrite && row.Status == store.AIOutputReady {
+	found := err == nil
+	if found && !rewrite && row.Status == store.AIOutputReady {
 		reply(reelsResponse(row))
 		return
 	}
@@ -192,16 +196,23 @@ func (s *Server) serveReels(w http.ResponseWriter, r *http.Request, rewrite bool
 		refuse(types.HighlightsNoTranscript)
 		return
 	}
-	if rewrite {
-		if err := s.aiCapCheck(ctx, types.AIFeatureReels, rc.wb.Host.ID); errors.Is(err, errAILimit) {
-			httpx.Error(w, http.StatusTooManyRequests, "ai_limit", aiLimitMessage)
-			return
-		} else if err != nil {
-			s.fail(w, r, "reels: cap", err)
+	if !rewrite {
+		// A look, as the highlights': what is kept, or not_started. Never a call.
+		if !found {
+			reply(types.ReelsResponse{Status: types.HighlightsNotStarted, Reels: []types.Reel{}})
 			return
 		}
+		reply(reelsResponse(row))
+		return
 	}
-	claimed, err := s.store.ClaimRecordingReels(ctx, rc.sessionID, rewrite, highlightsClaimFor)
+	if err := s.aiCapCheck(ctx, types.AIFeatureReels, rc.wb.Host.ID); errors.Is(err, errAILimit) {
+		httpx.Error(w, http.StatusTooManyRequests, "ai_limit", aiLimitMessage)
+		return
+	} else if err != nil {
+		s.fail(w, r, "reels: cap", err)
+		return
+	}
+	claimed, err := s.store.ClaimRecordingReels(ctx, rc.sessionID, true, highlightsClaimFor)
 	if err != nil {
 		s.fail(w, r, "reels: claim", err)
 		return

@@ -55,7 +55,8 @@ type Highlight struct {
 }
 
 /* HighlightsResponse is GET /api/host/webinars/{slug}/recordings/{id}/highlights. Status is
- * ready, processing (being picked: look again shortly), or why there are none: not_ended,
+ * ready, processing (being picked: look again shortly), not_started (never asked for: the
+ * host starts the pick with POST, as the GET makes no AI call), or why there are none: not_ended,
  * ai_off, ai_session_off, ai_limit, ai_unavailable, failed, no_transcript, not_ready (the
  * recording is not ready to play yet). */
 type HighlightsResponse struct {
@@ -68,4 +69,6 @@ type HighlightsResponse struct {
 const (
 	HighlightsNoTranscript = "no_transcript"
 	HighlightsNotReady     = "not_ready"
+	// HighlightsNotStarted is a recording whose highlights (or reels) nobody has asked for yet.
+	HighlightsNotStarted = "not_started"
 )
