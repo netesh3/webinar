@@ -427,6 +427,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# What Grafana Faro may send: page URLs without their query (?k= join keys, ?t= and ?token=
 	# tokens), no emails or JWTs in error text, no user meta.
 	cd web && node --experimental-strip-types --no-warnings lib/faro-privacy.test.mts
+	# The proposed plans behind /features and /pricing/proposed: the yearly rule, limits read
+	# into the comparison table, and the proposal switch.
+	cd web && node --experimental-strip-types --no-warnings lib/plans.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]
