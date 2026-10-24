@@ -721,27 +721,48 @@ func (s *Server) boxParkIP(ctx context.Context) {
 
 var boxSafe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 
+// boxGrafanaFile is where the user data leaves the Grafana Cloud settings for sfu-boot.sh (tmpfs).
+const boxGrafanaFile = "/run/webinarliv-grafana.env"
+
 /* boxUserData is the droplet's first-boot script: fetch the boot script from the repo (the
  * snapshot's copy when GitHub cannot be reached) and run it. The boot script mounts the volume,
- * syncs the deploy files from the same ref and runs redeploy.sh (deploy/digitalocean/sfu-boot.sh). */
+ * syncs the deploy files from the same ref and runs redeploy.sh (deploy/digitalocean/sfu-boot.sh).
+ *
+ * With the Grafana Cloud settings configured (config.BoxGrafana), it first writes them to
+ * boxGrafanaFile (root only) and points SFU_GRAFANA_ENV at it; sfu-boot.sh merges them into the
+ * volume's .env so Alloy starts with the stack, then removes the file. The values are checked
+ * plain (config) and go in a quoted heredoc, so nothing in them is expanded or echoed. The
+ * script is never logged (the create log names the image, size and region only). */
 func boxUserData(c config.SFUBox) (string, error) {
 	for _, v := range []string{c.Repo, c.Ref, c.Volume} {
 		if !boxSafe.MatchString(v) {
 			return "", fmt.Errorf("SFU_BOX_REPO, SFU_BOX_REF and SFU_BOX_VOLUME must be plain names, got %q", v)
 		}
 	}
+	grafana := ""
+	if c.Grafana.Usable() {
+		var b strings.Builder
+		b.WriteString("# Grafana Cloud for Alloy (config.BoxGrafana); merged into .env by sfu-boot.sh.\n")
+		b.WriteString("(umask 077; cat >" + boxGrafanaFile + " <<'WEBINARLIV_GRAFANA'\n")
+		for _, p := range c.Grafana.Pairs() {
+			b.WriteString(p[0] + "=" + p[1] + "\n")
+		}
+		b.WriteString("WEBINARLIV_GRAFANA\n)\n")
+		b.WriteString("export SFU_GRAFANA_ENV=" + boxGrafanaFile + "\n")
+		grafana = b.String()
+	}
 	return fmt.Sprintf(`#!/bin/bash
 # Webinar Liv on-demand video server, first boot. Written by the API (api/internal/api/sfu_box.go).
 set -uo pipefail
 export SFU_DATA_DIR=/mnt/sfu-data SFU_VOLUME_NAME=%s SFU_REPO=%s SFU_REF=%s
-boot=/usr/local/sbin/webinarliv-sfu-boot.sh
+%sboot=/usr/local/sbin/webinarliv-sfu-boot.sh
 tmp="$(mktemp)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 60 "https://raw.githubusercontent.com/${SFU_REPO}/${SFU_REF}/deploy/digitalocean/sfu-boot.sh" -o "$tmp" && bash -n "$tmp"; then
   install -m 755 "$tmp" "$boot"
 fi
 rm -f "$tmp"
 exec "$boot" >>/var/log/webinarliv-boot.log 2>&1
-`, c.Volume, c.Repo, c.Ref), nil
+`, c.Volume, c.Repo, c.Ref, grafana), nil
 }
 
 // ---------------------------------------------------------------- readiness

@@ -102,7 +102,7 @@ measured hours of the last 30 days. Rates are unchanged ($84/month, $0.125/h).
 | `api/internal/api/sfu_box.go` | the state machine, readiness probe, drain check, alerts, endpoints |
 | `api/internal/doapi` | the DigitalOcean API calls (`doapitest`: the fake the tests use) |
 | `api/internal/store/sfu_box.go`, migrations/0152 | `sfu_box_state` (with the lease), `sfu_box_runs` (hours) |
-| `deploy/digitalocean/sfu-boot.sh` | first boot: mount the volume, link `/opt/livekit`, sync deploy files, `redeploy.sh` |
+| `deploy/digitalocean/sfu-boot.sh` | first boot: mount the volume, link `/opt/livekit`, sync deploy files, merge the Grafana Cloud settings from the user data into `.env` (Alloy; `deploy/livekit-hetzner/README.md`, Grafana Cloud), `redeploy.sh` |
 | `deploy/digitalocean/build-image.sh` | what the snapshot carries (Docker, ufw, every image) |
 | `deploy/digitalocean/migrate-to-volume.sh` | one-time: move the running box's state onto the volume |
 | `deploy/livekit-hetzner/docker-compose.data.yml` | binds certificates and caption models/spool to the volume (`SFU_DATA_DIR`) |
