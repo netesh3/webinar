@@ -188,3 +188,10 @@ class Config:
         if not (cfg.cpu_low < cfg.cpu_high <= cfg.cpu_critical):
             raise ConfigError("need CAPTIONS_CPU_LOW < CAPTIONS_CPU_HIGH <= CAPTIONS_CPU_CRITICAL")
         return cfg
+
+
+def room_load(active_jobs: int, max_rooms: int) -> float:
+    """The worker's load as LiveKit sees it: rooms held over CAPTIONS_MAX_ROOMS, never the
+    host CPU (the CPU guard handles that). Below the threshold (agent.py) LiveKit offers the
+    worker rooms; at max_rooms it is full."""
+    return min(1.0, max(0, active_jobs) / max(1, max_rooms))

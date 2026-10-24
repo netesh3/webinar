@@ -131,6 +131,42 @@ class HostCpuSampler:
         return usage_between(prev, cur)
 
 
+class OthersCpuSampler(HostCpuSampler):
+    """The host's CPU busy WITHOUT this process's own share. For the after-session pass,
+    which would otherwise see its own two decoder threads (all of a 2-vCPU captions box) as
+    "the host is busy" and pause itself after every window."""
+
+    def __init__(self, path: str = "/proc/stat", own_cpu_s: Callable[[], float] = time.process_time,
+                 ticks_per_s: float | None = None) -> None:
+        super().__init__(path)
+        self._own = own_cpu_s
+        self._hz = ticks_per_s or _clock_ticks()
+        self._last_own = 0.0
+
+    def sample(self) -> float | None:
+        cur, own = self.read(), self._own()
+        if cur is None:
+            return None
+        prev, self._last = self._last, cur
+        prev_own, self._last_own = self._last_own, own
+        if prev is None:
+            return None
+        total = cur.total - prev.total
+        if total <= 0:
+            return None
+        others = (cur.busy - prev.busy) - (own - prev_own) * self._hz
+        return 100.0 * max(0.0, others) / total
+
+
+def _clock_ticks() -> float:
+    try:
+        import os
+
+        return float(os.sysconf("SC_CLK_TCK"))
+    except (AttributeError, ValueError, OSError):
+        return 100.0
+
+
 def usage_between(prev: CpuTimes, cur: CpuTimes) -> float | None:
     total = cur.total - prev.total
     if total <= 0:

@@ -28,9 +28,9 @@ from concurrent.futures import ThreadPoolExecutor
 from livekit import rtc
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, JobProcess, JobRequest, WorkerPermissions, cli
 
-from .config import Config
+from .config import Config, room_load
 from .cpuguard import CpuGuard, GuardMonitor, Level
-from .finalizer import Finalizer
+from .finalizer import ChildTranscribe, Finalizer, idle_wait
 from .live import LiveCaptioner
 from .poster import ApiClient, captions_shown, sender_for
 from .segmenter import Segmenter, pcm16_to_float
@@ -42,6 +42,7 @@ log = logging.getLogger("captions.agent")
 
 IDENTITY_PREFIX = "CAP_"  # filtered from every roster; see api/internal/lk/agents.go
 DATA_TOPIC = "webcast"  # the room packets' topic: api/internal/api/say.go dataTopic, web/lib/realtime.ts
+AUDIO_QUEUE_FRAMES = 500  # 5 s of 10 ms frames per subscribed track
 
 
 def _guard(cfg: Config) -> CpuGuard:
@@ -209,7 +210,11 @@ async def entrypoint(ctx: JobContext) -> None:
         segs[key] = seg
         gate = LineGate()
         watch.start(key, time.monotonic())
-        stream = rtc.AudioStream(track, sample_rate=16_000, num_channels=1)
+        # Bounded: if this loop ever falls behind, the oldest 10 ms frames are dropped instead
+        # of piling up without limit (LiveKit's default capacity 0 is unbounded).
+        stream = rtc.AudioStream(
+            track, sample_rate=16_000, num_channels=1, frame_size_ms=10, capacity=AUDIO_QUEUE_FRAMES
+        )
         try:
             async for ev in stream:
                 if watch.frame(key, time.monotonic()):
@@ -342,7 +347,7 @@ def _max_rooms() -> int:
 
 
 def _load(server: AgentServer) -> float:
-    return min(1.0, len(server.active_jobs) / _max_rooms())
+    return room_load(len(server.active_jobs), _max_rooms())
 
 
 def build_server(cfg: Config) -> AgentServer:
@@ -371,22 +376,22 @@ def _start_finalizer(cfg: Config) -> None:
     if not cfg.final_enabled:
         return
     monitor = GuardMonitor(_guard(cfg), cfg.cpu_sample_s).start()
+    # Never loaded here: the big model runs in a child process (finalizer.ChildTranscribe),
+    # which is stopped the moment a room goes live, so its ~1.2 GB and its CPU are never held
+    # through a live session (24 Oct 2026: 3.6 GB of the 4 GB cap during a webinar).
     final = WhisperTranscriber(cfg.final_model, cfg.cpu_threads, cfg.model_dir)
 
-    def idle(stop: threading.Event) -> bool:
-        # Never alongside live captions (they share the container's CPU cap), and only
-        # while the host as a whole is quiet.
-        while live_rooms(cfg.spool_dir) > 0 or monitor.level != Level.NORMAL:
-            if stop.wait(10.0):
-                return False
-        return True
+    def live() -> bool:
+        return live_rooms(cfg.spool_dir) > 0
 
     fin = Finalizer(
         cfg,
         ApiClient(cfg.api_url, cfg.secret, timeout=60.0),
         final,
-        wait_until_idle=idle,
-        unload=final.unload,
+        # Never alongside live captions (they share the container's CPU cap), and only
+        # starting while the host as a whole is quiet.
+        wait_until_idle=idle_wait(lambda: live() or monitor.level != Level.NORMAL),
+        transcribe=ChildTranscribe(busy=live, cfg=cfg),
     )
     fin.resume()  # rooms a previous container left (the spool is a volume)
     threading.Thread(target=fin.loop, name="finalizer", daemon=True).start()

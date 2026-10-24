@@ -52,8 +52,14 @@ host turns captions on ─▶ API ── agent dispatch ──▶ LiveKit ──
    voiced utterances only, with wall-clock timestamps, on the `captions_spool` volume) is
    re-transcribed with `CAPTIONS_FINAL_MODEL` and posted to `POST /api/internal/transcripts`
    (table `session_transcripts`, segments `{identity, name, start, end, text}` in Unix ms),
-   then deleted. This runs on a thread in the agent's main process, only when no room is being
-   captioned on that box and the host CPU guard is NORMAL. It feeds the AI recap, which waits
+   then deleted. A thread in the agent's main process drives it, but the model runs in a
+   child process (`python -m webcaptions.finalizer <dir>`), started only when no room is being
+   captioned on that box and the host CPU guard is NORMAL, and **stopped the moment a room
+   goes live** (its ~1.2 GB and its CPU come back at once). Every finished 30 s window is
+   checkpointed in the room's spool directory (`final.progress`), so the next child carries on
+   where the last one stopped. (Until 24 Oct 2026 the model loaded in the main process and
+   stayed resident through the next live session: 3.6 GB of the 4 GB container limit during a
+   webinar, after 40 minutes at the full 2-core cap.) It feeds the AI recap, which waits
    for it (up to 30 min): a room where nobody spoke still gets an empty transcript posted, so
    the recap is not held. The spool is a volume, so a container replaced mid-pass (a deploy)
    resumes every pending room on start (`Finalizer.resume`); box deploys also wait for
@@ -131,7 +137,7 @@ caption worker unless the box itself has `CAPTIONS_ENABLED=true`.
 | live `base.en` (the default), 1–2 active speakers | ≈ 0.5–0.8 cores while people talk, ~0 in silence | ~0.3 GB per room process (+1 idle prewarmed) |
 | live `small.en` (`CAPTIONS_MODEL=small.en`) | ≈ 1.5–2 cores (measured 24 Oct 2026 on the shared c-4: 0.66 cores average over a session, which pushed the box to 70–91 % beside the composite) | ~0.6 GB |
 | interim captions (`base.en` once a second, main speaker, NORMAL only) | ≈ +0.3–0.6 cores while they talk (inside the same docker cap) | none extra (shares the fallback model) |
-| final `large-v3-turbo` | slower than real time at 2 cores (≈ 1–2× the session length) | ~1.7 GB while running, freed after |
+| final `large-v3-turbo` | the full cap while it runs: ~12 s of 2 cores per 30 s window, however little speech is in it (measured 24 Oct 2026), so windows join across pauses up to 8 s | ~1.2–1.7 GB in its child process, only between live sessions |
 | disk | 32 KB/s per speaker while they talk (~115 MB/speaking-hour) | deleted after the final pass |
 
 Load test on the real box: a 1080p edge composite + two people talking continuously in
@@ -141,6 +147,31 @@ the guard thresholds forced low (`CAPTIONS_CPU_HIGH=20`) to see degrade/pause/re
 base.en (~150 MB) is baked into the image and copied into the `captions_models` volume when it
 is missing; the first start downloads large-v3-turbo (~1.6 GB, the after-session pass) and
 `CAPTIONS_MODEL` if it is another model (small.en ~480 MB). Later starts are instant.
+
+## Runbook
+
+Captions run only on the on-demand captions box (`captions-blr-1`, see
+`deploy/digitalocean/README.md`); the video box runs no caption agent.
+
+- **A video box still runs its own agent** (booted before that change; memory and CPU in
+  Grafana under `service="captions"` on the video box): stop it, on the video box,
+  `docker stop livekit-captions-1` (its 40 s grace lets the job post `stopped`; plain
+  `docker compose stop captions` needs `-f docker-compose.captions.yml` too). It stays
+  stopped until the next redeploy, which no longer starts it. Video is not touched. A room it was captioning loses server captions for a moment: its job
+  ends, the room's browsers fall back to on-device captions, and the API's captions-box step
+  re-creates the dispatch (`RedispatchIdle`, a dispatch with no running job), which the
+  captions box's worker takes. Check with LiveKit's `assigned job to worker` log line (the
+  captions box's worker id is in its `worker registered` line). If the room stays on
+  on-device captions, the host turns server captions off and on.
+- **`not dispatching agent job since no worker is available` with `jobType` `JT_PARTICIPANT`
+  or `JT_PUBLISHER`** in LiveKit's log, on every join and publish: harmless. LiveKit asks for
+  a participant/publisher agent each time; this worker registers for room jobs (`JT_ROOM`,
+  explicit dispatch by agent name) only. What matters is `assigned job to worker` for
+  `JT_ROOM`. A room whose dispatch already has a running job stays with that worker: a new
+  worker registering takes only new rooms (or ones whose job ended).
+- **Worker load** is rooms held over `CAPTIONS_MAX_ROOMS` (`config.room_load`), never the host
+  CPU, so a busy host does not make LiveKit think the worker is gone; the CPU guard steps
+  down instead.
 
 ## Latency
 
