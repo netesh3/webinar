@@ -51,6 +51,7 @@ import {
   type RecordingFilter,
 } from "@/lib/host-list-url";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import { instantOffered, meetingsEmptyHint } from "@/lib/host-features";
 
 /* The host's own list: Upcoming / Completed / Drafts, searchable, date-filtered, and
  * read one page at a time.
@@ -709,7 +710,7 @@ function EmptyList({
       return (
         <Empty
           title="No meetings yet"
-          hint="Start one now or schedule one above, then share the link."
+          hint={meetingsEmptyHint(account, isDevAuthBypassActive() || instantOffered(account))}
         />
       );
     }

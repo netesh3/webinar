@@ -635,6 +635,7 @@ function RoomSession({
         topic={initialTopic}
         displayName={join.displayName}
         role={join.role === "host" ? "Host" : join.meeting ? "Meeting" : "Panelist"}
+        meeting={join.meeting === true}
         prefs={prefs}
         onUpdatePrefs={updatePrefs}
         initialMedia={meetingEntry ? prejoinMedia(prefs, true) : undefined}

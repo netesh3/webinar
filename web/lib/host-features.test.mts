@@ -8,6 +8,7 @@ import {
   followupSendOffered,
   hasFeature,
   instantOffered,
+  meetingsEmptyHint,
   meetingsOffered,
   repurposeOffered,
   simuliveAllowed,
@@ -32,6 +33,12 @@ assert.equal(meetingsOffered({ features: ["whiteboard"] }), false);
 // Instant meetings and webinars: an admin's per-host switch, off by default.
 assert.equal(instantOffered({ features: ["meetings"] }), false);
 assert.equal(instantOffered({ features: ["meetings", "instant_webinar"] }), true);
+
+// The empty Meetings list only offers "Start one now" when Start a meeting is on the screen.
+assert.match(meetingsEmptyHint({ features: ["meetings"] }, false), /Schedule a meeting/);
+assert.doesNotMatch(meetingsEmptyHint({ features: ["meetings"] }, false), /Start one/);
+assert.match(meetingsEmptyHint({ features: ["meetings", "instant_webinar"] }, true), /^Start one now/);
+assert.doesNotMatch(meetingsEmptyHint({ features: [] }, false), /Start|Schedule/);
 
 // Highlight clips: an admin's per-host switch, off by default (the server drops it without
 // ai and cloud_recording).

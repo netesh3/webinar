@@ -97,10 +97,12 @@ export const post: Post = {
     The bar along the bottom of the room is split into three parts.
 
     - **On the left**: your microphone (**Mute** / **Unmute**) and camera (**Stop video** / **Start video**).
-    - **In the middle**: **Share** to share your screen, **Record**, and your tools: **Chat**, **Q&A**, **Polls**, **Participants**, **Invite**, **React**, **Layout**, **Settings**, **Host tools** and **Captions**. On a phone most of these sit under **More**.
+    - **In the middle**: **Share** to share your screen, **Record**, **Chat**, **Q&A**, **Polls**, **Participants** and **React**, then **More**. **Invite**, **Layout**, **Settings**, **Host tools** and **Captions** start under **More**. Drag any of them onto the bar to keep it there.
     - **On the right**: **Leave**.
 
-    Chat, Q&A, Polls and Participants open in a panel on the right. **Host tools** has the switches for what attendees can do (chat, Q&A, raise hand, reactions, polls), which you can flip at any time.
+    On a phone the bar keeps only **Chat** and **React** next to your mic, camera and **Leave**. Everything else, Share and Record included, is under **More**.
+
+    Chat, Q&A, Polls and Participants open in a panel on the right. **Host tools**, under **More**, has the switches for what attendees can do (chat, Q&A, raise hand, reactions, polls), which you can flip at any time.
 
     Our next guide, [Engage your audience](/blog/engage-your-audience), covers chat, Q&A, polls, quizzes and reactions in detail.
 

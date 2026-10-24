@@ -18,6 +18,14 @@ export {
 /**
  * Zoom-style Leave menu for the host: assign a successor, or end for everyone.
  * Anchored to the Leave button. Panelist pick and end-confirm stay in dialogs.
+ *
+ * A meeting offers a plain Leave in place of Assign host. A hand-over needs a signed-in
+ * `user_` identity on the webinar's panelist list (TransferHost), and a meeting has neither:
+ * everyone admitted from the lobby is an `att_` guest, signed in or not, and a meeting has no
+ * panelist list to be on. So the option could never be enabled there. Leaving without ending
+ * is safe in a meeting: the room and its live status stay put when the host's tab goes, the
+ * others carry on, the host gets back in with Rejoin from Meetings, and the empty-room
+ * sweeper ends it once the last person goes (api sweepEmptyWebinars).
  */
 export function HostLeaveMenu({
   open,
@@ -30,16 +38,17 @@ export function HostLeaveMenu({
   onAssign: () => void;
   onEnd: () => void;
 }) {
-  const { join, roster } = useRoomUI();
+  const { join, roster, leave } = useRoomUI();
   const meeting = !!join.meeting;
   const remotes = useRemoteParticipants();
   const panel = useRef<HTMLDivElement | null>(null);
   const reloadRoster = roster.reload;
 
   useEffect(() => {
-    if (!open) return;
+    // A meeting has no one to hand over to (see above), so no candidates to look up.
+    if (!open || meeting) return;
     void reloadRoster();
-  }, [open, reloadRoster]);
+  }, [open, meeting, reloadRoster]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,27 +93,41 @@ export function HostLeaveMenu({
       aria-label="Leave options"
       className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
     >
-      <button
-        type="button"
-        role="menuitem"
-        disabled={candidates.length === 0}
-        onClick={() => {
-          onClose();
-          onAssign();
-        }}
-        className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-45 outline-none focus-visible:bg-surface-2"
-      >
-        <span className="text-[13px] font-medium text-ink">Assign host & leave</span>
-        <span className="text-[12px] leading-relaxed text-ink-2">
-          {candidates.length === 0
-            ? meeting
-              ? "No one else who can host is in the meeting right now."
-              : "No eligible panelist is in the room right now."
-            : meeting
-              ? "Hand the meeting to someone else who can host, then exit."
+      {meeting ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onClose();
+            leave();
+          }}
+          className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 outline-none focus-visible:bg-surface-2"
+        >
+          <span className="text-[13px] font-medium text-ink">Leave meeting</span>
+          <span className="text-[12px] leading-relaxed text-ink-2">
+            Everyone else stays. Rejoin from Meetings while it&apos;s live. Without you or a
+            co-host, nobody is let in from the lobby.
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={candidates.length === 0}
+          onClick={() => {
+            onClose();
+            onAssign();
+          }}
+          className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-45 outline-none focus-visible:bg-surface-2"
+        >
+          <span className="text-[13px] font-medium text-ink">Assign host & leave</span>
+          <span className="text-[12px] leading-relaxed text-ink-2">
+            {candidates.length === 0
+              ? "No eligible panelist is in the room right now."
               : "Hand the session to another panelist, then exit."}
-        </span>
-      </button>
+          </span>
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -138,6 +161,7 @@ export function HostLeaveMenu({
 
 /**
  * Second step after “Assign host & leave”: pick a panelist and confirm transfer.
+ * Webinars only: a meeting's Leave menu has no Assign (see HostLeaveMenu).
  */
 export function HostAssignDialog({
   open,
@@ -149,7 +173,6 @@ export function HostAssignDialog({
   onLeave: () => void;
 }) {
   const { slug, join, roster } = useRoomUI();
-  const meeting = !!join.meeting;
   const remotes = useRemoteParticipants();
   const { notify } = useToast();
   const [selected, setSelected] = useState<string | null>(null);
@@ -224,11 +247,7 @@ export function HostAssignDialog({
       size="sm"
       onClose={resetAndClose}
       title="Assign host & leave"
-      description={
-        meeting
-          ? "Choose who runs the rest of the meeting. You will leave after they become host."
-          : "Choose a panelist to run the rest of the session. You will leave after they become host."
-      }
+      description="Choose a panelist to run the rest of the session. You will leave after they become host."
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button
@@ -258,9 +277,8 @@ export function HostAssignDialog({
       )}
       {candidates.length === 0 ? (
         <p className="text-[13px] leading-relaxed text-ink-2">
-          {meeting
-            ? "No one in the meeting can take over as host. End the meeting for everyone instead."
-            : "No panelists are in the room who can take over. Invite a panelist onto the stage first, or end the webinar for everyone instead."}
+          No panelists are in the room who can take over. Invite a panelist onto the stage first,
+          or end the webinar for everyone instead.
         </p>
       ) : (
         <ul className="space-y-1.5">
@@ -280,7 +298,7 @@ export function HostAssignDialog({
                   }`}
                 >
                   <span className="min-w-0 flex-1 truncate font-medium">
-                    {p.name || (meeting ? "Participant" : "Panelist")}
+                    {p.name || "Panelist"}
                   </span>
                 </button>
               </li>

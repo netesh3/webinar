@@ -46,6 +46,17 @@ export function instantOffered(account: WithFeatures): boolean {
   return hasFeature(account, FeatureInstantWebinar);
 }
 
+/** The Meetings list's "No meetings yet" hint. It names only the cards the screen above it
+ *  actually shows: "Start a meeting" needs instant_webinar (off by default), and with meetings
+ *  switched off neither card is there. `instant` is the screen's own answer (instantOffered,
+ *  or the dev preview), so the hint and the cards cannot disagree. */
+export function meetingsEmptyHint(account: WithFeatures, instant: boolean): string {
+  if (!meetingsOffered(account) && !instant) return "Meetings you hold will be listed here.";
+  return instant
+    ? "Start one now or schedule one above, then share the link."
+    : "Use Schedule a meeting above, then share the link.";
+}
+
 /** The Repurpose card in AI insights and the brand voice (repurpose, which needs ai). Off by
  *  default: an admin's per-host switch. */
 export function repurposeOffered(account: WithFeatures): boolean {
