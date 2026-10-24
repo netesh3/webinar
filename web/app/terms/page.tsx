@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LEGAL_UPDATED, legalDateLabel } from "@/lib/seo";
 import Link from "next/link";
 import {
   LegalPage,
@@ -12,7 +13,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/terms" },
 };
 
-const UPDATED = "September 11, 2026";
+// Also the sitemap's lastModified; change the date in lib/seo.ts.
+const UPDATED = legalDateLabel(LEGAL_UPDATED.terms);
 
 export default function TermsPage() {
   return (

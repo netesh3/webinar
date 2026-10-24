@@ -11,6 +11,13 @@ import { post as meeting } from "./run-a-meeting.ts";
 import { post as coHosts } from "./co-hosts-and-panelists.ts";
 import { post as recordings } from "./recordings-and-retention.ts";
 import { post as captions } from "./live-captions.ts";
+import { post as followUps } from "./follow-up-by-email-and-whatsapp.ts";
+import { post as audience } from "./your-audience.ts";
+import { post as aiRecap } from "./ai-recap-and-insights.ts";
+import { post as knowledge } from "./ai-knowledge-base.ts";
+import { post as highlights } from "./highlights-reels-and-studio.ts";
+import { post as simuliveClock } from "./simulive-keeping-every-viewer-on-the-same-moment.ts";
+import { post as videoServer } from "./running-a-video-server-only-when-you-need-it.ts";
 
 export const POSTS: readonly Post[] = sortPosts([
   firstWebinar,
@@ -21,6 +28,13 @@ export const POSTS: readonly Post[] = sortPosts([
   coHosts,
   recordings,
   captions,
+  followUps,
+  audience,
+  aiRecap,
+  knowledge,
+  highlights,
+  simuliveClock,
+  videoServer,
 ]);
 
 export function getPost(slug: string): Post | undefined {

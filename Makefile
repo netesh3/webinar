@@ -435,6 +435,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The blog: the Markdown subset, reading time, slugs, sorting, prev/next, related posts,
 	# the RSS feed, and every published post validated (alt text, diagrams, dates).
 	cd web && node --experimental-strip-types --no-warnings lib/blog.test.mts
+	# Search: the sitemap lists every public page and post and no app route; robots
+	# disallows the app routes and links the sitemap (lib/seo.ts).
+	cd web && node --experimental-strip-types --no-warnings lib/seo.test.mts
 	# The proposed plans behind /features and /pricing/proposed: the yearly rule, limits read
 	# into the comparison table, and the proposal switch.
 	cd web && node --experimental-strip-types --no-warnings lib/plans.test.mts

@@ -194,6 +194,58 @@ function ServerLifecycle() {
   );
 }
 
+function ServerClock() {
+  return (
+    <Frame
+      title="Reading the server's clock"
+      desc="The browser notes when it sends a request and when the reply arrives. The server puts its own time in the reply. The browser assumes the server read its clock halfway through the round trip, and the difference between the two is the offset it applies to its own clock."
+      viewBox="0 0 600 300"
+    >
+      <path d="M40 70 L560 70" className="dg-line" />
+      <path d="M40 220 L560 220" className="dg-line" />
+      <Note x={40} y={50} anchor="start">browser</Note>
+      <Note x={40} y={255} anchor="start">server</Note>
+      <circle cx={130} cy={70} r={7} className="dg-dot" />
+      <circle cx={470} cy={70} r={7} className="dg-dot" />
+      <circle cx={300} cy={220} r={9} className="dg-dot dg-dot-accent" />
+      <circle cx={300} cy={70} r={6} className="dg-dot" />
+      <Arrow d="M136 78 L292 212" />
+      <Arrow d="M308 212 L464 78" />
+      <Note x={130} y={50}>sent</Note>
+      <Note x={470} y={50}>received</Note>
+      <Note x={300} y={50}>halfway</Note>
+      <Note x={300} y={255}>server writes its time</Note>
+      <Note x={300} y={290}>offset = server time − halfway</Note>
+    </Frame>
+  );
+}
+
+function VideoBoxLifecycle() {
+  return (
+    <Frame
+      title="The life of an on-demand video server"
+      desc="The server is created when something needs it, boots, and only takes traffic once it passes its health checks. When nothing needs it, it drains, is deleted, and is gone. A persistent volume and a reserved address outlive each machine, so every new one is the same server to the outside world."
+      viewBox="0 0 600 400"
+    >
+      <Box x={20} y={20} w={160} h={70} label="Down" sub="no machine" tone="muted" />
+      <Box x={220} y={20} w={160} h={70} label="Creating" sub="from an image" />
+      <Box x={420} y={20} w={160} h={70} label="Booting" sub="until checks pass" />
+      <Box x={420} y={160} w={160} h={70} label="Ready" sub="sessions run" tone="accent" />
+      <Box x={220} y={160} w={160} h={70} label="Draining" sub="idle, not empty" />
+      <Box x={20} y={160} w={160} h={70} label="Deleting" sub="until it is gone" tone="muted" />
+      <Arrow d="M180 55 L218 55" />
+      <Arrow d="M380 55 L418 55" />
+      <Arrow d="M500 90 L500 158" />
+      <Arrow d="M420 195 L382 195" />
+      <Arrow d="M220 195 L182 195" />
+      <Arrow d="M100 160 L100 92" />
+      <Box x={60} y={300} w={220} h={70} label="Persistent volume" sub="keys, certificates, models" />
+      <Box x={320} y={300} w={220} h={70} label="Reserved address" sub="the same every time" />
+      <Note x={300} y={275}>outlive every machine</Note>
+    </Frame>
+  );
+}
+
 /* ------------------------------------------------------------------ tutorials */
 
 function WebinarTimeline() {
@@ -252,4 +304,6 @@ export const DIAGRAMS: Record<DiagramName, () => ReactElement> = {
   "server-lifecycle": ServerLifecycle,
   "webinar-timeline": WebinarTimeline,
   "simulive-clock": SimuliveClock,
+  "server-clock": ServerClock,
+  "video-box-lifecycle": VideoBoxLifecycle,
 };

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LEGAL_UPDATED, legalDateLabel } from "@/lib/seo";
 import Link from "next/link";
 import { LegalPage, SUPPORT_EMAIL } from "@/components/marketing/legal-page";
 
@@ -9,7 +10,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/integrations/zoom" },
 };
 
-const UPDATED = "October 17, 2026";
+// Also the sitemap's lastModified; change the date in lib/seo.ts.
+const UPDATED = legalDateLabel(LEGAL_UPDATED.zoom);
 
 /* The documentation page the Zoom App Marketplace links to: adding, using, and
  * removing the app. Keep it in step with docs/zoom-marketplace-submission.md. */
