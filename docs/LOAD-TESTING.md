@@ -180,11 +180,14 @@ PROBE_ADMIN_EMAIL=... PROBE_ADMIN_PASSWORD=... node e2e/load/run.mjs --web http:
 
 | Metric | Read it as |
 |---|---|
-| `node_cpu_seconds_total{box}` (CPU by mode) | The box's CPU. Egress (compositor + x264) is about 2.3 cores at 720p and does not grow with viewers. With the CDN in front, viewers should barely move it |
-| `container_cpu_usage_seconds_total` by container | Which part is busy: `egress`, `mediamtx`, `caddy`, `livekit` |
-| `mediamtx_paths_readers` | HLS readers at the origin. Through the CDN this stays small (shield + one shared session). With `--origin` it is the load |
+| `node_cpu_seconds_total{box}` (CPU by mode) | The box's CPU. `4 - sum(rate(...{mode="idle"}[1m]))` is busy cores. `softirq` is the kernel's network work, `nice` the captions agent and the mix recorder. The edge mix (compositor + x264) measured ~0.6-0.8 cores average, 1.3-1.7 peak, at 720p30 with two cameras (the egress logs its own `avgCPU`/`maxCPU` in its `egress metrics` line); it does not grow with viewers. With the CDN in front, viewers should barely move the rest |
+| `container_cpu_usage_seconds_total` by `service` | Which part is busy: `egress`, `mediamtx`, `caddy`, `livekit`, `captions`, `mixrec`, `alloy` (cAdvisor, `job="cadvisor"`; the compose service is the `service` label, the container name `name`) |
+| `process_cpu_seconds_total{job="livekit"}` | The SFU process alone. MediaMTX exports no process series; use the container series for it |
+| `rate(hls_muxers_outbound_bytes[1m])` | Bytes MediaMTX sends out as HLS, i.e. what the origin serves (CDN shield and direct viewers alike). Through the CDN this should be a few Mbit/s whatever the audience; if it tracks viewers × ~1.8 Mbit/s, viewers are reaching the origin |
+| `paths_readers`, `hls_sessions` | MediaMTX path readers and HLS sessions (MediaMTX metrics carry no `mediamtx_` prefix). Both stay at 1 per live path with or without a CDN: Caddy's `hlsCDNSecret` makes every request one shared session, so they are not a viewer count |
+| `paths{name}`, `rtmp_conns{state="publish"}` | The edge mix publishing `live/<slug>`, and `rec/<slug>` while it is recorded (the same encode, a second RTMP output) |
 | `livekit_participant_total`, `livekit_room_total` | The stage: presenters plus the egress recorder. Edge viewers are not LiveKit participants |
-| `node_network_transmit_bytes_total` (rate) | Box egress. With `--origin` it should be about viewers × 1.8 Mbit/s |
+| `node_network_transmit_bytes_total` (rate) | Box egress. With `--origin` it should be about viewers × 1.8 Mbit/s. Through the CDN it should stay small; if it does not, check the `audience stream:` line `run.mjs` prints: that is the playback URL viewers get, and it has to be the pull zone, not the box |
 | Logs (Loki), `{box="sfu-blr-1"}` | MediaMTX muxer errors, Caddy 5xx, egress restarts |
 
 **Cloud Run** (GCP console, the API service). Every viewer holds one event stream, so 1000 viewers are 1000 concurrent requests, and the service allows `CONCURRENCY` (500) × `MAX_INSTANCES` (3) = 1500 at once. Watch:

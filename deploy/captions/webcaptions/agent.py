@@ -18,6 +18,7 @@ are LiveKit's own (one per room), each with its live models prewarmed.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import threading
@@ -332,9 +333,16 @@ async def entrypoint(ctx: JobContext) -> None:
     apply_selection()
 
 
+@functools.cache
+def _max_rooms() -> int:
+    # Read once: the worker asks for its load every half second, and parsing the environment
+    # each time repeated every config warning (a stale CAPTIONS_SCRIPT) four times a second
+    # into the box's logs, idle or not (2026-10-24).
+    return max(1, Config.from_env().max_rooms)
+
+
 def _load(server: AgentServer) -> float:
-    cfg = Config.from_env()
-    return min(1.0, len(server.active_jobs) / max(1, cfg.max_rooms))
+    return min(1.0, len(server.active_jobs) / _max_rooms())
 
 
 def build_server(cfg: Config) -> AgentServer:
