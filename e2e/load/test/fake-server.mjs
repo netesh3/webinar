@@ -3,6 +3,7 @@
  *
  *   POST /api/webinars/:slug/join            -> edge JoinResponse
  *   GET  /api/webinars/:slug/events?t=       -> SSE: meta, then a packet every second, ": ping"
+ *                                               (+ a caption partial and final with { captions })
  *   POST /api/webinars/:slug/events/beat|leave
  *   GET  /api/webinars/:slug/chat|questions|polls
  *   POST /api/webinars/:slug/say, /polls/:id/vote, /register
@@ -10,7 +11,7 @@
  */
 import { createServer } from "node:http";
 
-export function startFake({ partMs = 200, partsPerSeg = 4, partBytes = 2000, port = 0 } = {}) {
+export function startFake({ partMs = 200, partsPerSeg = 4, partBytes = 2000, port = 0, captions = false } = {}) {
   const t0 = Date.now();
   const seen = { join: 0, beat: 0, leave: 0, events: 0, say: 0, vote: 0, register: 0, backlog: 0, part: 0, blocking: 0 };
   const partsNow = () => Math.floor((Date.now() - t0) / partMs);
@@ -60,8 +61,18 @@ export function startFake({ partMs = 200, partsPerSeg = 4, partBytes = 2000, por
     if ((m = p.match(/^\/api\/webinars\/([^/]+)\/events$/))) {
       seen.events++;
       res.writeHead(200, { "content-type": "text/event-stream" });
-      res.write("retry: 2000\n\nevent: meta\ndata: {}\n\n");
-      const iv = setInterval(() => res.write('event: packet\ndata: {"kind":"chat"}\n\n: ping\n\n'), 1000);
+      res.write(`retry: 2000\n\nevent: meta\ndata: ${JSON.stringify({ controls: { serverCaptions: captions } })}\n\n`);
+      let n = 0;
+      const iv = setInterval(() => {
+        res.write('event: packet\ndata: {"kind":"chat"}\n\n: ping\n\n');
+        // { captions }: a final caption line every second (and its partial first), as the API relays them.
+        if (captions) {
+          const id = `spk:${++n}`;
+          for (const partial of [true, false]) {
+            res.write(`event: packet\ndata: ${JSON.stringify({ from: { identity: "spk", name: "Host" }, id, kind: "caption", text: `line ${n}`, ...(partial ? { partial } : {}) })}\n\n`);
+          }
+        }
+      }, 1000);
       res.on("close", () => clearInterval(iv));
       return;
     }

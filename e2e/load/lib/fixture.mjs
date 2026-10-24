@@ -41,7 +41,7 @@ async function findUser(admin, email) {
 }
 
 /** Creates and enables the test host. Returns { email, password, id }. */
-export async function createTestHost(api, admin, run, { sfuProject } = {}) {
+export async function createTestHost(api, admin, run, { sfuProject, captions = false } = {}) {
   const email = `host-${run}@${TEST_DOMAIN}`;
   const password = randomBytes(18).toString("base64url");
   const pub = new Session(api, "signup");
@@ -56,11 +56,15 @@ export async function createTestHost(api, admin, run, { sfuProject } = {}) {
   await admin.call("PATCH", `/admin/users/${u.id}/host`, { canHost: true });
   await admin.call("PATCH", `/admin/users/${u.id}/features`, { feature: "instant_webinar", enabled: true });
   if (sfuProject) await admin.call("PATCH", `/admin/users/${u.id}/sfu`, { project: sfuProject });
+  // Server captions are their own per-host switch (types.FeatureCaptions, on by default since
+  // migration 0142); said explicitly so a changed default cannot quietly turn the check into an
+  // on-device one. AI stays off: the agent does not need it (PR #711).
+  if (captions) await admin.call("PATCH", `/admin/users/${u.id}/features`, { feature: "captions", enabled: true });
   return { email, password, id: u.id };
 }
 
 /** The instant-webinar body the web's "Start now" button sends (host-webinars-screen.tsx). */
-export function webinarInput(topic, { delivery = "edge", attendeeLimit = 200 } = {}) {
+export function webinarInput(topic, { delivery = "edge", attendeeLimit = 200, captions = false } = {}) {
   return {
     topic,
     summary: "Automated load test. Not a real session.",
@@ -87,7 +91,8 @@ export function webinarInput(topic, { delivery = "edge", attendeeLimit = 200 } =
       qAndA: true,
       attendeeChat: true,
       raiseHand: true,
-      captions: false,
+      // "Live captions" (run.mjs --captions): the caption agent joins at go-live.
+      captions,
       multistream: false,
       postWebinarSurvey: false,
       emailReminders: false,
@@ -104,7 +109,7 @@ export function webinarInput(topic, { delivery = "edge", attendeeLimit = 200 } =
       qaEnabled: true,
       raiseHandEnabled: true,
       reactionsEnabled: true,
-      captionsEnabled: false,
+      captionsEnabled: captions,
       serverCaptions: false,
       aiEnabled: false,
       aiAvailable: false,

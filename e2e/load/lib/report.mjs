@@ -29,6 +29,8 @@ export function hlsTable(steps) {
     [(s) => (lat(s, "liveLatency", "p95") ?? 0) / 1000, "live95s"],
     [(s) => s.eventsOpen, "sseOpen"],
     [(s) => s.counts?.beatFail ?? 0, "beatFail"],
+    // Caption lines received over the events stream, summed over viewers (run.mjs --captions).
+    [(s) => s.counts?.caption ?? 0, "captions"],
     ["mbps", "Mbit/s"],
     [(s) => s.cpuPct, "cpu%"],
     [(s) => s.maxLoopDelayP99Ms, "loop99"],

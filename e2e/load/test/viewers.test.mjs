@@ -39,3 +39,34 @@ for (const workers of [1, 2]) {
     }
   });
 }
+
+test("captions over the events stream: every viewer and the tap count them", async () => {
+  const { EdgeCaptionTap, edgeDelivery } = await import("../captions.mjs");
+  const fake = await startFake({ captions: true });
+  const tap = new EdgeCaptionTap({ api: `${fake.url}/api`, slug: "lt-slug", joinKey: "TAP" }).start();
+  try {
+    const res = await runHlsViewers({
+      api: `${fake.url}/api`,
+      slug: "lt-slug",
+      keys: ["K1", "K2", "K3"],
+      steps: [3],
+      rampMs: 300,
+      holdMs: 3500,
+      workers: 1,
+      log: () => {},
+    });
+    const s = res.steps[0];
+    // The last of the ramp may open its stream just after the hold begins: not comparable, left out.
+    assert.ok(s.capHoldViewers >= 2, `viewers on the stream all hold: ${s.capHoldViewers}`);
+    assert.ok(s.capHoldFinals >= 2 * s.capHoldViewers, `finals in the hold: ${s.capHoldFinals}`);
+    assert.ok(s.counts.caption >= 9 && s.counts.captionPartial >= 9, JSON.stringify(s.counts));
+    await tap.stop();
+    assert.ok(tap.events.filter((e) => !e.partial).length >= 3);
+    assert.deepEqual(tap.meta.map((m) => m.serverCaptions), [true]);
+    const d = edgeDelivery(s, s, tap.events, 300);
+    assert.ok(d.ratio > 0.6 && d.ratio <= 1.5, JSON.stringify(d));
+  } finally {
+    await tap.stop();
+    await fake.close();
+  }
+});
