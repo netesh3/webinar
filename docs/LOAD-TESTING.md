@@ -121,7 +121,7 @@ ssh root@<ip> 'tail -f /var/log/loadgen-setup.log'      # until "ready"
   - Inbound transfer is free.
 - The test also costs:
   - **CDN egress:** 1000 viewers × ~1.8 Mbit/s (1700 kbit/s video + audio) × 10 min ≈ 135 GB through the pull zone, about $1–4 at Bunny's Asia rates.
-  - **Video-box egress:** small through the CDN (origin shield). With `--origin`, all of it comes from the box's transfer pool instead.
+  - **Video-box egress:** small through the CDN. Bunny's request coalescing collapses the viewers' requests into about one copy of the stream (1.2 Mbit/s of MediaMTX HLS out at 1,010 viewers on 24 Oct). The origin shield is off: Bunny offers shield locations only in Paris and the US. With `--origin`, all of it comes from the box's transfer pool instead.
   - The box itself, which is up for the session as usual.
 
 ### 2. A dry run, then the step plan
@@ -137,7 +137,7 @@ node run.mjs --web https://webinarliv.com --dry-run --i-know-this-is-prod   # pl
 Before each run against production:
 
 - check that no customer session is live: admin **Sessions**, or `/api/internal/live-status`;
-- remember that a run starts the on-demand box if it is down, about 2–3 min. `run.mjs` waits for the audience stream.
+- remember that a run starts the on-demand box if it is down. That took **about 4 min** on 24 Oct (go-live to the presenter publishing). `run.mjs` waits for the audience stream. But `presenter.mjs` waits only **60 s** for the "Join the webinar" button, so with presenters on a cold box it fails (run 1a on 24 Oct). Raise that `waitFor` to 300000 ms (run 6 was run with that local patch), or start the box first.
 
 | # | Command | Looks for |
 |---|---|---|
@@ -145,7 +145,7 @@ Before each run against production:
 | 2 | `... --steps 50,200 --ramp 30s --hold 120s --api-load` | Chat fan-out to 200 event streams; API p95 |
 | 3 | `... --steps 50,200,500 --ramp 30s --hold 120s --api-load --presenters 2` | Two presenters, 500 viewers |
 | 4 | `... --steps 50,200,500,1000 --ramp 30s --hold 120s --api-load --presenters 3 --screen-share --workers 8` | The target. If `Mbit/s` flattens or the generator warns, split the viewers (below) |
-| 5 | `... --steps 50,200,500 --origin https://152.42.156.192.sslip.io/live` | The box alone, without the CDN: its own LL-HLS ceiling |
+| 5 | `... --steps 50,200,500 --origin https://<box>.sslip.io/live` | The box alone, without the CDN: its own LL-HLS ceiling |
 | 6 | `node webrtc-attendees.mjs --web https://webinarliv.com --kind meeting --steps 3,6,9 --hold 60s --i-know-this-is-prod` | A 10-person meeting (host + 9), camera on, mic muted |
 
 Add `--low-latency` to steps 1–5 to measure LL playback, which is what the box serves (`hlsVariant: lowLatency`, 1 s segments, 500 ms parts).
@@ -157,6 +157,14 @@ Add `--low-latency` to steps 1–5 to measure LL playback, which is what the box
 3. both generators then step together.
 
 Split further with `--from N`. The server's viewer count covers all generators.
+
+**Several viewer generators** (as in the 24 Oct run 6: 1 presenter generator + 4 × 250 viewers):
+
+- `run.mjs` checks the total against `--max-viewers` (default 1,000; hard cap 5,000). Its own viewers plus `--extra-seats` count, so 10 + 1,000 extra needs `--max-viewers 1010` or more. `hls-viewers.mjs` has the same flag, per generator.
+- Give the copying time with `--extra-wait`, e.g. `360s`. `run.mjs` prints one command for all the extra seats; it is fine to change its `--steps` / `--ramp` / `--hold` per generator, as long as every generator keeps the same `--start-at`.
+- Give each generator its own slice with `--from`: with 4 × 250, use `--from 0`, `250`, `500` and `750`, each with `--steps ... ,250`. Steps count that generator's own viewers.
+- Keep the presenter generator free of viewers (a few for a reference are fine; they are useful as a control).
+- Check that the `audience stream:` line is the CDN host (`*.b-cdn.net`), not the box. On the morning of 24 Oct it was the box, and five runs measured origin-direct delivery without anyone noticing.
 
 **Interrupted?** Ctrl-C stops and cleans up. If the generator itself died, run `node run.mjs --cleanup results/<run>/state.json --i-know-this-is-prod`. The state file is 0600. It holds the throwaway test host's password; that account is deleted at cleanup.
 
@@ -199,7 +207,7 @@ PROBE_ADMIN_EMAIL=... PROBE_ADMIN_PASSWORD=... node e2e/load/run.mjs --web http:
 
 **The database** (Supabase): connections and CPU. Beats upsert `attendance_visits`, and chat fans out through `LISTEN/NOTIFY`.
 
-**The CDN** (Bunny): cache hit ratio on parts (should be near 100%) and origin requests per second.
+**The CDN** (Bunny): status codes (`4xx`, `503`) and origin requests per second. Bunny's cache-hit ratio is **not** a good health signal for LL-HLS: every blocking playlist reload is a new URL, and coalesced requests most likely count as misses (6.5% for the month, while the origin served about one stream). The offload signal is **origin egress**: `hls_muxers_outbound_bytes` and box network out should stay flat as viewers grow.
 
 ## Reading the results
 
@@ -221,8 +229,9 @@ Results are written to `results/<run>/`: `plan.json`, `results.json` (every step
 - **The generator is the first suspect.** Each step reports the generator's `cpu%` (summed over worker processes; 100 = one core) and event-loop p99 (`loop99`). The kit prints `WARNING` lines when they say the numbers are generator-bound (loop p99 > 200 ms, or CPU over 85% of the processes' cores). Believe them before believing a server limit.
 - **Bandwidth.** 1000 viewers at ~1.8 Mbit/s is ~1.8 Gbit/s into one droplet, more than a droplet can be relied on to pull. Watch `Mbit/s` against viewers × bitrate, and `iftop` on the generator. Split with `--extra-seats` at 500+.
 - **Connections.** Node's fetch pools keep-alive connections per process, so N viewers use fewer TCP and TLS connections than N browsers would. Connection setup at the CDN and the origin is under-tested. Request rates are not.
-- **One place.** Every viewer comes from one IP in BLR1, hits one CDN POP, and has near-zero RTT to the box. Real viewers are spread across India and mobile networks.
+- **One place, one IP per generator.** Every viewer on a generator comes from one IP in BLR1, hits one CDN POP, and has near-zero RTT to the box. Real viewers are spread across India and mobile networks. At 250 viewers per generator (about 3,000 requests/s from one IP) through Bunny, playlists failed with `400`/`503` while 10 viewers on another generator played cleanly (2026-10-24 run 6). Until that is explained, keep each generator at 125 or fewer viewers through the CDN, and run a single-IP control separately.
+- **Retries.** After a failed blocking playlist reload, a kit viewer waits 1 s and retries the same URL indefinitely. hls.js has its own retry and back-off policy, so a browser may recover differently. Confirm stalls with a real browser tab.
 - **No decoding, no ABR, no LL step-up.** The model follows the playlist and the network only. A viewer's CPU or a bad Wi-Fi link is not represented. Force `--low-latency` to test LL playback.
 - **Presenters** run in the same datacenter as the box (a perfect uplink), and their Chrome encodes in software on the generator.
 - **WebRTC webinar audiences** cannot be tested on the DigitalOcean box: every webinar there is edge. `webrtc-attendees --kind webinar` is for a server with standard delivery. Meetings (`--kind meeting`) are WebRTC everywhere. The default meeting cap is 10 (host included); probe-load raises the host's cap (admin `meeting-cap`, up to 50) when you ask for more.
-- **Not verified live yet.** Only local runs so far: a local API with LiveKit and a fake LL-HLS origin, a production web build, 2 presenters at 720p30, 30 viewers over 2 processes, and a 3-tab meeting. The first production run should be step 1 of the plan.
+- **Production runs so far:** [2026-10-24-report.md](load-tests/2026-10-24-report.md) (runs 1-5, origin-direct: read its correction note) and [2026-10-24-run6-cdn-1000.md](load-tests/2026-10-24-run6-cdn-1000.md) (1,010 viewers through the CDN).
