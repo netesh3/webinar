@@ -7,7 +7,7 @@ import {
 } from "@livekit/track-processors";
 import { LOW_LIGHT_GLSL, LOW_LIGHT_LIFT } from "./low-light-curve";
 import { HumanSeg, loadHumanSeg, type Matte } from "./humanseg";
-import { backgroundLoadingView } from "./background-loading";
+import { backgroundLoadingView, setCameraCovered } from "./background-loading";
 import { PresenterLock, type FaceBox } from "./presenter-lock";
 import { browserUprightPlan, capLongSide, uprightSize } from "./frame-orientation";
 export { needsUprightCopy } from "./frame-orientation";
@@ -2062,7 +2062,20 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     await this.dispose();
   }
 
+  /** Whether the frame being handled went out as the dark frame (see setCameraCovered). */
+  private coverSent = false;
+
   transform(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
+    this.coverSent = false;
+    try {
+      this.transformFrame(frame, controller);
+    } finally {
+      // Every frame says whether the camera is covered: the room's note keys on this.
+      setCameraCovered(this.coverSent);
+    }
+  }
+
+  private transformFrame(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
     if (this.disposed) {
       frame.close();
       return;
@@ -2103,6 +2116,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       if (covered) {
         frame.close();
         this.lastSent = covered.timestamp;
+        this.coverSent = true;
         controller.enqueue(covered);
         return;
       }
@@ -2657,6 +2671,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       if (!covered) return false;
       frame.close();
       this.lastSent = covered.timestamp;
+      this.coverSent = true;
       controller.enqueue(covered);
       return true;
     }
@@ -2769,6 +2784,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
   }
 
   private dispose(): Promise<void> {
+    // No frames from this processor any more: nothing of it is covering the camera.
+    setCameraCovered(false);
     if (this.disposed) return Promise.resolve();
     this.disposed = true;
     this.modelWaiting?.frame.close();

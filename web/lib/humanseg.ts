@@ -101,9 +101,8 @@ function loadOrt(): Promise<Ort> {
  * given up on — and competed with the next attempt for the same slow connection. */
 let attemptSeq = 0;
 
-async function downloadFiles(): Promise<{ runtime: Uint8Array; model: Uint8Array }> {
+async function downloadFiles(pair: AbortController): Promise<{ runtime: Uint8Array; model: Uint8Array }> {
   const attempt = ++attemptSeq;
-  const pair = new AbortController();
   const total = BACKGROUND_FILES.runtime.bytes + BACKGROUND_FILES.model.bytes;
   const got = { runtime: 0, model: 0 };
   const report = () => {
@@ -137,7 +136,17 @@ let shared: Promise<Shared> | null = null;
 function loadShared(): Promise<Shared> {
   shared ??= (async () => {
     const began = performance.now();
-    const [ort, files] = await Promise.all([loadOrt(), downloadFiles()]);
+    /* The pair's controller lives here, not in downloadFiles: anything that fails this attempt —
+     * either file, or the runtime's own JS chunk failing to import — cancels the downloads, or
+     * they ran on and reported "downloading" over the "failed" below. */
+    const pair = new AbortController();
+    const [ort, files] = await Promise.all([
+      loadOrt().catch((err: unknown) => {
+        pair.abort();
+        throw err;
+      }),
+      downloadFiles(pair),
+    ]);
     const downloadedMs = Math.round(performance.now() - began);
     setDownloadProgress({ phase: "starting", loaded: files.runtime.byteLength + files.model.byteLength, total: files.runtime.byteLength + files.model.byteLength });
     ort.env.wasm.wasmBinary = files.runtime;

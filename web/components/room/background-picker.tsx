@@ -2,7 +2,7 @@
 
 import { Track, type LocalVideoTrack } from "livekit-client";
 import { useLocalParticipant } from "@livekit/components-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import {
   effectsPausedForCpu,
   setEffectsPausedForCpu,
@@ -24,8 +24,10 @@ import {
   type BackgroundChoice,
 } from "@/lib/backgrounds";
 import {
+  cameraCovered,
   progressFraction,
   setBackgroundLoadingView,
+  subscribeCameraCovered,
   type DownloadProgress,
 } from "@/lib/background-loading";
 import { Alert, Spinner } from "../controls";
@@ -123,7 +125,11 @@ export function VirtualBackground() {
     heldCamera && status.phase === "preparing" && download.phase !== "idle" && download.phase !== "ready";
   /* Given up, with the dark frame still going out: the choice is the presenter's — try again,
    * or start the camera without the background. Said here instead of the generic error toast. */
-  const failedHold = heldCamera && status.phase === "failed" && status.error !== IMAGE_FAILED_TEXT;
+  /* Keyed on the camera actually going out as the dark frame (cameraCovered), not on the status
+   * alone: a background can fail in ways that leave the camera live — a browser that cannot run
+   * backgrounds attaches no processor — and then the generic error toast is the right thing. */
+  const covered = useSyncExternalStore(subscribeCameraCovered, cameraCovered, () => false);
+  const failedHold = heldCamera && status.phase === "failed" && covered && status.error !== IMAGE_FAILED_TEXT;
 
   /* The same failure the pre-join screen shows, said out loud in the room.
    *

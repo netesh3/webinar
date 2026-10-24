@@ -108,6 +108,31 @@ export function subscribeLoadingView(cb: () => void): () => void {
   return () => viewListeners.delete(cb);
 }
 
+// ------------------------------------------------------------------ is the dark frame going out
+
+/* Whether the camera is actually sending the dark frame right now — set by SoftSegmenter on
+ * every frame it handles. The room's "your camera is paused" note keys on this rather than on
+ * the background's status, because a background can fail in ways that leave the camera going
+ * out as it is (a browser that cannot run backgrounds at all attaches no processor), and the
+ * note must never tell a presenter their camera is paused while the audience can see them. */
+let covering = false;
+const coveringListeners = new Set<() => void>();
+
+export function cameraCovered(): boolean {
+  return covering;
+}
+
+export function setCameraCovered(next: boolean): void {
+  if (next === covering) return;
+  covering = next;
+  for (const l of coveringListeners) l();
+}
+
+export function subscribeCameraCovered(cb: () => void): () => void {
+  coveringListeners.add(cb);
+  return () => coveringListeners.delete(cb);
+}
+
 // ------------------------------------------------------------------ fetching
 
 export class DownloadStalledError extends Error {
