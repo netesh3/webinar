@@ -1,11 +1,10 @@
 # Adding a second video server (SFU)
 
-Today production runs one self-hosted LiveKit SFU on Hetzner (fsn1), configured with the
-legacy `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` secrets. Two more are registered in
-`LIVEKIT_PROJECTS` for testing: `india` (Mumbai, GCP) and `do-blr` (Bangalore, DigitalOcean —
-see [deploy/digitalocean/README.md](../deploy/digitalocean/README.md)). Every webinar created
-so far is pinned to the project id **`default`**. Nothing here is needed until a second server
-exists.
+Production video runs on `do-blr`, the on-demand DigitalOcean box in Bangalore
+([deploy/digitalocean/README.md](../deploy/digitalocean/README.md), `SFU_BOX_PROJECT`).
+`india` (Mumbai, GCP) is a test project. The old Hetzner SFU (fsn1), project id **`default`**
+from the legacy `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` secrets, is sunset
+(2026-10-24): it takes no new rooms, and its entry is removed once nothing is pinned to it.
 
 The API supports several self-hosted LiveKit projects at once (`LIVEKIT_PROJECTS`), and an
 admin can send one host's new webinars to a chosen project from the admin Accounts list
@@ -16,8 +15,14 @@ admin can send one host's new webinars to a chosen project from the admin Accoun
 - A webinar's room is pinned to a project on its first join (`webinars.sfu_project`). Every
   participant of that webinar then uses that project. **A pinned room never moves.**
 - The project for that first pin is the **host's assigned project** (`users.sfu_project`, set by
-  an admin) when it is configured and enabled; otherwise the first enabled project in
-  `LIVEKIT_PROJECTS` order.
+  an admin) when it is configured and enabled; otherwise `SFU_BOX_PROJECT` when set; otherwise
+  the first enabled project in `LIVEKIT_PROJECTS` order.
+- **Hetzner takes no new rooms** (`api/internal/api/sfu_retired.go`): a project whose provider is
+  `hetzner` is left out of that order while any other project is enabled, and cannot be
+  assigned. The provider is the entry's `"provider"` (`do`, `gcp`, `hetzner`), else guessed from
+  its id/label, where **anything unrecognised reads as Hetzner** — so always give a new entry
+  its `"provider"`. Draft and scheduled webinars still pinned to Hetzner move at boot or at their
+  next join (not while LiveKit reports people in the old room); live and ended ones stay.
 - A disabled project still serves the webinars already pinned to it; it just takes no new ones.
   If a host's assigned project is disabled or removed, their new webinars quietly use the
   default order.
@@ -26,9 +31,9 @@ admin can send one host's new webinars to a chosen project from the admin Accoun
 
 ## `LIVEKIT_PROJECTS`
 
-Keep the current box as `default` (with today's legacy values) so existing webinars keep
-working, and add the new project. Order decides where unassigned hosts go: put `default` first
-to keep everyone on Hetzner and only send assigned hosts to the new project.
+Ids are permanent (they are in the database). Order decides where unassigned hosts go when
+`SFU_BOX_PROJECT` is not set. The template below is the general shape (a `default` entry from
+the legacy trio plus a second server, which should state `"provider"`).
 
 <!-- LIVEKIT_PROJECTS template: begin -->
 ```json
@@ -74,7 +79,7 @@ public IPv4 the box itself sees, ≥4 vCPU / 8 GB). Inbound ports: 22, 80, 443, 
    - **Edge delivery** for rooms on that box: `EDGE_PLAYBACK_BASE` is one pull zone mirroring
      one origin, so give the project its own `"edgePlaybackBase"` — the box's `/live` (e.g.
      `https://<ip>.sslip.io/live`) or a pull zone of its own. It wins over `EDGE_PLAYBACK_BASE`.
-4. Automatic redeploys: the **Deploy LiveKit (Hetzner)** workflow only targets the Hetzner box.
+4. Automatic redeploys: the **Deploy LiveKit (DigitalOcean)** workflow only targets the DO box.
    Add a matrix entry (its own SSH secrets) when the second box should be redeployed by CI.
 
 Webhooks need nothing new: the second box posts to the same `/api/webhooks/livekit`, signed

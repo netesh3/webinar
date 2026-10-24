@@ -224,7 +224,7 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And a recording's days left and the storage meter: "6.2 of 10 GB", warn from 90%.
 	cd web && node --experimental-strip-types --no-warnings lib/recording-retention.test.mts
 	# And which delivery the schedule form and the instant button offer: edge only on a
-	# GCP or DO video server, the Standard / Edge choice on Hetzner with the switch.
+	# GCP or DO video server, the Standard / Edge choice on any other server with an origin.
 	cd web && node --experimental-strip-types --no-warnings lib/delivery-policy.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/instant-delivery.test.mts
 	# And a meeting's room: no raise hand or stream tools, a guest entering muted with the

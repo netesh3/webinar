@@ -1,6 +1,7 @@
 # Deploy the self-hosted LiveKit stack (and server captions) to the DigitalOcean video server
 # (sfu-blr-1, LiveKit project do-blr — see deploy/digitalocean/README.md).
-# The same files and redeploy.sh as Deploy LiveKit (Hetzner); a second box, not a second stack.
+# The files and redeploy.sh in deploy/livekit-hetzner/ (named after the first box, now sunset;
+# the stack is shared and this is the only workflow that deploys it).
 #
 # Triggers:
 #   - workflow_dispatch — manual deploy from the Actions tab
@@ -10,7 +11,7 @@
 #   DO_SSH_HOST         — root@152.42.156.192 (the reserved IP)
 #   DO_SSH_PRIVATE_KEY  — a deploy key whose public half is in the box's
 #                         /root/.ssh/authorized_keys (not anybody's personal key)
-#   GRAFANA_ADMIN_PASSWORD — optional, as for Hetzner
+#   GRAFANA_ADMIN_PASSWORD — optional: the box's local Grafana login (user "admin")
 #   GRAFANA_CLOUD_TOKEN — optional: Grafana Cloud access policy token for Alloy (metrics + logs)
 #
 # Repository variables (optional, with GRAFANA_CLOUD_TOKEN; all five or Alloy stays off):

@@ -1,9 +1,9 @@
 /* What delivery the schedule form and the instant button offer (docs/edge-delivery.md).
  *
  * The server decides, from where the webinar's room is or will be (GET /api/host/delivery):
- * on a GCP or DigitalOcean video server every webinar is edge and there is no choice; on
- * Hetzner a host with the edge_delivery switch chooses Standard or Edge; anyone else is
- * standard. Meetings, simulive sessions and Zoom are always standard. The server applies
+ * on a GCP or DigitalOcean video server (production) every webinar is edge and there is no
+ * choice; on any other server with a live origin every host chooses Standard or Edge; without
+ * one it is standard. Meetings, simulive sessions and Zoom are always standard. The server applies
  * the same rule on every save, so this only decides what to show and what to send. */
 
 import type { DeliveryPolicy } from "./api-types";

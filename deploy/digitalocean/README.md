@@ -206,8 +206,10 @@ Keys are in `/opt/livekit/.env.keys` on the box (not in git). `docker compose ps
 
 ## Registration
 
-Appended to the `LIVEKIT_PROJECTS` GitHub secret, after `default` and `india`, so new rooms still
-go to Hetzner unless an admin assigns a host to `do-blr` (Admin → Accounts → Video server):
+Appended to the `LIVEKIT_PROJECTS` GitHub secret, after `default` and `india`. Since the Hetzner
+sunset (2026-10-24, `api/internal/api/sfu_retired.go`) new rooms go here whatever the order:
+`SFU_BOX_PROJECT` is put first, and a Hetzner project (`default`) takes no new rooms while any
+other project does. An admin can still assign a host to `india` (Admin → Accounts → Video server):
 
 ```json
 {
@@ -273,12 +275,13 @@ speakers) is the first thing to load-test; `CAPTIONS_MODEL=base.en` halves it. M
 
 Every webinar (one-off, instant or a recurring series) on this box is **edge**: the stage on
 WebRTC, the audience on LL-HLS through Bunny. The schedule form offers no Standard / WebRTC
-choice for it, the API stores edge whatever a save sends, and the `edge_delivery` account switch
-is not needed (it still gates edge on Hetzner). The same holds for the Mumbai GCP project. The
+choice for it and the API stores edge whatever a save sends; there is no account switch (the
+"Edge delivery (beta)" setting went with Hetzner). The same holds for the Mumbai GCP project. The
 provider comes from the project's `"provider": "do"` (or the id/label: `do-blr` reads as DO). A
 webinar not opened yet is judged by where it will go: the host's assigned project (Admin →
-Accounts → Video server) when it is taking rooms, else the first enabled one. At boot the API
-moves draft and scheduled webinars headed here onto edge; live and ended ones, meetings,
+Accounts → Video server) when it is taking rooms and not Hetzner, else this box. At boot the API
+moves draft and scheduled webinars still pinned to Hetzner here, then moves draft and scheduled
+webinars headed here onto edge; live and ended ones, meetings,
 simulive and Zoom are left alone. Meetings stay on WebRTC. See `docs/edge-delivery.md`.
 
 Capacity: each concurrent webinar runs one composite mix on this c-4 (~1–1.5 cores), so two or

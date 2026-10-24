@@ -9,9 +9,9 @@ This is the **current production-shaped** deployment: managed frontend, API, dat
 | Frontend (Next.js 16 via OpenNext) | Cloudflare Workers | https://webinarliv.com (also https://webinar-web.ganesh-s-p006.workers.dev) |
 | API (Go) | Google Cloud Run · `asia-south1` | https://webcast-api-65278594492.asia-south1.run.app |
 | Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
-| Media SFU | Self-hosted LiveKit on Hetzner · `webcast-livekit` (CX33, fsn1) | `wss://88.198.141.104.sslip.io` |
+| Media SFU | Self-hosted LiveKit on an on-demand DigitalOcean droplet · `sfu-blr-1` (c-4, blr1), LiveKit project `do-blr` ([deploy/digitalocean](../deploy/digitalocean/README.md)). The Hetzner box (`webcast-livekit`, `88.198.141.104`) is sunset (2026-10-24): no new room goes there | `wss://152.42.156.192.sslip.io` |
 | Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/selfreminder-rnix/webcast/…` |
-| CI / deploy | GitHub Actions → Cloud Run, Cloudflare Workers, Hetzner LiveKit | [cloudrun-deploy.yml](../.github/workflows/cloudrun-deploy.yml) · [cloudflare-workers-deploy.yml](../.github/workflows/cloudflare-workers-deploy.yml) · [livekit-hetzner-deploy.yml](../.github/workflows/livekit-hetzner-deploy.yml) |
+| CI / deploy | GitHub Actions → Cloud Run, Cloudflare Workers, the DigitalOcean video box | [cloudrun-deploy.yml](../.github/workflows/cloudrun-deploy.yml) · [cloudflare-workers-deploy.yml](../.github/workflows/cloudflare-workers-deploy.yml) · [livekit-do-deploy.yml](../.github/workflows/livekit-do-deploy.yml) |
 
 GCP project: **`selfreminder-rnix`** (display name **Webinar Liv**). Deploy SA: `webcast-deploy@selfreminder-rnix.iam.gserviceaccount.com` (JSON key stored as GitHub secret `GCP_SA_KEY`). Repo variables **`GCP_PROJECT=selfreminder-rnix`**, **`GCP_REGION=asia-south1`**. Do not deploy Webinar Liv API into shared `ai-project-490516` (Sancharees / AI Studio).
 
@@ -106,13 +106,13 @@ flowchart TD
 | Actions → **Deploy API (Cloud Run)** → Run workflow | API → Cloud Run (manual) |
 | Push to `main` changing `web/**` or `.github/workflows/cloudflare-workers-deploy.yml` | Frontend → Cloudflare Workers (auto) |
 | Actions → **Deploy Web (Cloudflare Workers)** → Run workflow | Frontend → Cloudflare Workers (manual) |
-| Push to `main` changing `deploy/livekit-hetzner/**` or `.github/workflows/livekit-hetzner-deploy.yml` | LiveKit → Hetzner `/opt/livekit` (auto; does **not** overwrite `.env.keys`) |
-| Actions → **Deploy LiveKit (Hetzner)** → Run workflow | LiveKit → Hetzner (manual) |
+| Push to `main` changing `deploy/livekit-hetzner/**`, `deploy/captions/**` or `.github/workflows/livekit-do-deploy.yml` | LiveKit → the DigitalOcean box `/opt/livekit` (auto, skipped while the box is down; does **not** overwrite `.env.keys`) |
+| Actions → **Deploy LiveKit (DigitalOcean)** → Run workflow | LiveKit → the DigitalOcean box (manual) |
 | `cd web && npm run deploy` (OpenNext) | Frontend → Cloudflare Workers (local / fallback) |
 
 Required GitHub **secrets** (Cloud Run): `GCP_SA_KEY`, `DATABASE_URL`, `SESSION_SECRET`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or `LIVEKIT_PROJECTS`).  
 Required (Cloudflare Workers): `CLOUDFLARE_API_TOKEN`.  
-Required (Hetzner LiveKit): `HETZNER_SSH_HOST`, `HETZNER_SSH_PRIVATE_KEY`. Optional: `HCLOUD_TOKEN` (future server poweron).  
+Required (DigitalOcean video box): `DO_SSH_HOST`, `DO_SSH_PRIVATE_KEY`, `DO_API_TOKEN` (the API creates and deletes the droplet), repo variable `SFU_BOX_PROJECT`. The Hetzner secrets (`HETZNER_SSH_HOST`, `HETZNER_SSH_PRIVATE_KEY`) are no longer read by any workflow.  
 Optional: `CORS_ORIGINS`, `WEB_BASE_URL`, `ADMIN_EMAILS` / `ADMIN_PASSWORD` (bootstrap production admin on fresh DB).  
 Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`), `CLOUDFLARE_ACCOUNT_ID`.
 
@@ -129,7 +129,6 @@ While anything in scope is live, the job prints the blocking slugs and re-checks
 | Deploy API (Cloud Run) | any session | proceeds when the API is down (`/readyz` fails) or predates the endpoint (404), because the deploy is the fix; otherwise retries 10 min, then fails |
 | Deploy Web (Cloudflare Workers) | any session | retries 10 min, then **fails** |
 | Deploy LiveKit (DigitalOcean) | sessions on `do-blr` (var `DO_LIVEKIT_PROJECT`) | retries 10 min, then **fails** (the box restart would cut off everyone on it) |
-| Deploy LiveKit (Hetzner) | sessions on `default` (var `HETZNER_LIVEKIT_PROJECT`) | retries 10 min, then **fails** |
 
 The 10-minute retry covers a merge that ships the API and a box change together: the box deploy waits while the new API rolls out.
 

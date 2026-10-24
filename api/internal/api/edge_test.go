@@ -20,7 +20,7 @@ import (
 
 /* Edge delivery (docs/edge-delivery.md): the audience watches LL-HLS and reads session events
  * from an SSE stream instead of LiveKit. These tests pin the contract that matters for running
- * it beside the existing modes: it is off unless switched on, a standard webinar is untouched,
+ * it beside the existing modes: it needs a live origin, a standard webinar is untouched,
  * an edge viewer never gets a LiveKit token, and everything the room says still reaches them —
  * through Postgres LISTEN/NOTIFY, the same path production uses across instances. */
 
@@ -29,12 +29,11 @@ func edgeConfig(c *config.Config) {
 	c.BroadcastHLSBase = "https://live.test/live"
 }
 
-// edgeHost signs up a host with the edge switch on and returns their account.
+/* edgeHost signs up a host and returns their account. Any host may choose edge: the
+ * per-account "Edge delivery (beta)" switch is gone (migrations/0159). */
 func edgeHost(t *testing.T, h *harness, email string) types.Account {
 	t.Helper()
-	acct := h.signup("Edge Host", email, true)
-	grantFeature(t, h, acct.ID, types.FeatureEdgeDelivery)
-	return acct
+	return h.signup("Edge Host", email, true)
 }
 
 func edgeWebinar(h *harness, topic string) types.Webinar {
@@ -161,13 +160,14 @@ func syncStream(t *testing.T, h *harness, slug string, ch <-chan sseEvent) {
 	t.Fatal("event stream never received a live metadata event")
 }
 
-func TestEdgeDeliveryIsOffWithoutTheSwitch(t *testing.T) {
-	h := newHarness(t, edgeConfig)
+// Edge needs a live origin to push the mix to; without one it is a field error.
+func TestEdgeDeliveryNeedsALiveOrigin(t *testing.T) {
+	h := newHarness(t)
 	h.signup("Plain Host", "edge-plain@test.dev", true)
 
-	res, raw := h.do(http.MethodPost, "/api/host/webinars", edgeInput("Edge without switch"))
+	res, raw := h.do(http.MethodPost, "/api/host/webinars", edgeInput("Edge without origin"))
 	if res.StatusCode == http.StatusCreated || res.StatusCode == http.StatusOK {
-		t.Fatalf("edge saved without the switch: %d %s", res.StatusCode, raw)
+		t.Fatalf("edge saved without an origin: %d %s", res.StatusCode, raw)
 	}
 	if !strings.Contains(string(raw), "delivery") {
 		t.Fatalf("expected a delivery field error, got %s", raw)
@@ -442,8 +442,8 @@ func TestEdgeOccupancyAndRemoval(t *testing.T) {
 }
 
 /* The instant button's Standard / Edge choice: an instant create goes through the same
- * delivery check as a scheduled one, so edge is stored for a host with the switch and
- * refused, as a delivery field error, for a host without it. */
+ * delivery check as a scheduled one, so edge is stored for any host where there is a live
+ * origin and refused, as a delivery field error, where there is none. */
 func TestInstantCreateCarriesEdgeDelivery(t *testing.T) {
 	h := newHarness(t, edgeConfig)
 	acct := edgeHost(t, h, "edge-instant@test.dev")
@@ -463,13 +463,13 @@ func TestInstantCreateCarriesEdgeDelivery(t *testing.T) {
 		t.Fatalf("instant delivery = %q, want edge", wb.Delivery)
 	}
 
-	// Without the switch the same request is refused on the delivery field.
-	h2 := newHarness(t, edgeConfig)
+	// Without a live origin the same request is refused on the delivery field.
+	h2 := newHarness(t)
 	plain := h2.signup("Instant Plain", "edge-instant-plain@test.dev", true)
 	grantFeature(t, h2, plain.ID, types.FeatureInstantWebinar)
 	res, raw = h2.do(http.MethodPost, "/api/host/webinars", in)
 	if res.StatusCode == http.StatusCreated || res.StatusCode == http.StatusOK {
-		t.Fatalf("instant edge saved without the switch: %d %s", res.StatusCode, raw)
+		t.Fatalf("instant edge saved without an origin: %d %s", res.StatusCode, raw)
 	}
 	if !strings.Contains(string(raw), "delivery") {
 		t.Fatalf("expected a delivery field error, got %s", raw)

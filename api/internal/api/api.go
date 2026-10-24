@@ -217,8 +217,6 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		log.Info("email disabled: set SMTP_HOST and SMTP_FROM to send approval invitations")
 	}
 
-	log.Info("livekit projects", "configured", sfu.IDs(), "accepting_new_rooms", sfu.Candidates())
-
 	var youtube *yt.Client
 	if cfg.YouTubeOAuthEnabled() {
 		youtube = yt.New(cfg.GoogleClientID, cfg.GoogleClientSecret)
@@ -306,7 +304,12 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 	}
 	srv.rt = bus
 	if sfu != nil {
-		srv.sfu = edgePool{SFUPool: sfu, s: srv}
+		// routingPool keeps new rooms off the retired Hetzner server (sfu_retired.go).
+		srv.sfu = edgePool{SFUPool: routingPool{SFUPool: sfu, s: srv}, s: srv}
+	}
+	if srv.sfu != nil {
+		log.Info("livekit projects", "configured", srv.sfu.IDs(), "accepting_new_rooms", srv.sfu.Candidates(),
+			"retired", srv.retiredProjects())
 	}
 	return srv
 }
