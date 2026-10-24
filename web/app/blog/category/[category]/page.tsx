@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { BlogHeader, BlogShell, PostList } from "@/components/blog/blog-shell";
 import { POSTS } from "@/content/blog";
 import { CATEGORIES, CATEGORY_IDS, isCategory, postsInCategory } from "@/lib/blog";
+import { RSS_ALTERNATE } from "@/lib/seo";
 
 // Every category is known at build time; anything else is a 404, not a render.
 export const dynamicParams = false;
@@ -20,7 +21,7 @@ export async function generateMetadata({
   return {
     title: `${label} — Webinar Liv blog`,
     description: blurb,
-    alternates: { canonical: `/blog/category/${category}` },
+    alternates: { canonical: `/blog/category/${category}`, types: RSS_ALTERNATE },
     openGraph: { title: `${label} — Webinar Liv blog`, description: blurb, url: `/blog/category/${category}` },
   };
 }
