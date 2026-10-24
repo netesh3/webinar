@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDispatchHonoursRecipients(t *testing.T) {
@@ -90,4 +91,37 @@ func TestLocalBusDispatches(t *testing.T) {
 	}
 	bus.Start() // no connect func: a no-op
 	bus.Close()
+}
+
+/* A goodbye ends that viewer's streams opened before it, and nobody else's: not another
+ * viewer's, and not the stream a reload opened after it. It is never delivered as an event. */
+func TestByeEndsOnlyTheOlderStreamsOfThatViewer(t *testing.T) {
+	h := NewHub(nil)
+	old, cancelOld := h.Subscribe("w", "att_a")
+	defer cancelOld()
+	other, cancelOther := h.Subscribe("w", "att_b")
+	defer cancelOther()
+	elsewhere, cancelElse := h.Subscribe("w2", "att_a")
+	defer cancelElse()
+	cut := time.Now()
+	time.Sleep(5 * time.Millisecond)
+	reload, cancelReload := h.Subscribe("w", "att_a")
+	defer cancelReload()
+
+	if n := h.Dispatch(Bye("w", "att_a", cut)); n != 1 {
+		t.Fatalf("bye closed %d streams, want 1", n)
+	}
+	if _, open := <-old.C; open {
+		t.Fatal("the older stream got an event instead of being closed")
+	}
+	if len(other.C) != 0 || len(reload.C) != 0 || len(elsewhere.C) != 0 {
+		t.Fatal("a bye was delivered as an event")
+	}
+	if h.Count("w") != 2 || h.Count("w2") != 1 {
+		t.Fatalf("counts w=%d w2=%d, want 2 1", h.Count("w"), h.Count("w2"))
+	}
+	// A bye naming nobody is not "everyone".
+	if n := h.Dispatch(Event{Slug: "w", Kind: KindBye, Data: json.RawMessage(`{"before":9999999999999}`)}); n != 0 {
+		t.Fatalf("a bye with no recipients closed %d streams", n)
+	}
 }

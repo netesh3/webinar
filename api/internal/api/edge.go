@@ -410,9 +410,11 @@ func (s *Server) issueEdgeAudience(w http.ResponseWriter, r *http.Request, wb ty
 
 // -------------------------------------------------------------- the stream
 
-const (
-	// edgeHeartbeat keeps proxies (the Worker, Cloud Run's front end) from treating a quiet
-	// stream as dead, and lets the server notice a browser that went away.
+var (
+	/* edgeHeartbeat keeps proxies (the Worker, Cloud Run's front end) from treating a quiet
+	 * stream as dead. It does not reveal a browser that went away: behind those proxies the
+	 * write still succeeds. It is when a stream checks whether its viewer still beats
+	 * (edgeViewerGone). A var so the tests can shorten it (SetEdgeStreamTiming). */
 	edgeHeartbeat = 15 * time.Second
 	// edgeStreamLife ends a stream well before Cloud Run's request timeout, with an explicit
 	// "reconnect" event, so the browser reconnects on our schedule rather than after an error.
@@ -486,6 +488,7 @@ func (s *Server) handleEdgeEvents(w http.ResponseWriter, r *http.Request) {
 
 	sub, cancel := s.rt.Hub().Subscribe(slug, identity)
 	defer cancel()
+	opened := sub.Since
 
 	/* Connecting counts as a beat; the stream ENDING says nothing, so nothing is closed here.
 	 *
@@ -534,7 +537,17 @@ func (s *Server) handleEdgeEvents(w http.ResponseWriter, r *http.Request) {
 		case <-life.C:
 			write("reconnect", []byte("{}"))
 			return
-		case <-beat.C:
+		case now := <-beat.C:
+			/* Nobody has beaten for this viewer: behind the CDN a closed tab leaves the
+			 * stream open here, heartbeats and all (edge_idle.go). "reconnect" rather
+			 * than a bare end, so a browser that is in fact still there comes straight
+			 * back. */
+			if s.edgeViewerGone(r.Context(), slug, identity, opened, now) {
+				s.log.Info("edge events: ending a stream with no viewer behind it", "slug", slug,
+					"identity", identity, "open_for", now.Sub(opened).Round(time.Second).String())
+				write("reconnect", []byte("{}"))
+				return
+			}
 			if !write("", nil) {
 				return
 			}
@@ -584,9 +597,11 @@ func (s *Server) handleEdgeLeave(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusUnauthorized, "bad_token", "Join the webinar again.")
 		return
 	}
-	if err := s.store.CloseEdgeVisit(r.Context(), slug, identity, time.Now()); err != nil {
+	now := time.Now()
+	if err := s.store.CloseEdgeVisit(r.Context(), slug, identity, now); err != nil {
 		s.log.Warn("edge leave: close visit", "slug", slug, "error", err)
 	}
+	s.endEdgeStreams(r.Context(), slug, identity, now)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -681,7 +696,21 @@ func (s *Server) removeEdgeViewer(ctx context.Context, sfu RoomManager, slug, id
 	_ = s.sendRoomPacket(ctx, sfu, slug, []string{identity}, map[string]any{
 		"kind": "removed", "identity": identity, "at": time.Now().UnixMilli(),
 	})
+	// Their browser stops on the packet; the stream it leaves behind is ended here.
+	s.endEdgeStreams(ctx, slug, identity, time.Now())
 	s.log.Info("edge viewer removed", "slug", slug, "identity", identity)
+}
+
+/* endEdgeStreams closes identity's event streams on slug that opened at or before at, on
+ * every instance (realtime.KindBye). Behind the CDN the browser closing its stream does not
+ * close it here, so without this a goodbye left the stream (two goroutines and a hub
+ * subscription) open until edgeStreamLife. A stream opened after at (a reload) is untouched;
+ * one from another tab with the same seat opened earlier is ended and reconnects in seconds. */
+func (s *Server) endEdgeStreams(ctx context.Context, slug, identity string, at time.Time) {
+	if s.rt == nil || slug == "" || identity == "" {
+		return
+	}
+	s.rt.Publish(ctx, realtime.Bye(slug, identity, at))
 }
 
 /* mixTemplateURL is the composite page the room's mix egress loads.

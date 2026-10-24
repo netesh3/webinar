@@ -22,6 +22,7 @@ package realtime
 import (
 	"encoding/json"
 	"sync"
+	"time"
 )
 
 // Event kinds on the wire. They are also the SSE `event:` names the browser listens for.
@@ -34,7 +35,18 @@ const (
 	// KindRefetch says "something of this kind happened but was too large to carry" — the
 	// browser refetches the matching backlog over HTTP. Data is {"kind": "<packet kind>"}.
 	KindRefetch = "refetch"
+	/* KindBye ends the streams of the identities in To that opened before the time in Data
+	 * ({"before": unix milliseconds}). It is a control event, never written to a browser:
+	 * the viewer said goodbye (or was removed), and behind the CDN their stream would
+	 * otherwise stay open on whichever instance holds it until it reaches its full lifetime.
+	 * Streams opened after "before" are a reload or another tab, and are left alone. */
+	KindBye = "bye"
 )
+
+// ByeData is the payload of a KindBye event.
+type ByeData struct {
+	Before int64 `json:"before"`
+}
 
 /* Event is one thing to tell a webinar's viewers.
  *
@@ -71,6 +83,8 @@ const SubscriberBuffer = 64
 type Sub struct {
 	Slug     string
 	Identity string
+	// Since is when the stream subscribed.
+	Since time.Time
 	// C delivers events. Closed when the subscriber is dropped or cancelled.
 	C chan Event
 
@@ -99,7 +113,7 @@ func NewHub(onFirst func()) *Hub {
 // Subscribe registers a viewer and returns the subscription and its cancel. Calling cancel
 // more than once is safe.
 func (h *Hub) Subscribe(slug, identity string) (*Sub, func()) {
-	sub := &Sub{Slug: slug, Identity: identity, C: make(chan Event, SubscriberBuffer)}
+	sub := &Sub{Slug: slug, Identity: identity, Since: time.Now(), C: make(chan Event, SubscriberBuffer)}
 	h.mu.Lock()
 	set := h.subs[slug]
 	if set == nil {
@@ -132,6 +146,9 @@ func (h *Hub) remove(sub *Sub) {
  * stream handler ends that response so the browser reconnects and catches up from the HTTP
  * backlogs. One stalled connection must not delay a chat message for everyone else. */
 func (h *Hub) Dispatch(e Event) (delivered int) {
+	if e.Kind == KindBye {
+		return h.bye(e)
+	}
 	h.mu.Lock()
 	var full []*Sub
 	for sub := range h.subs[e.Slug] {
@@ -150,6 +167,33 @@ func (h *Hub) Dispatch(e Event) (delivered int) {
 		h.remove(sub)
 	}
 	return delivered
+}
+
+/* bye closes the subscriptions a KindBye names: each identity in To (never everyone — a bye
+ * with no recipients is ignored) whose stream opened before the cutoff. Returns how many. */
+func (h *Hub) bye(e Event) int {
+	var d ByeData
+	if len(e.To) == 0 || json.Unmarshal(e.Data, &d) != nil || d.Before <= 0 {
+		return 0
+	}
+	h.mu.Lock()
+	var gone []*Sub
+	for sub := range h.subs[e.Slug] {
+		if e.For(sub.Identity) && sub.Since.UnixMilli() <= d.Before {
+			gone = append(gone, sub)
+		}
+	}
+	h.mu.Unlock()
+	for _, sub := range gone {
+		h.remove(sub)
+	}
+	return len(gone)
+}
+
+// Bye is the KindBye event that ends identity's streams on slug opened at or before before.
+func Bye(slug, identity string, before time.Time) Event {
+	data, _ := json.Marshal(ByeData{Before: before.UnixMilli()})
+	return Event{Slug: slug, Kind: KindBye, To: []string{identity}, Data: data}
 }
 
 // Count is how many subscribers this process holds for a webinar.

@@ -185,6 +185,9 @@ type Config struct {
 	 * (the egress loads the template at <template>/clock) and on the edge player, so
 	 * glass-to-glass latency can be read off a screenshot. Off by default; a test aid. */
 	EdgeDebugClock bool
+	/* DebugGoroutines turns on GET /api/admin/debug/goroutines, this instance's goroutine
+	 * profile for an admin (api/debug_goroutines.go). Off by default (DEBUG_GOROUTINES). */
+	DebugGoroutines bool
 	/* EdgePlaybackLowLatency tells edge players the playback base is close to them (a CDN
 	 * pull zone in front of the origin), so LL-HLS can be used from the start. Off: players
 	 * start on standard HLS and only switch to LL-HLS when they measure fast requests, because
@@ -577,6 +580,7 @@ func Load() (Config, error) {
 		EdgePlaybackBase:            strings.TrimRight(env("EDGE_PLAYBACK_BASE", ""), "/"),
 		OpsAlertEmails:              splitAndTrim(env("OPS_ALERT_EMAILS", "")),
 		EdgeDebugClock:              strings.EqualFold(strings.TrimSpace(env("EDGE_DEBUG_CLOCK", "")), "true"),
+		DebugGoroutines:             strings.EqualFold(strings.TrimSpace(env("DEBUG_GOROUTINES", "")), "true"),
 		EdgePlaybackLowLatency:      strings.EqualFold(strings.TrimSpace(env("EDGE_PLAYBACK_LOW_LATENCY", "")), "true"),
 		EdgeEncodingWidth:           envIntStrict("EDGE_ENCODING_WIDTH", 1280),
 		EdgeEncodingHeight:          envIntStrict("EDGE_ENCODING_HEIGHT", 720),
