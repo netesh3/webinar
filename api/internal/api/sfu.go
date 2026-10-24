@@ -62,6 +62,12 @@ func (s *Server) resolveSFU(
 	ctx context.Context, wb types.Webinar,
 ) (project string, room RoomManager, fresh bool, err error) {
 	if wb.SFUProject != "" {
+		// A webinar still pinned to the retired Hetzner server moves before anyone joins it.
+		if moved, room, ok, err := s.moveOffRetired(ctx, wb); err != nil {
+			s.log.Warn("sfu: could not move a webinar off a retired video server", "slug", wb.ID, "error", err)
+		} else if ok {
+			return moved, room, false, nil
+		}
 		room, err := s.sfu.Get(wb.SFUProject)
 		if err == nil {
 			return wb.SFUProject, room, false, nil

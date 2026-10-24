@@ -5120,8 +5120,8 @@ export interface Webinar {
    * 	 * the SFU, or the WHEP mix for CDN-broadcast hosts — today's behaviour) or
    * 	 * DeliveryEdge (the audience watches LL-HLS and gets chat, polls and controls over
    * 	 * the SSE event stream, never connecting to LiveKit). A webinar on a GCP or
-   * 	 * DigitalOcean video server is always edge; on Hetzner edge is opt-in per webinar,
-   * 	 * behind FeatureEdgeDelivery. Meetings and simulive are always standard. See
+   * 	 * DigitalOcean video server is always edge; on any other server it is the host's
+   * 	 * choice per webinar (DeliveryPolicy). Meetings and simulive are always standard. See
    * 	 * docs/edge-delivery.md.
    */
   delivery?: string;
@@ -5464,17 +5464,6 @@ export const FeatureZoom = "zoom";
  * 	 * everyone in their session; see JoinResponse.Whiteboard.
  */
 export const FeatureWhiteboard = "whiteboard";
-/**
- *  FeatureEdgeDelivery lets a host choose Edge delivery for a webinar: the stage
- * 	 * stays on WebRTC and the audience watches a low-latency HLS feed, with chat,
- * 	 * polls and controls over the SSE event stream instead of LiveKit.
- * 	 *
- * 	 * Off — the default for every account, because absent means off — means the
- * 	 * choice is not offered and a save asking for it is refused. Only consulted on a
- * 	 * Hetzner video server: on GCP and DigitalOcean every webinar is edge and the switch
- * 	 * is implied (DeliveryPolicy). See docs/edge-delivery.md.
- */
-export const FeatureEdgeDelivery = "edge_delivery";
 /**
  *  FeatureAI is the AI writing help: "Write with AI" when scheduling, and the AI
  * 	 * features after it. Each call counts against the monthly AI caps
@@ -8704,8 +8693,9 @@ export interface ServerTime {
  *  *
  *  * EdgeOnly is a webinar on a GCP or DigitalOcean video server (or one not placed yet that
  *  * will be): it is always edge, the form offers no choice and the server ignores the field.
- *  * EdgeChoice is the old Standard / Edge choice, for a host with the edge_delivery switch on
- *  * any other server. Both false is standard only. Meetings and simulive are always standard.
+ *  * EdgeChoice is the Standard / Edge choice, on any other server that has a live origin
+ *  * (BROADCAST_RTMP_BASE), for every host. Both false is standard only. Meetings and simulive
+ *  * are always standard.
  */
 export interface DeliveryPolicy {
   edgeOnly: boolean;

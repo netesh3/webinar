@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { FEATURE_COSTS, stageCostText, stageMbps } from "./admin-costs.ts";
-import { FeatureEdgeDelivery } from "./api-types.ts";
+import { FeatureCloudRecording } from "./api-types.ts";
 
 assert.deepEqual(stageMbps(1), [0, 0]);
 assert.deepEqual(stageMbps(3), [6 * 0.6, 6 * 2]);
@@ -18,6 +18,8 @@ assert.equal(Math.round(lo10 / lo3), 15);
 assert.match(stageCostText(10), /^10 on stage: ~54–180 Mbps/);
 assert.match(stageCostText(10), /\$2\.9–\$9\.7 per live hour/);
 assert.match(stageCostText(1), /no stage-to-stage traffic/);
-assert.ok(FEATURE_COSTS[FeatureEdgeDelivery].includes("per attendee-hour"));
+assert.ok(FEATURE_COSTS[FeatureCloudRecording].includes("per recorded hour"));
+// The "Edge delivery (beta)" switch is gone (every webinar on the box is edge).
+assert.equal(FEATURE_COSTS["edge_delivery"], undefined);
 
 console.log("admin-costs: ok");

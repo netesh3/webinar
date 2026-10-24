@@ -1,5 +1,4 @@
-/* The delivery an instant webinar starts with, for hosts who have Edge delivery
- * (docs/edge-delivery.md). An instant start has no form, so the choice sits next to the
+/* The delivery an instant webinar starts with (docs/edge-delivery.md). An instant start has no form, so the choice sits next to the
  * button and the host's last pick is remembered in this browser. Anything unreadable
  * falls back to standard: a stored value is a preference, never a reason to go edge. */
 

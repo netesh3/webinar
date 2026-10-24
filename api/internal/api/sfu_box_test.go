@@ -130,9 +130,11 @@ func (r *boxRig) bootToReady() store.SFUBoxState {
 
 func TestBoxStaysDownWithNothingScheduled(t *testing.T) {
 	r := newBoxRig(t)
-	// A session on the default server does not want the box.
+	// A session pinned to another server does not want the box. (An unpinned one would: the
+	// box is where new rooms go, sfu_retired.go.)
 	r.h.signup("Other Host", "other-host@test.dev", true)
-	r.h.newWebinar("Elsewhere", nil)
+	other := r.h.newWebinar("Elsewhere", nil)
+	r.h.exec(`UPDATE webinars SET sfu_project = 'test' WHERE slug = $1`, other.ID)
 	st := r.step()
 	r.wantActual(st, store.BoxDown)
 	if st.Desired != "down" || r.fake.Creates != 0 {

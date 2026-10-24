@@ -11,9 +11,10 @@ import (
 )
 
 /* Edge is the only webinar delivery on GCP and DigitalOcean video servers (edge.go,
- * resolveDelivery): a webinar there is saved as edge whatever the form sent, the edge_delivery
- * switch is implied, and future webinars saved before the rule are moved by the boot backfill.
- * Hetzner keeps the old choice behind the switch. Meetings and simulive are never edge. */
+ * resolveDelivery): a webinar there is saved as edge whatever the form sent, and future
+ * webinars saved before the rule are moved by the boot backfill. Any other server offers every
+ * host the Standard / Edge choice when there is a live origin (no per-account switch). Meetings
+ * and simulive are never edge. */
 
 // onDO makes the harness's default project ("test") a DigitalOcean server with an origin.
 func onDO(c *config.Config) {
@@ -43,7 +44,6 @@ func (h *harness) deliveryPolicy(query string) types.DeliveryPolicy {
 
 func TestWebinarsOnDOAreAlwaysEdge(t *testing.T) {
 	h := newHarness(t, onDO)
-	// No edge_delivery switch: it is implied on DO.
 	h.signup("DO Host", "edge-do@test.dev", true)
 
 	if p := h.deliveryPolicy(""); !p.EdgeOnly || p.EdgeChoice {
@@ -72,7 +72,7 @@ func TestWebinarsOnDOAreAlwaysEdge(t *testing.T) {
 		}
 	}
 
-	// The audience gets the stream without the switch.
+	// The audience gets the stream.
 	wb := h.liveWebinar("DO live", nil)
 	if wb.Delivery != types.DeliveryEdge {
 		t.Fatalf("live webinar delivery = %q, want edge", wb.Delivery)
@@ -115,54 +115,58 @@ func TestMeetingsAndSimuliveStayStandardOnDO(t *testing.T) {
 	}
 }
 
-/* Before the first join there is no pin, so the target is where the room would go: the host's
- * assigned project when an admin set one. A GCP project named "india" is edge-only; the
- * Hetzner default keeps the choice. */
+/* Before the first join there is no pin, so the target is where the room would go. With a
+ * GCP or DO server configured that is never the Hetzner one (sfu_retired.go), even for a host
+ * an admin assigned to it, so every new webinar is edge. A webinar still pinned to Hetzner
+ * that has not run yet is judged by where it will move. */
 func TestDeliveryFollowsTheHostsTargetProject(t *testing.T) {
 	h := newHarnessWith(t, []*fakeRooms{newFakeProject("india")}, edgeConfig)
 	acct := h.signup("Mumbai Host", "edge-india@test.dev", true)
 
-	if p := h.deliveryPolicy(""); p.EdgeOnly {
-		t.Fatalf("on Hetzner: policy %+v, want no edge", p)
+	if p := h.deliveryPolicy(""); !p.EdgeOnly {
+		t.Fatalf("new webinar: policy %+v, want edge only (it goes to GCP, not Hetzner)", p)
 	}
-	plain := h.newWebinar("On Hetzner", func(in *types.WebinarInput) { in.Delivery = types.DeliveryStandard })
-	if plain.Delivery != types.DeliveryStandard {
-		t.Fatalf("Hetzner default = %q, want standard", plain.Delivery)
-	}
-
-	if err := h.store.SetUserSFUProject(context.Background(), acct.ID, "india"); err != nil {
+	if err := h.store.SetUserSFUProject(context.Background(), acct.ID, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if p := h.deliveryPolicy(""); !p.EdgeOnly {
-		t.Fatalf("assigned to GCP: policy %+v, want edge only", p)
+		t.Fatalf("assigned to Hetzner: policy %+v, want edge only", p)
 	}
-	wb := h.newWebinar("On GCP", func(in *types.WebinarInput) { in.Delivery = types.DeliveryStandard })
+	wb := h.newWebinar("New", func(in *types.WebinarInput) { in.Delivery = types.DeliveryStandard })
 	if wb.Delivery != types.DeliveryEdge {
-		t.Fatalf("GCP target delivery = %q, want edge", wb.Delivery)
+		t.Fatalf("new webinar delivery = %q, want edge", wb.Delivery)
 	}
-	// A webinar already pinned to Hetzner keeps the Hetzner rules on an edit.
-	h.exec(`UPDATE webinars SET sfu_project = 'test' WHERE slug = $1`, plain.ID)
-	if p := h.deliveryPolicy("?slug=" + plain.ID); p.EdgeOnly {
-		t.Fatalf("pinned to Hetzner: policy %+v, want no edge", p)
+	h.exec(`UPDATE webinars SET sfu_project = 'test', delivery = 'standard' WHERE slug = $1`, wb.ID)
+	if p := h.deliveryPolicy("?slug=" + wb.ID); !p.EdgeOnly {
+		t.Fatalf("pinned to Hetzner, not run yet: policy %+v, want edge only", p)
 	}
 }
 
-func TestHetznerKeepsTheChoiceBehindTheSwitch(t *testing.T) {
+// Any server that is not GCP or DO offers every host the choice, with no account switch.
+func TestOtherServersOfferEveryHostTheChoice(t *testing.T) {
 	h := newHarness(t, edgeConfig)
-	acct := h.signup("Hetzner Host", "edge-hz@test.dev", true)
-	if p := h.deliveryPolicy(""); p.EdgeOnly || p.EdgeChoice {
-		t.Fatalf("policy without the switch = %+v, want standard only", p)
-	}
-	res, raw := h.do(http.MethodPost, "/api/host/webinars", edgeInput("Edge without switch"))
-	h.wantField(res, raw, "delivery")
-
-	grantFeature(t, h, acct.ID, types.FeatureEdgeDelivery)
+	h.signup("Other Host", "edge-hz@test.dev", true)
 	if p := h.deliveryPolicy(""); p.EdgeOnly || !p.EdgeChoice {
-		t.Fatalf("policy with the switch = %+v, want the choice", p)
+		t.Fatalf("policy = %+v, want the choice", p)
+	}
+	edge := h.newWebinar("Edge by choice", func(in *types.WebinarInput) { in.Delivery = types.DeliveryEdge })
+	if edge.Delivery != types.DeliveryEdge {
+		t.Fatalf("explicit edge = %q", edge.Delivery)
 	}
 	std := h.newWebinar("Standard by choice", func(in *types.WebinarInput) { in.Delivery = types.DeliveryStandard })
 	if std.Delivery != types.DeliveryStandard {
 		t.Fatalf("explicit standard = %q", std.Delivery)
+	}
+	def := h.newWebinar("Default", nil)
+	if def.Delivery != types.DeliveryStandard {
+		t.Fatalf("default = %q, want standard", def.Delivery)
+	}
+
+	// No live origin: nothing to choose.
+	h2 := newHarness(t)
+	h2.signup("No Origin Host", "edge-hz-noorigin@test.dev", true)
+	if p := h2.deliveryPolicy(""); p.EdgeOnly || p.EdgeChoice {
+		t.Fatalf("policy without an origin = %+v, want standard only", p)
 	}
 }
 
@@ -215,14 +219,14 @@ func TestRecurringSeriesIsEdge(t *testing.T) {
 		check(t, h, wb, 5)
 	})
 
-	t.Run("hetzner with the switch", func(t *testing.T) {
+	t.Run("another server, by choice", func(t *testing.T) {
 		h := newHarness(t, edgeConfig)
 		edgeHost(t, h, "edge-series-hz@test.dev")
 		in := seriesBody("Daily HZ", seriesStart(t), 2)
 		in.Delivery = types.DeliveryEdge
 		res, raw := h.do(http.MethodPost, "/api/host/webinars", in)
 		if res.StatusCode != http.StatusCreated {
-			t.Fatalf("create edge series on Hetzner: %d %s", res.StatusCode, raw)
+			t.Fatalf("create edge series: %d %s", res.StatusCode, raw)
 		}
 		var wb types.Webinar
 		h.decode(raw, &wb)

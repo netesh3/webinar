@@ -204,8 +204,13 @@ func run() error {
 	apiServer.UseEngage(crm)
 	go apiServer.StartMeetingLimitSweeper(ctx)
 	go apiServer.StartRecordingRetentionSweeper(ctx)
-	// Future webinars on GCP/DO video servers are edge-only (docs/edge-delivery.md).
-	go apiServer.BackfillEdgeDelivery(ctx)
+	/* Future webinars still pinned to the retired Hetzner server move to the box first
+	 * (api/internal/api/sfu_retired.go); then future webinars on GCP/DO video servers are
+	 * edge-only (docs/edge-delivery.md). */
+	go func() {
+		apiServer.MoveOffRetiredServers(ctx)
+		apiServer.BackfillEdgeDelivery(ctx)
+	}()
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

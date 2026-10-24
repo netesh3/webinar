@@ -1,5 +1,9 @@
 # Point live.webinarliv.com at the SFU box, proxied by Cloudflare.
 #
+# The default target is the DigitalOcean box's reserved IP (deploy/digitalocean/README.md); it
+# was the Hetzner box (88.198.141.104) until that was sunset. The box is created on demand, so
+# the origin only answers while a session needs it.
+#
 # WHEP signaling can use this hostname (HTTPS). ICE media is UDP :8189 on the
 # origin IP and never goes through Cloudflare. Join still needs BROADCAST_HLS_BASE.
 #
@@ -24,7 +28,7 @@ on:
       target:
         description: "Origin IPv4 (the SFU box)"
         required: true
-        default: "88.198.141.104"
+        default: "152.42.156.192"
 
 concurrency:
   group: live-origin-dns

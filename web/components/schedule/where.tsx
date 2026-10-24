@@ -168,9 +168,10 @@ const DELIVERY = [
   },
 ];
 
-/** Edge delivery (docs/edge-delivery.md): the choice only for a host with the switch on a
- *  Hetzner video server, for a webinar or series in this app. On GCP and DigitalOcean every
- *  webinar is edge and WhereSection shows a note instead. The stage is the same either way. */
+/** Edge delivery (docs/edge-delivery.md): the choice only on a video server that is not GCP
+ *  or DigitalOcean (a dev SFU), for a webinar or series in this app. On GCP and DigitalOcean
+ *  (production) every webinar is edge and WhereSection shows a note instead. The stage is the
+ *  same either way. */
 function DeliverySection({
   form,
   set,
