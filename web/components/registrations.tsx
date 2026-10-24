@@ -369,6 +369,16 @@ export function useRegistrations() {
     return [...merged.values()];
   }, [keys, fetched, owned, account, status, bypass]);
 
+  /* The signed-in account's own registrations only: what /api/me/attending lists.
+   * `registrations` also holds this browser's guest join keys, which can be for a
+   * different email, so a count of it can promise a list the server then returns
+   * empty. Null while unknown; empty when signed out. */
+  const accountRegistrations = useMemo(() => {
+    if (status === "loading") return null;
+    if (!account || bypass) return [];
+    return owned.accountId === account.id ? owned.rows : null;
+  }, [owned, account, status, bypass]);
+
   const isRegistered = useCallback(
     (slug: string) => !!registrations?.some((r) => r.webinarId === slug),
     [registrations],
@@ -413,6 +423,7 @@ export function useRegistrations() {
 
   return {
     registrations,
+    accountRegistrations,
     webinars,
     webinarFor,
     error,

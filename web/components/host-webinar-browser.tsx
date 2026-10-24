@@ -200,14 +200,14 @@ export function HostWebinarBrowser({
    * costs the same request the top nav already makes on every page, and the
    * alternative — an unbadged tab — loses the one number that says whether it is
    * worth opening. */
-  const { registrations, webinarFor } = useRegistrations();
+  const { accountRegistrations, webinarFor } = useRegistrations();
   const { account } = useSession();
   /* Other people's webinars only: a host who registered for their own session to
    * see the attendee side has it under Upcoming or Completed already. Unknown
    * (still loading) counts as none: the tab appears once the answer is in,
    * rather than showing and then vanishing for a host with nothing to attend. */
   const attendingCount =
-    registrations?.filter((r) => {
+    accountRegistrations?.filter((r) => {
       const w = webinarFor(r.webinarId);
       return w !== undefined && w.host.id !== account?.id;
     }).length ?? 0;
