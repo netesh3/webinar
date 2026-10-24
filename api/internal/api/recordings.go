@@ -640,6 +640,8 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(identity, "user_") {
 			s.simuliveHostLeft(r.Context(), slug, identity)
 		}
+		// So the mix drops their tile even if it missed the SFU's own update (participant_left.go).
+		s.announceLeft(r.Context(), slug, identity, event.Participant.GetSid())
 
 	/* One screen share at a time: mute every share but the one the room agrees on.
 	 * See share_lock.go. */

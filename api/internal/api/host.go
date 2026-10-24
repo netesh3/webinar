@@ -2413,7 +2413,7 @@ func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.
 			coHost = g.CoHost
 		}
 	}
-	if err := sfu.SetRole(ctx, lk.Spec{
+	spec := lk.Spec{
 		Role:        role,
 		Room:        room,
 		Identity:    identity,
@@ -2422,7 +2422,23 @@ func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.
 		MutedByHost: false,
 		CoHost:      coHost,
 		Promoted:    promoting,
-	}); err != nil {
+	}
+	/* Off the stage in a webinar that hides its audience: lose the stage first, still
+	 * visible, and only then go hidden. LiveKit sends nobody an update about a participant
+	 * who turns hidden, nor their leave afterwards, so the one change that does both left
+	 * every other client — the mix included — holding the last picture of them: a speaker
+	 * tile, mic off, in the audience stream for the rest of the session (instant-webinar-2050,
+	 * 2026-10-24). The visible step is the update everyone sees and drops the tile on. */
+	var err error
+	if spec.Hidden {
+		visible := spec
+		visible.Hidden = false
+		err = sfu.SetRole(ctx, visible)
+	}
+	if err == nil {
+		err = sfu.SetRole(ctx, spec)
+	}
+	if err != nil {
 		/* An edge viewer is watching LL-HLS and is not in the room, so there is no
 		 * participant to change. The grant below is the whole promotion for them: the
 		 * stage-granted packet tells their browser to join again, and that join reads
@@ -2448,7 +2464,6 @@ func (s *Server) applyStageGrant(ctx context.Context, sfu RoomManager, wb types.
 		}()
 	}
 
-	var err error
 	if promoting {
 		err = s.store.GrantStage(ctx, slug, identity, "", audioOnly)
 	} else {
