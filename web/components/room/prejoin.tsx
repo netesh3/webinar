@@ -12,7 +12,10 @@ import {
   useAutoLowLight,
   useBackgroundsAvailable,
   useVirtualBackground,
+  prefetchBackgroundModel,
+  useBackgroundDownload,
 } from "@/lib/backgrounds";
+import { progressFraction, setBackgroundLoadingView } from "@/lib/background-loading";
 import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
@@ -177,6 +180,25 @@ export function PreJoin({
   const [permitted, setPermitted] = useState(false);
   const { devices, refresh: refreshDevices } = useDevices(true);
   const backgroundsOk = useBackgroundsAvailable();
+
+  /* The background's first-time download (lib/background-loading.ts), while this screen is up:
+   * only the presenter sees this preview, so it shows the camera as it is rather than the dark
+   * frame the room sends, and says how far along the download is. Started as soon as the screen
+   * opens for somebody with a background saved, so it is usually done before they look. Back to
+   * "cover" on the way out: the room's default, where the audience can see. */
+  const download = useBackgroundDownload();
+  useEffect(() => {
+    setBackgroundLoadingView("camera");
+    return () => setBackgroundLoadingView("cover");
+  }, []);
+  const backgroundWanted = backgroundsOk && prefs.background.mode !== "none";
+  useEffect(() => {
+    if (backgroundWanted) prefetchBackgroundModel(prefs.backgroundEngine);
+  }, [backgroundWanted, prefs.backgroundEngine]);
+  const showDownload =
+    backgroundWanted &&
+    cameraEnabled &&
+    (download.phase === "downloading" || download.phase === "starting");
 
   /* Whether this machine really has no camera — a claim, so it needs to be supportable.
    *
@@ -451,6 +473,29 @@ export function PreJoin({
               {starting && cameraEnabled && (
                 <div className="absolute inset-0 grid place-items-center bg-stage-tile/70">
                   <Spinner className="size-5 text-white/70" />
+                </div>
+              )}
+              {showDownload && (
+                <div
+                  role="status"
+                  className="pointer-events-none absolute inset-x-2.5 top-2.5 rounded-lg bg-black/60 px-2.5 py-1.5 text-white backdrop-blur"
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11.5px] font-medium">
+                    <span>
+                      {download.phase === "downloading" ? "Downloading background…" : "Applying background…"}
+                    </span>
+                    {download.phase === "downloading" && (
+                      <span className="tabular-nums text-white/75">
+                        {Math.round(progressFraction(download) * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/20">
+                    <div
+                      className="h-full rounded-full bg-white transition-[width]"
+                      style={{ width: `${download.phase === "downloading" ? Math.round(progressFraction(download) * 100) : 100}%` }}
+                    />
+                  </div>
                 </div>
               )}
 

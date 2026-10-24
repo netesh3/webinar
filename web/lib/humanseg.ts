@@ -28,8 +28,10 @@
  * for the models before this one.
  */
 
+import { BACKGROUND_FILES, fetchWithProgress, setDownloadProgress } from "./background-loading";
+
 const ORT_WASM_PATH = "/onnxruntime/";
-const MODEL_PATH = "/models/humanseg.onnx";
+const MODEL_PATH = BACKGROUND_FILES.model.url;
 
 /** Model input. Fixed in the export. */
 export const MODEL_W = 256;
@@ -54,13 +56,13 @@ type Session = {
 };
 type Ort = {
   env: {
-    wasm: { wasmPaths?: string; numThreads?: number; proxy?: boolean };
+    wasm: { wasmPaths?: string; wasmBinary?: Uint8Array; numThreads?: number; proxy?: boolean };
     logLevel?: string;
   };
   Tensor: new (type: "float32", data: Float32Array, dims: number[]) => Tensor;
   InferenceSession: {
     create: (
-      url: string,
+      model: Uint8Array,
       options: { executionProviders: string[]; graphOptimizationLevel: string; logSeverityLevel: number },
     ) => Promise<Session>;
   };
@@ -81,7 +83,38 @@ function loadOrt(): Promise<Ort> {
     ort.env.logLevel = "error";
     return ort;
   });
+  // A failed import is not kept: it used to be, so one network blip loading this chunk failed
+  // every later attempt — Retry included — until a reload.
+  ortModule.catch(() => {
+    ortModule = null;
+  });
   return ortModule;
+}
+
+/* The two big files, fetched here rather than by ONNX Runtime, so the screens can show how far
+ * along they are and a download that stops moving fails instead of waiting for ever (see
+ * lib/background-loading.ts). The runtime is handed to ORT as bytes (env.wasm.wasmBinary, so
+ * it fetches no .wasm of its own), the model to InferenceSession.create as bytes. */
+async function downloadFiles(): Promise<{ runtime: Uint8Array; model: Uint8Array }> {
+  const total = BACKGROUND_FILES.runtime.bytes + BACKGROUND_FILES.model.bytes;
+  const got = { runtime: 0, model: 0 };
+  const report = () => setDownloadProgress({ phase: "downloading", loaded: got.runtime + got.model, total });
+  report();
+  const [runtime, model] = await Promise.all([
+    fetchWithProgress(BACKGROUND_FILES.runtime.url, {
+      onBytes: (n) => {
+        got.runtime = n;
+        report();
+      },
+    }),
+    fetchWithProgress(BACKGROUND_FILES.model.url, {
+      onBytes: (n) => {
+        got.model = n;
+        report();
+      },
+    }),
+  ]);
+  return { runtime, model };
 }
 
 /* One session per page, shared by every processor: the pre-join screen's and the room's
@@ -93,23 +126,37 @@ let shared: Promise<Shared> | null = null;
 /** The shared session. Rejects if it cannot be made; a later call tries again. */
 function loadShared(): Promise<Shared> {
   shared ??= (async () => {
-    const ort = await loadOrt();
     const began = performance.now();
-    const session = await ort.InferenceSession.create(MODEL_PATH, {
+    const [ort, files] = await Promise.all([loadOrt(), downloadFiles()]);
+    const downloadedMs = Math.round(performance.now() - began);
+    setDownloadProgress({ phase: "starting", loaded: files.runtime.byteLength + files.model.byteLength, total: files.runtime.byteLength + files.model.byteLength });
+    ort.env.wasm.wasmBinary = files.runtime;
+    const session = await ort.InferenceSession.create(files.model, {
       executionProviders: ["wasm"],
       graphOptimizationLevel: "all",
       logSeverityLevel: 3,
     });
     console.info("[background] segmentation ready", {
       model: MODEL_PATH,
+      downloadMs: downloadedMs,
       ms: Math.round(performance.now() - began),
     });
+    setDownloadProgress({ phase: "ready", loaded: files.model.byteLength + files.runtime.byteLength, total: files.model.byteLength + files.runtime.byteLength });
     return { ort, session, queue: Promise.resolve() };
   })().catch((err: unknown) => {
+    // Not kept: the next call — the segmenter's own retries, or Retry — downloads again.
     shared = null;
+    setDownloadProgress({ phase: "failed", loaded: 0, total: 0 });
     throw err;
   });
   return shared;
+}
+
+/** Starts the download ahead of need — the pre-join screen, for somebody with a background
+ *  saved — so it is usually done before the camera asks for it. A failure here is not reported;
+ *  the real load tries again and says so. */
+export function prefetchHumanSeg(): void {
+  void loadShared().catch(() => {});
 }
 
 /** A processor's own model: the shared session, with this processor's history. */

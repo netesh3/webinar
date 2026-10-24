@@ -13,6 +13,8 @@ import {
   NO_BACKGROUND,
   retryBackground,
   useAutoLowLight,
+  useBackgroundDownload,
+  useBackgroundLoadingView,
   useBackgroundsSupported,
   useBackgroundStatus,
   useVirtualBackground,
@@ -20,6 +22,11 @@ import {
   VIRTUAL_BACKGROUNDS,
   type BackgroundChoice,
 } from "@/lib/backgrounds";
+import {
+  progressFraction,
+  setBackgroundLoadingView,
+  type DownloadProgress,
+} from "@/lib/background-loading";
 import { Alert, Spinner } from "../controls";
 import { CheckIcon, NoneIcon } from "../icons";
 import { useToast } from "../providers";
@@ -55,8 +62,9 @@ function useCameraTrack(): LocalVideoTrack | undefined {
 /** Applies the stored background. Renders nothing. */
 export function VirtualBackground() {
   const { prefs } = useRoomUI();
-  const { notify } = useToast();
+  const { notify, upsert, dismissKey } = useToast();
   const track = useCameraTrack();
+  const { isCameraEnabled } = useLocalParticipant();
   useAutoLowLight(prefs.lowLightAuto);
 
   /* The CPU ladder (lib/network.ts ADAPT.cpu, "effects" rung) may pause the background when
@@ -100,7 +108,80 @@ export function VirtualBackground() {
     if (error) notify(error, "error");
   }, [error, notify]);
 
+  /* Live before the background's files have arrived — joined while the first download was
+   * still running, or picked a background for the first time in the room. The camera sends a
+   * plain dark frame meanwhile (lib/background-loading.ts, "cover"), the way Zoom keeps video
+   * off until its background has loaded: the audience sees neither a blur nor the room the
+   * presenter asked to hide. This says so, with how far along it is, and offers the presenter
+   * the choice to start the camera now (the background appears when it is ready). */
+  const download = useBackgroundDownload();
+  const loadingView = useBackgroundLoadingView();
+  const holding =
+    !!track &&
+    isCameraEnabled &&
+    wanted &&
+    !pausedForCpu &&
+    loadingView === "cover" &&
+    (download.phase === "downloading" || download.phase === "starting");
+  useEffect(() => {
+    if (!holding) {
+      dismissKey(HOLD_TOAST);
+      return;
+    }
+    upsert(HOLD_TOAST, {
+      message: "Your camera starts when your background is ready.",
+      interactive: true,
+      node: <BackgroundHoldCard download={download} onStart={() => setBackgroundLoadingView("camera")} />,
+    });
+  }, [holding, download, upsert, dismissKey]);
+  useEffect(() => () => dismissKey(HOLD_TOAST), [dismissKey]);
+
   return null;
+}
+
+const HOLD_TOAST = "background-hold";
+
+/** The in-room note while the camera waits for its background. Dark like the room's other
+ *  toasts (connection-toast.tsx), with the progress and the one choice there is. */
+function BackgroundHoldCard({ download, onStart }: { download: DownloadProgress; onStart: () => void }) {
+  const percent = Math.round(progressFraction(download) * 100);
+  return (
+    <div className="join-card room-dark flex w-full flex-col gap-2 rounded-xl border border-line bg-surface/95 px-3 py-2.5 text-left shadow-xl backdrop-blur sm:w-[20rem]">
+      <div className="flex items-start gap-2.5">
+        <Spinner className="mt-0.5 size-3.5 shrink-0 text-ink-3" />
+        <div className="min-w-0">
+          <p className="text-[13px] leading-snug font-semibold text-ink">
+            Your camera starts when your background is ready
+          </p>
+          <p className="mt-0.5 text-[12px] leading-snug text-ink-2">
+            {download.phase === "downloading"
+              ? `Downloading the background · ${percent}%`
+              : "Almost ready…"}
+          </p>
+        </div>
+      </div>
+      <div
+        className="h-1 overflow-hidden rounded-full bg-white/10"
+        role="progressbar"
+        aria-label="Background download"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+      >
+        <div className="h-full rounded-full bg-brand transition-[width]" style={{ width: `${download.phase === "downloading" ? percent : 100}%` }} />
+      </div>
+      <button
+        type="button"
+        onClick={onStart}
+        className="self-start rounded-md bg-white/10 px-2.5 py-1 text-[12px] font-medium text-ink hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:outline-none"
+      >
+        Start camera now
+      </button>
+      <p className="text-[11px] leading-snug text-ink-3">
+        Others will see your room until the background is ready.
+      </p>
+    </div>
+  );
 }
 
 export function BackgroundPicker() {
@@ -183,6 +264,7 @@ export function BackgroundTiles({
   children?: ReactNode;
 }) {
   const status = useBackgroundStatus();
+  const download = useBackgroundDownload();
   const disabled = disabledReason !== undefined;
   // Only for a background. The lift on its own is ready within a frame or two, and a
   // spinner on "None" would read as the absence of a background still loading.
@@ -207,9 +289,13 @@ export function BackgroundTiles({
         {disabled ? (
           <span className="text-[11px] text-ink-3">{disabledReason}</span>
         ) : applying ? (
+          /* The first background downloads about 18 MB (lib/background-loading.ts); saying
+           * how far along it is is the difference between "loading" and "stuck". */
           <span role="status" className="flex items-center gap-1.5 text-[11px] text-ink-3">
             <Spinner className="size-3" />
-            Applying…
+            {download.phase === "downloading"
+              ? `Downloading ${Math.round(progressFraction(download) * 100)}%`
+              : "Applying…"}
           </span>
         ) : null}
       </div>
