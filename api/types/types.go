@@ -4212,6 +4212,9 @@ type RoomMeta struct {
 	// client — including one that joined or rejoined mid-way — shows the same REC
 	// time. Empty when nothing is being recorded.
 	RecordingStartedAt string `json:"recordingStartedAt,omitempty"`
+	// RecordingAuto is set when the recording in progress is the one "Record
+	// automatically" started, so the host is told it began without them pressing Record.
+	RecordingAuto bool `json:"recordingAuto,omitempty"`
 	// MaxDurationMin is the maximum allowed duration for this session in minutes.
 	MaxDurationMin int `json:"maxDurationMin,omitempty"`
 	/* A scheduled simulive's pending start (Webinar.SimuliveStartAt) and whether the host

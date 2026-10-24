@@ -8860,6 +8860,11 @@ export interface RoomMeta {
    */
   recordingStartedAt?: string;
   /**
+   * RecordingAuto is set when the recording in progress is the one "Record
+   * automatically" started, so the host is told it began without them pressing Record.
+   */
+  recordingAuto?: boolean;
+  /**
    * MaxDurationMin is the maximum allowed duration for this session in minutes.
    */
   maxDurationMin?: number /* int */;

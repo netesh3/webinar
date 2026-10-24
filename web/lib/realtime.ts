@@ -682,6 +682,9 @@ export function useSessionControls(
    *  that joined or rejoined mid-recording shows the same REC time as the host.
    *  Null when not recording, or before metadata arrives. */
   recordingStartedAt: string | null;
+  /** Whether the recording in progress is the one "Record automatically" started, so the
+   *  host can be told it began without anybody pressing Record. */
+  recordingAuto: boolean;
   /** The maximum meeting duration in minutes for this session. */
   maxDurationMin: number | null;
   /** A simulive's room state (api/internal/api/simulive_host.go): the start the host set from
@@ -735,6 +738,7 @@ export function useSessionControls(
       endedAt: meta?.endedAt || null,
       recording: meta?.recording === true,
       recordingStartedAt: meta?.recording === true ? meta.recordingStartedAt || null : null,
+      recordingAuto: meta?.recording === true && meta.recordingAuto === true,
       maxDurationMin: meta?.maxDurationMin ?? joinMaxDurationMin ?? null,
       simulive: meta
         ? {

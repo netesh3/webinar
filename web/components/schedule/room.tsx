@@ -1,6 +1,7 @@
 "use client";
 
 import { Toggle } from "../controls";
+import { Badge } from "../ui";
 import { useAppConfig, useSession } from "../providers";
 import { api } from "@/lib/api";
 import { FeatureCloudRecording, type Webinar } from "@/lib/api-types";
@@ -23,12 +24,14 @@ export function RoomSection({
   const config = useAppConfig();
   const { account } = useSession();
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
+  /* "Record automatically" is a cloud recording the server starts (api/internal/api/
+   * auto_record.go), so it needs the host's cloud recording switch and a site that records
+   * on the server. Without them it is shown off and disabled rather than hidden, so a host
+   * knows it exists. A simulive plays a recording and is never recorded itself. */
+  const autoRecordShown = form.kind !== "simulive";
+  const autoRecordReady = cloudRecording && config.recordingMode === "egress";
   const extras = (
     [
-      // A simulive plays a recording and is never recorded itself.
-      ...(cloudRecording && form.kind !== "simulive"
-        ? ([["autoRecord", "Record automatically"]] as const)
-        : []),
       ["captions", "Live captions"],
       // Nor streamed out: a simulive has no mix of the room to send (mix_destinations.go).
       ...(form.kind !== "simulive"
@@ -139,6 +142,30 @@ export function RoomSection({
         description="Recording, captions and streaming."
       >
         <div className="grid gap-1 lg:grid-cols-2">
+          {autoRecordShown && (
+            <Toggle
+              checked={autoRecordReady && form.options.autoRecord}
+              disabled={!autoRecordReady}
+              onChange={(v) => set("options", { ...form.options, autoRecord: v })}
+              label={
+                autoRecordReady ? (
+                  "Record automatically"
+                ) : (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    Record automatically
+                    {!cloudRecording && <Badge tone="warn">Available on request</Badge>}
+                  </span>
+                )
+              }
+              description={
+                autoRecordReady
+                  ? "Starts a cloud recording once you're live and someone on the stage has their camera or mic on."
+                  : cloudRecording
+                    ? "Needs server-side recording, which this site doesn't use."
+                    : "Cloud recording is switched on per account. Ask us to turn it on."
+              }
+            />
+          )}
           {extras.map(([key, label]) => (
             <Toggle
               key={key}

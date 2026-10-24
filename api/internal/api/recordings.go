@@ -125,13 +125,7 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The key is ours, derived from the recording's own id — never from the slug, a
-	// topic or anything else a person typed. Two levels of fan-out so a directory
-	// listing stays usable after a few thousand recordings.
-	id := uuid.NewString()
-	key := fmt.Sprintf("%s/%s/%s.%s", id[0:2], id[2:4], id, store.ExtForMime(mime))
-
-	rec, err := s.store.StartRecording(r.Context(), slug, id, user.ID, user.Name, mime, key)
+	rec, err := s.beginRecording(r.Context(), wb, uuid.NewString(), user.ID, user.Name, mime, false)
 	switch {
 	case errors.Is(err, store.ErrConflict):
 		httpx.Error(w, http.StatusConflict, "already_recording",
@@ -140,21 +134,61 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
+	case errors.Is(err, errRecordingNoRoom):
+		httpx.Error(w, http.StatusServiceUnavailable, "recording_no_capacity",
+			"Cloud recording couldn't start: the video server is busy streaming to your audience. "+
+				"Your audience isn't affected. Record on this computer instead, or try again later.")
+		return
 	case err != nil:
 		s.fail(w, r, "start recording", err)
 		return
+	}
+
+	s.log.Info("recording started", "slug", slug, "recording", rec.ID,
+		"by", user.ID, "mime", mime, "mode", s.cfg.RecordingsMode)
+	httpx.JSON(w, http.StatusCreated, rec)
+}
+
+/* beginRecording starts a recording session's next take: the row, then (egress mode) the
+ * server-side recorder, then the room's indicator. Shared by Record (handleStartRecording)
+ * and "Record automatically" (auto_record.go), so both take exactly the same path: a
+ * LiveKit composite for a standard webinar, the edge mix's own recording (mixrec.go) when
+ * an edge mix is running.
+ *
+ * Errors: store.ErrConflict (already recording), store.ErrNotFound, errRecordingNoRoom (the
+ * video server would not admit a recorder beside the attendee mix), or anything else. On a
+ * failed start the row is closed as failed, or with discard deleted outright — an automatic
+ * start is retried, and each retry must not leave a failed row in the host's list. */
+func (s *Server) beginRecording(
+	ctx context.Context, wb types.Webinar, id, userID, userName, mime string, discard bool,
+) (types.Recording, error) {
+	// The key is ours, derived from the recording's own id — never from the slug, a
+	// topic or anything else a person typed. Two levels of fan-out so a directory
+	// listing stays usable after a few thousand recordings.
+	key := fmt.Sprintf("%s/%s/%s.%s", id[0:2], id[2:4], id, store.ExtForMime(mime))
+
+	rec, err := s.store.StartRecording(ctx, wb.ID, id, userID, userName, mime, key)
+	if err != nil {
+		return types.Recording{}, err
 	}
 	rec.Topic = wb.Topic
 	rec.Ext = store.ExtForMime(mime)
 	s.stampRecording(&rec)
 
-	sfu, sfuErr := s.sfuFor(r.Context(), wb)
+	unstart := func() {
+		if discard {
+			_ = s.store.DiscardUnstartedRecording(ctx, id)
+			return
+		}
+		_, _ = s.store.FinishRecording(ctx, id, 0)
+	}
+
+	sfu, sfuErr := s.sfuFor(ctx, wb)
 
 	if s.cfg.RecordingsMode == "egress" {
 		if sfuErr != nil {
-			_, _ = s.store.FinishRecording(r.Context(), id, 0)
-			s.fail(w, r, "start egress: sfu lookup", sfuErr)
-			return
+			unstart()
+			return types.Recording{}, fmt.Errorf("start egress: sfu lookup: %w", sfuErr)
 		}
 		s3Opts := lk.EgressS3Options{
 			Endpoint:  s.cfg.RecordingsS3Endpoint,
@@ -165,20 +199,12 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		}
 		// Never at the audience's expense: a running mix is left alone. See
 		// startEgressRecording.
-		info, _, err := s.startEgressRecording(r.Context(), wb, sfu, id, key, s3Opts)
-		if errors.Is(err, errRecordingNoRoom) {
-			_, _ = s.store.FinishRecording(r.Context(), id, 0)
-			httpx.Error(w, http.StatusServiceUnavailable, "recording_no_capacity",
-				"Cloud recording couldn't start: the video server is busy streaming to your audience. "+
-					"Your audience isn't affected. Record on this computer instead, or try again later.")
-			return
-		}
+		info, _, err := s.startEgressRecording(ctx, wb, sfu, id, key, s3Opts)
 		if err != nil {
-			_, _ = s.store.FinishRecording(r.Context(), id, 0)
-			s.fail(w, r, "start egress", err)
-			return
+			unstart()
+			return types.Recording{}, fmt.Errorf("start egress: %w", err)
 		}
-		if err := s.store.SetEgressID(r.Context(), id, info.EgressId); err != nil {
+		if err := s.store.SetEgressID(ctx, id, info.EgressId); err != nil {
 			s.log.Warn("start egress: record egress id", "id", id, "egress", info.EgressId, "error", err)
 		}
 		rec.EgressID = info.EgressId
@@ -189,17 +215,14 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 	// than only the one that pressed the button.
 	if sfuErr != nil {
 		s.log.Warn("recording started but the indicator could not be broadcast",
-			"slug", slug, "error", sfuErr)
+			"slug", wb.ID, "error", sfuErr)
 	} else {
-		s.pushRoomMetadata(r, sfu, wb)
+		s.pushRoomMetadataCtx(ctx, sfu, wb)
 	}
 
 	// Never refused for storage (see recording_retention.go): flagged and warned instead.
-	rec.StorageWarning = s.recordingStartStorage(r.Context(), wb.Host.ID, rec.ID)
-
-	s.log.Info("recording started", "slug", slug, "recording", rec.ID,
-		"by", user.ID, "mime", mime, "mode", s.cfg.RecordingsMode)
-	httpx.JSON(w, http.StatusCreated, rec)
+	rec.StorageWarning = s.recordingStartStorage(ctx, wb.Host.ID, rec.ID)
+	return rec, nil
 }
 
 // handleRecordingChunk appends the next few seconds of the recording.
@@ -622,6 +645,13 @@ func (s *Server) handleLiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 	 * See share_lock.go. */
 	case webhook.EventTrackPublished:
 		s.handleSharePublished(r.Context(), event)
+		// The first camera or mic on the stage of a live room is when "Record
+		// automatically" starts (auto_record.go).
+		if slug := slugFromRoom(event.Room); slug != "" {
+			if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil {
+				s.autoRecordSoon(wb)
+			}
+		}
 
 	/* The room is gone, so nobody is in it — whatever the participant events managed to say.
 	 *

@@ -337,8 +337,8 @@ export function RecordingsTab({
 
       <p className="text-[12px] leading-relaxed text-ink-3">
         {days > 0
-          ? `Cloud recordings are deleted ${days} days after they end unless you keep them longer. Download one to keep it on your computer. Everyone in the room is shown a recording indicator while a cloud recording is running.`
-          : "Recordings are stored in cloud storage and served from the CDN. Everyone in the room is shown a recording indicator while one is running."}
+          ? `Cloud recordings are deleted ${days} days after they end unless you keep them longer. Download one to keep it on your computer. While a cloud recording is running, people on stage see a REC indicator; the audience doesn't. With “Record automatically” on, the registration page tells attendees the session is recorded.`
+          : "Recordings are stored in cloud storage and served from the CDN. While one is running, people on stage see a REC indicator; the audience doesn't. With “Record automatically” on, the registration page tells attendees the session is recorded."}
       </p>
 
       {sharing && (

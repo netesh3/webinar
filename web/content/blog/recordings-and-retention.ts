@@ -41,7 +41,7 @@ export const post: Post = {
 
     ### Record automatically
 
-    If cloud recording is switched on for your account, the schedule form has **Record automatically** under **Recording and extras**. With it on, registrants are told the session is recorded: the webinar page shows a **Recorded** badge and the registration form says so. When you are in the room, check for the **REC** pill, and press **Record** if it is not there.
+    The schedule form has **Record automatically** under **Recording and extras**. Without cloud recording it is greyed out and marked **Available on request**. With it on, registrants are told the session is recorded: the webinar page shows a **Recorded** badge and the registration form says so. The cloud recording then starts by itself once the session is live and someone on the stage has their camera or microphone on, so the recording doesn't open on an empty room. You get a "Recording started automatically" notice and the **REC** pill appears. If you stop it, it stays stopped: press **Record** to carry on.
 
     ### Stopping and starting again
 
