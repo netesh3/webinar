@@ -1,5 +1,5 @@
 /* Tests for making simulive findable: the cross-session recording picker, which ended session
- * gets the "run this again" card, its per-session dismissal, and the explainer's premium tag.
+ * gets the "run this again" card, its per-session dismissal, and the explainer's onRequest tag.
  * Run with `make test-web`. */
 
 import assert from "node:assert/strict";
@@ -119,15 +119,15 @@ assert.equal(isAutopilotDismissed(broken, "s1"), false);
 assert.doesNotThrow(() => dismissAutopilot(broken, "s1"));
 assert.doesNotThrow(() => dismissAutopilot(undefined, "s1"));
 
-// Explainer: four points; only engagement replay is premium, and only without the feature.
+// Explainer: four points; only engagement replay is onRequest, and only without the feature.
 const without = simuliveExplainer(false);
 assert.equal(without.length, 4);
 assert.deepEqual(
-  without.map((p) => p.premium),
+  without.map((p) => p.onRequest),
   [false, false, true, false],
 );
 assert.ok(without[2]!.text.includes("chat, Q&A and polls"));
-assert.ok(simuliveExplainer(true).every((p) => !p.premium));
+assert.ok(simuliveExplainer(true).every((p) => !p.onRequest));
 assert.ok(without.some((p) => p.text.includes("never re-recorded")));
 
 console.log("simulive-discover: ok");

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { serverNow } from "@/lib/server-clock";
 import { msUntilFinished } from "@/lib/simulive-host";
+import { useServerClock } from "@/lib/use-server-clock";
 import { Spinner } from "../controls";
 
 /** Whether a simulive's recording has reached its end on the shared clock: flips once, at
@@ -10,12 +12,14 @@ import { Spinner } from "../controls";
 export function useSimuliveFinished(startedAt: string | null | undefined, lengthMs: number | null | undefined): boolean {
   const [doneFor, setDoneFor] = useState<string | null>(null);
   const key = startedAt && lengthMs ? `${startedAt}|${lengthMs}` : null;
+  // The start is the server's clock; the end is read on it too (re-timed once it is measured).
+  const offset = useServerClock(key != null);
   useEffect(() => {
     if (!key) return;
-    const left = msUntilFinished(startedAt, lengthMs, Date.now());
+    const left = msUntilFinished(startedAt, lengthMs, serverNow(Date.now(), offset));
     const timer = setTimeout(() => setDoneFor(key), left ?? 0);
     return () => clearTimeout(timer);
-  }, [key, startedAt, lengthMs]);
+  }, [key, startedAt, lengthMs, offset]);
   return key != null && doneFor === key;
 }
 

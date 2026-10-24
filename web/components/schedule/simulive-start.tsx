@@ -19,8 +19,8 @@ import type { FormState, SetForm } from "./form-state";
 /* How a simulive starts (api/internal/api/simulive_live.go):
  *
  *   automatically   at the scheduled time, by itself — no host, no scheduler needed
- *   by the host     a Start Simulive button in their room; never started on its own, and it
- *                   lapses at its scheduled end if nobody starts it
+ *   by the host     Start now in their room (or Start Simulive on the webinar page); never
+ *                   started on its own, and it lapses at its scheduled end if nobody starts it
  *
  * and how many minutes before the start the audience may come in to wait and chat (no video
  * until it starts, and then everybody at the same moment). On the schedule form, with "start
@@ -48,7 +48,7 @@ function Choices({
         {(
           [
             ["auto", "Start automatically at the scheduled time", "Plays for everyone at the start, whether or not you are there."],
-            ["manual", "I'll start it", "You or a co-host press ▶ Start Simulive in the room. It does not start on its own."],
+            ["manual", "I'll start it", "You or a co-host press ▶ Start now in the room, or ▶ Start Simulive on the webinar page. It does not start on its own."],
           ] as const
         ).map(([id, label, hint]) => (
           <label

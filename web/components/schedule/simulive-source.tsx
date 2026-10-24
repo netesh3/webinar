@@ -224,7 +224,7 @@ export function SimuliveSourceSection({
               )}
             </>
           ) : (
-            <>Video only. Engagement replay is a premium feature.</>
+            <>Video only. Engagement replay isn&apos;t switched on for this account — ask us to turn it on.</>
           )}
         </p>
 

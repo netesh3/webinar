@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import type { ReplayItem } from "./api-types";
 import type { ChatMessage, Question } from "./realtime";
+import { serverNow } from "./server-clock";
 import {
   crossesPoll,
   interleave,
@@ -88,7 +89,10 @@ export function useSimuliveReplay({
     const timers: ReturnType<typeof setTimeout>[] = [];
     const tick = () => {
       const now = Date.now();
-      const pos = video && video.readyState > 0 ? video.currentTime * 1000 : sharedPositionMs(startedAt, now);
+      // Before the player has the media, where everybody is: on the server's clock, like the
+      // start (lib/server-clock.ts). The anchor stays on this device's clock — it orders
+      // replayed lines among live ones, which this device stamps on arrival.
+      const pos = video && video.readyState > 0 ? video.currentTime * 1000 : sharedPositionMs(startedAt, serverNow(now));
       if (pos == null) return;
       const next = visibleCount(items, pos);
       // The first reading is the catch-up: shown, not played.

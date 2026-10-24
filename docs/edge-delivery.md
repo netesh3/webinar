@@ -118,18 +118,24 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
     `liveSyncDurationCount` / `liveMaxLatencyDurationCount` / `liveSyncDuration`: hls.js reads
     those from the constructor config and, when set, ignores the playlist's `PART-HOLD-BACK`
     (see 6ffc2e2). Smooth mode lands on hls.js's default 3 × target duration.
-  - **Catching up.** hls.js only speeds up toward its target in low-latency mode, so in smooth
-    mode each stall used to add a second for good (3s drifting to 6–8s from India). The
-    player now plays at 1.1× while more than 1s past the target with 1.5s buffered ahead,
-    back to 1× within 0.3s of it, and jumps to live in either mode past 6s over
-    (`catchUp` in `lib/edge-hls.ts`).
+  - **Catching up.** The playback speed is never changed: hls.js's own speed-up is off
+    (`maxLiveSyncPlaybackRate: 1`) and our catch-up rate is 1 too, because time-stretched
+    audio warbled and "cut out" (2026-10-20). Instead the player measures its distance behind
+    live every second against a target — `STANDARD_TARGET_SECONDS` (4s) in smooth mode,
+    `hls.targetLatency` (at least 1.5s, `LL_MIN_TARGET_SECONDS`) in low latency — and once it
+    is more than 2s past the target it skips forward to the target, landing no further than
+    1s short of what is already buffered so the skip never waits on a black frame
+    (`catchUp` / `seekToTarget` in `lib/edge-hls.ts`). Skips are at least 15s apart
+    (`JUMP_COOLDOWN_MS`). In low latency, 15s after startup the target is also reset (hls.js
+    raises it by `liveSyncOnStallIncrease`, 0.25s, per stall) and the player skips once back
+    to it (`settle` in `components/room/edge-player.tsx`).
   - A stall or a recovery never shows black: the last frame is held on a canvas with a
     "Reconnecting…" badge until playback resumes. Fatal network errors retry with backoff
     (1, 2, 4, 8, 10s); media errors use hls.js's recovery.
   - Safari plays the playlist natively (no mode switch).
-  - The readout shows how far behind live and the mode (*2.9s behind · Smooth*). **Jump to
-    live** appears past 6s (smooth) or 4s (low latency). `edge_latency` telemetry every 30s
-    carries the latency, mode, stall count and median TTFB.
+  - The readout shows how far behind live and the mode (*2.9s behind · Smooth*). **Back to
+    live** appears past 10s behind in either mode (`BEHIND_LIVE_SECONDS`). `edge_latency`
+    telemetry every 30s carries the latency, mode, stall count and median TTFB.
 - **Layout.** Edge webinars' egress loads the composite at `<template>/edge`. While someone
   shares their screen the share fills the **whole frame** and up to three camera tiles sit
   small over the bottom-right corner (`lib/composite-layouts.ts`), for cameras that are on only:

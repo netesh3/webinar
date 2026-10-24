@@ -96,21 +96,21 @@ export function dismissAutopilot(store: KeyStore | null | undefined, slug: strin
   }
 }
 
-/** One line of "What's a Simulive?". `premium` marks the part that needs replay_engage on an
+/** One line of "What's a Simulive?". `onRequest` marks the part that needs replay_engage on an
  *  account that lacks it. */
-export type ExplainerPoint = { text: string; premium: boolean };
+export type ExplainerPoint = { text: string; onRequest: boolean };
 
 export function simuliveExplainer(hasReplayEngage: boolean): ExplainerPoint[] {
   return [
-    { text: "Plays your recording at a time you pick, like a live webinar.", premium: false },
-    { text: "People register and join as usual, and chat with each other live.", premium: false },
+    { text: "Plays your recording at a time you pick, like a live webinar.", onRequest: false },
+    { text: "People register and join as usual, and chat with each other live.", onRequest: false },
     {
       text: "The original chat, Q&A and polls replay at the moments they happened.",
-      premium: !hasReplayEngage,
+      onRequest: !hasReplayEngage,
     },
     {
       text: "Drop in any time to answer questions. Your camera is never added, and the session is never re-recorded.",
-      premium: false,
+      onRequest: false,
     },
   ];
 }

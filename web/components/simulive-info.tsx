@@ -18,7 +18,7 @@ export function useReplayEngage(): boolean {
   return (account?.features ?? []).includes(FeatureReplayEngage);
 }
 
-/** The explainer's body: four short points, with the engagement-replay one tagged Premium on
+/** The explainer's body: four short points, with the engagement-replay one tagged "Available on request" on
  *  an account without replay_engage. */
 export function SimuliveExplainer() {
   const points = simuliveExplainer(useReplayEngage());
@@ -29,10 +29,10 @@ export function SimuliveExplainer() {
           <span aria-hidden className="mt-[7px] size-1.5 shrink-0 rounded-full bg-brand" />
           <span>
             {p.text}
-            {p.premium && (
+            {p.onRequest && (
               <>
                 {" "}
-                <Badge tone="warn">Premium</Badge>
+                <Badge tone="warn">Available on request</Badge>
               </>
             )}
           </span>
