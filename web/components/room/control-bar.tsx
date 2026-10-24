@@ -111,6 +111,7 @@ import {
   HostAssignDialog,
   HostLeaveMenu,
 } from "./host-leave-dialog";
+import { CoHostLeaveMenu } from "./cohost-leave-menu";
 import { EndWebinarDialog, SendSurveyButton } from "./host-survey";
 import { LeaveConfirm } from "./leave-confirm";
 import { PipStage } from "./pip-stage";
@@ -1754,12 +1755,23 @@ export function ControlBar() {
             <span className="hidden sm:inline">Leave</span>
           </button>
           {isHost ? (
-            <HostLeaveMenu
-              open={leaveMenuOpen}
-              onClose={() => setLeaveMenuOpen(false)}
-              onAssign={() => setAssignOpen(true)}
-              onEnd={() => setEndConfirmOpen(true)}
-            />
+            /* A co-host has isHost too, but the live role of a panelist: they get a plain
+               Leave instead of the hand-over only the owner may do (cohost-leave-menu.tsx). */
+            me.role === "host" ? (
+              <HostLeaveMenu
+                open={leaveMenuOpen}
+                onClose={() => setLeaveMenuOpen(false)}
+                onAssign={() => setAssignOpen(true)}
+                onEnd={() => setEndConfirmOpen(true)}
+              />
+            ) : (
+              <CoHostLeaveMenu
+                open={leaveMenuOpen}
+                onClose={() => setLeaveMenuOpen(false)}
+                onLeave={leave}
+                onEnd={() => setEndConfirmOpen(true)}
+              />
+            )
           ) : (
             <LeaveConfirm
               open={leaveConfirmOpen}

@@ -942,6 +942,11 @@ type Webinar struct {
 
 	Host      Person   `json:"host"`
 	Panelists []Person `json:"panelists"`
+	/* PanelistEmails is each panelist's account address, in panel order. Host views only:
+	 * set by handleHostWebinar, never on a public read, so the edit form can show the panel
+	 * it is about to save back (WebinarInput.PanelistEmails) without anybody else learning
+	 * a panelist's address. */
+	PanelistEmails []string `json:"panelistEmails,omitempty"`
 
 	Agenda    []AgendaItem `json:"agenda"`
 	Takeaways []string     `json:"takeaways"`
@@ -1155,7 +1160,14 @@ type WebinarInput struct {
 	Agenda          []AgendaItem     `json:"agenda"`
 	Takeaways       []string         `json:"takeaways"`
 	CustomQuestions []CustomQuestion `json:"customQuestions"`
-	PanelistEmails  []string         `json:"panelistEmails"`
+	/* PanelistEmails is the whole panel after this save, replacing the one saved.
+	 *
+	 * A pointer, because "not sent" and "sent empty" are different requests. Omitted (nil)
+	 * keeps the panel as it is: an edit that never touched the panel, from a client that
+	 * never heard of the field, must not take every panelist off the stage. An empty list
+	 * is the host removing them all. Every address needs an account; one that has none is
+	 * refused by name rather than skipped (see handleUpdateWebinar). */
+	PanelistEmails *[]string `json:"panelistEmails,omitempty"`
 
 	Options  WebinarOptions  `json:"options"`
 	Controls SessionControls `json:"controls"`
@@ -1172,6 +1184,14 @@ type WebinarInput struct {
 	 * one-off, and on a create. */
 	Recurrence  *RecurrenceInput `json:"recurrence,omitempty"`
 	SeriesScope string           `json:"seriesScope,omitempty"`
+}
+
+// Panel is PanelistEmails read as a list: nil when the field was omitted.
+func (in WebinarInput) Panel() []string {
+	if in.PanelistEmails == nil {
+		return nil
+	}
+	return *in.PanelistEmails
 }
 
 // SetStreamRequest is the host's RTMP destination.

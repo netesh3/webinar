@@ -9,6 +9,7 @@ import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { LiveParticipant, LiveRoom, Role } from "@/lib/api-types";
+import { CO_HOST_HINT, coHostGrantedMessage, stageActions } from "@/lib/panelists";
 import type { Realtime } from "@/lib/realtime";
 import {
   handWaitLabel,
@@ -406,7 +407,7 @@ function HostRoster() {
         act(
           p.identity,
           coHost
-            ? `${p.name} can now control the ${meeting ? "meeting" : "webinar"} like you can.`
+            ? coHostGrantedMessage(p.name || p.identity, meeting)
             : meeting
               ? `${p.name} is no longer a co-host.`
               : `${p.name} is back to an ordinary panelist.`,
@@ -593,7 +594,8 @@ function HostRoster() {
  *                       microphone yet
  *   muted by the host → "Allow to speak again", which is the only way back: the
  *                       microphone is out of their grant, so they cannot undo it
- *   on the stage      → the same, plus "Remove speaker permission"
+ *   brought on stage  → the same, plus "Remove speaker permission" (not a
+ *                       scheduled panelist, whose seat is the panel's)
  *
  * The mute control is deliberately keyed on `canSpeak` rather than on the role.
  * Keying it on the role is what made "unmute the attendee" impossible: an
@@ -651,8 +653,16 @@ function HostRosterRow({
   // The scope of the grant, as the host set it — not guessed from what they are
   // publishing, which would call a panelist with their camera off "audio only".
   const speakingOnly = p.role === "panelist" && !isHost && p.audioOnly;
-  // Never "on stage" in a meeting: there is nowhere else to be, so nothing to take back.
-  const onStageNow = p.role === "panelist" && !isHost && !stageless;
+  /* Never "on stage" in a meeting: there is nowhere else to be, so nothing to take back. And
+   * only for an attendee brought up: a scheduled panelist's seat comes from the panel, which
+   * the server will not change from here (lib/panelists.ts stageActions). */
+  const stageMenu = stageActions({
+    identity: p.identity,
+    role: p.role,
+    audioOnly: speakingOnly,
+    isHost,
+    stageless,
+  });
   // Co-host needs an account behind the identity (see handleSetCoHost on the
   // API side) — a panelist invited from the panelist list has one ("user_"
   // identity); an attendee the host brought up on stage does not ("att_"
@@ -843,7 +853,7 @@ function HostRosterRow({
                 : []),
               // A promoted attendee can be widened to a full seat, or narrowed
               // back to just a microphone, without dropping them to the audience.
-              ...(onStageNow && speakingOnly
+              ...(stageMenu.alsoVideo
                 ? [
                     {
                       kind: "action" as const,
@@ -853,7 +863,7 @@ function HostRosterRow({
                     },
                   ]
                 : []),
-              ...(onStageNow && !speakingOnly
+              ...(stageMenu.audioOnly
                 ? [
                     {
                       kind: "action" as const,
@@ -863,7 +873,7 @@ function HostRosterRow({
                     },
                   ]
                 : []),
-              ...(onStageNow
+              ...(stageMenu.removeSpeaker
                 ? [
                     {
                       kind: "action" as const,
@@ -876,9 +886,10 @@ function HostRosterRow({
                     },
                   ]
                 : []),
-              // Full parity with the host, for this one webinar. See
-              // canBeCoHost above for why this is withheld from a promoted
-              // attendee even though they read as "Panelist" too.
+              // The host's room tools, for this session; the owner-only actions
+              // stay with the owner (coHostGrantedMessage). See canBeCoHost
+              // above for why this is withheld from a promoted attendee even
+              // though they read as "Panelist" too.
               ...(canBeCoHost
                 ? [
                     {
@@ -886,7 +897,7 @@ function HostRosterRow({
                       label: p.coHost ? "Remove co-host" : "Make co-host",
                       hint: p.coHost
                         ? "back to an ordinary panelist"
-                        : "full control, same as you",
+                        : CO_HOST_HINT,
                       icon: <ArrowUpIcon className="size-4" />,
                       onSelect: () => onSetCoHost(!p.coHost),
                     },

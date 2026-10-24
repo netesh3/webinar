@@ -35,7 +35,7 @@ func TestDeletingAWebinarRemovesEverything(t *testing.T) {
 	grantCloudRecording(t, h)
 
 	wb := h.newWebinar("Everything Webinar", func(in *types.WebinarInput) {
-		in.PanelistEmails = []string{"cleanup-panelist@test.dev"}
+		in.PanelistEmails = ptr([]string{"cleanup-panelist@test.dev"})
 		// A custom question, so custom_questions has a row.
 		in.CustomQuestions = []types.CustomQuestion{
 			{ID: "why", Label: "Why are you here?", Type: "text", Required: false},

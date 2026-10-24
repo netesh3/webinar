@@ -119,8 +119,8 @@ export function RoomSection({
           <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">
             Each panelist is emailed their stage link once the webinar is
             scheduled, and told if you move or delete it. They need an account,
-            because a publishing token is minted from a signed-in session —
-            addresses without one are skipped.
+            because a publishing token is minted from a signed-in session. An
+            address without one is named here, and not saved, until they sign up.
           </p>
           {fields.panelistEmails && (
             <p className="mt-1 text-[12px] font-medium text-live">
@@ -130,8 +130,9 @@ export function RoomSection({
           {editing && webinar && webinar.panelists.length > 0 && (
             <p className="mt-2 text-[12px] text-ink-2">
               Currently on the stage:{" "}
-              {webinar.panelists.map((p) => p.name).join(", ")}. Leave the box
-              empty to remove them all.
+              {webinar.panelists.map((p) => p.name).join(", ")}. Take an address
+              out of the box to remove that panelist; you are asked before it
+              saves.
             </p>
           )}
         </div>

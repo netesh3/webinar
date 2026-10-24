@@ -22,7 +22,7 @@ func TestCopyWebinarMakesADraft(t *testing.T) {
 		in.Descript = "How to price a course."
 		in.AttendeeLimit = 150
 		in.CustomQuestions = []types.CustomQuestion{{Label: "Your niche?", Type: "short", Required: true}}
-		in.PanelistEmails = []string{"copy-panelist@test.dev"}
+		in.PanelistEmails = ptr([]string{"copy-panelist@test.dev"})
 		in.Agenda = []types.AgendaItem{{At: "10:00", Title: "Intro"}}
 	})
 	if res, raw := h.doRaw(http.MethodPost, "/api/host/webinars/"+src.ID+"/image", "application/octet-stream", onePixelPNG, nil); res.StatusCode != http.StatusOK {
