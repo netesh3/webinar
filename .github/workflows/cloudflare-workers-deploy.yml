@@ -83,7 +83,7 @@ jobs:
           GUARD_MODE: strict
           TICK_SECRET: ${{ secrets.TICK_SECRET }}
           API_BASE: ${{ vars.LIVE_STATUS_API_BASE }}
-          FORCE: ${{ inputs.force }}
+          FORCE: ${{ inputs.force == true || vars.DEPLOY_GUARD_SKIP == 'true' || contains(github.event.head_commit.message, '[skip guard]') }}
         run: bash .github/scripts/wait-no-live.sh
 
       # Catch a missing, revoked, or wrongly-scoped token in seconds rather than

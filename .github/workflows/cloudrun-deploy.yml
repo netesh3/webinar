@@ -308,7 +308,7 @@ jobs:
           GUARD_SCOPE: any
           GUARD_MODE: api
           API_BASE: ${{ vars.LIVE_STATUS_API_BASE }}
-          FORCE: ${{ inputs.force }}
+          FORCE: ${{ inputs.force == true || vars.DEPLOY_GUARD_SKIP == 'true' || contains(github.event.head_commit.message, '[skip guard]') }}
         run: bash .github/scripts/wait-no-live.sh
 
       - name: Require DATABASE_URL (Supabase)

@@ -132,7 +132,12 @@ While anything in scope is live, the job prints the blocking slugs and re-checks
 
 The 10-minute retry covers a merge that ships the API and a box change together: the box deploy waits while the new API rolls out.
 
-**Override:** Actions → the workflow → Run workflow → tick **force**. This skips the guard and logs a warning. Optional repo variable `LIVE_STATUS_API_BASE` changes the API it asks (default `https://webcast-api-65278594492.asia-south1.run.app`).
+**Override** (each skips the guard and logs a warning):
+- one run by hand: Actions → the workflow → Run workflow → tick **force**;
+- one merge: put `[skip guard]` in the PR title (it lands in the merge commit message) or in a pushed commit's message;
+- every deploy until undone: repo variable `DEPLOY_GUARD_SKIP=true` (`gh variable set DEPLOY_GUARD_SKIP --body true`; remove it with `gh variable delete DEPLOY_GUARD_SKIP`).
+
+A video box deploy restarts LiveKit, so skipping its guard disconnects a live session for ~30–60 s; API and web deploys don't affect a live room. Optional repo variable `LIVE_STATUS_API_BASE` changes the API it asks (default `https://webcast-api-65278594492.asia-south1.run.app`).
 
 **Queueing:** each workflow keeps its concurrency group (`cancel-in-progress: false`). While one run waits, a newer push replaces any run still pending in the group, so the newest commit deploys once the sessions end and deploys do not pile up.
 
