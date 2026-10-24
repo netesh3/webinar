@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -2118,6 +2119,26 @@ func (s *Store) LiveEdgeWebinarsOn(ctx context.Context, project string) ([]strin
 		slugs = append(slugs, slug)
 	}
 	return slugs, rows.Err()
+}
+
+/* HostLiveSession is a session hostID has on the air other than exceptSlug, if any:
+ * a host runs one webinar or meeting at a time (handleStartWebinar). Simulives are left
+ * out: they go live on their own schedule, and a host may run a live session while one
+ * replays. ErrNotFound means none. */
+func (s *Store) HostLiveSession(ctx context.Context, hostID, exceptSlug string) (slug, topic string, kind types.WebinarKind, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT slug, topic, kind
+		  FROM webinars
+		 WHERE host_id = $1
+		   AND status = 'live'
+		   AND kind <> 'simulive'
+		   AND slug <> $2
+		 ORDER BY starts_at DESC
+		 LIMIT 1`, hostID, exceptSlug).Scan(&slug, &topic, &kind)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return slug, topic, kind, err
 }
 
 func (s *Store) LiveWebinarsPastStart(ctx context.Context) ([]string, error) {

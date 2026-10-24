@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -51,6 +52,16 @@ func (h *harness) liveWebinar(topic string, mutate func(*types.WebinarInput)) ty
 	var started types.Webinar
 	h.decode(raw, &started)
 	return started
+}
+
+/* endLive ends slug straight in the store: a host runs one session at a time, so a
+ * test that goes live with a second session of the same host ends the first. Only the
+ * status, which is all the one-at-a-time check reads. */
+func (h *harness) endLive(slug string) {
+	h.t.Helper()
+	if _, err := h.store.SetStatus(context.Background(), slug, types.StatusEnded); err != nil {
+		h.t.Fatalf("end %s: %v", slug, err)
+	}
 }
 
 func (h *harness) setDestination(slug string, to types.ChatDestination) types.Webinar {

@@ -279,6 +279,11 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return types.Webinar{}, false
 	}
+	// An instant one starts at once, so refuse it here rather than leave a new row
+	// behind when the start that follows is refused.
+	if in.Instant && in.Kind != types.KindSimulive && s.refuseSecondLive(w, r, user.ID, "") {
+		return types.Webinar{}, false
+	}
 	/* Go live now. The server's clock, not the browser's: a client clock a
 	 * few minutes fast would otherwise land outside the five-minute start
 	 * window and refuse the start that this button exists to do. */
@@ -1298,6 +1303,13 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	/* One session on the air per host: going live with another means ending
+	 * the first. A rejoin of this one is not a start, and a simulive replays
+	 * on its own schedule, so neither is held back. */
+	if existing.Status != types.StatusLive && existing.Kind != types.KindSimulive &&
+		s.refuseSecondLive(w, r, existing.Host.ID, slug) {
+		return
+	}
 	/* Zoom opens in the Zoom app. Status stays scheduled until phase 4 hears
 	 * that the meeting ended. LiveKit is not created. */
 	if zoom.IsVenue(existing.Venue) {
@@ -1356,6 +1368,31 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)
+}
+
+/* refuseSecondLive answers 409 already_live, and reports true, when hostID already
+ * has a session on the air other than exceptSlug. The sentence names it, so the host
+ * knows which one to end. A failed check lets the start through: a database hiccup
+ * is not a reason to keep a host off the air. */
+func (s *Server) refuseSecondLive(w http.ResponseWriter, r *http.Request, hostID, exceptSlug string) bool {
+	if hostID == "" {
+		return false
+	}
+	_, topic, kind, err := s.store.HostLiveSession(r.Context(), hostID, exceptSlug)
+	if errors.Is(err, store.ErrNotFound) {
+		return false
+	}
+	if err != nil {
+		s.log.Warn("start: live session check", "host", hostID, "error", err)
+		return false
+	}
+	noun := "webinar"
+	if kind == types.KindMeeting {
+		noun = "meeting"
+	}
+	httpx.Error(w, http.StatusConflict, "already_live",
+		fmt.Sprintf("“%s” is still live. End that %s before you start another one.", topic, noun))
+	return true
 }
 
 /* goLiveClosed reports whether Go live is still shut, and the sentence to show.
