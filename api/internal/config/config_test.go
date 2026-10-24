@@ -472,9 +472,9 @@ func TestEdgeEncodingDefaultsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.EdgeEncodingWidth != 1280 || c.EdgeEncodingHeight != 720 || c.EdgeEncodingFPS != 30 ||
-		c.EdgeVideoBitrateKbps != 1700 || c.EdgeAudioBitrateKbps != 128 || c.EdgeH264Profile != "baseline" {
-		t.Errorf("defaults = %dx%d@%d %dkbps %s, want today's 720p baseline", c.EdgeEncodingWidth,
+	if c.EdgeEncodingWidth != 1280 || c.EdgeEncodingHeight != 720 || c.EdgeEncodingFPS != 25 ||
+		c.EdgeVideoBitrateKbps != 1500 || c.EdgeAudioBitrateKbps != 128 || c.EdgeH264Profile != "baseline" {
+		t.Errorf("defaults = %dx%d@%d %dkbps %s, want 720p25 1500 kbps baseline", c.EdgeEncodingWidth,
 			c.EdgeEncodingHeight, c.EdgeEncodingFPS, c.EdgeVideoBitrateKbps, c.EdgeH264Profile)
 	}
 
@@ -496,6 +496,30 @@ func TestEdgeEncodingDefaultsAndValidation(t *testing.T) {
 		if _, err := Load(); err == nil || !strings.Contains(err.Error(), key) {
 			t.Errorf("%s=%q: error = %v, want one naming it", key, bad, err)
 		}
+	}
+}
+
+// EDGE_ENCODING_FPS is read from the environment and held to 10..60 at both ends.
+func TestEdgeEncodingFPSFromEnv(t *testing.T) {
+	for raw, want := range map[string]int{"": DefaultEdgeEncodingFPS, "10": 10, "20": 20, "30": 30, "60": 60} {
+		setEnv(t, map[string]string{"EDGE_ENCODING_FPS": raw})
+		c, err := Load()
+		if err != nil {
+			t.Errorf("EDGE_ENCODING_FPS=%q: %v", raw, err)
+			continue
+		}
+		if c.EdgeEncodingFPS != want {
+			t.Errorf("EDGE_ENCODING_FPS=%q: fps = %d, want %d", raw, c.EdgeEncodingFPS, want)
+		}
+	}
+	for _, bad := range []string{"9", "61", "0", "-25", "25.5", "fast"} {
+		setEnv(t, map[string]string{"EDGE_ENCODING_FPS": bad})
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "EDGE_ENCODING_FPS") {
+			t.Errorf("EDGE_ENCODING_FPS=%q: error = %v, want one naming it", bad, err)
+		}
+	}
+	if DefaultEdgeEncodingFPS != 25 {
+		t.Errorf("default fps = %d, want 25", DefaultEdgeEncodingFPS)
 	}
 }
 

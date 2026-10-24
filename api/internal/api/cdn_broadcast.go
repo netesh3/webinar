@@ -92,7 +92,7 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	var info *livekit.EgressInfo
 	var err error
 	if wb.Delivery == types.DeliveryEdge {
-		// Edge webinars' mix encoding is configurable (EDGE_ENCODING_*); defaults match the preset.
+		// Edge webinars' mix encoding is configurable (EDGE_ENCODING_*): 720p25 by default.
 		info, err = sfu.StartBroadcastEgressEncoded(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), s.edgeEncoding(), startURL, nil)
 	} else {
 		info, err = sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), preset, startURL, nil)

@@ -194,11 +194,13 @@ type Config struct {
 	 * LL-HLS against a distant origin (India to Germany, ~0.4s a request) cannot keep up. */
 	EdgePlaybackLowLatency bool
 	/* EdgeEncoding is the mix encoding for edge webinars' egress only: EDGE_ENCODING_WIDTH /
-	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (30), EDGE_VIDEO_BITRATE_KBPS (1700),
-	 * EDGE_AUDIO_BITRATE_KBPS (AAC, 128) and EDGE_H264_PROFILE (baseline|main|high, default
-	 * baseline). The keyframe interval stays
-	 * 1s. Defaults are exactly today's broadcast encoding; raise them only where the egress
-	 * box can carry it (docs/edge-delivery.md). Validated at load. */
+	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (DefaultEdgeEncodingFPS, 25),
+	 * EDGE_VIDEO_BITRATE_KBPS (DefaultEdgeVideoBitrateKbps, 1500), EDGE_AUDIO_BITRATE_KBPS
+	 * (AAC, 128) and EDGE_H264_PROFILE (baseline|main|high, default baseline). The keyframe
+	 * interval stays 1s whatever the frame rate (LiveKit takes it in seconds). 25 fps rather
+	 * than the broadcast preset's 30 is a sixth fewer frames for the egress to composite and
+	 * encode; raise anything only where the egress box can carry it (docs/edge-delivery.md).
+	 * Validated at load. */
 	EdgeEncodingWidth    int
 	EdgeEncodingHeight   int
 	EdgeEncodingFPS      int
@@ -598,8 +600,8 @@ func Load() (Config, error) {
 		EdgePlaybackLowLatency:      strings.EqualFold(strings.TrimSpace(env("EDGE_PLAYBACK_LOW_LATENCY", "")), "true"),
 		EdgeEncodingWidth:           envIntStrict("EDGE_ENCODING_WIDTH", 1280),
 		EdgeEncodingHeight:          envIntStrict("EDGE_ENCODING_HEIGHT", 720),
-		EdgeEncodingFPS:             envIntStrict("EDGE_ENCODING_FPS", 30),
-		EdgeVideoBitrateKbps:        envIntStrict("EDGE_VIDEO_BITRATE_KBPS", 1700),
+		EdgeEncodingFPS:             envIntStrict("EDGE_ENCODING_FPS", DefaultEdgeEncodingFPS),
+		EdgeVideoBitrateKbps:        envIntStrict("EDGE_VIDEO_BITRATE_KBPS", DefaultEdgeVideoBitrateKbps),
 		EdgeAudioBitrateKbps:        envIntStrict("EDGE_AUDIO_BITRATE_KBPS", 128),
 		EdgeH264Profile:             strings.ToLower(strings.TrimSpace(env("EDGE_H264_PROFILE", "baseline"))),
 	}
@@ -963,6 +965,14 @@ func envIntStrict(key string, def int) int {
 	}
 	return n
 }
+
+/* The edge mix's frame rate and video bitrate when EDGE_ENCODING_FPS / EDGE_VIDEO_BITRATE_KBPS
+ * are unset: 720p at 25 fps, with the broadcast preset's 1700 kbps scaled to the frame rate
+ * (1700 x 25/30, rounded down to 1500) so each frame keeps about the same bits. */
+const (
+	DefaultEdgeEncodingFPS      = 25
+	DefaultEdgeVideoBitrateKbps = 1500
+)
 
 // edgeEncodingErrors checks the edge egress encoding is something an H.264 encoder accepts.
 func (c Config) edgeEncodingErrors() []error {

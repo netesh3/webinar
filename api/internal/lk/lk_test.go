@@ -762,6 +762,24 @@ func TestBroadcastEncodingOptions(t *testing.T) {
 	}
 }
 
+// The edge mix takes its frame rate from config (25 by default), but the GOP stays one second:
+// LiveKit's KeyFrameInterval is in seconds, so 25 fps means a keyframe every 25 frames, and
+// MediaMTX's 1s segments still each start on one.
+func TestBroadcastEncodingFrameRate(t *testing.T) {
+	for _, fps := range []int{10, 20, 25, 30, 60} {
+		opts := BroadcastEncoding{Width: 1280, Height: 720, FPS: fps, BitrateKbps: 1500}.options()
+		if int(opts.Framerate) != fps {
+			t.Errorf("fps %d: framerate = %d", fps, opts.Framerate)
+		}
+		if opts.KeyFrameInterval != 1 {
+			t.Errorf("fps %d: key frame interval = %v s, want 1 whatever the frame rate", fps, opts.KeyFrameInterval)
+		}
+		if opts.Width != 1280 || opts.Height != 720 || opts.VideoBitrate != 1500 {
+			t.Errorf("fps %d: %dx%d %d kbps, want 1280x720 1500", fps, opts.Width, opts.Height, opts.VideoBitrate)
+		}
+	}
+}
+
 // The combined egress exists so that recording a broadcast room costs one
 // compositor instead of the two the box cannot run. That saving is only real if
 // the single request actually carries both outputs.
