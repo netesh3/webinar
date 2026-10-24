@@ -191,6 +191,8 @@ type Server struct {
 	rt *realtime.Bus
 	// deliveryCache remembers which webinars are on edge delivery (isEdge).
 	deliveryCache deliveryCacheMap
+	// edgeLiveness is the shared read of who is still watching (edge_idle.go).
+	edgeLiveness edgeLivenessCache
 	// qaSessions is the Q&A assistant's per-session pass state (qa_assist.go), slug to
 	// *qaSession. The zero value is ready.
 	qaSessions sync.Map
@@ -601,6 +603,7 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(s.requireAdmin)
 
+			r.Get("/debug/goroutines", s.handleDebugGoroutines)
 			r.Get("/stats", s.handleAdminStats)
 			r.Get("/stats/whatsapp", s.handleAdminWhatsAppUsage)
 			r.Get("/users", s.handleAdminUsers)

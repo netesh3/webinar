@@ -188,3 +188,11 @@ func SweepClipBlobs(s *Server, ctx context.Context) { s.sweepClipBlobs(ctx) }
 
 // AIModelFor is the per-feature model (AI_MODEL_HIGHLIGHTS for the clip features).
 func AIModelFor(s *Server, feature string) string { return s.aiModelFor(feature) }
+
+/* SetEdgeStreamTiming shortens the event stream's heartbeat and the idle check's refresh and
+ * grace (edge_idle.go); the returned func restores them. */
+func SetEdgeStreamTiming(heartbeat, refresh, grace time.Duration) func() {
+	oh, or, og := edgeHeartbeat, edgeIdleRefresh, edgeIdleGrace
+	edgeHeartbeat, edgeIdleRefresh, edgeIdleGrace = heartbeat, refresh, grace
+	return func() { edgeHeartbeat, edgeIdleRefresh, edgeIdleGrace = oh, or, og }
+}

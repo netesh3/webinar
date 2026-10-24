@@ -94,6 +94,8 @@
 #     EDGE_ENCODING_WIDTH / EDGE_ENCODING_HEIGHT / EDGE_ENCODING_FPS /
 #     EDGE_VIDEO_BITRATE_KBPS / EDGE_AUDIO_BITRATE_KBPS / EDGE_H264_PROFILE — Edge delivery playback and
 #     egress encoding; each unset keeps its default. See docs/edge-delivery.md.
+#   DEBUG_GOROUTINES — "true" turns on GET /api/admin/debug/goroutines (admins only), the
+#     answering instance's goroutine profile. Off when unset.
 #   OTEL_EXPORTER_OTLP_ENDPOINT — Grafana Cloud OTLP gateway, e.g.
 #     https://otlp-gateway-prod-ap-south-1.grafana.net/otlp. Unset = telemetry off.
 #     OTEL_TRACES_SAMPLER / OTEL_TRACES_SAMPLER_ARG / OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME
@@ -219,6 +221,7 @@ jobs:
       OPS_ALERT_EMAILS: ${{ vars.OPS_ALERT_EMAILS }}
       EDGE_PLAYBACK_LOW_LATENCY: ${{ vars.EDGE_PLAYBACK_LOW_LATENCY }}
       EDGE_DEBUG_CLOCK: ${{ vars.EDGE_DEBUG_CLOCK }}
+      DEBUG_GOROUTINES: ${{ vars.DEBUG_GOROUTINES }}
       EDGE_ENCODING_WIDTH: ${{ vars.EDGE_ENCODING_WIDTH }}
       EDGE_ENCODING_HEIGHT: ${{ vars.EDGE_ENCODING_HEIGHT }}
       EDGE_ENCODING_FPS: ${{ vars.EDGE_ENCODING_FPS }}

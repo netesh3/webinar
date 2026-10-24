@@ -50,8 +50,10 @@ type supabaseClaims struct {
 	AppMetadata  map[string]any `json:"app_metadata"`
 }
 
-// jwksHTTP is overridden in tests.
-var jwksHTTP = http.DefaultClient
+/* jwksHTTP is overridden in tests. Never http.DefaultClient: it has no timeout, the fetch
+ * runs under jwksMu, and a Supabase that hangs would park every request that verifies a token
+ * behind it, a goroutine each, forever. */
+var jwksHTTP = &http.Client{Timeout: 10 * time.Second}
 
 type jwksCacheEntry struct {
 	fetched time.Time

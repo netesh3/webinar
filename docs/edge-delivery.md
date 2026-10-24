@@ -95,6 +95,12 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
   - A heartbeat comment goes out every 15s, and the server ends the stream at 25 min so the
     browser reconnects before Cloud Run's request timeout.
   - The per-write deadline is extended, so the server's 60s `WriteTimeout` does not cut it.
+  - Behind the CDN and Cloud Run a closed tab does not end its stream on the server (the
+    proxies keep accepting the heartbeats). So the viewer's goodbye (`/events/leave`, or the
+    host removing them) publishes a `bye` on the bus that ends their older streams on every
+    instance. While live, a stream whose viewer has not beaten for 150 s is ended with
+    `reconnect` at its next heartbeat (`api/internal/api/edge_idle.go`). Before this, every
+    stream in the 24 Oct 2026 load test ran its full 25 minutes.
   - A slow client (64 queued events) is dropped and reconnects.
   - There is no replay. On every (re)connect the browser rereads the chat, question and poll
     backlogs, as LiveKit clients do after a reconnect.
