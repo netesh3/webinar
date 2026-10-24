@@ -312,7 +312,11 @@ func TestReplayNeedsTheSwitchAndAChosenTemplate(t *testing.T) {
 		t.Error("the recording was not published")
 	}
 
-	// Now with the switch on and no replay template chosen: email only.
+	// Now with the switch on and no replay template chosen: email only. A host runs one
+	// session at a time, so the first ends before the next goes live.
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/end", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("end the first session: %d %s", res.StatusCode, raw)
+	}
 	grantFeature(t, h, meAccount(t, h).ID, types.FeatureWhatsAppCRM)
 	setReminders(t, h) // clears every template, including the replay one
 	const only = "Email only"

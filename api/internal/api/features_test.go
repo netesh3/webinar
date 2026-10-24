@@ -395,6 +395,7 @@ func TestCloudRecordingIsOffUntilAnAdminAllowsIt(t *testing.T) {
 		t.Fatalf("admin disable: status %d body %s", res.StatusCode, raw)
 	}
 	h.login("cloud-host@test.dev")
+	h.endLive(wb.ID) // one live session per host
 	other := h.newWebinar("Still no cloud", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+other.ID+"/start", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("start second webinar: status %d body %s", res.StatusCode, raw)
