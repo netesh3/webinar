@@ -1928,9 +1928,12 @@ export const api = {
 
   /** Makes a panelist the host's equal for this run of the webinar, or turns
    *  them back into an ordinary panelist. See CoHostPatch. */
-  setCoHost: (slug: string, userId: string, coHost: boolean) =>
+  /** Co-host by LiveKit identity, from the room's roster: an invited panelist ("user_"), or an
+   *  attendee on stage / meeting guest ("att_") with an account (409 cohost_needs_account
+   *  without one). */
+  setParticipantCoHost: (slug: string, identity: string, coHost: boolean) =>
     patch<StatusResponse>(
-      `/api/host/webinars/${seg(slug)}/panelists/${seg(userId)}/co-host`,
+      `/api/host/webinars/${seg(slug)}/participants/${seg(identity)}/co-host`,
       { coHost } satisfies CoHostPatch,
     ),
 };

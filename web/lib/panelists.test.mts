@@ -5,7 +5,10 @@
 
 import assert from "node:assert/strict";
 import {
+  canMakeCoHost,
+  COHOST_NEEDS_ACCOUNT,
   coHostGrantedMessage,
+  coHostNeedsAccountMessage,
   isScheduledPanelist,
   leaveMenuItems,
   panelistBox,
@@ -91,5 +94,24 @@ assert.doesNotMatch(note, /like you can|same as you|full control/);
 assert.match(note, /handing over the host role/);
 assert.match(note, /deleting recordings/);
 assert.match(coHostGrantedMessage("Ravi", true), /lobby/);
+
+// "Make co-host" is for anybody on the stage but the host: an invited panelist, an attendee
+// brought up, a meeting guest. The server decides whether an "att_" has the account for it.
+assert.equal(canMakeCoHost({ identity: "user_1", role: "panelist", isHost: false }), true);
+assert.equal(canMakeCoHost({ identity: "att_ABC", role: "panelist", isHost: false }), true);
+// Never the host, nobody in the audience, and no identity that is not a person.
+assert.equal(canMakeCoHost({ identity: "user_9", role: "host", isHost: true }), false);
+assert.equal(canMakeCoHost({ identity: "user_9", role: "panelist", isHost: true }), false);
+assert.equal(canMakeCoHost({ identity: "att_ABC", role: "attendee", isHost: false }), false);
+assert.equal(canMakeCoHost({ identity: "EG_recorder", role: "panelist", isHost: false }), false);
+assert.equal(canMakeCoHost({ identity: "att_", role: "panelist", isHost: false }), false);
+
+// The server's code for "no account behind this attendee", and what the host is told.
+assert.equal(COHOST_NEEDS_ACCOUNT, "cohost_needs_account");
+assert.equal(
+  coHostNeedsAccountMessage("Asha"),
+  "Asha needs to sign in to be a co-host — ask them to sign in with the same email and rejoin.",
+);
+assert.match(coHostNeedsAccountMessage(" "), /^This person needs to sign in/);
 
 console.log("panelists: ok");

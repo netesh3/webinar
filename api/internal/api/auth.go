@@ -293,12 +293,12 @@ func (s *Server) requireOwnership(next http.Handler) http.Handler {
 			return
 		}
 		if !trueOwner {
-			grant, err := s.store.StageGrant(r.Context(), slug, hostIdentity(user.ID))
+			coHost, err := s.store.IsCoHost(r.Context(), slug, user.ID)
 			if err != nil {
 				s.fail(w, r, "co-host check", err)
 				return
 			}
-			if !grant.CoHost && !(user.IsAdmin && r.Method == http.MethodGet) {
+			if !coHost && !(user.IsAdmin && r.Method == http.MethodGet) {
 				// An account that cannot host is told so, as requireHost told it
 				// before this subtree moved out from behind it.
 				if !user.CanHost {

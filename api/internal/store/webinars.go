@@ -1565,6 +1565,34 @@ func (s *Store) SetCoHost(ctx context.Context, slug, identity, display string, c
 	return err
 }
 
+/* IsCoHost reports whether an account is a co-host of one webinar, by either of the two
+ * identities that account can be on its stage with.
+ *
+ * An invited panelist is "user_<id>" (hostIdentity), so their grant row is keyed by the
+ * account directly. An attendee the host brought up on stage, or a meeting guest, is
+ * "att_<joinKey>": their row is keyed by a registration, and the account behind it is that
+ * registration's user_id (or knock_user_id, a meeting guest who knocked signed in — see
+ * RegistrantAccount). Only registrations of THIS webinar count — a join key from another
+ * session, even one of the same series or the same host, never lends its account co-host
+ * rights here — and the row is the one SetCoHost wrote for that identity, so taking the
+ * attendee back off the stage (RevokeStage deletes the row) takes co-host with it.
+ */
+func (s *Store) IsCoHost(ctx context.Context, slug, userID string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM webinar_stage_grants g
+			  JOIN webinars w ON w.id = g.webinar_id
+			 WHERE w.slug = $1 AND g.co_host
+			   AND (g.identity = 'user_' || $2::text
+			        OR g.identity IN (
+			            SELECT 'att_' || r.join_key FROM registrations r
+			             WHERE r.webinar_id = w.id
+			               AND COALESCE(r.user_id, r.knock_user_id)::text = $2::text)))`,
+		slug, userID).Scan(&ok)
+	return ok, err
+}
+
 // MuteAllGrants latches the host mute across every grant in one session, so
 // "mute everyone" also holds for the people the host had allowed to speak.
 func (s *Store) MuteAllGrants(ctx context.Context, slug string) error {

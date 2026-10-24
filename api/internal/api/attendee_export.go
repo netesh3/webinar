@@ -27,12 +27,12 @@ func (s *Server) handleAttendeesCSV(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
 	user := userFromContext(r.Context())
 	if trueOwner, _ := r.Context().Value(trueOwnerCtxKey).(bool); !trueOwner {
-		grant, err := s.store.StageGrant(r.Context(), slug, hostIdentity(user.ID))
+		coHost, err := s.store.IsCoHost(r.Context(), slug, user.ID)
 		if err != nil {
 			s.fail(w, r, "attendee export: co-host check", err)
 			return
 		}
-		if !grant.CoHost {
+		if !coHost {
 			httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 			return
 		}

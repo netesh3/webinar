@@ -960,6 +960,9 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/participants/stage-all", s.handleBringAllOnStage)
 				r.Post("/participants/revoke-all", s.handleRevokeAllSpeaking)
 				r.Patch("/participants/{identity}/mute", s.handleMuteOne)
+				// Co-host by LiveKit identity: an invited panelist, or an attendee on stage /
+				// meeting guest with an account (handleSetParticipantCoHost).
+				r.Patch("/participants/{identity}/co-host", s.handleSetParticipantCoHost)
 				r.Post("/participants/{identity}/stage", s.handleSetStage)
 				r.Delete("/participants/{identity}", s.handleRemoveParticipant)
 			})

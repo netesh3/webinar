@@ -258,6 +258,8 @@ func (s *Server) joinAsAttendee(
 		Name:        display,
 		AudioOnly:   grant.AudioOnly,
 		MutedByHost: grant.MutedByHost,
+		// Co-host, when the host made this person one, survives the reconnect too.
+		CoHost: grant.Granted && s.attendeeCoHost(r, slug, reg.JoinKey, grant),
 		// A seat the host gave this person, which has to survive their reconnect
 		// along with its scope — see Metadata.Promoted.
 		Promoted: grant.Granted,
@@ -267,6 +269,32 @@ func (s *Server) joinAsAttendee(
 		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}
+}
+
+/* attendeeCoHost decides whether an attendee identity's token carries co-host
+ * (setAttendeeCoHost granted it): only when this request is signed in as the account
+ * the grant was for, the account of that join key's registration on this webinar.
+ *
+ * The token is what mints RoomAdmin (lk.GrantFor), and the join key alone is a link
+ * that can be forwarded; the account is who the host chose. It is also the only way the
+ * co-host's tools can work at all — they are REST calls authorized by that session — so a
+ * browser that is not signed in comes back an ordinary speaker, and signing in and
+ * rejoining brings co-host back.
+ */
+func (s *Server) attendeeCoHost(r *http.Request, slug, joinKey string, grant store.StageGrant) bool {
+	if !grant.CoHost {
+		return false
+	}
+	user, signedIn := s.optionalUser(r)
+	if !signedIn {
+		return false
+	}
+	acct, err := s.store.RegistrantAccount(r.Context(), slug, joinKey)
+	if err != nil {
+		s.log.Warn("join: co-host account lookup failed", "error", err, "webinar", slug)
+		return false
+	}
+	return acct.UserID != "" && acct.UserID == user.ID
 }
 
 /* announceAttendeeJoined tells the host someone from the audience just joined,
