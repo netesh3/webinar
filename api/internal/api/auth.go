@@ -320,7 +320,8 @@ func (s *Server) requireOwnership(next http.Handler) http.Handler {
 
 /* requireTrueOwner narrows the door back down to the account actually listed in
  * webinars.host_id, for the handful of actions a co-host may not take: deleting
- * the webinar, and transferring it away. Both would otherwise let someone the
+ * the webinar, transferring it away, and making or unmaking a co-host (only the
+ * host decides who runs the room with them). These would otherwise let someone the
  * host merely made equal to themselves either destroy the webinar outright or
  * hand it to a third party — neither of which "control anything the host can,
  * for this session" was meant to include.

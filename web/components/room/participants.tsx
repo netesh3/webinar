@@ -236,7 +236,9 @@ export async function setStageSettlingHand(
 // ---------------------------------------------------------------- host view
 
 function HostRoster() {
-  const { slug, join, realtime, roster, lobby } = useRoomUI();
+  const { slug, join, realtime, roster, lobby, me } = useRoomUI();
+  // The host, not a co-host: making or unmaking a co-host is the owner's alone (canMakeCoHost).
+  const owner = me.role === "host";
   /* A meeting has no audience and no stage to bring anybody onto (lib/meeting-room.ts): one
    * list of who is in, the lobby above it, and no hands — the raise-hand tool is not offered,
    * and a stage action would only be refused (422 not_in_meeting). */
@@ -338,6 +340,7 @@ function HostRoster() {
       key={p.identity}
       participant={p}
       isMe={p.identity === join.identity}
+      owner={owner}
       meeting={meeting}
       stageless={stageless}
       handRaised={handIdentities.has(p.identity)}
@@ -618,6 +621,7 @@ function HostRoster() {
 function HostRosterRow({
   participant: p,
   isMe,
+  owner,
   meeting = false,
   stageless = meeting,
   handRaised,
@@ -634,6 +638,8 @@ function HostRosterRow({
 }: {
   participant: LiveParticipant;
   isMe: boolean;
+  /** The viewer is the host (not a co-host): only they make or unmake co-hosts. */
+  owner: boolean;
   /** In a meeting nobody moves between a stage and an audience, so none of the stage
    *  actions are offered; mute, co-host and remove are. */
   meeting?: boolean;
@@ -677,9 +683,10 @@ function HostRosterRow({
     stageless,
   });
   // Anybody on the stage but the host: an invited panelist, an attendee brought
-  // up, a meeting guest (lib/panelists.ts canMakeCoHost). Whether an "att_" has
-  // the account co-host needs is the server's answer, explained in onSetCoHost.
-  const canBeCoHost = canMakeCoHost({ identity: p.identity, role: p.role, isHost });
+  // up, a meeting guest (lib/panelists.ts canMakeCoHost) — offered to the host
+  // only, never to a co-host. Whether an "att_" has the account co-host needs is
+  // the server's answer, explained in onSetCoHost.
+  const canBeCoHost = canMakeCoHost({ identity: p.identity, role: p.role, isHost }, owner);
   // A meeting guest is not a "Panelist" to anyone; the host and co-hosts keep theirs.
   const badge = meeting && !isHost && !p.coHost ? null : rosterBadge(p);
   // Somebody the video server does not list (an edge viewer, or a dropped connection that

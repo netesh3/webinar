@@ -251,7 +251,8 @@ func TestCoHostGrantNeedsTheHost(t *testing.T) {
 		t.Errorf("grant after refused attempts = %+v, %v", grant, err)
 	}
 
-	// A co-host may make another promoted attendee co-host, as with panelists.
+	// Even once a co-host, they cannot make another promoted attendee co-host: only the host
+	// can (host_transfer.go), as with panelists.
 	h.login(host.Email)
 	if res, raw := h.do(http.MethodPatch, coHostPath(wb.ID, identity), types.CoHostPatch{CoHost: true}); res.StatusCode != http.StatusOK {
 		t.Fatalf("make co-host: status %d body %s", res.StatusCode, raw)
@@ -259,8 +260,10 @@ func TestCoHostGrantNeedsTheHost(t *testing.T) {
 	_, _, second := h.signedInRegistrant(wb.ID, "Mira")
 	h.login(host.Email)
 	h.promote(wb.ID, second.JoinKey)
-	if res, raw := ravi.do(http.MethodPatch, coHostPath(wb.ID, "att_"+second.JoinKey), types.CoHostPatch{CoHost: true}); res.StatusCode != http.StatusOK {
-		t.Errorf("co-host grants co-host: status %d body %s", res.StatusCode, raw)
+	res, raw := ravi.do(http.MethodPatch, coHostPath(wb.ID, "att_"+second.JoinKey), types.CoHostPatch{CoHost: true})
+	ravi.wantError(res, raw, http.StatusForbidden, "host_only")
+	if grant, err := h.store.StageGrant(t.Context(), wb.ID, "att_"+second.JoinKey); err != nil || grant.CoHost {
+		t.Errorf("grant after a co-host's attempt = %+v, %v", grant, err)
 	}
 }
 

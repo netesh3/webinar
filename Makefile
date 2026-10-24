@@ -305,6 +305,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And the panel: an edit that leaves the panelist box alone keeps the panel, and the
 	# room offers a scheduled panelist and a co-host only what the server lets them do.
 	cd web && node --experimental-strip-types --no-warnings lib/panelists.test.mts
+	# And who the host may hand over to from Leave: a co-host, either kind of identity.
+	cd web && node --experimental-strip-types --no-warnings lib/host-transfer.test.mts
 	# And where the host goes when the webinar ends: Results, and not while their
 	# own End request is still the one sending the survey.
 	cd web && node --experimental-strip-types --no-warnings lib/host-results.test.mts

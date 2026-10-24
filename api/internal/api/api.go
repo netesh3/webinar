@@ -950,7 +950,15 @@ func (s *Server) Routes() http.Handler {
 
 				r.Post("/panelists", s.handleAddPanelist)
 				r.Delete("/panelists/{userID}", s.handleRemovePanelist)
-				r.Patch("/panelists/{userID}/co-host", s.handleSetCoHost)
+				// Co-host is the host's to give and take back, and only the host's: a co-host
+				// cannot make or unmake one (host_transfer.go). Both routes, by account id and
+				// by LiveKit identity (an invited panelist, or an attendee on stage / meeting
+				// guest with an account: handleSetParticipantCoHost).
+				r.Group(func(r chi.Router) {
+					r.Use(s.requireTrueOwner)
+					r.Patch("/panelists/{userID}/co-host", s.handleSetCoHost)
+					r.Patch("/participants/{identity}/co-host", s.handleSetParticipantCoHost)
+				})
 
 				// ---- in-session moderation ----
 				r.Get("/participants", s.handleParticipants)
@@ -960,9 +968,6 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/participants/stage-all", s.handleBringAllOnStage)
 				r.Post("/participants/revoke-all", s.handleRevokeAllSpeaking)
 				r.Patch("/participants/{identity}/mute", s.handleMuteOne)
-				// Co-host by LiveKit identity: an invited panelist, or an attendee on stage /
-				// meeting guest with an account (handleSetParticipantCoHost).
-				r.Patch("/participants/{identity}/co-host", s.handleSetParticipantCoHost)
 				r.Post("/participants/{identity}/stage", s.handleSetStage)
 				r.Delete("/participants/{identity}", s.handleRemoveParticipant)
 			})

@@ -108,9 +108,9 @@ export const post: Post = {
 
     ## End the webinar
 
-    When you are done, press **Leave**. As the host you get two choices:
+    When you are done, press **Leave**. As the host you get these choices:
 
-    - **Assign host & leave** hands the room to someone else and lets the session carry on.
+    - **Make … the host and leave**, one for each co-host in the room, hands the session to that co-host and lets it carry on. With no co-hosts you get **Leave webinar** instead, and the stage carries on without a host. See [Co-hosts and panelists](/blog/co-hosts-and-panelists).
     - **End webinar for everyone** disconnects everyone and marks the webinar as ended.
 
     Ending asks you to confirm (**End this webinar for everyone?**), and reminds you that registrations and the attendance record are kept but nobody can rejoin. If you prepared a feedback survey and have not sent it yet, you are offered **Send survey now** first.

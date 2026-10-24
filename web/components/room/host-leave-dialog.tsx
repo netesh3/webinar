@@ -3,8 +3,9 @@
 import { useRemoteParticipants } from "@livekit/components-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { mergeHostCandidates } from "@/lib/host-transfer";
-import { Alert, Modal, Spinner } from "../controls";
+import { mergeHostCandidates, metadataCoHost } from "@/lib/host-transfer";
+import { HOST_LEAVE_NO_COHOST_NOTE, handoverLabel, leaveMenuItems } from "@/lib/panelists";
+import { Spinner } from "../controls";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { participantRole } from "./participants";
@@ -16,50 +17,63 @@ export {
 } from "@/lib/host-transfer";
 
 /**
- * Zoom-style Leave menu for the host: assign a successor, or end for everyone.
- * Anchored to the Leave button. Panelist pick and end-confirm stay in dialogs.
+ * The host's Leave menu, webinars and meetings alike (lib/panelists.ts leaveMenuItems).
+ * Anchored to the Leave button.
  *
- * A meeting offers a plain Leave in place of Assign host. A hand-over needs a signed-in
- * `user_` identity on the webinar's panelist list (TransferHost), and a meeting has neither:
- * everyone admitted from the lobby is an `att_` guest, signed in or not, and a meeting has no
- * panelist list to be on. So the option could never be enabled there. Leaving without ending
- * is safe in a meeting: the room and its live status stay put when the host's tab goes, the
- * others carry on, the host gets back in with Rejoin from Meetings, and the empty-room
- * sweeper ends it once the last person goes (api sweepEmptyWebinars).
+ * With co-hosts in the room: "Make <co-host> the host and leave", one line per co-host, and
+ * End for everyone. Picking a co-host hands over (api handleTransferHost: ownership moves,
+ * the co-host becomes the host, this host an ordinary panelist) and then leaves. Only a
+ * co-host can take over — the host decides who could run the room by making them co-host.
+ *
+ * With none: a plain Leave and End, and a note that making someone co-host first is what
+ * lets the host hand over. Leaving without a successor is what a closed tab does today: a
+ * webinar's stage carries on and the host can rejoin; a meeting carries on too, but nobody is
+ * let in from the lobby, and the empty-room sweeper ends it once the last person goes. Nobody
+ * is made host automatically.
  */
 export function HostLeaveMenu({
   open,
   onClose,
-  onAssign,
   onEnd,
 }: {
   open: boolean;
   onClose: () => void;
-  onAssign: () => void;
   onEnd: () => void;
 }) {
-  const { join, roster, leave } = useRoomUI();
+  const { slug, join, roster, leave } = useRoomUI();
+  const { notify } = useToast();
   const meeting = !!join.meeting;
   const remotes = useRemoteParticipants();
   const panel = useRef<HTMLDivElement | null>(null);
   const reloadRoster = roster.reload;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // A meeting has no one to hand over to (see above), so no candidates to look up.
-    if (!open || meeting) return;
+    if (!open) return;
     void reloadRoster();
-  }, [open, meeting, reloadRoster]);
+  }, [open, reloadRoster]);
+
+  // Start each opening fresh, adjusted during render on the open edge.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setBusy(null);
+      setError(null);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !busy) onClose();
     };
     const onDown = (e: PointerEvent) => {
       if (panel.current?.contains(e.target as Node)) return;
       // Leave button toggles open; ignore that click so we do not close-then-reopen.
       if ((e.target as HTMLElement).closest?.("[data-host-leave-trigger]")) return;
-      onClose();
+      if (!busy) onClose();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onDown);
@@ -67,9 +81,9 @@ export function HostLeaveMenu({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointerdown", onDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, busy]);
 
-  const candidates = useMemo(
+  const coHosts = useMemo(
     () =>
       mergeHostCandidates(
         roster.live?.participants,
@@ -78,6 +92,7 @@ export function HostLeaveMenu({
           name: p.name || undefined,
           role: participantRole(p),
           canPublish: !!p.permissions?.canPublish,
+          coHost: metadataCoHost(p.metadata),
         })),
         join.identity,
       ),
@@ -85,227 +100,113 @@ export function HostLeaveMenu({
   );
 
   if (!open) return null;
+
+  const what = meeting ? "meeting" : "webinar";
+  const items = leaveMenuItems(true, coHosts);
+
+  async function handOver(identity: string, name: string) {
+    setBusy(identity);
+    setError(null);
+    try {
+      await api.transferHost(slug, identity);
+      notify(`${name} is now the host. Leaving…`, "ok");
+      onClose();
+      leave();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not hand over the host role.");
+      setBusy(null);
+    }
+  }
 
   return (
     <div
       ref={panel}
       role="menu"
       aria-label="Leave options"
-      className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
+      className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
     >
-      {meeting ? (
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            onClose();
-            leave();
-          }}
-          className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 outline-none focus-visible:bg-surface-2"
-        >
-          <span className="text-[13px] font-medium text-ink">Leave meeting</span>
-          <span className="text-[12px] leading-relaxed text-ink-2">
-            Everyone else stays. Rejoin from Meetings while it&apos;s live. Without you or a
-            co-host, nobody is let in from the lobby.
-          </span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          role="menuitem"
-          disabled={candidates.length === 0}
-          onClick={() => {
-            onClose();
-            onAssign();
-          }}
-          className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-45 outline-none focus-visible:bg-surface-2"
-        >
-          <span className="text-[13px] font-medium text-ink">Assign host & leave</span>
-          <span className="text-[12px] leading-relaxed text-ink-2">
-            {candidates.length === 0
-              ? "No eligible panelist is in the room right now."
-              : "Hand the session to another panelist, then exit."}
-          </span>
-        </button>
+      {error && (
+        <p role="alert" className="mx-3.5 my-2 text-[12px] leading-relaxed text-live">
+          {error}
+        </p>
       )}
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          onClose();
-          onEnd();
-        }}
-        className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-live/10 outline-none focus-visible:bg-live/10"
-      >
-        <span className="text-[13px] font-medium text-live">
-          {meeting ? "End meeting for everyone" : "End webinar for everyone"}
-        </span>
-        <span className="text-[12px] leading-relaxed text-ink-2">
-          {meeting
-            ? "Disconnect everyone and mark the meeting as ended."
-            : "Disconnect everyone and mark the webinar as ended."}
-        </span>
-      </button>
+      {items.map((item) => {
+        if (item.kind === "handover") {
+          return (
+            <button
+              key={item.identity}
+              type="button"
+              role="menuitem"
+              disabled={busy !== null}
+              onClick={() => void handOver(item.identity, item.name)}
+              className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60 outline-none focus-visible:bg-surface-2"
+            >
+              <span className="inline-flex items-center gap-2 text-[13px] font-medium text-ink">
+                {busy === item.identity && <Spinner className="size-3.5" />}
+                {handoverLabel(item.name)}
+              </span>
+              <span className="text-[12px] leading-relaxed text-ink-2">
+                They run the rest of the {what}. You leave as a panelist.
+              </span>
+            </button>
+          );
+        }
+        if (item.kind === "leave") {
+          return (
+            <button
+              key="leave"
+              type="button"
+              role="menuitem"
+              disabled={busy !== null}
+              onClick={() => {
+                onClose();
+                leave();
+              }}
+              className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:opacity-60 outline-none focus-visible:bg-surface-2"
+            >
+              <span className="text-[13px] font-medium text-ink">
+                {meeting ? "Leave meeting" : "Leave webinar"}
+              </span>
+              <span className="text-[12px] leading-relaxed text-ink-2">
+                {meeting
+                  ? "Everyone else stays. Rejoin from Meetings while it's live. Without you or a co-host, nobody is let in from the lobby."
+                  : "The stage carries on without a host. Rejoin from your dashboard while it's live."}{" "}
+                {HOST_LEAVE_NO_COHOST_NOTE}
+              </span>
+            </button>
+          );
+        }
+        return (
+          <button
+            key="end"
+            type="button"
+            role="menuitem"
+            disabled={busy !== null}
+            onClick={() => {
+              onClose();
+              onEnd();
+            }}
+            className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-live/10 disabled:opacity-60 outline-none focus-visible:bg-live/10"
+          >
+            <span className="text-[13px] font-medium text-live">
+              {meeting ? "End meeting for everyone" : "End webinar for everyone"}
+            </span>
+            <span className="text-[12px] leading-relaxed text-ink-2">
+              Disconnect everyone and mark the {what} as ended.
+            </span>
+          </button>
+        );
+      })}
       <div className="my-1 h-px bg-line" role="separator" />
       <button
         type="button"
         role="menuitem"
+        disabled={busy !== null}
         onClick={onClose}
-        className="flex w-full items-center px-3.5 py-2.5 text-left text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 outline-none focus-visible:bg-surface-2"
+        className="flex w-full items-center px-3.5 py-2.5 text-left text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-60 outline-none focus-visible:bg-surface-2"
       >
         Cancel
       </button>
     </div>
-  );
-}
-
-/**
- * Second step after “Assign host & leave”: pick a panelist and confirm transfer.
- * Webinars only: a meeting's Leave menu has no Assign (see HostLeaveMenu).
- */
-export function HostAssignDialog({
-  open,
-  onClose,
-  onLeave,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onLeave: () => void;
-}) {
-  const { slug, join, roster } = useRoomUI();
-  const remotes = useRemoteParticipants();
-  const { notify } = useToast();
-  const [selected, setSelected] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const reloadRoster = roster.reload;
-
-  useEffect(() => {
-    if (!open) return;
-    void reloadRoster();
-  }, [open, reloadRoster]);
-
-  // Start each opening fresh. Adjusted during render on the open edge rather
-  // than in an effect after it.
-  const [wasOpen, setWasOpen] = useState(false);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setSelected(null);
-      setError(null);
-      setBusy(false);
-    }
-  }
-
-  const candidates = useMemo(
-    () =>
-      mergeHostCandidates(
-        roster.live?.participants,
-        remotes.map((p) => ({
-          identity: p.identity,
-          name: p.name || undefined,
-          role: participantRole(p),
-          canPublish: !!p.permissions?.canPublish,
-        })),
-        join.identity,
-      ),
-    [roster.live?.participants, remotes, join.identity],
-  );
-
-  // Preselect the first eligible panelist until the host picks one.
-  if (open && !selected && candidates[0]) {
-    setSelected(candidates[0].identity);
-  }
-
-  async function assignAndLeave() {
-    if (!selected) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.transferHost(slug, selected);
-      notify("Host assigned. Leaving…", "ok");
-      onLeave();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not assign a new host.");
-      setBusy(false);
-    }
-  }
-
-  function resetAndClose() {
-    if (busy) return;
-    setSelected(null);
-    setError(null);
-    onClose();
-  }
-
-  if (!open) return null;
-
-  return (
-    <Modal
-      dark
-      open
-      size="sm"
-      onClose={resetAndClose}
-      title="Assign host & leave"
-      description="Choose a panelist to run the rest of the session. You will leave after they become host."
-      footer={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={resetAndClose}
-            disabled={busy}
-            className="rounded-lg px-3.5 py-2 text-[13px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void assignAndLeave()}
-            disabled={busy || !selected}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-[13px] font-medium text-white hover:bg-brand/90 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          >
-            {busy && <Spinner className="size-3.5" />}
-            Assign & leave
-          </button>
-        </div>
-      }
-    >
-      {error && (
-        <div className="mb-3">
-          <Alert tone="error">{error}</Alert>
-        </div>
-      )}
-      {candidates.length === 0 ? (
-        <p className="text-[13px] leading-relaxed text-ink-2">
-          No panelists are in the room who can take over. Invite a panelist onto the stage first,
-          or end the webinar for everyone instead.
-        </p>
-      ) : (
-        <ul className="space-y-1.5">
-          {candidates.map((p) => {
-            const active = selected === p.identity;
-            return (
-              <li key={p.identity}>
-                <button
-                  type="button"
-                  onClick={() => setSelected(p.identity)}
-                  disabled={busy}
-                  aria-pressed={active}
-                  className={`flex w-full items-center rounded-lg border px-3.5 py-3 text-left text-[13px] transition-colors disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                    active
-                      ? "border-brand bg-brand-soft text-brand"
-                      : "border-line-2 text-ink hover:bg-surface-2"
-                  }`}
-                >
-                  <span className="min-w-0 flex-1 truncate font-medium">
-                    {p.name || "Panelist"}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Modal>
   );
 }

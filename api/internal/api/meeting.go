@@ -354,8 +354,7 @@ func (s *Server) joinMeeting(w http.ResponseWriter, r *http.Request, wb types.We
 		grant = store.StageGrant{}
 	}
 
-	s.setRejoinCookie(w, wb, reg)
-	if s.issueToken(w, r, wb, sfu, lk.Spec{
+	spec := lk.Spec{
 		Role:        types.RolePanelist,
 		Room:        room,
 		Identity:    identity,
@@ -363,7 +362,14 @@ func (s *Server) joinMeeting(w http.ResponseWriter, r *http.Request, wb types.We
 		MutedByHost: grant.MutedByHost,
 		// A guest the host made co-host, signed in as the account it was for (attendeeCoHost).
 		CoHost: s.attendeeCoHost(r, slug, reg.JoinKey, grant),
-	}, false, false, "", false) {
+	}
+	// A guest handed the host role (handleTransferHost), back signed in as that account.
+	if s.attendeeIsHost(r, wb, reg.JoinKey) {
+		spec.Role, spec.MutedByHost, spec.CoHost = types.RoleHost, false, false
+	}
+
+	s.setRejoinCookie(w, wb, reg)
+	if s.issueToken(w, r, wb, sfu, spec, false, false, "", false) {
 		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}

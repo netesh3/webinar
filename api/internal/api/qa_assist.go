@@ -515,7 +515,8 @@ func (s *Server) hostTeam(ctx context.Context, sfu RoomManager, wb types.Webinar
 	to := []string{hostIdentity(wb.Host.ID)}
 	if parts, err := sfu.Participants(ctx, lk.RoomName(wb.ID)); err == nil {
 		for _, p := range parts {
-			if p.CoHost && p.Identity != to[0] {
+			// The host by role as well: one handed the role on an attendee identity is not "user_".
+			if (p.CoHost || p.Role == types.RoleHost) && p.Identity != to[0] {
 				to = append(to, p.Identity)
 			}
 		}

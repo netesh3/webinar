@@ -45,12 +45,11 @@ func TestCoHostWithoutHostingGetsHostTools(t *testing.T) {
 			t.Errorf("co-host without hosting, GET %s: %d %s", path, res.StatusCode, raw)
 		}
 	}
-	// A co-host may make another panelist co-host.
-	if res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/panelists/"+other.ID+"/co-host", types.CoHostPatch{CoHost: true}); res.StatusCode != http.StatusOK {
-		t.Errorf("co-host promotes a panelist: %d %s", res.StatusCode, raw)
-	}
-	// But never the owner's own actions.
-	res, raw := h.do(http.MethodDelete, "/api/host/webinars/"+wb.ID, nil)
+	// Making co-hosts is the host's alone (host_transfer.go).
+	res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID+"/panelists/"+other.ID+"/co-host", types.CoHostPatch{CoHost: true})
+	h.wantError(res, raw, http.StatusForbidden, "host_only")
+	// Nor the owner's other actions.
+	res, raw = h.do(http.MethodDelete, "/api/host/webinars/"+wb.ID, nil)
 	h.wantError(res, raw, http.StatusForbidden, "host_only")
 	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/followups/send", map[string]any{})
 	h.wantError(res, raw, http.StatusForbidden, "host_only")
