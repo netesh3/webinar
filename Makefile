@@ -419,6 +419,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/recording-preview.test.mts
 	# A simulive's shared clock: snap-back on drift, resume on pause, and no seek controls.
 	cd web && node --experimental-strip-types --no-warnings lib/simulive-clock.test.mts
+	# The server clock offset, and the simulive's shared position read on it.
+	cd web && node --experimental-strip-types --no-warnings lib/server-clock.test.mts
 	# The broadcast player's sound: tried first after a Join tap, muted only when refused.
 	cd web && node --experimental-strip-types --no-warnings lib/autoplay-sound.test.mts
 	# The admin cost calculator: transfer pools, render concurrency, the AI cap, recording sizes.

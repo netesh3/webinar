@@ -70,6 +70,8 @@ import { PollPopup } from "./poll-popup";
 import { SimuliveWaiting } from "./simulive-waiting";
 import { SimuliveHostBar } from "./simulive-host-bar";
 import { SimuliveFinished, useSimuliveFinished } from "./simulive-finished";
+import { serverNow } from "@/lib/server-clock";
+import { useServerClock } from "@/lib/use-server-clock";
 import { waitingCount } from "@/lib/simulive-host";
 import { SurveyPopup } from "./survey-popup";
 import { SessionSurvey } from "../survey/session-survey";
@@ -437,6 +439,9 @@ export function CdnAttendeeRoom({
   /* A simulive's one shared clock: the server's start, from room metadata, the join, or the
    * waiting screen asking. Until there is one, nothing plays (SimuliveWaiting). */
   const [polledStart, setPolledStart] = useState<string | null>(null);
+  // The start is the server's clock, so "where everybody is" is read on it too, not on this
+  // device's (lib/use-server-clock.ts): a clock a few seconds out is a few seconds away.
+  useServerClock(Boolean(join.simulive));
   const liveStart = startedAt || polledStart || join.startedAt || null;
   const waiting = simuliveWaiting(Boolean(join.simulive), liveStart);
   /* The recording's end, for everyone at once: the player goes, and the room waits for the
@@ -725,7 +730,7 @@ export function CdnAttendeeRoom({
                         // else is, not at the top of the recording.
                         sharedStartMs={
                           join.simulive
-                            ? () => sharedPositionMs(liveStart, Date.now())
+                            ? () => sharedPositionMs(liveStart, serverNow())
                             : undefined
                         }
                       />

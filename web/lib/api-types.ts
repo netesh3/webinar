@@ -5482,7 +5482,7 @@ export const FeatureAI = "ai";
  * 	 * "Priya S." and phone numbers and emails scrubbed. The host previews the timeline and
  * 	 * hides items from the webinar's Replay tab.
  * 	 *
- * 	 * Premium, opt-in: off for every account until an admin turns it on (Admin -> Accounts).
+ * 	 * Opt-in, in no plan: off for every account until an admin turns it on (Admin -> Accounts).
  * 	 * Off means a simulive plays the video only, as before. The rule that a simulive is never
  * 	 * recorded again applies regardless of this switch.
  */
@@ -8681,8 +8681,8 @@ export interface JoinResponse {
   simuliveLive?: boolean;
 }
 /**
- * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for the edge
- * latency clock overlay.
+ * ServerTime is GET /api/time: the server's clock in Unix milliseconds, for a simulive's shared
+ * clock (web/lib/use-server-clock.ts) and the edge latency clock overlay.
  */
 export interface ServerTime {
   now: number /* int64 */;

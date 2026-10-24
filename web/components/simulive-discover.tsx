@@ -325,7 +325,7 @@ export function SimuliveAutopilotCard({
             {!replay && (
               <>
                 {" "}
-                <Badge tone="warn">Premium</Badge>
+                <Badge tone="warn">Available on request</Badge>
               </>
             )}
           </p>

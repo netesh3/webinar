@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { countdownTarget } from "@/lib/simulive-host";
+import { serverNow } from "@/lib/server-clock";
 import { waitingLabel, waitingPollMs } from "@/lib/simulive-replay";
+import { useServerClock } from "@/lib/use-server-clock";
 
 /* A simulive before its start: no video at all, because a player with no shared start would
  * begin at 0:00 on a clock of its own (lib/simulive-replay.ts, simuliveWaiting). A countdown
@@ -30,12 +32,15 @@ export function SimuliveWaiting({
   coverUrl?: string;
   onStarted: (startedAt: string) => void;
 }) {
-  const [now, setNow] = useState(() => Date.now());
+  // The start counted down to is the server's clock, so the countdown runs on it as well.
+  const offset = useServerClock();
+  const [clientNow, setClientNow] = useState(() => Date.now());
+  const now = serverNow(clientNow, offset);
   const target = countdownTarget(startsAt, pendingStartAt, manual) ?? undefined;
   const waitsForHost = target == null;
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setClientNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -48,13 +53,13 @@ export function SimuliveWaiting({
         .then((wb) => {
           if (cancelled) return;
           if (wb.startedAt) onStarted(wb.startedAt);
-          else timer = setTimeout(ask, waitingPollMs(target, Date.now(), waitsForHost));
+          else timer = setTimeout(ask, waitingPollMs(target, serverNow(), waitsForHost));
         })
         .catch(() => {
           if (!cancelled) timer = setTimeout(ask, 10_000);
         });
     };
-    timer = setTimeout(ask, waitingPollMs(target, Date.now(), waitsForHost));
+    timer = setTimeout(ask, waitingPollMs(target, serverNow(), waitsForHost));
     return () => {
       cancelled = true;
       clearTimeout(timer);

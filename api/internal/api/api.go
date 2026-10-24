@@ -518,7 +518,7 @@ func (s *Server) Routes() http.Handler {
 		// stream itself cannot say either (handleEdgeEvents). Same token.
 		r.Post("/webinars/{slug}/events/beat", s.handleEdgeBeat)
 		r.Post("/webinars/{slug}/events/leave", s.handleEdgeLeave)
-		// The server's clock, for the edge latency overlay (EDGE_DEBUG_CLOCK).
+		// The server's clock: a simulive's shared clock, and the edge latency overlay (EDGE_DEBUG_CLOCK).
 		r.Get("/time", s.handleServerTime)
 		r.Post("/webinars/{slug}/captions", s.handleAppendCaption)
 

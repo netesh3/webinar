@@ -7,6 +7,8 @@ import { formatTime, localTimeZone } from "@/lib/format";
 import { DELAY_MINUTES, doorsOpenAtMs, hostControls, type SimuliveView } from "@/lib/simulive-host";
 import { formatOffset } from "@/lib/simulive-replay";
 import { goLiveSummary, peekGoLiveChoice, type GoLiveChoice } from "@/lib/simulive-golive";
+import { serverNow } from "@/lib/server-clock";
+import { useServerClock } from "@/lib/use-server-clock";
 import { ConfirmModal, Spinner } from "../controls";
 import { CameraIcon } from "../icons";
 import { useToast } from "../providers";
@@ -48,7 +50,10 @@ export function SimuliveHostBar({
   onLive?: (hostName?: string) => void;
 }) {
   const { notify } = useToast();
-  const [now, setNow] = useState(() => Date.now());
+  // The start and the doors are the server's clock: so is "now" here (lib/use-server-clock.ts).
+  const offset = useServerClock();
+  const [clientNow, setClientNow] = useState(() => Date.now());
+  const now = serverNow(clientNow, offset);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmGoLive, setConfirmGoLive] = useState(false);
@@ -63,7 +68,7 @@ export function SimuliveHostBar({
   const [mine, setMine] = useState<{ against: string | null; doorsAgainst: boolean; wb: Webinar } | null>(null);
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setClientNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 

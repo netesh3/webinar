@@ -29,6 +29,7 @@ import { RoomEvent, type Room } from "livekit-client";
 import { api } from "./api";
 import { EDGE_MAX_REFRESHES, edgeRetryDelay, edgeStreamFailure, routeEdgeEvent } from "./edge-route";
 import { DATA_TOPIC } from "./realtime";
+import { useServerClock } from "./use-server-clock";
 
 export type EdgeStreamState = "connecting" | "open" | "retrying";
 
@@ -228,29 +229,8 @@ export function useEdgeEvents({
   return state;
 }
 
-/** The server's clock offset (ms), sampled a few times on mount. 0 until measured. */
+/** The server's clock offset (ms), measured once per page (lib/use-server-clock.ts). 0 until
+ *  measured. */
 export function useServerClockOffset(enabled: boolean): number {
-  const [offset, setOffset] = useState(0);
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    void (async () => {
-      const { clockOffset } = await import("./server-clock");
-      const samples = [];
-      for (let i = 0; i < 5 && !cancelled; i++) {
-        const sentAt = Date.now();
-        try {
-          const { now } = await api.serverTime();
-          samples.push({ sentAt, receivedAt: Date.now(), serverNow: now });
-        } catch {
-          // A missed sample narrows nothing; keep the rest.
-        }
-      }
-      if (!cancelled) setOffset(clockOffset(samples));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
-  return offset;
+  return useServerClock(enabled);
 }
