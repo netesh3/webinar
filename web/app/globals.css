@@ -1980,6 +1980,562 @@ html[data-theme="dark"] .legal {
   text-decoration: underline;
 }
 
+/* ------------------------------------------------------------------ blog
+ *
+ * /blog, /blog/category/*, /blog/<slug>. Inside `.home`, so it uses the marketing
+ * tokens and follows dark mode with them; post bodies reuse `.legal-body` prose and
+ * add code, callouts, figures and diagrams below.
+ */
+.blog {
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 70% 30% at 10% 0%, var(--home-accent-soft) 0%, transparent 60%),
+    var(--home-paper);
+}
+
+.blog-inner {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+.blog-head {
+  max-width: 44rem;
+  margin-bottom: 2rem;
+}
+
+.blog-intro {
+  margin: 0.75rem 0 0;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: var(--home-ink-2);
+}
+
+.blog-rss {
+  font-size: 0.85rem;
+  color: var(--home-accent);
+  white-space: nowrap;
+}
+
+.blog-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.blog-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 0.85rem;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 14%, transparent);
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 550;
+  color: var(--home-ink-2);
+  text-decoration: none;
+}
+
+.blog-chip:hover {
+  border-color: var(--home-accent);
+  color: var(--home-accent);
+}
+
+.blog-chip-on {
+  border-color: var(--home-accent);
+  background: var(--home-accent-soft);
+  color: var(--home-accent);
+}
+
+.blog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 1rem;
+}
+
+.blog-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 1.25rem 1.1rem;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 10%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in oklab, var(--home-paper) 70%, white);
+  transition: border-color 0.15s;
+}
+
+html[data-theme="dark"] .blog-card {
+  background: color-mix(in oklab, var(--home-mist) 45%, var(--home-paper));
+}
+
+.blog-card:hover {
+  border-color: var(--home-accent);
+}
+
+.blog-card-cat {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--home-accent);
+}
+
+.blog-card-title {
+  margin: 0.45rem 0 0;
+  font-family: var(--font-home-display), "Fraunces", Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.blog-card-title a {
+  color: var(--home-ink);
+  text-decoration: none;
+}
+
+/* The whole card is the link target; the title stays the one accessible link. */
+.blog-card-title a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.blog-card-desc {
+  flex: 1;
+  margin: 0.55rem 0 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--home-ink-2);
+}
+
+.blog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0.9rem 0 0;
+  font-size: 0.85rem;
+  color: var(--home-ink-3);
+}
+
+.blog-card .blog-meta {
+  margin: 0;
+}
+
+.blog-empty {
+  color: var(--home-ink-3);
+}
+
+/* Post page. One column; with a table of contents, a second column on wide screens. */
+.blog-post {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+@media (min-width: 1100px) {
+  .blog-post-toc {
+    display: grid;
+    max-width: 64rem;
+    grid-template-columns: minmax(0, 44rem) 15rem;
+    column-gap: 3rem;
+    align-items: start;
+  }
+
+  .blog-post-toc > .blog-post-head,
+  .blog-post-toc > .blog-body,
+  .blog-post-toc > .blog-post-foot {
+    grid-column: 1;
+  }
+
+  .blog-post-toc > .blog-toc-side {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    position: sticky;
+    top: 5rem;
+    display: block;
+  }
+
+  .blog-toc-mobile {
+    display: none;
+  }
+}
+
+.blog-toc {
+  font-size: 0.88rem;
+}
+
+.blog-toc-side {
+  display: none;
+  padding-left: 1rem;
+  border-left: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+}
+
+.blog-toc-title,
+.blog-toc-mobile summary {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--home-ink-3);
+}
+
+.blog-toc-mobile {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+  border-radius: 0.75rem;
+}
+
+.blog-toc-mobile summary {
+  margin: 0;
+  cursor: pointer;
+}
+
+.blog-toc-mobile[open] summary {
+  margin-bottom: 0.5rem;
+}
+
+.blog-toc-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.blog-toc-list a {
+  color: var(--home-ink-2);
+  text-decoration: none;
+  line-height: 1.35;
+}
+
+.blog-toc-list a:hover {
+  color: var(--home-accent);
+}
+
+.blog-toc-sub {
+  padding-left: 0.75rem;
+}
+
+.blog-body {
+  margin-top: 1.75rem;
+  font-size: 1.02rem;
+}
+
+.blog-body h2,
+.blog-body h3 {
+  scroll-margin-top: 5rem;
+}
+
+.blog-body h2 {
+  margin-top: 2.5rem;
+  font-size: 1.4rem;
+}
+
+.blog-body h3 {
+  margin-top: 1.75rem;
+  font-size: 1.08rem;
+}
+
+.blog-body .blog-anchor {
+  color: inherit;
+  text-decoration: none;
+}
+
+.blog-body .blog-anchor:hover {
+  color: var(--home-accent);
+}
+
+.blog-body ul {
+  list-style: disc;
+}
+
+.blog-body li::marker {
+  color: var(--home-ink-3);
+}
+
+.blog-body strong {
+  font-weight: 650;
+  color: var(--home-ink);
+}
+
+.blog-body :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+  background: color-mix(in oklab, var(--home-ink) 7%, transparent);
+  color: var(--home-ink);
+}
+
+.blog-body blockquote {
+  margin: 1rem 0 0;
+  padding-left: 1rem;
+  border-left: 3px solid color-mix(in oklab, var(--home-ink) 15%, transparent);
+}
+
+.blog-body hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+}
+
+.blog-code {
+  margin: 1rem 0 0;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: var(--home-stage);
+}
+
+.blog-code figcaption {
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #9fb3d1;
+}
+
+.blog-code pre {
+  margin: 0;
+  padding: 0.9rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: #e3ebf7;
+}
+
+.blog-callout {
+  margin: 1.25rem 0 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--blog-callout-line);
+  border-left-width: 4px;
+  border-radius: 0.6rem;
+  background: var(--blog-callout-bg);
+  --blog-callout-line: color-mix(in oklab, var(--home-accent) 45%, transparent);
+  --blog-callout-bg: var(--home-accent-soft);
+}
+
+.blog-callout-tip {
+  --blog-callout-line: color-mix(in oklab, var(--color-ok) 50%, transparent);
+  --blog-callout-bg: var(--color-ok-soft);
+}
+
+.blog-callout-warning {
+  --blog-callout-line: color-mix(in oklab, var(--color-warn) 50%, transparent);
+  --blog-callout-bg: var(--color-warn-soft);
+}
+
+.blog-callout > :first-child,
+.blog-callout-title + * {
+  margin-top: 0;
+}
+
+.blog-callout-title {
+  margin: 0 0 0.3rem !important;
+  font-weight: 650;
+  color: var(--home-ink);
+}
+
+.blog-figure {
+  margin: 1.5rem 0 0;
+}
+
+.blog-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+  border-radius: 0.75rem;
+}
+
+.blog-figure figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--home-ink-3);
+  text-align: center;
+}
+
+.blog-table {
+  margin: 1rem 0 0;
+  overflow-x: auto;
+}
+
+.blog-table table {
+  margin: 0;
+}
+
+/* Diagrams: colours from the marketing tokens, so they follow the theme. */
+.blog-diagram {
+  padding: 1rem;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 10%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in oklab, var(--home-mist) 40%, var(--home-paper));
+}
+
+@media (max-width: 560px) {
+  .blog-diagram {
+    padding: 0.5rem;
+  }
+}
+
+.dg {
+  display: block;
+  width: 100%;
+  max-width: 36rem;
+  height: auto;
+  margin: 0 auto;
+  font-family: var(--font-home-sans), "Outfit", system-ui, sans-serif;
+}
+
+.dg-box {
+  stroke-width: 1.5;
+}
+
+.dg-box-plain {
+  fill: var(--home-paper);
+  stroke: color-mix(in oklab, var(--home-ink) 30%, transparent);
+}
+
+.dg-box-muted {
+  fill: var(--home-mist);
+  stroke: color-mix(in oklab, var(--home-ink) 20%, transparent);
+}
+
+.dg-box-accent {
+  fill: var(--home-accent-soft);
+  stroke: var(--home-accent);
+}
+
+.dg-label {
+  fill: var(--home-ink);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.dg-sub {
+  fill: var(--home-ink-2);
+  font-size: 16px;
+}
+
+.dg-note {
+  fill: var(--home-ink-2);
+  font-size: 16px;
+}
+
+.dg-line {
+  fill: none;
+  stroke: color-mix(in oklab, var(--home-ink) 45%, transparent);
+  stroke-width: 2;
+}
+
+.dg-line-dashed {
+  stroke-dasharray: 6 5;
+}
+
+.dg-arrowhead {
+  fill: color-mix(in oklab, var(--home-ink) 55%, transparent);
+}
+
+.dg-dot {
+  fill: color-mix(in oklab, var(--home-ink) 45%, transparent);
+}
+
+.dg-dot-accent {
+  fill: var(--home-accent);
+}
+
+.blog-post-foot {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+}
+
+.blog-prevnext {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.blog-prevnext-link {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 12%, transparent);
+  border-radius: 0.75rem;
+  color: var(--home-ink);
+  font-weight: 550;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.blog-prevnext-link:hover {
+  border-color: var(--home-accent);
+}
+
+.blog-prevnext-next {
+  text-align: right;
+}
+
+.blog-prevnext-dir {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--home-ink-3);
+}
+
+@media (max-width: 560px) {
+  .blog-prevnext {
+    grid-template-columns: 1fr;
+  }
+}
+
+.blog-related {
+  margin-top: 2rem;
+}
+
+.blog-related h2 {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-home-display), "Fraunces", Georgia, serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--home-ink);
+}
+
+.blog-related ul {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.blog-related li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+}
+
+.blog-related a {
+  color: var(--home-accent);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.blog-related a:hover {
+  text-decoration: underline;
+}
+
+.blog-related-cat {
+  font-size: 0.8rem;
+  color: var(--home-ink-3);
+}
+
 /* Inputs are used on nearly every screen — style once here rather than
    repeating a 12-class string on each field. */
 @layer components {
