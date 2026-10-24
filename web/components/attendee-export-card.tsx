@@ -6,13 +6,13 @@ import { ATTENDEE_SCOPES, type AttendeeScope } from "@/lib/attendee-export";
 import { Icon } from "./engagement/primitives";
 import { Card } from "./ui";
 
-/** The Results tab's "Export attendees (CSV)" for an ended session. The link is a real
+/** "Export attendees (CSV)" for an ended session, at the top of Results' Attendees section. The link is a real
  *  download (the server answers with an attachment); the toggle picks whether registrants
  *  who never joined get a row too. Host and co-hosts only — the server enforces it. */
 export function AttendeeExportCard({ slug }: { slug: string }) {
   const [scope, setScope] = useState<AttendeeScope>("attended");
   return (
-    <Card className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
+    <Card className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-semibold text-ink">Attendee list</p>
         <p className="mt-0.5 text-[12px] text-ink-3">

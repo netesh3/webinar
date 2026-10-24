@@ -8,6 +8,7 @@ import { apiSource } from "@/lib/engagement/api-source";
 import { fixtureSource } from "@/lib/engagement/source";
 import { useDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { formatDay, formatTime, tzLabel } from "@/lib/format";
+import { AttendeeExportCard } from "../attendee-export-card";
 import { EngagementDashboard } from "./engagement-dashboard";
 import { DashboardSkeleton } from "./states";
 
@@ -74,6 +75,8 @@ export function EngagementTab({
             : (tiers, levels) => <EngagementFollowUp slug={w.id} tiers={tiers} fallback={levels} />
       }
       onFollowUp={hideFollowUp ? onOpenFollowUp : undefined}
+      // Under Attendees, next to the people it exports; only once the session is over.
+      attendeeExport={!bypass && w.status === "ended" ? <AttendeeExportCard slug={w.id} /> : undefined}
       signInHref={`/login?next=${encodeURIComponent(`/host/${w.id}?tab=results`)}`}
     />
   );
