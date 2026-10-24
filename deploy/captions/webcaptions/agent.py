@@ -367,6 +367,10 @@ def build_server(cfg: Config) -> AgentServer:
         shutdown_process_timeout=30.0,
         job_memory_warn_mb=2000,
         port=cfg.health_port,
+        # livekit-agents' own /metrics (lk_agents_active_job_count: one job per room, the worker
+        # load, child processes), scraped by Alloy on the captions box (alloy/captions.alloy).
+        # Off unless CAPTIONS_METRICS_PORT is set (docker-compose.captions-box.yml sets 8092).
+        prometheus_port=cfg.metrics_port or None,
     )
     server.rtc_session(entrypoint, agent_name=cfg.agent_name, on_request=on_request)
     return server

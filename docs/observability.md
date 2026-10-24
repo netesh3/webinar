@@ -142,6 +142,53 @@ If the stack still runs close to the limit, the next lever is in Grafana, not he
 Asserts / Application Observability recording rules (`asserts:*`, `traces_spanmetrics_*`) are
 ~550 series on their own and can be switched off in the stack.
 
+### The captions box (`deploy/digitalocean/alloy/captions.alloy`)
+
+The on-demand captions droplet runs the video box's Alloy (same compose file and image) with a
+trimmed config: no LiveKit or MediaMTX, the agent's worker metrics instead. Every series carries
+`box="<hostname>"` (`captions-blr-1`) and `role="captions"`; the video box's carry `role="video"`.
+On the default `s-2vcpu-4gb`, while it runs:
+
+| What | Series | |
+|---|---|---|
+| `node_cpu_seconds_total` | 16 | 2 vCPUs × 8 modes (guest modes dropped; `nice` kept: the agent runs niced) |
+| Other host (`node`: memory, load, filesystem, disk, 2 NICs, netstat, pressure, uname, boot time) | ~65 | the video box's keep-list |
+| Containers (`cadvisor`: `captions`, `alloy`) | ~16 | 8 metrics each |
+| Agent (`job="captions"`: `lk_agents_*`, process CPU/RSS/fds) | ~8 | no per-room labels |
+| `up` and `scrape_*`, 3 targets | 15 | |
+| **Total** | **~120** | 0 when no captions box runs (the series age out of the active window) |
+
+A bigger size adds 8 CPU series per vCPU (`c-4`: ~140). Adding `role` to the video box's
+labels starts each of its series afresh once (the old ones go stale after 5 minutes and leave
+the active-series count within a few hours); no query that selects by `box` changes.
+
+Captions box panels (all also work with `box=~"captions-.*"` in place of `role="captions"`):
+
+```promql
+# CPU % (all modes but idle; the agent's work is mostly mode="nice")
+100 * (1 - avg by (box) (rate(node_cpu_seconds_total{role="captions",mode="idle"}[5m])))
+# CPU steal % (shared vCPUs: move to c-2 if this is high under load)
+100 * avg by (box) (rate(node_cpu_seconds_total{role="captions",mode="steal"}[5m]))
+# Memory used %
+100 * (1 - node_memory_MemAvailable_bytes{role="captions"} / node_memory_MemTotal_bytes{role="captions"})
+# Load (1 min), and per vCPU
+node_load1{role="captions"}
+node_load1{role="captions"} / on (box) count by (box) (node_cpu_seconds_total{role="captions",mode="idle"})
+# Caption agent container: CPU (cores), memory (working set), CPU throttled (s/s against CAPTIONS_CPUS)
+sum by (box) (rate(container_cpu_usage_seconds_total{role="captions",service="captions"}[5m]))
+sum by (box) (container_memory_working_set_bytes{role="captions",service="captions"})
+sum by (box) (rate(container_cpu_cfs_throttled_seconds_total{role="captions",service="captions"}[5m]))
+# Rooms the agent holds, and its load as LiveKit sees it (1 = full)
+sum by (box) (lk_agents_active_job_count{role="captions"}) or on () vector(0)
+max by (box) (lk_agents_worker_load{role="captions"})
+# Network (bytes/s)
+sum by (box) (rate(node_network_receive_bytes_total{role="captions"}[5m]))
+sum by (box) (rate(node_network_transmit_bytes_total{role="captions"}[5m]))
+```
+
+Logs: `{role="captions", service="captions"}`; the per-room latency line once a minute is
+`{role="captions", service="captions"} |= "caption latency"`.
+
 ### Dashboard and alert PromQL
 
 **No query has to change.** The label names are the same and every selector used matches the

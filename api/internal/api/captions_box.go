@@ -362,6 +362,8 @@ var captionsValueSafe = regexp.MustCompile(`^[A-Za-z0-9._:/@+=%?&,~-]+$`)
 /* captionsUserData is the captions droplet's first-boot script: the agent's settings, written
  * root-only to /etc/webinarliv/captions.env, then the boot script from the repo (the snapshot's
  * copy when GitHub cannot be reached), which starts the agent (deploy/digitalocean/captions-boot.sh).
+ * With the video box's Grafana Cloud settings configured, they go in too (captionsGrafana), so the
+ * box reports to Grafana Cloud like the video box.
  *
  * The LiveKit key and secret and CAPTIONS_SECRET travel in the user data: the captions box has no
  * volume to keep them on (the video box's are on sfu-data). User data is readable from inside the
@@ -406,14 +408,36 @@ export CAPTIONS_REPO=%s CAPTIONS_REF=%s
 (umask 077; mkdir -p /etc/webinarliv; cat >/etc/webinarliv/captions.env <<'WEBINARLIV_CAPTIONS'
 %sWEBINARLIV_CAPTIONS
 )
-boot=/usr/local/sbin/webinarliv-captions-boot.sh
+%sboot=/usr/local/sbin/webinarliv-captions-boot.sh
 tmp="$(mktemp)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 60 "https://raw.githubusercontent.com/${CAPTIONS_REPO}/${CAPTIONS_REF}/deploy/digitalocean/captions-boot.sh" -o "$tmp" && bash -n "$tmp"; then
   install -m 755 "$tmp" "$boot"
 fi
 rm -f "$tmp"
 exec "$boot" >>/var/log/webinarliv-captions-boot.log 2>&1
-`, c.Repo, c.Ref, env.String()), nil
+`, c.Repo, c.Ref, env.String(), captionsGrafana(c.Grafana)), nil
+}
+
+// captionsGrafanaFile is where the user data leaves the Grafana Cloud settings for captions-boot.sh.
+const captionsGrafanaFile = "/etc/webinarliv/grafana.env"
+
+/* captionsGrafana is the user data's Grafana Cloud part: with all five settings usable (the video
+ * box's, config.BoxGrafana), they are written root-only to captionsGrafanaFile, and
+ * captions-boot.sh starts Alloy with them (box=<hostname>, role=captions). Otherwise nothing, and
+ * no Alloy. A separate file from captions.env, so the token never reaches the agent's
+ * environment. Quoted heredoc, values checked plain (config), never echoed or logged. */
+func captionsGrafana(g config.BoxGrafana) string {
+	if !g.Usable() {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("# Grafana Cloud for Alloy (config.BoxGrafana); read by captions-boot.sh.\n")
+	b.WriteString("(umask 077; cat >" + captionsGrafanaFile + " <<'WEBINARLIV_GRAFANA'\n")
+	for _, p := range g.Pairs() {
+		b.WriteString(p[0] + "=" + p[1] + "\n")
+	}
+	b.WriteString("WEBINARLIV_GRAFANA\n)\n")
+	return b.String()
 }
 
 /* captionsRedispatch re-creates the dispatch of every live room on the box still waiting for

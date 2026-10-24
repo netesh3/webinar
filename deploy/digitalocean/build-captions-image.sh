@@ -7,7 +7,8 @@
 # (the workflow prepends them). No state and no secrets: Docker, a host firewall that lets nothing
 # in but SSH, the caption agent's image built from the repo with base.en and large-v3-turbo baked
 # in (so a new box neither downloads a model nor waits on Hugging Face), the compose file and the
-# boot script. The LiveKit key and CAPTIONS_SECRET arrive in each droplet's user data.
+# boot script, and the pinned Grafana Alloy image with its config. The LiveKit key,
+# CAPTIONS_SECRET and the Grafana Cloud settings arrive in each droplet's user data.
 #
 # On failure it does NOT power off, so the workflow times out and deletes the builder instead of
 # snapshotting a half-built image. Log: /var/log/webinarliv-build.log.
@@ -41,15 +42,24 @@ src=/opt/webinarliv-build
 rm -rf "$src"
 mkdir -p "$src" /opt/captions /opt/captions-box
 curl -fsSL --retry 5 -m 300 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
-  tar -xz -C "$src" --strip-components=1 --wildcards '*/deploy/captions/*' '*/deploy/digitalocean/*'
+  tar -xz -C "$src" --strip-components=1 --wildcards '*/deploy/captions/*' '*/deploy/digitalocean/*' \
+    '*/deploy/livekit-hetzner/docker-compose.alloy.yml'
 rsync -a --delete --exclude 'tests' --exclude '__pycache__' --exclude '.pytest_cache' \
   "${src}/deploy/captions/" /opt/captions/
 install -m 644 "${src}/deploy/digitalocean/docker-compose.captions-box.yml" /opt/captions-box/docker-compose.yml
 install -m 755 "${src}/deploy/digitalocean/captions-boot.sh" /usr/local/sbin/webinarliv-captions-boot.sh
+# Grafana Alloy, started by captions-boot.sh only with the API's GRAFANA_CLOUD_* settings: the
+# video box's compose file (same pinned image, mounts and caps) with this box's config.
+mkdir -p /opt/captions-box/alloy
+install -m 644 "${src}/deploy/livekit-hetzner/docker-compose.alloy.yml" /opt/captions-box/docker-compose.alloy.yml
+install -m 644 "${src}/deploy/digitalocean/alloy/captions.alloy" /opt/captions-box/alloy/config.alloy
 echo "$SEED_MODELS" >/etc/webinarliv-captions-seed
 
 log "image"
 docker build --build-arg "CAPTIONS_SEED_MODELS=${SEED_MODELS}" -t webinarliv-captions:local /opt/captions
+# The pinned Alloy image, so a box with Grafana Cloud configured pulls nothing at boot.
+alloy_image="$(sed -nE 's/^[[:space:]]*image:[[:space:]]*([^[:space:]]+).*/\1/p' /opt/captions-box/docker-compose.alloy.yml | head -1)"
+docker pull "$alloy_image"
 
 log "clean"
 cd /

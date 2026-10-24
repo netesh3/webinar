@@ -93,6 +93,10 @@ func TestCaptionsBoxMadeAndDeletedWithTheVideoBox(t *testing.T) {
 			t.Errorf("captions user data lacks %q", want)
 		}
 	}
+	// No Grafana Cloud settings configured here: none in the user data, so no Alloy on the box.
+	if strings.Contains(capCreate.UserData, "GRAFANA") {
+		t.Errorf("captions user data has Grafana lines without the settings:\n%s", capCreate.UserData)
+	}
 
 	// Active: ready. The video box comes up on its own schedule.
 	r.fake.Activate(cb.DropletID)
