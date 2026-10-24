@@ -137,6 +137,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/background-return.test.mts
 	# Which disconnects are the person leaving, and which are the network.
 	cd web && node --experimental-strip-types --no-warnings lib/disconnect-reason.test.mts
+	# The attendee volume boost: who gets it, and the watchdog that keeps it from ever going silent.
+	cd web && node --experimental-strip-types --no-warnings lib/volume-boost-policy.test.mts
 	# And what that ladder puts back once it reconnects, for the same reason plus a worse
 	# one: getting it wrong in the generous direction republishes somebody's screen.
 	cd web && node --experimental-strip-types --no-warnings lib/republish.test.mts

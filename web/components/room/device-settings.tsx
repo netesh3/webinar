@@ -11,6 +11,7 @@ import { BackgroundPicker } from "./background-picker";
 import { LowLightSetting } from "./low-light";
 import { NetworkReadout } from "./network-readout";
 import { useRoomUI } from "./context";
+import { VolumeBoostSetting } from "./volume-boost-setting";
 
 /* Camera, microphone and speaker.
  *
@@ -124,6 +125,8 @@ export function DeviceSettings() {
             device in your operating system&apos;s sound settings.
           </Alert>
         )}
+
+        <VolumeBoostSetting />
 
         {/* Not a device, and deliberately not gated on being able to publish — an
             attendee following a busy chat has the same reason to want this as a host. Off
