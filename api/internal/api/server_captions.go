@@ -24,8 +24,8 @@ import (
  *
  * The browser engine (web/lib/local-captions.ts) runs Whisper tiny.en in each speaker's own
  * tab: English only, and it costs the speaker's laptop. The server engine is a LiveKit agent
- * on the egress host (deploy/captions) running English-only faster-whisper over the ACTIVE
- * speakers only. It never runs inside the API; the API only:
+ * (deploy/captions) running English-only faster-whisper over the ACTIVE speakers only; for the
+ * on-demand video box it runs on the separate captions box (captions_box.go), never on the box. It never runs inside the API; the API only:
  *
  *   - dispatches it to a room when the host turns server captions on, and removes the
  *     dispatch when they are turned off or the session ends (handleHostServerCaptions);
@@ -57,12 +57,17 @@ type agentDispatcher interface {
 var _ agentDispatcher = (*lk.Client)(nil)
 
 // dispatcherFor finds the agent dispatcher behind a resolved room manager, looking through
-// the edge tap that wraps every one of them, and keeping the on-demand box's guard.
+// the edge tap that wraps every one of them, and keeping the on-demand box's guard. A box room
+// has none without the captions box (captionsOn): no worker would ever take the dispatch, so
+// the room captions on-device and the host is told server captions are unavailable.
 func dispatcherFor(rm RoomManager) (agentDispatcher, bool) {
 	if er, ok := rm.(edgeRoom); ok {
 		rm = er.RoomManager
 	}
 	if br, ok := rm.(boxRoom); ok {
+		if !br.s.captionsOn() {
+			return nil, false
+		}
 		d, ok := unwrapRoom(br).(agentDispatcher)
 		if !ok {
 			return nil, false

@@ -20,9 +20,9 @@ import (
  *
  * finalizing is post-session work still running on a box: sessions that ended in the last
  * 35 minutes whose AI recap is still waiting for the after-session transcript (state
- * "finalizing", store.FinalizingSessions). Only a box deploy waits on these (the script adds
- * them for a project scope); they are not in live, count or byProject, so an API or Web
- * deploy is never held by them. */
+ * "finalizing", store.FinalizingSessions). They are not in live, count or byProject, so no
+ * deploy is held by them: the caption agent runs on the separate captions box, which no deploy
+ * restarts (.github/scripts/wait-no-live.sh waits on live only). */
 func (s *Server) handleInternalLiveStatus(w http.ResponseWriter, r *http.Request) {
 	secret := r.Header.Get("X-Tick-Secret")
 	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(s.cfg.TickSecret)) != 1 {

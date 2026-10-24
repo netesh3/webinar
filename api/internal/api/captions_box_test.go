@@ -78,8 +78,8 @@ func TestCaptionsBoxMadeAndDeletedWithTheVideoBox(t *testing.T) {
 		t.Fatalf("creates = %d, want 2", len(r.fake.Created))
 	}
 	video, capCreate := r.fake.Created[0], r.fake.Created[1]
-	if !strings.Contains(video.UserData, "SFU_CAPTIONS_REMOTE=true") {
-		t.Errorf("the video box was not told captions run elsewhere:\n%s", video.UserData)
+	if strings.Contains(video.UserData, "CAPTIONS") {
+		t.Errorf("the video box's user data should say nothing about captions:\n%s", video.UserData)
 	}
 	tags := strings.Join(capCreate.Tags, ",")
 	if capCreate.Size != "s-2vcpu-4gb" || capCreate.Image != 7 || len(capCreate.Volumes) != 0 ||
@@ -257,8 +257,8 @@ func TestCaptionsBoxOffByDefault(t *testing.T) {
 	if len(r.fake.Created) != 1 || len(r.fake.Tagged(capTag)) != 0 {
 		t.Fatalf("creates %d, captions droplets %v; want only the video box", len(r.fake.Created), r.fake.Tagged(capTag))
 	}
-	if !strings.Contains(r.fake.Created[0].UserData, "SFU_CAPTIONS_REMOTE=false") {
-		t.Errorf("video user data should keep captions on the box:\n%s", r.fake.Created[0].UserData)
+	if strings.Contains(r.fake.Created[0].UserData, "CAPTIONS") {
+		t.Errorf("the video box's user data should say nothing about captions:\n%s", r.fake.Created[0].UserData)
 	}
 	if cb := r.captions(); cb.Actual != store.BoxDown || cb.DropletID != 0 {
 		t.Fatalf("captions = %+v", cb)

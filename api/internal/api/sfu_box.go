@@ -26,8 +26,8 @@ import (
  *
  * The DigitalOcean box (a c-4, $0.125/h) used to run around the clock. Now it exists only
  * while something needs it: the API creates a droplet from the newest 'webinar-sfu-image'
- * snapshot, with the 'sfu-data' volume (keys, certificates, caption models, the captions
- * spool, mix-recording staging) and the reserved IP, and deletes it again after a quiet spell.
+ * snapshot, with the 'sfu-data' volume (keys, certificates, mix-recording staging) and the
+ * reserved IP, and deletes it again after a quiet spell.
  * The volume and the IP outlive every droplet, so each one comes up as the same server.
  *
  * The manager is a state machine stepped by the one-minute tick (and by a join that finds the
@@ -740,8 +740,7 @@ const boxGrafanaFile = "/run/webinarliv-grafana.env"
  * plain (config) and go in a quoted heredoc, so nothing in them is expanded or echoed. The
  * script is never logged (the create log names the image, size and region only).
  *
- * SFU_CAPTIONS_REMOTE=true (CAPTIONS_BOX_ENABLED) tells sfu-boot.sh the caption agent runs on the
- * captions box (captions_box.go), so this box does not start its own. */
+ * Nothing about captions: they never run on this box, only on the captions box (captions_box.go). */
 func boxUserData(c config.SFUBox) (string, error) {
 	for _, v := range []string{c.Repo, c.Ref, c.Volume} {
 		if !boxSafe.MatchString(v) {
@@ -763,7 +762,7 @@ func boxUserData(c config.SFUBox) (string, error) {
 	return fmt.Sprintf(`#!/bin/bash
 # Webinar Liv on-demand video server, first boot. Written by the API (api/internal/api/sfu_box.go).
 set -uo pipefail
-export SFU_DATA_DIR=/mnt/sfu-data SFU_VOLUME_NAME=%s SFU_REPO=%s SFU_REF=%s SFU_CAPTIONS_REMOTE=%t
+export SFU_DATA_DIR=/mnt/sfu-data SFU_VOLUME_NAME=%s SFU_REPO=%s SFU_REF=%s
 %sboot=/usr/local/sbin/webinarliv-sfu-boot.sh
 tmp="$(mktemp)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 60 "https://raw.githubusercontent.com/${SFU_REPO}/${SFU_REF}/deploy/digitalocean/sfu-boot.sh" -o "$tmp" && bash -n "$tmp"; then
@@ -771,7 +770,7 @@ if curl -fsSL --retry 5 --retry-delay 3 -m 60 "https://raw.githubusercontent.com
 fi
 rm -f "$tmp"
 exec "$boot" >>/var/log/webinarliv-boot.log 2>&1
-`, c.Volume, c.Repo, c.Ref, c.Captions.On, grafana), nil
+`, c.Volume, c.Repo, c.Ref, grafana), nil
 }
 
 // ---------------------------------------------------------------- readiness

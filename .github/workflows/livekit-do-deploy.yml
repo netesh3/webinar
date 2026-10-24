@@ -1,11 +1,13 @@
-# Deploy the self-hosted LiveKit stack (and server captions) to the DigitalOcean video server
+# Deploy the self-hosted LiveKit stack to the DigitalOcean video server
 # (sfu-blr-1, LiveKit project do-blr — see deploy/digitalocean/README.md).
 # The files and redeploy.sh in deploy/livekit-hetzner/ (named after the first box, now sunset;
 # the stack is shared and this is the only workflow that deploys it).
 #
 # Triggers:
 #   - workflow_dispatch — manual deploy from the Actions tab
-#   - push to main — when deploy/livekit-hetzner/**, deploy/captions/** or this workflow change
+#   - push to main — when deploy/livekit-hetzner/** or this workflow change. Not deploy/captions/**:
+#     captions run only on the separate captions box (its own snapshot; sfu-snapshot.yml rebuilds
+#     it on those changes), so a captions change never restarts the video box.
 #
 # Repository secrets:
 #   DO_SSH_HOST         — root@152.42.156.192 (the reserved IP)
@@ -19,11 +21,11 @@
 #   (deploy/livekit-hetzner/README.md, "Grafana Cloud")
 #
 # Until both SSH secrets are set the job SKIPS with a notice rather than failing, so a merge to
-# main is not red while the box is being set up. Box settings (CAPTIONS_*, HLS_PART_DURATION, …)
+# main is not red while the box is being set up. Box settings (HLS_PART_DURATION, MIXREC_*, …)
 # live in /opt/livekit/.env on the box and are never overwritten, nor are .env.keys and the
 # generated livekit.yaml.
 #
-# Deploy guard (docs/DEPLOYMENT-TOPOLOGY.md): a redeploy restarts LiveKit, egress, captions,
+# Deploy guard (docs/DEPLOYMENT-TOPOLOGY.md): a redeploy restarts LiveKit, egress,
 # MediaMTX and Caddy, cutting off every session on the box. So before anything touches it, the
 # job waits while a session is live on project do-blr (.github/scripts/wait-no-live.sh, secret
 # TICK_SECRET; project overridable with repo variable DO_LIVEKIT_PROJECT), and FAILS if the API
@@ -48,7 +50,6 @@ on:
     branches: [main]
     paths:
       - "deploy/livekit-hetzner/**"
-      - "deploy/captions/**"
       - ".github/workflows/livekit-do-deploy.yml"
 
 concurrency:
@@ -176,11 +177,6 @@ jobs:
             -e "ssh -F ${SSH_CONFIG}" \
             deploy/livekit-hetzner/ \
             livekit-do:/opt/livekit/
-          rsync -az --delete \
-            --exclude 'tests' --exclude '__pycache__' --exclude '.pytest_cache' \
-            -e "ssh -F ${SSH_CONFIG}" \
-            deploy/captions/ \
-            livekit-do:/opt/livekit/captions/
 
       # Grafana Cloud for Alloy (docker-compose.alloy.yml). Written into the box's .env, which is
       # on the sfu-data volume, so every later droplet has them at boot without this workflow.

@@ -12,12 +12,13 @@
 #   4. syncs the latest deploy files from the repo at SFU_REF, as the deploy workflow does, so a
 #      box that was down during a deploy still comes up current;
 #   5. merges the Grafana Cloud settings the API passed in the user data (SFU_GRAFANA_ENV) into
-#      .env, so Alloy reports from first boot, and records whether captions run on the separate
-#      captions box (SFU_CAPTIONS_REMOTE → CAPTIONS_REMOTE in .env: then this box runs none);
+#      .env, so Alloy reports from first boot;
 #   6. runs redeploy.sh with SFU_DATA_DIR and OPS_BOX=true (the ops box runs the API tick).
 #
 # Docker, the images and the host firewall come from the snapshot (build-image.sh). Output goes to
-# /var/log/webinarliv-boot.log. Safe to run again by hand.
+# /var/log/webinarliv-boot.log. Safe to run again by hand. No captions here: they run only on the
+# captions box (captions-boot.sh). SFU_CAPTIONS_REMOTE, which older APIs put in the user data, is
+# ignored.
 set -euo pipefail
 
 DATA="${SFU_DATA_DIR:-/mnt/sfu-data}"
@@ -71,11 +72,9 @@ fi
 tmp="$(mktemp -d)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 180 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$tmp" --strip-components=1 --wildcards \
-    '*/deploy/livekit-hetzner/*' '*/deploy/captions/*' '*/deploy/digitalocean/*'; then
+    '*/deploy/livekit-hetzner/*' '*/deploy/digitalocean/*'; then
   rsync -a --exclude '.env' --exclude '.env.keys' --exclude 'livekit.yaml' --exclude 'recordings' \
     "${tmp}/deploy/livekit-hetzner/" "${TARGET}/"
-  rsync -a --delete --exclude 'tests' --exclude '__pycache__' --exclude '.pytest_cache' \
-    "${tmp}/deploy/captions/" "${TARGET}/captions/"
   install -m 755 "${tmp}/deploy/digitalocean/sfu-boot.sh" /usr/local/sbin/webinarliv-sfu-boot.sh
   log "deploy files synced from ${REPO}@${REF}"
 else
@@ -112,20 +111,13 @@ if [[ -n "$grafana_file" && -f "$grafana_file" ]]; then
   rm -f "$grafana_file"
 fi
 
-# Captions on the separate captions box (CAPTIONS_BOX_ENABLED on the API; captions_box.go): the
-# API says so in SFU_CAPTIONS_REMOTE, and redeploy.sh then leaves this box's caption agent off
-# (CAPTIONS_REMOTE=true in .env; the deploy workflow's redeploy reads the same line). User data
-# from an API before this setting leaves .env as it is.
-case "${SFU_CAPTIONS_REMOTE:-}" in
-  true | false)
-    tmp_env="$(mktemp "${TARGET}/.env.XXXXXX")"
-    grep -v '^CAPTIONS_REMOTE=' "${TARGET}/.env" >"$tmp_env" || :
-    [[ "$SFU_CAPTIONS_REMOTE" == true ]] && echo "CAPTIONS_REMOTE=true" >>"$tmp_env"
-    chmod --reference="${TARGET}/.env" "$tmp_env" 2>/dev/null || chmod 600 "$tmp_env"
-    mv "$tmp_env" "${TARGET}/.env"
-    log "captions: $([[ "$SFU_CAPTIONS_REMOTE" == true ]] && echo 'on the captions box, not here' || echo 'as .env says')"
-    ;;
-esac
+# CAPTIONS_REMOTE in .env (written here by older versions) is unused now; drop it.
+if grep -q '^CAPTIONS_REMOTE=' "${TARGET}/.env"; then
+  tmp_env="$(mktemp "${TARGET}/.env.XXXXXX")"
+  grep -v '^CAPTIONS_REMOTE=' "${TARGET}/.env" >"$tmp_env" || :
+  chmod --reference="${TARGET}/.env" "$tmp_env" 2>/dev/null || chmod 600 "$tmp_env"
+  mv "$tmp_env" "${TARGET}/.env"
+fi
 
 systemctl start docker
 chmod +x "${TARGET}/redeploy.sh" "${TARGET}/install.sh"

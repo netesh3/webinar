@@ -84,8 +84,9 @@ prometheus.relabel "host" {
 
 	// Per-CPU by mode is 10 series a core; only the guest modes (always 0 on a droplet) go.
 	// softirq is where the kernel's network work shows (viewers on the origin, the SFU's UDP)
-	// and nice is the captions agent and the mix recorder (both run niced): without them,
-	// user + system missed ~0.45 of the 3.9 busy cores at the 2026-10-24 load test.
+	// and nice is the mix recorder (it runs niced; so did the caption agent, which now runs on
+	// the captions box): without them, user + system missed ~0.45 of the 3.9 busy cores at the
+	// 2026-10-24 load test.
 	rule {
 		source_labels = ["__name__", "mode"]
 		regex         = "node_cpu_seconds_total;(guest|guest_nice)"

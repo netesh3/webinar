@@ -70,9 +70,10 @@ func (s *Server) sessionAIBlock(ctx context.Context, wb types.Webinar) string {
  *                   (RequestCaptionAgent). The agent shows its lines only while captions are.
  *
  * With neither, the agent is removed. Where it cannot run (no CAPTIONS_SECRET, a project with
- * no agent dispatch, the feature off, or the dispatch failing) the speakers' browsers caption
- * on-device instead (web/lib/ai-session.ts captionEngine), and the reason is logged here so an
- * operator can tell which source a room ran on. Idempotent: an agent already asked for is left
+ * no agent dispatch (the on-demand box without the captions box), the feature off, or the
+ * dispatch failing) the speakers' browsers caption on-device instead (web/lib/ai-session.ts
+ * captionEngine), and the reason is logged here so an operator can tell which source a room
+ * ran on. Idempotent: an agent already asked for is left
  * alone, so the host's join can call it to retry a dispatch that failed.
  * Reports whether the stored state changed, so the caller re-reads before pushing metadata. */
 func (s *Server) syncCaptionAgent(ctx context.Context, wb types.Webinar, sfu RoomManager) bool {

@@ -1,6 +1,6 @@
 # The mix recorder (recorder.go): joins MediaMTX's rec/* segments into an MP4 and uploads it;
 # and the clip maker (clips.go): renders hosts' clips and reels between sessions.
-# Built on the box by redeploy.sh, like the caption agent.
+# Built on the box by redeploy.sh.
 #
 # Alpine's ffmpeg is enough for both: the joins are a copy (-c copy), and the clips need
 # libx264, AAC, loudnorm and libass with fontconfig, freetype, fribidi and harfbuzz, all of
