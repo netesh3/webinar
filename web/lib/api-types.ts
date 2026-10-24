@@ -9535,6 +9535,12 @@ export interface AppConfig {
    */
   telemetryEnabled?: boolean;
   /**
+   * AV1Publish is the AV1 kill switch (config.Config.AV1Publish, env AV1_PUBLISH):
+   * "off", "meetings" or "on". The room reads it before its first publish
+   * (web/lib/codec-policy.ts av1RoomVerdict); anything else, or missing, means off.
+   */
+  av1Publish: string;
+  /**
    *  FeatureCatalogue is every per-account switch this server has, with the sentence
    * 	 * that explains each one — see Features. Sent here rather than with the accounts
    * 	 * list so that adding a switch does not change the shape of that response, and so

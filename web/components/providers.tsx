@@ -45,6 +45,8 @@ const CONFIG_FALLBACK: AppConfig = {
   cloudRecordingEnabled: false,
   recordingsRetentionDays: 30,
   emailConfigured: false,
+  // The AV1 kill switch fails safe: no AV1 until the server says so (lib/codec-policy.ts).
+  av1Publish: "off",
   // 180 minutes = 3 hours, matches the server default.
   defaultMaxMeetingMin: 180,
   /* Empty rather than a copy of the server's list. The catalogue is what the

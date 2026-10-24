@@ -440,6 +440,20 @@ type Config struct {
 	 */
 	TelemetryEnabled bool
 
+	/* AV1Publish is the server-side switch for AV1 publishing in the browser (AV1_PUBLISH),
+	 * read by every client through /api/config before it joins a room. Changing the env var
+	 * on the Cloud Run service turns AV1 off for the next join; no web deploy needed.
+	 *
+	 *   off       (default) cameras VP8, shares VP9/H264, as before AV1 existed.
+	 *   meetings  AV1 only in meeting rooms.
+	 *   on        AV1 wherever the device can afford it, except rooms with an edge mix.
+	 *
+	 * Off by default since the 2026-10-24 incident: a subscriber that cannot take AV1 (the
+	 * edge-mix egress Chrome always) makes livekit-server regress the track to its backup
+	 * codec, and the backup stream reached the mix late or not at all. See
+	 * web/lib/codec-policy.ts (av1RoomVerdict). */
+	AV1Publish string
+
 	/* AIProviders is the model chain for the AI features, in the order tried. Empty means
 	 * the AI features are off. See ai.go in this package for the two ways to set it. */
 	AIProviders []AIProvider
@@ -603,6 +617,7 @@ func Load() (Config, error) {
 	c.SeedDev = envBool("SEED_DEV", true)
 	c.AuthBypass = envBool("AUTH_BYPASS", false)
 	c.TelemetryEnabled = envBool("TELEMETRY_ENABLED", false)
+	c.AV1Publish = AV1PublishMode(os.Getenv("AV1_PUBLISH"))
 	c.MinPasswordLength = envInt("MIN_PASSWORD_LENGTH", passwordFloorFor(c.Env))
 
 	/* The SFU list, parsed before validate() so a malformed one is a boot error.
@@ -972,6 +987,25 @@ func (c Config) edgeEncodingErrors() []error {
 		errs = append(errs, fmt.Errorf("EDGE_H264_PROFILE must be baseline, main or high: %q", c.EdgeH264Profile))
 	}
 	return errs
+}
+
+// AV1 publish modes (AV1_PUBLISH).
+const (
+	AV1PublishOff      = "off"
+	AV1PublishMeetings = "meetings"
+	AV1PublishOn       = "on"
+)
+
+// AV1PublishMode normalises AV1_PUBLISH. Anything unrecognised is "off": a typo fails safe.
+func AV1PublishMode(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case AV1PublishOn, "true", "1":
+		return AV1PublishOn
+	case AV1PublishMeetings:
+		return AV1PublishMeetings
+	default:
+		return AV1PublishOff
+	}
 }
 
 func envBool(key string, def bool) bool {

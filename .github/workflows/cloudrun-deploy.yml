@@ -287,6 +287,9 @@ jobs:
       # api/internal/api/telemetry.go). Flip back to "false" and redeploy when
       # the test is done — no code change needed either direction.
       TELEMETRY_ENABLED: "true"
+      # AV1 kill switch (api/internal/config AV1Publish): off | meetings | on. Unset = off.
+      # For an instant flip without a deploy: gcloud run services update --update-env-vars.
+      AV1_PUBLISH: ${{ vars.AV1_PUBLISH }}
 
     steps:
       - uses: actions/checkout@v4

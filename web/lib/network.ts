@@ -35,6 +35,7 @@ import {
 } from "./adapt-governor.ts";
 import { effectsPausedForCpu, effectsWanted, setEffectsPausedForCpu } from "./cpu-relief.ts";
 import { demoteAv1 } from "./codec-policy.ts";
+import { initialStall, sampleSender, stallStep, type StallState } from "./codec-watchdog.ts";
 
 /* Watching the connection, and doing something about it.
  *
@@ -1192,6 +1193,8 @@ export function useNetworkHealth(
   const rttWindow = useRef<number[]>([]);
   // qualityLimitationDurations at the last sample, per outbound-rtp id (cpuLimitedShare).
   const cpuWindow = useRef(new Map<string, { cpu: number; total: number }>());
+  // The backup-codec watchdog's state, for the camera track it was last fed (codec-watchdog.ts).
+  const stall = useRef<{ sid: string; state: StallState }>({ sid: "", state: initialStall() });
 
   const tierOf = (gov: GovernorState): PublishTier => TIERS[gov.level];
 
@@ -1472,6 +1475,31 @@ export function useNetworkHealth(
         cameraGov.current = state;
         if (decision) log("camera", before, tierOf(state), decision.direction, decision.reason, signals);
         await applyCamera(camera, Boolean(decision));
+
+        /* The backup-codec watchdog (codec-watchdog.ts): a camera with a backup sender, i.e.
+         * one the SFU has regressed, whose switched-on senders have sent no frame for
+         * STALL_MS is republished as plain VP8 — what the presenter's off/on did by hand. */
+        if (camera.simulcastCodecs.size > 0 && !downgrading) {
+          const id = camera.sid ?? "";
+          if (stall.current.sid !== id) stall.current = { sid: id, state: initialStall() };
+          const senders = [await sampleSender(camera.codec ?? "primary", camera.sender)];
+          for (const [codec, sc] of camera.simulcastCodecs) {
+            if (codec !== camera.codec) senders.push(await sampleSender(codec, sc.sender));
+          }
+          const step = stallStep(stall.current.state, {
+            now,
+            muted: camera.isMuted || camera.mediaStreamTrack?.muted === true,
+            senders,
+          });
+          stall.current.state = step.state;
+          if (step.stalled && cameraCodecOfTrack(camera.codec) === "av1") {
+            downgrading = true;
+            void downgradeCameraFromAv1(room).then((done) => {
+              downgrading = false;
+              log("codec", "av1", done ? "vp8" : "av1", "down", done ? "stall: camera republished as VP8" : "stall: camera republish failed", signals);
+            });
+          }
+        }
       }
 
       if (share) {

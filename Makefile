@@ -124,6 +124,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# Who publishes AV1: Safari and iPhone/iPad never, whatever they report; the rest only
 	# with an AV1 encoder that MediaCapabilities calls smooth and the cores to run it.
 	cd web && node --experimental-strip-types --no-warnings lib/codec-policy.test.mts
+	# The backup-codec watchdog: a regressed camera whose switched-on senders send no frame
+	# for 3 s is republished as VP8 — once, and never while muted or paused by dynacast.
+	cd web && node --experimental-strip-types --no-warnings lib/codec-watchdog.test.mts
 	# And who must not RECEIVE it: the recorder template (the edge mix) always, ≤ 4-core
 	# devices and phones without hardware AV1 decode — they get the VP8 / H264 backup.
 	cd web && node --experimental-strip-types --no-warnings lib/receive-codecs.test.mts

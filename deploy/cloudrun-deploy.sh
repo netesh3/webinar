@@ -125,6 +125,8 @@ ENV_VARS=(
   "RECORDINGS_DIR=${RECORDINGS_DIR:-/tmp/recordings}"
   "SEED_DEV=${SEED_DEV:-false}"
   "TELEMETRY_ENABLED=${TELEMETRY_ENABLED:-false}"
+  # AV1 kill switch read by every browser via /api/config: off | meetings | on.
+  "AV1_PUBLISH=${AV1_PUBLISH:-off}"
   "DATABASE_URL=${DATABASE_URL}"
   "SESSION_SECRET=${SESSION_SECRET}"
   # The boot budget check (api/internal/store/dbconfig.go) needs to know how many

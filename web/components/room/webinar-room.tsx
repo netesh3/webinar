@@ -72,7 +72,7 @@ import {
 import { countSince } from "@/lib/room-history";
 import { useRoomHistory } from "@/lib/room-history-sync";
 import { applyCameraCodec, prioritiseAudio, useNetworkHealth } from "@/lib/network";
-import { probeAv1 } from "@/lib/codec-policy";
+import { av1RoomVerdict, parseAv1PublishMode, probeAv1, setAv1RoomVerdict } from "@/lib/codec-policy";
 import { formatElapsed } from "@/lib/format";
 import { afterWebinarEnd } from "@/lib/host-results";
 import { Alert, Spinner } from "../controls";
@@ -549,7 +549,19 @@ function RoomSession({
   // Created once, before the pre-join screen. Recreating it on a re-render would
   // tear down the connection, so the options are captured at mount and changed
   // later through the Room's own device-switching API instead.
-  const [room] = useState(() => new Room(roomOptions(prefs, join.canPublish)));
+  const { av1Publish } = useAppConfig();
+  const [room] = useState(() => {
+    /* The room gate for AV1 (lib/codec-policy.ts av1RoomVerdict), before the publish defaults
+     * are built: the server's switch (AV1_PUBLISH), and never with a compositor in the room. */
+    setAv1RoomVerdict(
+      av1RoomVerdict({
+        mode: parseAv1PublishMode(av1Publish),
+        meeting: Boolean(join.meeting),
+        compositor: Boolean(join.edgeWebinar || join.cdnBroadcast),
+      }),
+    );
+    return new Room(roomOptions(prefs, join.canPublish));
+  });
 
   /* AV1 for this camera, if the device can afford it (lib/codec-policy.ts). roomOptions ran
    * before the probe could answer, so the answer is applied to the Room's publish defaults
