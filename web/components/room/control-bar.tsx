@@ -1756,8 +1756,12 @@ export function ControlBar() {
           {isHost ? (
             <HostLeaveMenu
               open={leaveMenuOpen}
+              /* A co-host has isHost too, but the live role of a panelist: they get a plain
+                 Leave instead of the hand-over only the owner may do. */
+              owner={me.role === "host"}
               onClose={() => setLeaveMenuOpen(false)}
               onAssign={() => setAssignOpen(true)}
+              onLeave={leave}
               onEnd={() => setEndConfirmOpen(true)}
             />
           ) : (

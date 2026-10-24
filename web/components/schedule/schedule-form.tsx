@@ -11,7 +11,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
-import { Alert } from "../controls";
+import { Alert, ConfirmModal } from "../controls";
 import { useAppConfig, useSession, useToast } from "../providers";
 import { Button } from "../ui";
 import { API_BASE, ApiError, api } from "@/lib/api";
@@ -33,6 +33,7 @@ import { zonedToInstant } from "@/lib/format";
 import { optionsProblem } from "@/lib/registration-questions";
 import { planRecurrence } from "@/lib/recurrence";
 import { isMeetingKind, meetingInputBase } from "@/lib/meeting-create";
+import { panelistSave, removedPanelistsPrompt } from "@/lib/panelists";
 import { scheduleLeadMs, simulivePrefill } from "@/lib/simulive-create";
 import {
   issuesFor,
@@ -261,6 +262,11 @@ function ScheduleFormBody({
   const openJoin = offersJoinWithoutRegistration(account?.features);
   const editing = webinar !== null;
   const meeting = editing ? isMeetingKind(webinar) : newMeeting;
+  // A save that would take panelists off the stage, waiting for the host to confirm it.
+  const [confirmRemoval, setConfirmRemoval] = useState<{
+    status: "scheduled" | "draft";
+    removed: string[];
+  } | null>(null);
   // Edge only, the Standard / Edge choice, or neither (lib/delivery-policy.ts).
   const deliveryPolicy = useDeliveryPolicy(!meeting, webinar?.id);
   /* "Replay as Simulive" on a recording: a new simulive of that recording. Read once — the
@@ -566,6 +572,8 @@ function ScheduleFormBody({
     if (meeting) {
       return {
         ...meetingInputBase(),
+        // An edit leaves the panel out, so the server keeps it (WebinarInput.panelistEmails).
+        ...(editing ? { panelistEmails: undefined } : {}),
         topic: form.topic,
         summary: form.summary,
         description: form.description,
@@ -639,10 +647,17 @@ function ScheduleFormBody({
         .map((t) => t.trim())
         .filter(Boolean),
       customQuestions: form.questions.filter((q) => q.label.trim() !== ""),
-      panelistEmails: form.panelistEmails
-        .split(/[\n,;]/)
-        .map((e) => e.trim())
-        .filter(Boolean),
+      /* Left out on an edit that did not touch the box, so the server keeps the panel; the
+       * whole new panel otherwise (lib/panelists.ts). It used to be the box as typed, which
+       * starts empty on an edit, so saving a new title took every panelist off the stage. */
+      ...(() => {
+        const panel = panelistSave({
+          editing,
+          saved: webinar?.panelistEmails,
+          box: form.panelistEmails,
+        });
+        return panel.emails ? { panelistEmails: panel.emails } : {};
+      })(),
       // Mirrors whether a survey is set up, for the places that only read the webinar.
       // A host without cloud recording cannot turn auto-record on, including from a
       // draft saved before the switch existed.
@@ -665,13 +680,23 @@ function ScheduleFormBody({
     };
   }
 
-  async function submit(status: "scheduled" | "draft") {
+  async function submit(status: "scheduled" | "draft", removalConfirmed = false) {
     setBusy(status);
     setError(null);
     setFields({});
 
     const input = toInput(status);
     if (!input) {
+      setBusy(null);
+      return;
+    }
+    /* Taking panelists off the stage is something the host does on purpose, so a save that
+     * drops any asks first. A meeting has no panel box, so never asks. */
+    const removing = meeting
+      ? []
+      : panelistSave({ editing, saved: webinar?.panelistEmails, box: form.panelistEmails }).removed;
+    if (removing.length > 0 && !removalConfirmed) {
+      setConfirmRemoval({ status, removed: removing });
       setBusy(null);
       return;
     }
@@ -1116,6 +1141,23 @@ function ScheduleFormBody({
           </StepPanel>}
         </div>
       </div>
+
+      <ConfirmModal
+        open={confirmRemoval !== null}
+        onClose={() => setConfirmRemoval(null)}
+        onConfirm={() => {
+          const pending = confirmRemoval;
+          setConfirmRemoval(null);
+          if (pending) void submit(pending.status, true);
+        }}
+        title={
+          confirmRemoval && confirmRemoval.removed.length > 1
+            ? "Remove these panelists?"
+            : "Remove this panelist?"
+        }
+        body={confirmRemoval ? removedPanelistsPrompt(confirmRemoval.removed) : ""}
+        confirmLabel="Remove and save"
+      />
 
       <ActionBar
         lead={summary.lead}

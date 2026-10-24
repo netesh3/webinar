@@ -4,6 +4,7 @@ import { useRemoteParticipants } from "@livekit/components-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { mergeHostCandidates } from "@/lib/host-transfer";
+import { leaveMenuItems } from "@/lib/panelists";
 import { Alert, Modal, Spinner } from "../controls";
 import { useToast } from "../providers";
 import { useRoomUI } from "./context";
@@ -16,20 +17,28 @@ export {
 } from "@/lib/host-transfer";
 
 /**
- * Zoom-style Leave menu for the host: assign a successor, or end for everyone.
+ * Zoom-style Leave menu for whoever runs the room: the host assigns a successor or ends it
+ * for everyone; a co-host leaves (the session carries on with the host) or ends it.
+ * Handing over is the owner's alone (requireTrueOwner), so a co-host is never offered it.
  * Anchored to the Leave button. Panelist pick and end-confirm stay in dialogs.
  */
 export function HostLeaveMenu({
   open,
+  owner,
   onClose,
   onAssign,
+  onLeave,
   onEnd,
 }: {
   open: boolean;
+  /** The webinar's own host, rather than a co-host. */
+  owner: boolean;
   onClose: () => void;
   onAssign: () => void;
+  onLeave: () => void;
   onEnd: () => void;
 }) {
+  const items = leaveMenuItems(owner);
   const { join, roster } = useRoomUI();
   const meeting = !!join.meeting;
   const remotes = useRemoteParticipants();
@@ -84,27 +93,49 @@ export function HostLeaveMenu({
       aria-label="Leave options"
       className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
     >
-      <button
-        type="button"
-        role="menuitem"
-        disabled={candidates.length === 0}
-        onClick={() => {
-          onClose();
-          onAssign();
-        }}
-        className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-45 outline-none focus-visible:bg-surface-2"
-      >
-        <span className="text-[13px] font-medium text-ink">Assign host & leave</span>
-        <span className="text-[12px] leading-relaxed text-ink-2">
-          {candidates.length === 0
-            ? meeting
-              ? "No one else who can host is in the meeting right now."
-              : "No eligible panelist is in the room right now."
-            : meeting
-              ? "Hand the meeting to someone else who can host, then exit."
-              : "Hand the session to another panelist, then exit."}
-        </span>
-      </button>
+      {items.includes("leave") && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onClose();
+            onLeave();
+          }}
+          className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 outline-none focus-visible:bg-surface-2"
+        >
+          <span className="text-[13px] font-medium text-ink">
+            {meeting ? "Leave meeting" : "Leave webinar"}
+          </span>
+          <span className="text-[12px] leading-relaxed text-ink-2">
+            {meeting
+              ? "Exit. The meeting carries on with the host."
+              : "Exit. The webinar carries on with the host."}
+          </span>
+        </button>
+      )}
+      {items.includes("assign") && (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={candidates.length === 0}
+          onClick={() => {
+            onClose();
+            onAssign();
+          }}
+          className="flex w-full flex-col items-start gap-0.5 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-45 outline-none focus-visible:bg-surface-2"
+        >
+          <span className="text-[13px] font-medium text-ink">Assign host & leave</span>
+          <span className="text-[12px] leading-relaxed text-ink-2">
+            {candidates.length === 0
+              ? meeting
+                ? "No one else who can host is in the meeting right now."
+                : "No eligible panelist is in the room right now."
+              : meeting
+                ? "Hand the meeting to someone else who can host, then exit."
+                : "Hand the session to another panelist, then exit."}
+          </span>
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"

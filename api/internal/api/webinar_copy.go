@@ -145,7 +145,7 @@ func copyInput(src types.Webinar, panel []store.PanelistContact, now time.Time) 
 		Agenda:               src.Agenda,
 		Takeaways:            src.Takeaways,
 		CustomQuestions:      questions,
-		PanelistEmails:       emails,
+		PanelistEmails:       &emails,
 		Options:              src.Options,
 		Controls:             src.Controls,
 		Venue:                venue,

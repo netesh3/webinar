@@ -7,6 +7,7 @@ import type {
   WebinarOptions,
 } from "@/lib/api-types";
 import { instantToZoned, localTimeZone } from "@/lib/format";
+import { panelistBox } from "@/lib/panelists";
 import {
   defaultRecurrence,
   weekday,
@@ -163,7 +164,8 @@ export function initialState(
       approval: webinar.approval,
       attendeeLimit: webinar.attendeeLimit,
       passcode: webinar.passcode ?? "",
-      panelistEmails: "",
+      // The panel as saved, so the save sends it back rather than an empty box.
+      panelistEmails: panelistBox(webinar.panelistEmails),
       takeaways: webinar.takeaways.join("\n"),
       questions: webinar.customQuestions,
       agenda: webinar.agenda,

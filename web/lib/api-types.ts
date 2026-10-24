@@ -5031,6 +5031,13 @@ export interface Webinar {
   simuliveLiveAt?: string;
   host: Person;
   panelists: Person[];
+  /**
+   *  PanelistEmails is each panelist's account address, in panel order. Host views only:
+   * 	 * set by handleHostWebinar, never on a public read, so the edit form can show the panel
+   * 	 * it is about to save back (WebinarInput.PanelistEmails) without anybody else learning
+   * 	 * a panelist's address.
+   */
+  panelistEmails?: string[];
   agenda: AgendaItem[];
   takeaways: string[];
   registrationRequired: boolean;
@@ -5272,7 +5279,16 @@ export interface WebinarInput {
   agenda: AgendaItem[];
   takeaways: string[];
   customQuestions: CustomQuestion[];
-  panelistEmails: string[];
+  /**
+   *  PanelistEmails is the whole panel after this save, replacing the one saved.
+   * 	 *
+   * 	 * A pointer, because "not sent" and "sent empty" are different requests. Omitted (nil)
+   * 	 * keeps the panel as it is: an edit that never touched the panel, from a client that
+   * 	 * never heard of the field, must not take every panelist off the stage. An empty list
+   * 	 * is the host removing them all. Every address needs an account; one that has none is
+   * 	 * refused by name rather than skipped (see handleUpdateWebinar).
+   */
+  panelistEmails?: string[];
   options: WebinarOptions;
   controls: SessionControls;
   /**
