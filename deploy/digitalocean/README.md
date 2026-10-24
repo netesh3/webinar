@@ -270,6 +270,12 @@ Set 2026-10-22. Both kinds email the account owner.
 
 ## Server captions (optional, off)
 
+**Not on the video box any more (24 Oct 2026).** `redeploy.sh` starts no caption agent on the
+video box unless `/opt/livekit/.env` has `CAPTIONS_ON_VIDEO_BOX=true`, and removes one that is
+running. Captions run on the on-demand captions box (`CAPTIONS_BOX_ENABLED=true`, section
+"Captions box" above); without it rooms use on-device captions. The rest of this section is the
+old single-box setup, kept for `CAPTIONS_ON_VIDEO_BOX=true`.
+
 The caption agent (`deploy/captions`: faster-whisper, English only: `base.en` live by default,
 `CAPTIONS_MODEL=small.en` for the larger model) can run on this box beside egress. Not enabled. To try it: the same 32+ character
 `CAPTIONS_SECRET` on the API (Cloud Run env) and in `/opt/livekit/.env` with
