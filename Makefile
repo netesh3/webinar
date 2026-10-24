@@ -386,6 +386,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The Webinars tab's row actions: End only when live (not Zoom), draft <-> scheduled,
 	# no reopen, and Delete armed only by the topic or DELETE.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-session-actions.test.mts
+	# "Delete all recordings": armed only by the exact phrase, and an unfinished run carries on.
+	cd web && node --experimental-strip-types --no-warnings lib/recording-purge.test.mts
 	# The host home's list filters in the URL: tab, search and dates survive a refresh or
 	# the back button, defaults stay out of the address, bad dates read as unset.
 	cd web && node --experimental-strip-types --no-warnings lib/host-list-url.test.mts

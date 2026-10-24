@@ -826,6 +826,11 @@ func (s *Server) handlePublicRecording(w http.ResponseWriter, r *http.Request) {
 
 	rec, err := s.store.RecordingFor(r.Context(), slug, id)
 	if errors.Is(err, store.ErrNotFound) {
+		// A link to a recording that was deleted says so, rather than "not public".
+		if _, perr := uuid.Parse(id); perr == nil && s.store.RecordingWasDeleted(r.Context(), id) {
+			httpx.Error(w, http.StatusNotFound, "recording_deleted", "This recording is no longer available.")
+			return
+		}
 		httpx.Error(w, http.StatusNotFound, "not_found", "This recording is not publicly available.")
 		return
 	}

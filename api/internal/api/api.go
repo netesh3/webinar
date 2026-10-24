@@ -644,6 +644,9 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/sfu-box", s.handleAdminSFUBox)
 			// "Make it now": start the on-demand video server for the waiting clips (clip_jobs.go).
 			r.Post("/clips/make-now", s.handleAdminClipsMakeNow)
+			// "Delete all recordings", every host's (recording_purge.go).
+			r.Get("/recordings/purge", s.handleAdminRecordingPurgeStatus)
+			r.Post("/recordings/purge", s.handleAdminRecordingPurge)
 			r.Get("/costs/hosts/{id}", s.handleAdminCostHost)
 			r.Get("/costs/ignore", s.handleCostIgnoreList)
 			r.Post("/costs/ignore", s.handleCostIgnoreAdd)

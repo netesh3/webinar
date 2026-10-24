@@ -31,6 +31,7 @@ export function SimuliveSourceSection({
   fields,
   editing,
   slug,
+  recordingDeleted = false,
 }: {
   form: FormState;
   set: SetForm;
@@ -38,6 +39,8 @@ export function SimuliveSourceSection({
   editing: boolean;
   /** The saved simulive's slug, when editing: where its replay is curated. */
   slug?: string;
+  /** The recording it played was deleted by an admin, and it went back to draft. */
+  recordingDeleted?: boolean;
 }) {
   const { account } = useSession();
   const hydrated = useHydrated();
@@ -186,7 +189,9 @@ export function SimuliveSourceSection({
             <p className="text-[12.5px] text-ink-2">
               {failed
                 ? "Your recordings couldn't be loaded. Check your connection and try again."
-                : form.simuliveRecordingId
+                : recordingDeleted && !form.simuliveRecordingId
+                  ? "The recording this Simulive played was deleted, so it was moved back to draft. Pick another recording, then schedule it again."
+                  : form.simuliveRecordingId
                   ? "That recording isn't ready to replay, or is no longer in your library. Pick another."
                   : library.length === 0
                     ? "You have no ready recordings yet. Record a session first, or upload a video."

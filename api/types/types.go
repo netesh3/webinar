@@ -943,6 +943,10 @@ type Webinar struct {
 	SimuliveLiveAt string `json:"simuliveLiveAt,omitempty"`
 	// SimuliveHostGoneAt: in live-after, when the host team was last seen leaving. Internal.
 	SimuliveHostGoneAt string `json:"-"`
+	/* SimuliveRecordingDeleted: the recording this simulive played was deleted by an admin
+	 * (recording_purge.go), and the session was put back to draft. Until another recording is
+	 * picked the host is told why it has nothing to play. */
+	SimuliveRecordingDeleted bool `json:"simuliveRecordingDeleted,omitempty"`
 
 	Host      Person   `json:"host"`
 	Panelists []Person `json:"panelists"`
