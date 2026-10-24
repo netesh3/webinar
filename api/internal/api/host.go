@@ -887,6 +887,9 @@ func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
  * recording as an admin action rather than folding into the same log line a
  * host's own delete produces.
  */
+// roomCloseTimeout bounds closing the room when a webinar is deleted.
+const roomCloseTimeout = 5 * time.Second
+
 func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.Deleted, error) {
 	/* Close the room first, and only for a webinar that is actually live.
 	 *
@@ -899,7 +902,12 @@ func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.De
 			s.log.Warn("delete webinar: could not resolve the livekit project",
 				"slug", slug, "error", err)
 		} else {
-			if err := sfu.DeleteRoom(ctx, lk.RoomName(slug)); err != nil {
+			// Its own short deadline: an unreachable SFU must not spend the request's, or the
+			// delete below fails on it (24 Oct 2026, admin delete answered 500).
+			rctx, rcancel := context.WithTimeout(ctx, roomCloseTimeout)
+			err := sfu.DeleteRoom(rctx, lk.RoomName(slug))
+			rcancel()
+			if err != nil {
 				// Logged, not fatal. The alternative is refusing to delete a webinar because
 				// the SFU is unreachable, which leaves the caller unable to do the one thing
 				// they asked for.

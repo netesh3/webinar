@@ -38,12 +38,16 @@ type boxRig struct {
 	// skew moves the box's clock forward.
 	skew atomic.Int64
 	host types.Account
+	// rooms is the box project's LiveKit.
+	rooms *fakeRooms
 }
 
 func newBoxRig(t *testing.T, tweak ...func(*config.SFUBox)) *boxRig {
 	t.Helper()
-	rig := &boxRig{}
-	h := newHarnessWith(t, []*fakeRooms{newFakeProject(boxProject)}, func(c *config.Config) {
+	rig := &boxRig{rooms: newFakeProject(boxProject)}
+	h := newHarnessWith(t, []*fakeRooms{rig.rooms}, func(c *config.Config) {
+		// The empty-room sweep runs in RunTick (a long grace: it never ends anything here).
+		c.EmptyRoomCloseMin = 30
 		c.SFUBox = config.SFUBox{
 			Project: boxProject, Token: "test", Name: "sfu-blr-1", Region: "blr1", Size: "c-4",
 			SnapshotTag: "webinar-sfu-image", Volume: "sfu-data", ReservedIP: boxIP,

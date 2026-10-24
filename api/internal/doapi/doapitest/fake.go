@@ -35,6 +35,12 @@ type Fake struct {
 	FailCreates int
 	// AutoActivate makes a created droplet active on its first GET.
 	AutoActivate bool
+	/* StaleIPReads makes the next n reads of a reserved IP answer StaleIPDroplet, as
+	 * DigitalOcean's read does for a moment after an assign. */
+	StaleIPReads   int
+	StaleIPDroplet int64
+	// Assigns counts the assign actions that moved an IP.
+	Assigns int
 
 	nextID int64
 }
@@ -228,6 +234,10 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if r.Method == http.MethodGet && !strings.HasSuffix(rest, "/actions") {
+			if f.StaleIPReads > 0 {
+				f.StaleIPReads--
+				did = f.StaleIPDroplet
+			}
 			body := map[string]any{"ip": ip}
 			if did != 0 {
 				body["droplet"] = map[string]any{"id": did}
@@ -252,7 +262,14 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"id": "unprocessable_entity", "message": "Droplet is not active"})
 				return
 			}
+			if f.ReservedIPs[ip] == req.DropletID {
+				// What DigitalOcean answers for an assign the droplet already has.
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"id": "unprocessable_entity",
+					"message": "Droplet is already assigned to another reserved IP. Please unassign it first."})
+				return
+			}
 			f.ReservedIPs[ip] = req.DropletID
+			f.Assigns++
 			writeJSON(w, http.StatusCreated, map[string]any{"action": map[string]any{"id": 1, "status": "in-progress"}})
 			return
 		}

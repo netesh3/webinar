@@ -306,7 +306,9 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 	}
 	srv.rt = bus
 	if sfu != nil {
-		srv.sfu = edgePool{SFUPool: sfu, s: srv}
+		// The box guard (sfu_box_guard.go) inside the edge tap: a no-op for every project but
+		// the on-demand box's.
+		srv.sfu = edgePool{SFUPool: boxPool{SFUPool: sfu, s: srv}, s: srv}
 	}
 	return srv
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"os"
 	"sync"
 	"time"
 
@@ -36,6 +37,13 @@ const (
 	// maintenanceJobBudget bounds each of its jobs.
 	maintenanceBudget    = 80 * time.Second
 	maintenanceJobBudget = 20 * time.Second
+	/* realtimeJobBudget bounds each sweep of the realtime lane, so one that waits on an
+	 * unreachable server stops there and the rest of the lane still has time: on 24 Oct 2026
+	 * the empty-room sweep waited the whole lane on the video box and every sweep after it,
+	 * the outbox and the WhatsApp sends included, failed on the spent deadline. */
+	realtimeJobBudget = 30 * time.Second
+	// sweepCallTimeout bounds one call a sweep makes to a video server.
+	sweepCallTimeout = 3 * time.Second
 	// Recording retention deletes files, and once every five minutes is plenty; its lease
 	// is never released, which is what makes it run at most that often.
 	retentionEvery = 5 * time.Minute
@@ -138,8 +146,17 @@ func (s *Server) sweepNotificationContent(ctx context.Context) {
 	}
 }
 
-// StartMeetingLimitSweeper runs RunTick every tickEvery until ctx is done.
+/* StartMeetingLimitSweeper runs RunTick every tickEvery until ctx is done.
+ *
+ * Not on Cloud Run when Cloud Scheduler drives the tick (TICK_SECRET set): an instance has
+ * CPU there only while it serves a request, so a pass started by this ticker between
+ * requests crawls, holds the "sweep" lease, and every scheduled tick answers "busy" while
+ * its calls time out together whenever a request lends it the CPU (24 Oct 2026). */
 func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
+	if os.Getenv("K_SERVICE") != "" && s.cfg.TickSecret != "" {
+		s.log.Info("sweep: in-process ticker off on Cloud Run; POST /api/internal/tick drives the pass")
+		return
+	}
 	ticker := time.NewTicker(tickEvery)
 	defer ticker.Stop()
 
@@ -174,7 +191,13 @@ func (s *Server) StartMeetingLimitSweeper(ctx context.Context) {
  */
 func (s *Server) RunTick(ctx context.Context) bool {
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
+	// The on-demand video box (sfu_box.go): a lane of its own, so nothing in the realtime
+	// lane can starve the step that brings the box up.
+	go func() {
+		defer wg.Done()
+		s.sweepSFUBox(ctx)
+	}()
 	go func() {
 		defer wg.Done()
 		s.runMaintenance(ctx)
@@ -210,26 +233,37 @@ func (s *Server) runRealtime(ctx context.Context) bool {
 	}
 	defer release()
 
-	s.sweepExpiredWebinars(ctx)
-	s.sweepEmptyWebinars(ctx)
-	s.sweepBroadcasts(ctx)
-	s.sweepEgressPools(ctx)
-	s.sweepSFUVMs(ctx)
-	// The on-demand DigitalOcean box: one step of its state machine (sfu_box.go).
-	s.sweepSFUBox(ctx)
-	s.sweepSimulive(ctx)
-	s.sweepDueSurveys(ctx)
-	mailCtx, mailCancel := context.WithTimeout(ctx, mailFlushBudget)
-	s.flushOutbox(mailCtx)
-	mailCancel()
+	// Each sweep with a deadline of its own (realtimeJob). The on-demand box steps in a lane
+	// of its own (RunTick).
+	s.realtimeJob(ctx, "expired webinars", realtimeJobBudget, s.sweepExpiredWebinars)
+	s.realtimeJob(ctx, "empty webinars", realtimeJobBudget, s.sweepEmptyWebinars)
+	s.realtimeJob(ctx, "broadcasts", realtimeJobBudget, s.sweepBroadcasts)
+	s.realtimeJob(ctx, "egress pools", realtimeJobBudget, s.sweepEgressPools)
+	s.realtimeJob(ctx, "sfu vms", realtimeJobBudget, s.sweepSFUVMs)
+	s.realtimeJob(ctx, "simulive", realtimeJobBudget, s.sweepSimulive)
+	s.realtimeJob(ctx, "surveys", realtimeJobBudget, s.sweepDueSurveys)
+	s.realtimeJob(ctx, "outbox", mailFlushBudget, s.flushOutbox)
 	// Web Push: the 15-minute reminders coming due, then everything queued (push.go).
-	s.sweepPushReminders(ctx)
-	pushCtx, pushCancel := context.WithTimeout(ctx, pushFlushBudget)
-	s.flushPush(pushCtx)
-	pushCancel()
-	// The CRM's drips, bots and WhatsApp outbox. See Engage.Tick.
+	s.realtimeJob(ctx, "push reminders", realtimeJobBudget, s.sweepPushReminders)
+	s.realtimeJob(ctx, "push", pushFlushBudget, s.flushPush)
+	// The CRM's drips, bots and WhatsApp outbox, on what is left of the lane. See Engage.Tick.
 	s.engage.Tick(ctx)
 	return true
+}
+
+/* realtimeJob runs one sweep of the realtime lane with its own deadline. Unlike a maintenance
+ * job it runs even when the lane is nearly spent: each is due-time driven and a short run
+ * still sends what it can. A job that hits its deadline stops and resumes next pass. */
+func (s *Server) realtimeJob(ctx context.Context, name string, budget time.Duration, job func(context.Context)) {
+	if ctx.Err() != nil {
+		return
+	}
+	jobCtx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	job(jobCtx)
+	if errors.Is(jobCtx.Err(), context.DeadlineExceeded) {
+		s.log.Warn("sweep: job ran out of time; it resumes next pass", "job", name)
+	}
 }
 
 func (s *Server) runMaintenance(ctx context.Context) {
@@ -380,7 +414,9 @@ func (s *Server) sweepEmptyWebinars(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		count, err := sfu.ParticipantCount(ctx, lk.RoomName(slug))
+		cctx, cancel := context.WithTimeout(ctx, sweepCallTimeout)
+		count, err := sfu.ParticipantCount(cctx, lk.RoomName(slug))
+		cancel()
 		if err != nil {
 			// An SFU we cannot reach is not an empty room. Ending a live webinar
 			// on a failed API call would be the worst possible reading of it.

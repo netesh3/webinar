@@ -57,10 +57,17 @@ type agentDispatcher interface {
 var _ agentDispatcher = (*lk.Client)(nil)
 
 // dispatcherFor finds the agent dispatcher behind a resolved room manager, looking through
-// the edge tap that wraps every one of them.
+// the edge tap that wraps every one of them, and keeping the on-demand box's guard.
 func dispatcherFor(rm RoomManager) (agentDispatcher, bool) {
 	if er, ok := rm.(edgeRoom); ok {
 		rm = er.RoomManager
+	}
+	if br, ok := rm.(boxRoom); ok {
+		d, ok := unwrapRoom(br).(agentDispatcher)
+		if !ok {
+			return nil, false
+		}
+		return boxDispatcher{agentDispatcher: d, r: br}, true
 	}
 	d, ok := rm.(agentDispatcher)
 	return d, ok
