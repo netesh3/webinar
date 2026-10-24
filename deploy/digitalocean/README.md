@@ -225,7 +225,14 @@ other project does. An admin can still assign a host to `india` (Admin → Accou
 
 `edgePlaybackBase` points straight at the box for the test (Caddy sets MediaMTX's CDN secret, so
 direct viewers get one shared, cacheable session). Put a Bunny pull zone in front of it before
-real audiences. Then re-run **Deploy API (Cloud Run)**. See [ADDING-AN-SFU.md](../../docs/ADDING-AN-SFU.md).
+real audiences: change **this** value to the pull zone (`https://<zone>.b-cdn.net/live`). A
+project's `edgePlaybackBase` wins over the API's `EDGE_PLAYBACK_BASE`, so setting only the env var
+changes nothing. Until then every viewer is on the box: the 2026-10-24 load test ("via the CDN
+playback URL") was in fact all origin, ~1 % of a core and ~1.2-1.4 Mbit/s of the box per viewer, the
+4 vCPUs full at ~300-500 viewers. Pull zone settings: origin this box's `https://<ip>.sslip.io`,
+Origin Shield on (nearest the box), request coalescing on (LL-HLS: every viewer asks for the
+same next part at the same moment), query strings part of the cache key for `*.m3u8`
+(`_HLS_msn`/`_HLS_part`), origin `Cache-Control` respected, error responses not cached. Then re-run **Deploy API (Cloud Run)**. See [ADDING-AN-SFU.md](../../docs/ADDING-AN-SFU.md).
 
 CI: **Deploy LiveKit (DigitalOcean)** (`.github/workflows/livekit-do-deploy.yml`) syncs
 `deploy/livekit-hetzner/` and `deploy/captions/` here and runs `redeploy.sh` on every push to

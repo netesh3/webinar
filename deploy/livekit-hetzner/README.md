@@ -105,7 +105,7 @@ directory, so no new `ufw allow` rules are needed:
 | LiveKit metrics | `127.0.0.1:7801` | `livekit` |
 | MediaMTX metrics | `127.0.0.1:9998` (`metrics: true` in `mediamtx.yml.template`, loopback only, not in ufw, the cloud firewall or the Caddyfile) | `mediamtx` |
 | Host metrics | embedded node_exporter (`prometheus.exporter.unix`): CPU, memory, load, disk, filesystems, NIC, TCP/UDP counters, PSI | `node` |
-| Container metrics | embedded cAdvisor: CPU, throttling, memory, OOMs per container (`name`, `service`) | `cadvisor` |
+| Container metrics | embedded cAdvisor: CPU, throttling, memory, OOMs per container (`name`, `service`). Reads the docker socket, the cgroup tree and containerd's socket (`/run/containerd/containerd.sock`: Docker's containerd image store needs it, or no container series appear at all) | `cadvisor` |
 | Container logs | every container via the docker socket (read-only), labels `container`, `service`, `stream`; debug/trace lines dropped | - |
 
 Every series and log line carries `box` (from `ALLOY_BOX` in `.env`, else the droplet's

@@ -63,7 +63,7 @@ export async function runHlsViewers(o) {
     for (const w of generatorWarnings(j, { cores: workers })) log(`${stamp()} WARNING ${w}`);
   };
   log(`${stamp()} ${total} edge viewer(s) over steps ${o.steps.join(",")} (ramp ${o.rampMs / 1000}s, hold ${o.holdMs / 1000}s), ${workers} process(es)` +
-    (o.originBase ? `, ORIGIN ${o.originBase}` : ", via the CDN playback URL"));
+    (o.originBase ? `, ORIGIN ${o.originBase}` : ", via the playback URL join returns"));
   if (workers === 1) {
     await runLocal({
       steps: o.steps,

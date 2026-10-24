@@ -33,6 +33,12 @@ services:
       # Docker socket for the log tailer and cAdvisor. Note :ro only stops the file being
       # replaced, not API writes; Alloy only reads (container list, logs, stats).
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # containerd's socket, for cAdvisor. Docker from get.docker.com (both boxes) keeps images
+      # in containerd (storage driver "overlayfs"), and cAdvisor's docker factory then asks
+      # containerd (namespace moby, this path, hard-coded) about every container. Without it
+      # the factory fails to register ("unable to create containerd client"), docker_only
+      # drops everything else, and no container_* series reach Grafana Cloud (2026-10-24).
+      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
       # Host metrics (prometheus.exporter.unix) and container stats (cAdvisor).
       - /proc:/host/proc:ro
       - /sys:/sys:ro

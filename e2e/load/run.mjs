@@ -126,7 +126,7 @@ async function main() {
   console.log(`${stamp()} load test ${run} against ${web} (API ${api})${prod ? "  ** PRODUCTION **" : ""}`);
   console.log(`  ${p.delivery} webinar, ${p.presenters} presenter(s)${f.screenShare ? " + screen share" : ""}, HLS viewers ${p.steps.join(" -> ")} ` +
     `(ramp ${p.rampMs / 1000}s, hold ${p.holdMs / 1000}s, about ${Math.round(p.durationMs / 60000)} min)` +
-    (f.origin ? `, from the ORIGIN ${f.origin}` : ", via the CDN playback URL"));
+    (f.origin ? `, from the ORIGIN ${f.origin}` : ", via the playback URL join returns"));
   if (p.apiLoad) console.log(`  API load: ${JSON.stringify(p.rates)} per second`);
   if (p.webrtc) console.log(`  WebRTC tabs ${p.webrtcSteps.join(" -> ")}`);
   console.log(`  ${p.seats} seat(s); results in ${out}`);
@@ -205,6 +205,10 @@ async function main() {
       }
       console.log(`${stamp()} audience stream: ${st?.audienceStream ?? "unknown"} ${st?.playbackUrl ?? ""}`);
       if (st?.audienceStream !== "live") console.log(`${stamp()} WARNING: the audience stream is not live yet; viewers will retry the playlist`);
+      if (!f.origin && looksLikeOrigin(st?.playbackUrl)) {
+        console.log(`${stamp()} WARNING: the playback URL is the video box itself, not a CDN pull zone: every viewer loads the origin ` +
+          "(set the project's edgePlaybackBase to the pull zone; deploy/digitalocean/README.md)");
+      }
     }
 
     let pollId = "";
@@ -304,4 +308,15 @@ if (process.argv[1] === SELF) {
     console.error(`${stamp()} ${e.message}`);
     process.exit(1);
   });
+}
+
+/** The box's own address rather than a CDN: a bare IP, or an sslip.io name (which is one). */
+export function looksLikeOrigin(url) {
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return /(^|\.)sslip\.io$/i.test(host) || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[");
 }
