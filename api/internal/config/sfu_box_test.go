@@ -45,3 +45,37 @@ func TestSFUBoxDefaultsAndValidation(t *testing.T) {
 		t.Fatalf("overrides = %+v", b)
 	}
 }
+
+func TestSFUBoxGrafana(t *testing.T) {
+	for _, k := range []string{"GRAFANA_CLOUD_PROM_URL", "GRAFANA_CLOUD_PROM_USER", "GRAFANA_CLOUD_LOKI_URL", "GRAFANA_CLOUD_LOKI_USER", "GRAFANA_CLOUD_TOKEN"} {
+		t.Setenv(k, "")
+	}
+	c := Config{SFUBox: loadSFUBox(), LiveKitProjects: []LiveKitProject{{ID: "do-blr", URL: "wss://x", Key: "k", Secret: "s"}}}
+	c.SFUBox.Project, c.SFUBox.Token = "do-blr", "tok"
+	if c.SFUBox.Grafana.Set() || len(c.validateSFUBox()) != 0 {
+		t.Fatalf("none set: %+v %v", c.SFUBox.Grafana, c.validateSFUBox())
+	}
+
+	t.Setenv("GRAFANA_CLOUD_PROM_URL", "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push")
+	t.Setenv("GRAFANA_CLOUD_PROM_USER", "1234567")
+	t.Setenv("GRAFANA_CLOUD_LOKI_URL", "https://logs-prod-028.grafana.net/loki/api/v1/push")
+	t.Setenv("GRAFANA_CLOUD_LOKI_USER", "765432")
+	c.SFUBox.Grafana = loadSFUBox().Grafana
+	errs := c.validateSFUBox()
+	if c.SFUBox.Grafana.Set() || len(errs) != 1 || !strings.Contains(errs[0].Error(), "GRAFANA_CLOUD_TOKEN") {
+		t.Fatalf("four of five: %v", errs)
+	}
+
+	t.Setenv("GRAFANA_CLOUD_TOKEN", "glc_eyJvIjoiMTIzIiwibiI6IndlYmluYXIifQ==")
+	c.SFUBox.Grafana = loadSFUBox().Grafana
+	if !c.SFUBox.Grafana.Set() || len(c.validateSFUBox()) != 0 {
+		t.Fatalf("all five: %v", c.validateSFUBox())
+	}
+
+	// A value the box's .env cannot carry is refused, and the error does not repeat it.
+	c.SFUBox.Grafana.Token = "glc_abc'$(reboot)"
+	errs = c.validateSFUBox()
+	if len(errs) != 1 || strings.Contains(errs[0].Error(), "glc_") || !strings.Contains(errs[0].Error(), "GRAFANA_CLOUD_TOKEN") {
+		t.Fatalf("unsafe token: %v", errs)
+	}
+}

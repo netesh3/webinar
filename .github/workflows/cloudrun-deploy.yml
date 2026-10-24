@@ -39,6 +39,9 @@
 #     and deletes the DigitalOcean video server on demand (deploy/digitalocean/README.md).
 #     Variables SFU_BOX_ALWAYS_ON (true = keep it up, the rollback), SFU_BOX_WARM_LEAD,
 #     SFU_BOX_IDLE_GRACE, SFU_BOX_SSH_KEYS, SFU_BOX_PARK_DROPLET override the defaults.
+#   GRAFANA_CLOUD_TOKEN — optional, with repo variables GRAFANA_CLOUD_PROM_URL, _PROM_USER,
+#     _LOKI_URL, _LOKI_USER (all five or the API refuses to boot): the box manager passes them in
+#     each droplet's user data so the box's Alloy reports to Grafana Cloud from first boot.
 #   VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT — optional; Web Push (install the app,
 #     "notify me when it starts"). All three or none: the API refuses a partial set. Generate the
 #     pair with `npx web-push generate-vapid-keys`; the subject is mailto:you@domain.
@@ -173,6 +176,13 @@ jobs:
       SFU_BOX_IDLE_GRACE: ${{ vars.SFU_BOX_IDLE_GRACE }}
       SFU_BOX_SSH_KEYS: ${{ vars.SFU_BOX_SSH_KEYS }}
       SFU_BOX_PARK_DROPLET: ${{ vars.SFU_BOX_PARK_DROPLET }}
+      # Grafana Cloud for the box's Alloy, written into each new droplet's user data so it reports
+      # from boot (the same repo variables and secret livekit-do-deploy.yml uses). All five or none.
+      GRAFANA_CLOUD_PROM_URL: ${{ vars.GRAFANA_CLOUD_PROM_URL }}
+      GRAFANA_CLOUD_PROM_USER: ${{ vars.GRAFANA_CLOUD_PROM_USER }}
+      GRAFANA_CLOUD_LOKI_URL: ${{ vars.GRAFANA_CLOUD_LOKI_URL }}
+      GRAFANA_CLOUD_LOKI_USER: ${{ vars.GRAFANA_CLOUD_LOKI_USER }}
+      GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
       # Web Push (api/internal/push). Optional; unset, the app offers no notifications.
       VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
       VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}

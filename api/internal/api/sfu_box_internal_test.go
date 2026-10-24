@@ -1,6 +1,8 @@
 package api
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -84,5 +86,82 @@ func TestBoxUserData(t *testing.T) {
 	c.Ref = "main; rm -rf /"
 	if _, err := boxUserData(c); err == nil {
 		t.Error("a ref with shell in it was accepted")
+	}
+}
+
+func TestBoxUserDataGrafana(t *testing.T) {
+	c := config.SFUBox{Repo: "netesh3/webinar", Ref: "main", Volume: "sfu-data"}
+	// Unset: no Grafana lines at all.
+	ud, err := boxUserData(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ud, "GRAFANA") || strings.Contains(ud, boxGrafanaFile) {
+		t.Errorf("unset Grafana still in user data:\n%s", ud)
+	}
+
+	token := "glc_eyJvIjoiMTIzIiwibiI6IndlYmluYXIifQ=="
+	c.Grafana = config.BoxGrafana{
+		PromURL: "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push", PromUser: "1234567",
+		LokiURL: "https://logs-prod-028.grafana.net/loki/api/v1/push", LokiUser: "765432", Token: token,
+	}
+	if ud, err = boxUserData(c); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"(umask 077; cat >" + boxGrafanaFile + " <<'WEBINARLIV_GRAFANA'\n",
+		"\nGRAFANA_CLOUD_PROM_URL=https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push\n",
+		"\nGRAFANA_CLOUD_PROM_USER=1234567\n", "\nGRAFANA_CLOUD_LOKI_USER=765432\n",
+		"\nGRAFANA_CLOUD_TOKEN=" + token + "\nWEBINARLIV_GRAFANA\n)\n",
+		"export SFU_GRAFANA_ENV=" + boxGrafanaFile + "\n",
+	} {
+		if !strings.Contains(ud, want) {
+			t.Errorf("user data lacks %q:\n%s", want, ud)
+		}
+	}
+	// The settings are written before the boot script runs, and the token appears once (in the file).
+	if strings.Index(ud, "SFU_GRAFANA_ENV") > strings.Index(ud, "exec ") || strings.Count(ud, token) != 1 {
+		t.Errorf("token placement:\n%s", ud)
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := t.TempDir() + "/ud.sh"
+		if err := os.WriteFile(f, []byte(ud), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil { // #nosec G204 -- test, fixed args
+			t.Errorf("bash -n: %v %s", err, out)
+		}
+	}
+	// Not echoed, traced or put on a command line.
+	for _, bad := range []string{"set -x", "echo $GRAFANA", "echo \"$GRAFANA"} {
+		if strings.Contains(ud, bad) {
+			t.Errorf("user data has %q", bad)
+		}
+	}
+
+	// Four of five, or a value that is not plain: left out rather than half-written or failing the create.
+	for _, g := range []config.BoxGrafana{
+		{PromURL: c.Grafana.PromURL, PromUser: "1", LokiURL: c.Grafana.LokiURL, LokiUser: "2"},
+		{PromURL: c.Grafana.PromURL, PromUser: "1", LokiURL: c.Grafana.LokiURL, LokiUser: "2", Token: "tok\nWEBINARLIV_GRAFANA\nreboot"},
+	} {
+		c.Grafana = g
+		ud, err := boxUserData(c)
+		if err != nil || strings.Contains(ud, "GRAFANA") {
+			t.Errorf("unusable %+v: err %v\n%s", g.PromUser, err, ud)
+		}
+	}
+}
+
+/* The create log line is the one place the manager logs about the droplet it is creating:
+ * it must never carry the user data (and so the Grafana token). */
+func TestBoxCreateDoesNotLogUserData(t *testing.T) {
+	src, err := os.ReadFile("sfu_box.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(src), "\n") {
+		if strings.Contains(line, "s.log.") && (strings.Contains(line, "userData") || strings.Contains(line, "Grafana")) {
+			t.Errorf("a log line names the user data or Grafana settings: %s", strings.TrimSpace(line))
+		}
 	}
 }

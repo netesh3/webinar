@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -63,7 +64,56 @@ type SFUBox struct {
 	MaxFailures int
 	// AlwaysOn keeps the box up whatever the demand (SFU_BOX_ALWAYS_ON=true): the rollback.
 	AlwaysOn bool
+
+	/* Grafana is the box's Grafana Cloud settings for Alloy (deploy/livekit-hetzner/README.md,
+	 * "Grafana Cloud"), passed to every droplet in its user data so it reports from first boot
+	 * without the deploy workflow (which skips while the box is down). All five or none. */
+	Grafana BoxGrafana
 }
+
+/* BoxGrafana is GRAFANA_CLOUD_PROM_URL, _PROM_USER, _LOKI_URL, _LOKI_USER (repo variables) and
+ * GRAFANA_CLOUD_TOKEN (a secret: a write-only access policy token). The token never goes in a log. */
+type BoxGrafana struct {
+	PromURL, PromUser, LokiURL, LokiUser, Token string
+}
+
+// Pairs is the settings as .env lines' keys and values, in a fixed order.
+func (g BoxGrafana) Pairs() [][2]string {
+	return [][2]string{
+		{"GRAFANA_CLOUD_PROM_URL", g.PromURL},
+		{"GRAFANA_CLOUD_PROM_USER", g.PromUser},
+		{"GRAFANA_CLOUD_LOKI_URL", g.LokiURL},
+		{"GRAFANA_CLOUD_LOKI_USER", g.LokiUser},
+		{"GRAFANA_CLOUD_TOKEN", g.Token},
+	}
+}
+
+// Set is all five present.
+func (g BoxGrafana) Set() bool {
+	for _, p := range g.Pairs() {
+		if p[1] == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// Usable is all five present and each one safe to write into the box's .env.
+func (g BoxGrafana) Usable() bool { return g.Set() && len(g.validate()) == 0 }
+
+func (g BoxGrafana) any() bool {
+	for _, p := range g.Pairs() {
+		if p[1] != "" {
+			return true
+		}
+	}
+	return false
+}
+
+/* boxGrafanaSafe is what a value may hold: it is written into a shell heredoc and an .env line
+ * (redeploy.sh reads them with cut, and drops quotes), so no whitespace, quotes, backslash, $ or
+ * backtick. URLs, instance numbers and Grafana tokens (glc_ + base64) all fit. */
+var boxGrafanaSafe = regexp.MustCompile(`^[A-Za-z0-9._:/@+=%?&,~-]+$`)
 
 // Enabled is a box the API manages.
 func (b SFUBox) Enabled() bool { return b.Project != "" && b.Token != "" }
@@ -91,8 +141,37 @@ func loadSFUBox() SFUBox {
 		BootTimeout: envDuration("SFU_BOX_BOOT_TIMEOUT", 12*time.Minute),
 		MaxFailures: envInt("SFU_BOX_MAX_FAILURES", 3),
 		AlwaysOn:    envBool("SFU_BOX_ALWAYS_ON", false),
+		Grafana: BoxGrafana{
+			PromURL:  strings.TrimSpace(env("GRAFANA_CLOUD_PROM_URL", "")),
+			PromUser: strings.TrimSpace(env("GRAFANA_CLOUD_PROM_USER", "")),
+			LokiURL:  strings.TrimSpace(env("GRAFANA_CLOUD_LOKI_URL", "")),
+			LokiUser: strings.TrimSpace(env("GRAFANA_CLOUD_LOKI_USER", "")),
+			Token:    strings.TrimSpace(env("GRAFANA_CLOUD_TOKEN", "")),
+		},
 	}
 	return b
+}
+
+/* validate is all five GRAFANA_CLOUD_* or none, each a plain value. The messages name the
+ * variable, never the value (the token is a secret). */
+func (g BoxGrafana) validate() []error {
+	if !g.any() {
+		return nil
+	}
+	var errs []error
+	var missing []string
+	for _, p := range g.Pairs() {
+		switch {
+		case p[1] == "":
+			missing = append(missing, p[0])
+		case !boxGrafanaSafe.MatchString(p[1]):
+			errs = append(errs, fmt.Errorf("%s has a character the box's .env cannot carry (whitespace, quote, backslash, $ or backtick)", p[0]))
+		}
+	}
+	if len(missing) > 0 {
+		errs = append(errs, fmt.Errorf("the video server's Grafana Cloud settings need all five GRAFANA_CLOUD_* or none; missing %s", strings.Join(missing, ", ")))
+	}
+	return errs
 }
 
 // validateSFUBox reports a box that is switched on but cannot work.
@@ -119,5 +198,6 @@ func (c Config) validateSFUBox() []error {
 	if b.MaxFailures < 1 {
 		errs = append(errs, fmt.Errorf("SFU_BOX_MAX_FAILURES must be >= 1"))
 	}
+	errs = append(errs, b.Grafana.validate()...)
 	return errs
 }

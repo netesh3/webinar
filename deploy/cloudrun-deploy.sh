@@ -213,6 +213,12 @@ for v in SFU_BOX_PROJECT SFU_BOX_ALWAYS_ON SFU_BOX_WARM_LEAD SFU_BOX_IDLE_GRACE 
   SFU_BOX_REPO SFU_BOX_REF SFU_BOX_TURN_HOST; do
   if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
 done
+# Grafana Cloud for the box's Alloy, passed in its user data at create (config.BoxGrafana): all
+# five or none. GRAFANA_CLOUD_TOKEN is a secret (a write-only access policy token).
+for v in GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USER \
+  GRAFANA_CLOUD_TOKEN; do
+  if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
+done
 # Web Push (api/internal/push): the VAPID pair and contact. All three or none — the API refuses
 # to boot on a partial set. Unset, no notifications are offered or sent.
 [[ -n "${VAPID_PUBLIC_KEY:-}" ]] && ENV_VARS+=("VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}")

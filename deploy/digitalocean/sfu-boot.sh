@@ -11,7 +11,9 @@
 #   3. adds the deploy keys kept on the volume (ssh/authorized_keys) for the deploy workflow;
 #   4. syncs the latest deploy files from the repo at SFU_REF, as the deploy workflow does, so a
 #      box that was down during a deploy still comes up current;
-#   5. runs redeploy.sh with SFU_DATA_DIR and OPS_BOX=true (the ops box runs the API tick).
+#   5. merges the Grafana Cloud settings the API passed in the user data (SFU_GRAFANA_ENV) into
+#      .env, so Alloy reports from first boot;
+#   6. runs redeploy.sh with SFU_DATA_DIR and OPS_BOX=true (the ops box runs the API tick).
 #
 # Docker, the images and the host firewall come from the snapshot (build-image.sh). Output goes to
 # /var/log/webinarliv-boot.log. Safe to run again by hand.
@@ -84,6 +86,30 @@ rm -rf "$tmp"
 set_env() { grep -q "^$1=" "${TARGET}/.env" || echo "$1=$2" >>"${TARGET}/.env"; }
 set_env SFU_DATA_DIR "$DATA"
 set_env OPS_BOX true
+
+# Grafana Cloud for Alloy, from the API (user data writes SFU_GRAFANA_ENV; boxUserData in
+# api/internal/api/sfu_box.go). All five GRAFANA_CLOUD_* lines replace the ones in .env, as the
+# deploy workflow does, so the API's settings win and running this again changes nothing. A file
+# that is not all five plain KEY=value lines is ignored. Values are never printed.
+GRAFANA_KEYS="GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USER GRAFANA_CLOUD_TOKEN"
+grafana_file="${SFU_GRAFANA_ENV:-}"
+if [[ -n "$grafana_file" && -f "$grafana_file" ]]; then
+  ok=1
+  for k in $GRAFANA_KEYS; do
+    grep -qE "^${k}=[A-Za-z0-9._:/@+=%?&,~-]+$" "$grafana_file" || ok=0
+  done
+  if [[ "$ok" == 1 ]] && ! grep -vqE '^GRAFANA_CLOUD_(PROM_URL|PROM_USER|LOKI_URL|LOKI_USER|TOKEN)=' "$grafana_file"; then
+    tmp_env="$(mktemp "${TARGET}/.env.XXXXXX")"
+    grep -vE '^GRAFANA_CLOUD_(PROM_URL|PROM_USER|LOKI_URL|LOKI_USER|TOKEN)=' "${TARGET}/.env" >"$tmp_env" || :
+    cat "$grafana_file" >>"$tmp_env"
+    chmod --reference="${TARGET}/.env" "$tmp_env" 2>/dev/null || chmod 600 "$tmp_env"
+    mv "$tmp_env" "${TARGET}/.env"
+    log "Grafana Cloud settings from the API written to .env (Alloy starts with the stack)"
+  else
+    log "ignoring ${grafana_file}: not the five GRAFANA_CLOUD_* lines"
+  fi
+  rm -f "$grafana_file"
+fi
 
 systemctl start docker
 chmod +x "${TARGET}/redeploy.sh" "${TARGET}/install.sh"

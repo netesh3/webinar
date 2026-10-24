@@ -115,9 +115,21 @@ tier's 10k active series; check **Cost management → Metrics** after the first 
 
 **Off until configured.** `redeploy.sh` starts Alloy only when `/opt/livekit/.env` has all five
 of the settings below; with none it does nothing, with some it warns and does not start it.
-The deploy workflow (**Deploy LiveKit (DigitalOcean)**) writes them into the box's `.env` from
-repo variables and a secret. That `.env` is on the `sfu-data` volume, so every later on-demand
-droplet has them at boot; the image is in the snapshot (`deploy/digitalocean/build-image.sh`).
+Two writers put them there, both replacing all five `GRAFANA_CLOUD_*` lines (so they agree and
+re-running either changes nothing):
+
+1. **The API, at every droplet create** (the usual path; the box is normally off). The Cloud Run
+   deploy passes the same repo variables and secret to the API as env vars; the box manager
+   (`boxUserData`, `api/internal/api/sfu_box.go`) writes them into the droplet's user data as a
+   root-only file `/run/webinarliv-grafana.env`, and `deploy/digitalocean/sfu-boot.sh` merges it
+   into the volume's `.env` before `redeploy.sh`, then deletes it. All five or none: the API
+   refuses to boot on a partial set while `SFU_BOX_PROJECT` is set. Nothing logs the values.
+2. **The deploy workflow** (**Deploy LiveKit (DigitalOcean)**), when it finds the box up.
+
+That `.env` is on the `sfu-data` volume, so the settings also survive for a droplet created
+before the API had them. The Alloy image is in the snapshot (`deploy/digitalocean/build-image.sh`).
+Anything running on the droplet can read its user data (the metadata service), so the token
+must be the write-only access policy token below and nothing broader.
 
 | Name | Kind | Where in Grafana Cloud |
 |---|---|---|
@@ -133,13 +145,15 @@ gh variable set GRAFANA_CLOUD_PROM_USER --body '1234567'
 gh variable set GRAFANA_CLOUD_LOKI_URL  --body 'https://logs-prod-XXX.grafana.net/loki/api/v1/push'
 gh variable set GRAFANA_CLOUD_LOKI_USER --body '765432'
 gh secret set GRAFANA_CLOUD_TOKEN        # paste the token at the prompt
-gh workflow run livekit-do-deploy.yml    # writes them to the box and starts Alloy
+gh workflow run cloudrun-deploy.yml      # the API passes them to every new droplet
+gh workflow run livekit-do-deploy.yml    # only if the box is up now: writes them and starts Alloy
 ```
 
-The deploy skips while the on-demand box is down; the settings land on the next deploy that
-finds it up (or start a session first). To turn Alloy off, remove the lines from the box's
+The box deploy skips while the on-demand box is down; the next droplet the API creates reports
+from boot regardless. To turn Alloy off, remove the lines from the box's
 `.env` (`ssh root@<box> "sed -i '/^GRAFANA_CLOUD_/d' /opt/livekit/.env && /opt/livekit/redeploy.sh"`)
-and delete the variables so the next deploy does not write them back. Check it on the box:
+and delete the variables and secret, then redeploy the API, so neither the next box deploy nor the
+next droplet writes them back. Check it on the box:
 `docker compose -f docker-compose.yml -f docker-compose.alloy.yml logs alloy`, or the UI
 through `ssh -L 12345:127.0.0.1:12345 root@<box>`.
 
