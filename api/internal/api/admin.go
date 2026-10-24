@@ -375,7 +375,8 @@ func (s *Server) handlePlanFeatures(w http.ResponseWriter, r *http.Request) {
  * Whole rather than one cell, because the admin edits a grid and saves it; a partial
  * write is the one state they never looked at. Every plan and feature key is checked,
  * the same refusal handleSetFeature gives, so a typo cannot quietly switch a tier off.
- * A plan left out of the body includes nothing. */
+ * A PerHost switch (every AI one) is refused in any tier. A plan left out of the body
+ * includes nothing. */
 func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
 	admin := userFromContext(r.Context())
 	var body types.PlanFeaturesBody
@@ -393,6 +394,12 @@ func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
 			if !types.KnownFeature(f) {
 				httpx.Error(w, http.StatusUnprocessableEntity, "unknown_feature",
 					"That isn't a feature this server knows about.")
+				return
+			}
+			// AI is off by default on every plan: an admin turns it on per host.
+			if types.PerHostFeature(f) {
+				httpx.Error(w, http.StatusUnprocessableEntity, "per_host_feature",
+					featureLabel(f)+" is off on every plan. Turn it on for a host under Accounts → Features.")
 				return
 			}
 		}

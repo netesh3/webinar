@@ -45,7 +45,9 @@ func newAutoFixture(t *testing.T, auto bool) autoFixture {
 	email := "auto-" + strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")) + "@test.dev"
 	acct := h.signup("Asha Rao", email, true)
 	f := autoFixture{h: h, model: model, hostID: acct.ID}
-	f.feature(types.FeatureAI, true)
+	for _, k := range aiGrant {
+		f.feature(k, true)
+	}
 	f.feature(types.FeatureReplayEngage, true)
 	h.addKnowledge("Course FAQ", courseFAQ)
 
@@ -304,7 +306,7 @@ func TestQAAutoOffByDefaultAndGated(t *testing.T) {
 		t.Fatal("auto mode ran without ai")
 	}
 	f.feature(types.FeatureAI, true)
-	// Its own switch (simulive_auto, on in every tier) turned off for this account.
+	// Its own switch (simulive_auto, granted per host) turned off for this account.
 	f.feature(types.FeatureSimuliveAuto, false)
 	res, raw = h.do(http.MethodPut, "/api/host/webinars/"+f.sim.ID+"/replay/auto", types.SimuliveAutoAnswerRequest{Enabled: true})
 	h.wantError(res, raw, http.StatusForbidden, "feature_off")
