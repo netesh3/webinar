@@ -30,8 +30,10 @@ Each simulated viewer follows the browser's path (`web/lib/edge-*.ts`, `componen
    - It loads the multivariant playlist, picks the first variant, and plays that variant's audio rendition too if it is separate.
    - It fetches the init segment once and starts `PART-HOLD-BACK` behind live.
    - It fetches every part once, in order (whole segments when not in low-latency mode).
-   - It reloads with `_HLS_msn` / `_HLS_part` blocking requests when the server can block, and otherwise polls every target duration.
+   - It reloads the playlist alongside the part fetches, not after them, as hls.js does. While the playlist advances it uses `_HLS_msn` / `_HLS_part` blocking requests (each times out after max(3 part targets, 0.8 target durations)). When the playlist did not advance, or the server cannot block, it polls: every target duration, or half of one when nothing changed.
+   - It never repeats a failed blocking reload's `_HLS_msn` / `_HLS_part`. After a timeout it reloads the plain playlist at once. After any other failure it waits 1 s, 2 s, 4 s, then 8 s at most before the plain reload. It honours the CDN's `Age` header the way hls.js's "CDN tune-in" does. If it falls behind the playlist window, it starts again at the live edge.
    - Before the mix is up, it retries the playlist every second.
+   - Runs before 2026-10-24 (run 6) retried a failed blocking reload with the same URL every second. MediaMTX returns 400 at once for an `_HLS_msn` older than its window, so one CDN 503 or timeout took a viewer off the stream for the rest of the step. That is the `playlist 400` flood and most of the stalls in run 6. Real hls.js does not do this.
 5. **Leave.** `POST /events/leave` at the end, like the page's `pagehide` beacon.
 
 The bytes are read and dropped. A playback model turns arrival times into two numbers:
@@ -215,6 +217,7 @@ PROBE_ADMIN_EMAIL=... PROBE_ADMIN_PASSWORD=... node e2e/load/run.mjs --web http:
 |---|---|---|
 | `joinFail` | 0 | 409 `room_full`: load-test viewers too low. 429: ramp too fast. 5xx: API |
 | `stalls` | ≈ 0 per step; a handful at most across 1000 viewers | Many, with `media95` near or above the part duration: origin or CDN slow. Many, with low `media95`: playlist blocking or generator CPU |
+| `playlist 400` | A few, each followed by `playlistRecovered` | Thousands: a viewer is repeating stale directives (a kit bug; see "The stream" above). Check that `playlistRecovered` keeps pace. The 503s, timeouts and `neterr` that trigger the 400s are the real CDN signal |
 | `live95s` | LL: under 3–4 s. Standard: under 10 s | Growing step over step: the stream falls behind (box CPU, egress encoder) |
 | `media95` (LL) | ≪ 500 ms through the CDN | Close to 500 ms: viewers cannot keep up |
 | server viewers vs `active` | Equal within about 30 s | Lower: beats or event streams being dropped (Cloud Run concurrency, timeouts) |
