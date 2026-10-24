@@ -117,7 +117,7 @@ import { LeaveConfirm } from "./leave-confirm";
 import { PipStage } from "./pip-stage";
 import { PresenterPip } from "./own-share-view";
 import { MINI_CONTROLS_SIZE, MiniControls } from "./mini-controls";
-import { SHARE_TIP_KEY, shareStartOffer, shouldShowShareTip } from "@/lib/share-hints";
+import { shareStartOffer } from "@/lib/share-hints";
 import { useRaisedHandsPanel } from "./raised-hands-panel";
 import { useToolDrag, type DropHandler } from "./tool-drag";
 import { tool } from "./tools";
@@ -783,34 +783,10 @@ export function ControlBar() {
     [previewChrome, toggle, localParticipant, notify],
   );
 
-  /* The one-time tip before the first picker (lib/share-hints.ts): a window or a tab keeps
-   * this room's own controls off the audience's screen; the entire screen does not. Its
-   * Continue is a click of its own, so the picker still opens with a fresh gesture. Closed
-   * any way at all, it is remembered. */
-  const [shareTip, setShareTip] = useState<{ run: () => void } | null>(null);
-  const rememberShareTip = useCallback(() => {
-    try {
-      window.localStorage.setItem(SHARE_TIP_KEY, "1");
-    } catch {
-      // Private mode: shown again next time, which is harmless.
-    }
-  }, []);
-  const startScreenShare = useCallback(
-    (surface: "browser" | "window" | "monitor") => {
-      let stored: string | null = null;
-      try {
-        stored = window.localStorage.getItem(SHARE_TIP_KEY);
-      } catch {
-        stored = "1"; // No storage: a tip that could never be remembered would nag.
-      }
-      if (!shouldShowShareTip(stored)) {
-        openSharePicker(surface);
-        return;
-      }
-      setShareTip({ run: () => openSharePicker(surface) });
-    },
-    [openSharePicker, setShareTip],
-  );
+  /* Share goes straight to the browser's own picker. The one-time "Before you share" tip
+   * that used to sit in front of it was removed on request (2026-10-24): an extra click
+   * on every new browser for a hint the picker's own panes already make obvious. */
+  const startScreenShare = openSharePicker;
 
   /* "Share something else": pick first, swap second.
    *
@@ -1882,25 +1858,6 @@ export function ControlBar() {
           onScreenShare={startScreenShare}
         />
       )}
-
-      {/* The one-time tip before the first share picker (lib/share-hints.ts). */}
-      <ConfirmModal
-        open={shareTip !== null}
-        onClose={() => {
-          rememberShareTip();
-          setShareTip(null);
-        }}
-        onConfirm={() => {
-          const run = shareTip?.run;
-          rememberShareTip();
-          setShareTip(null);
-          run?.();
-        }}
-        title="Before you share"
-        body={`Tip: share a window or a tab so the ${appName} controls aren't shown to your audience.`}
-        confirmLabel="Choose what to share"
-        dark
-      />
 
       {/* A host or co-host taking the screen from somebody else. Confirmed rather than
           done outright: it ends another person's presentation mid-sentence. */}
