@@ -55,7 +55,9 @@ class Config:
     # Models. English-only checkpoints live (more accurate than the multilingual ones of
     # the same size on English, and nothing to detect); the after-session pass is the
     # multilingual large-v3-turbo forced to English (see README "Models").
-    model: str = "small.en"
+    # base.en by default: ~0.5-0.8 cores for 1-2 speakers against small.en's ~1.5-2, measured
+    # to matter on the shared c-4 (24 Oct 2026). CAPTIONS_MODEL=small.en for the larger one.
+    model: str = "base.en"
     fallback_model: str = "base.en"
     final_model: str = "large-v3-turbo"
     final_enabled: bool = True
@@ -149,7 +151,7 @@ class Config:
             api_url=api_url,
             secret=secret,
             agent_name=env.get("CAPTIONS_AGENT_NAME", "").strip() or "webinar-captions",
-            model=env.get("CAPTIONS_MODEL", "").strip() or "small.en",
+            model=env.get("CAPTIONS_MODEL", "").strip() or "base.en",
             fallback_model=env.get("CAPTIONS_FALLBACK_MODEL", "").strip() or "base.en",
             final_model=env.get("CAPTIONS_FINAL_MODEL", "").strip() or "large-v3-turbo",
             final_enabled=_bool(env.get("CAPTIONS_FINAL_ENABLED"), True),
