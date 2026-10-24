@@ -250,6 +250,7 @@ func TestKnowledgeRetrievalRanksAndHonoursTheSessionPick(t *testing.T) {
 		t.Fatalf("an excluded doc was found: %v", got)
 	}
 	// Another session of the same host still has it.
+	h.endLive(wb.ID) // one live session per host
 	other := h.liveWebinar("Money basics, again", nil)
 	hits, err := h.store.SearchKnowledge(ctx, other.ID, knowledge.TSQuery("fee"), 10)
 	if err != nil || len(hits) == 0 || hits[0].DocID != faq.ID {

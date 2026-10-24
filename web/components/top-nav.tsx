@@ -14,6 +14,7 @@ import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
 import { EmailNavLink } from "./email/email-nav";
 import { useInstallMenuAction } from "./pwa";
+import { indexable } from "@/lib/plans";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -56,6 +57,8 @@ function linksFor(signedIn: boolean, canHost: boolean) {
         { href: "/blog", label: "Blog" },
       ]
     : [
+        // Features carries the proposed prices, so it is linked once they are live (lib/plans.ts).
+        ...(indexable() ? [{ href: "/features", label: "Features" }] : []),
         { href: "/pricing", label: "Pricing" },
         { href: "/blog", label: "Blog" },
       ];

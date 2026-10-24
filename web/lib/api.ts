@@ -158,6 +158,7 @@ import type {
   KeepRecordingLinkRequest,
   KeepRecordingLinkResponse,
   SetUserRecordingStorageRequest,
+  AdminWebinarStatus,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 import { captionsURL } from "./caption-track";
@@ -1821,10 +1822,12 @@ export const api = {
   /** Every webinar on the instance, across every host — unlike every other
    *  listing in this file, which is scoped to the signed-in account. `status`
    *  is "scheduled" | "live" | "ended"; `from`/`to` are plain YYYY-MM-DD dates,
-   *  inclusive on both ends; `q` matches the topic. All optional. */
+   *  inclusive on both ends; `kind` is a chip (a recurring session counts as a
+   *  webinar); `q` matches the topic or the host's email. All optional. */
   adminWebinars: (
     filter: {
       status?: "draft" | "scheduled" | "live" | "ended";
+      kind?: "webinar" | "meeting" | "simulive";
       from?: string;
       to?: string;
       q?: string;
@@ -1832,6 +1835,7 @@ export const api = {
   ) => {
     const params = new URLSearchParams();
     if (filter.status) params.set("status", filter.status);
+    if (filter.kind) params.set("kind", filter.kind);
     if (filter.from) params.set("from", filter.from);
     if (filter.to) params.set("to", filter.to);
     if (filter.q) params.set("q", filter.q);
@@ -1847,6 +1851,16 @@ export const api = {
    *  row and file removed), just reachable without owning it. */
   adminDeleteWebinar: (slug: string) =>
     del<StatusResponse>(`/api/admin/webinars/${seg(slug)}`),
+
+  /** Ends any live session now, through the same end the host's button takes:
+   *  room closed, recordings saved, report and recap written. */
+  adminEndWebinar: (slug: string) =>
+    post<Webinar>(`/api/admin/webinars/${seg(slug)}/end`),
+
+  /** Publishes a draft or takes a scheduled session back to a draft. The server
+   *  refuses every other move with 409 and a reason. */
+  adminSetWebinarStatus: (slug: string, status: AdminWebinarStatus["status"]) =>
+    patch<Webinar>(`/api/admin/webinars/${seg(slug)}/status`, { status } satisfies AdminWebinarStatus),
 
   // ---------------------------------------------------------- sales chat (admin)
 

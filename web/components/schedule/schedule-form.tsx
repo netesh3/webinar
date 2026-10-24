@@ -19,13 +19,13 @@ import { dropCache } from "@/lib/http";
 import type { MessagesSaveHandle } from "@/engage";
 import {
   FeatureCloudRecording,
-  FeatureJoinWithoutRegistration,
   FeatureZoom,
   type CRMMediaFile,
   type MessageSlot,
   type Webinar,
   type WebinarInput,
 } from "@/lib/api-types";
+import { offersJoinWithoutRegistration } from "@/lib/join-without-registration";
 import { useHydrated, useNow } from "@/lib/clock";
 import { deliveryToSend } from "@/lib/delivery-policy";
 import { useDeliveryPolicy } from "@/lib/use-delivery-policy";
@@ -257,9 +257,8 @@ function ScheduleFormBody({
   const config = useAppConfig();
   const { account } = useSession();
   const { notify } = useToast();
-  const openJoin = (account?.features ?? []).includes(
-    FeatureJoinWithoutRegistration,
-  );
+  // Paused for every account for now: lib/join-without-registration.ts.
+  const openJoin = offersJoinWithoutRegistration(account?.features);
   const editing = webinar !== null;
   const meeting = editing ? isMeetingKind(webinar) : newMeeting;
   // Edge only, the Standard / Edge choice, or neither (lib/delivery-policy.ts).

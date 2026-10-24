@@ -224,7 +224,7 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And a recording's days left and the storage meter: "6.2 of 10 GB", warn from 90%.
 	cd web && node --experimental-strip-types --no-warnings lib/recording-retention.test.mts
 	# And which delivery the schedule form and the instant button offer: edge only on a
-	# GCP or DO video server, the Standard / Edge choice on Hetzner with the switch.
+	# GCP or DO video server, the Standard / Edge choice on any other server with an origin.
 	cd web && node --experimental-strip-types --no-warnings lib/delivery-policy.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/instant-delivery.test.mts
 	# And a meeting's room: no raise hand or stream tools, a guest entering muted with the
@@ -368,6 +368,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The Accounts tab's Hosts / Attendees chips: search and chip combine, and the
 	# chip counts follow the search text.
 	cd web && node --experimental-strip-types --no-warnings lib/admin-accounts-filter.test.mts
+	# The Webinars tab's row actions: End only when live (not Zoom), draft <-> scheduled,
+	# no reopen, and Delete armed only by the topic or DELETE.
+	cd web && node --experimental-strip-types --no-warnings lib/admin-session-actions.test.mts
 	# The host home's list filters in the URL: tab, search and dates survive a refresh or
 	# the back button, defaults stay out of the address, bad dates read as unset.
 	cd web && node --experimental-strip-types --no-warnings lib/host-list-url.test.mts
@@ -430,6 +433,9 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The blog: the Markdown subset, reading time, slugs, sorting, prev/next, related posts,
 	# the RSS feed, and every published post validated (alt text, diagrams, dates).
 	cd web && node --experimental-strip-types --no-warnings lib/blog.test.mts
+	# The proposed plans behind /features and /pricing/proposed: the yearly rule, limits read
+	# into the comparison table, and the proposal switch.
+	cd web && node --experimental-strip-types --no-warnings lib/plans.test.mts
 
 .PHONY: test-background
 test-background: ## Virtual backgrounds, frame by frame: make test-background PHOTO=~/person.jpg [HAIR=~/long-hair.jpg]

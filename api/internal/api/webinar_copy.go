@@ -57,7 +57,7 @@ func (s *Server) handleCopyWebinar(w http.ResponseWriter, r *http.Request) {
 	// Edge carries over only where a new webinar could choose it; otherwise the copy is
 	// standard rather than a create that fails on a field the host never touched.
 	if in.Delivery == types.DeliveryEdge &&
-		(!user.HasFeature(types.FeatureEdgeDelivery) || in.Kind != types.KindLive || zoom.IsVenue(in.Venue)) {
+		(in.Kind != types.KindLive || zoom.IsVenue(in.Venue) || s.cfg.BroadcastRTMPBase == "") {
 		in.Delivery = types.DeliveryStandard
 	}
 

@@ -191,7 +191,11 @@ func TestMixRecorderEndpointsAuth(t *testing.T) {
 			t.Fatalf("secret %q: %d %s, want 401", secret, res.StatusCode, raw)
 		}
 	}
-	// A recording that is not from a mix (a composite here) is not the recorder's.
+	// A recording that is not from a mix (a composite here) is not the recorder's. A host
+	// runs one session at a time, so the first ends before the second goes live.
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/end", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("end the mix session: %d %s", res.StatusCode, raw)
+	}
 	plain := h.liveWebinar("Plain", nil)
 	other := startCloudRecording(t, h, plain.ID)
 	res, raw := h.internal("/api/internal/mix-recordings/"+other.ID+"/complete", mixRecSecret,

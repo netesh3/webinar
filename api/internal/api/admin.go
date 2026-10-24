@@ -375,7 +375,8 @@ func (s *Server) handlePlanFeatures(w http.ResponseWriter, r *http.Request) {
  * Whole rather than one cell, because the admin edits a grid and saves it; a partial
  * write is the one state they never looked at. Every plan and feature key is checked,
  * the same refusal handleSetFeature gives, so a typo cannot quietly switch a tier off.
- * A plan left out of the body includes nothing. */
+ * A PerHost switch (every AI one) is refused in any tier. A plan left out of the body
+ * includes nothing. */
 func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
 	admin := userFromContext(r.Context())
 	var body types.PlanFeaturesBody
@@ -395,6 +396,12 @@ func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
 					"That isn't a feature this server knows about.")
 				return
 			}
+			// AI is off by default on every plan: an admin turns it on per host.
+			if types.PerHostFeature(f) {
+				httpx.Error(w, http.StatusUnprocessableEntity, "per_host_feature",
+					featureLabel(f)+" is off on every plan. Turn it on for a host under Accounts → Features.")
+				return
+			}
 		}
 	}
 	if err := s.store.SetPlanFeatures(r.Context(), body.Tiers); err != nil {
@@ -410,7 +417,7 @@ func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, types.PlanFeaturesBody{Tiers: tiers})
 }
 
-/* handleAdminWebinars is GET /api/admin/webinars?status=&from=&to=&q=.
+/* handleAdminWebinars is GET /api/admin/webinars?status=&kind=&from=&to=&q=.
  *
  * The only place in the app that lists webinars across every host: every
  * other listing (VisibleTo, ByHost) is deliberately scoped to one account,
@@ -435,6 +442,15 @@ func (s *Server) handleAdminWebinars(w http.ResponseWriter, r *http.Request) {
 	default:
 		httpx.Error(w, http.StatusUnprocessableEntity, "bad_status",
 			"status must be draft, scheduled, live, or ended.")
+		return
+	}
+
+	switch kind := q.Get("kind"); kind {
+	case "", store.AdminKindWebinar, store.AdminKindMeeting, store.AdminKindSimulive:
+		filter.Kind = kind
+	default:
+		httpx.Error(w, http.StatusUnprocessableEntity, "bad_kind",
+			"kind must be webinar, meeting, or simulive.")
 		return
 	}
 
@@ -521,7 +537,7 @@ func (s *Server) handleAdminDeleteWebinar(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	s.log.Info("webinar deleted by admin", "admin", admin.ID, "slug", slug)
+	s.logAdminAction(admin.ID, "delete", slug, "was", deleted.Status)
 	s.logWebinarDeleted(slug, deleted)
 	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "deleted"})
 }

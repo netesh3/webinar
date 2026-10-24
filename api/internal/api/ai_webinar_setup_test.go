@@ -25,18 +25,14 @@ func setupPost(h *harness, body any) (*http.Response, []byte) {
 	return h.do(http.MethodPost, "/api/host/ai/webinar-setup", body)
 }
 
-// enableAI switches AI writing on for a host, as an admin does: it is opt-in
-// (migrations/0127).
+// enableAI switches AI on for a host, as an admin does: it is opt-in (migrations/0127).
 func enableAI(t *testing.T, h *harness, email string) {
 	t.Helper()
 	u, err := h.store.UserByEmail(t.Context(), email)
 	if err != nil {
 		t.Fatal(err)
 	}
-	on := true
-	if _, err := h.store.SetFeatureOverride(t.Context(), u.ID, types.FeatureAI, &on); err != nil {
-		t.Fatal(err)
-	}
+	enableAIForUser(t, h, u.ID)
 }
 
 func TestAIWebinarSetupWritesADraft(t *testing.T) {

@@ -127,8 +127,11 @@ func (s *Server) forgetDelivery(slug string) { s.deliveryCache.Delete(slug) }
  * Those boxes carry the stage on WebRTC and the audience on LL-HLS through the CDN; a WebRTC
  * audience there is the egress bill the move was made to avoid (docs/edge-delivery.md, "Where
  * edge is the standard"). So a webinar that is, or will be, on one of them is saved as edge
- * whatever the form sent, and the edge_delivery switch is implied there. Hetzner keeps the
- * choice behind the switch, exactly as before. Meetings and simulive sessions are never edge. */
+ * whatever the form sent. Production video is the on-demand DigitalOcean box and new rooms go
+ * there (sfu_retired.go), so every new webinar is edge. Any other server (a dev SFU, LiveKit
+ * Cloud) offers every host the Standard / Edge choice when there is a live origin: there is no
+ * per-account switch any more (the "Edge delivery (beta)" feature went with Hetzner,
+ * migrations/0159). Meetings and simulive sessions are never edge. */
 
 // edgeOnlyProvider is whether a video-server provider runs every webinar on edge.
 func edgeOnlyProvider(provider string) bool { return provider == "gcp" || provider == "do" }
@@ -141,7 +144,9 @@ func edgeOnlyProvider(provider string) bool { return provider == "gcp" || provid
  * moves the room. That is fine either way round, because edge works on every provider and
  * the audience path checks again at join (edgeAllowed). */
 func (s *Server) deliveryProject(ctx context.Context, hostID, pinned string) string {
-	if pinned != "" {
+	// A pin to the retired Hetzner server is not where the room will be: it moves before
+	// anyone joins (sfu_retired.go). A live or ended session is locked in resolveDelivery.
+	if pinned != "" && !s.sfuRetired(pinned) {
 		return pinned
 	}
 	candidates := s.sfu.Candidates()
@@ -166,13 +171,13 @@ func (s *Server) edgeOnlyFor(ctx context.Context, hostID, pinned string) bool {
 	return s.edgeOnlyProject(s.deliveryProject(ctx, hostID, pinned))
 }
 
-/* edgeAllowed is whether this host may run an edge audience on this project: implied on
- * GCP and DO, the edge_delivery switch elsewhere. */
-func (s *Server) edgeAllowed(ctx context.Context, hostID, project string) bool {
+/* edgeAllowed is whether a room on this project can have an edge audience: always on GCP
+ * and DO, elsewhere when there is a live origin to push the mix to. */
+func (s *Server) edgeAllowed(project string) bool {
 	if project != "" && edgeOnlyProvider(s.costProviderOf(project)) {
 		return true
 	}
-	return s.hostFeature(ctx, hostID, types.FeatureEdgeDelivery)
+	return s.cfg.BroadcastRTMPBase != ""
 }
 
 /* edgeFits is whether a session of this shape can be edge at all: a webinar, one-off or a
@@ -197,9 +202,9 @@ type deliveryTarget struct {
  *
  * On a GCP or DO server (edgeOnlyFor) a webinar in this app is edge, whatever was asked for.
  * Elsewhere "" keeps what is saved (or standard on a create), so a client that never heard
- * of the field changes nothing. Edge there needs the host's switch, a webinar in this app (not
- * Zoom, not simulive), and a live origin to push to; anything else is a field error rather
- * than a silent downgrade, because a host testing edge has to know they are not getting it.
+ * of the field changes nothing. Edge there needs a webinar in this app (not Zoom, not
+ * simulive) and a live origin to push to; anything else is a field error rather than a
+ * silent downgrade, because a host asking for edge has to know they are not getting it.
  *
  * A recurring series may be edge: every occurrence is its own webinar row with its own slug,
  * so its own mix, MediaMTX path and event stream, started and stopped by its own Start and
@@ -233,13 +238,6 @@ func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.We
 	// never touched would be worse than the downgrade.
 	if !explicit && !edgeFits(in) {
 		return types.DeliveryStandard, nil
-	}
-	if !s.edgeAllowed(ctx, hostID, t.pinned) {
-		if prev == types.DeliveryEdge {
-			// Saved while the switch was on. Leave it; join checks the switch again.
-			return prev, nil
-		}
-		return "", map[string]string{"delivery": featureLabel(types.FeatureEdgeDelivery) + " isn't switched on for this account."}
 	}
 	switch {
 	case in.Venue != "" && in.Venue != "app":
@@ -308,14 +306,14 @@ func (s *Server) BackfillEdgeDelivery(ctx context.Context) {
 // ------------------------------------------------------------ join and tokens
 
 /* edgeAudience reports whether this join should get the edge audience response: an edge
- * webinar, the host's switch still on, an origin to play, and a person who is not on the stage.
+ * webinar, an origin to play, and a person who is not on the stage.
  * Anyone on the stage — a promoted attendee — gets an ordinary LiveKit token. */
 func (s *Server) edgeAudience(ctx context.Context, wb types.Webinar, onStage bool) (playback string, ok bool) {
 	if onStage || wb.Delivery != types.DeliveryEdge || wb.Kind == types.KindSimulive || isMeeting(wb) {
 		return "", false
 	}
 	project := s.pinnedProject(ctx, wb)
-	if s.cfg.SessionSecret == "" || !s.edgeAllowed(ctx, wb.Host.ID, project) {
+	if s.cfg.SessionSecret == "" || !s.edgeAllowed(project) {
 		return "", false
 	}
 	u := s.cfg.EdgePlaybackURLFor(project, wb.ID)
@@ -606,7 +604,7 @@ func (s *Server) handleDeliveryPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	out := types.DeliveryPolicy{EdgeOnly: s.edgeOnlyFor(r.Context(), hostID, pinned)}
 	if !out.EdgeOnly {
-		out.EdgeChoice = s.hostFeature(r.Context(), hostID, types.FeatureEdgeDelivery)
+		out.EdgeChoice = s.cfg.BroadcastRTMPBase != ""
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }

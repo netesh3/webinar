@@ -136,7 +136,9 @@ func (p LiveKitProject) CostProvider() string {
 
 /* CostProviderOfName guesses the provider from a project's id and label, word by word:
  * "do-blr" and "Bangalore (DigitalOcean test)" are DigitalOcean, "india" and "Mumbai" GCP,
- * and anything else Hetzner, which runs the default box. */
+ * and anything else Hetzner, which ran the legacy "default" box. Hetzner is sunset, and a Hetzner
+ * project takes no new rooms while any other project does (api/internal/api/sfu_retired.go), so a
+ * new entry should state its "provider" rather than rely on this guess. */
 func CostProviderOfName(name string) string {
 	words := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
 		return (r < 'a' || r > 'z') && (r < '0' || r > '9')

@@ -23,6 +23,9 @@ export type AccountFeatureRow = {
   group: string;
   /* The switches it needs to be in effect (Feature.requires). */
   requires: string[];
+  /* No plan includes it: off by default for every host, on only by this override (every AI
+   * switch, Feature.perHost). */
+  perHost: boolean;
 };
 
 export function accountFeatureRows(
@@ -37,6 +40,7 @@ export function accountFeatureRows(
         description: f.description,
         group: f.group,
         requires: f.requires ?? [],
+        perHost: f.perHost ?? false,
       }))
     : [];
   return features;
@@ -74,6 +78,23 @@ export function planIncludes(
   if (!tiers) return null;
   const tier = tiers.find((t) => t.plan === (plan ?? ""));
   return tier ? tier.features.includes(key) : false;
+}
+
+/* The Inherit option's label: what the plan gives. A per-host switch (every AI one) is off on
+ * every plan, so it says so rather than waiting on the matrix. */
+export function inheritLabel(inherited: boolean | null, perHost: boolean): string {
+  if (perHost) return "Plan default (off: per host only)";
+  return inherited === null ? "Plan default" : `Plan default (${inherited ? "on" : "off"})`;
+}
+
+/* The plan matrix as saved: a per-host switch is never in a tier (the server refuses it, 422
+ * per_host_feature), so one left in a draft from an older matrix is dropped. */
+export function tierFeaturesToSave(
+  draft: Iterable<string>,
+  catalogue: readonly Feature[],
+): string[] {
+  const perHost = new Set(catalogue.filter((f) => f.perHost).map((f) => f.key));
+  return [...draft].filter((k) => !perHost.has(k));
 }
 
 // The override map after one change, matching what the server now stores.

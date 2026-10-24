@@ -279,6 +279,11 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return types.Webinar{}, false
 	}
+	// An instant one starts at once, so refuse it here rather than leave a new row
+	// behind when the start that follows is refused.
+	if in.Instant && in.Kind != types.KindSimulive && s.refuseSecondLive(w, r, user.ID, "") {
+		return types.Webinar{}, false
+	}
 	/* Go live now. The server's clock, not the browser's: a client clock a
 	 * few minutes fast would otherwise land outside the five-minute start
 	 * window and refuse the start that this button exists to do. */
@@ -308,7 +313,8 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	 * the switch was on and an administrator has since turned it off. */
 	// Not for a meeting, which has no registration at all: its door is the lobby, which
 	// the host controls one knock at a time, and no switch is needed to open it.
-	if !meeting && !user.HasFeature(types.FeatureJoinWithoutRegistration) {
+	// types.OfferJoinWithoutRegistration pauses this for every account (false for now).
+	if !meeting && !types.JoinWithoutRegistrationOpen(user.HasFeature(types.FeatureJoinWithoutRegistration)) {
 		in.RegistrationRequired = true
 	}
 	if in.Options.AutoRecord && !s.requireCloudRecording(w, r, user.ID) {
@@ -500,7 +506,8 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, "update webinar: host features", err)
 			return
 		}
-		if !host.HasFeature(types.FeatureJoinWithoutRegistration) {
+		// types.OfferJoinWithoutRegistration pauses this for every account (false for now).
+		if !types.JoinWithoutRegistrationOpen(host.HasFeature(types.FeatureJoinWithoutRegistration)) {
 			in.RegistrationRequired = true
 		}
 	}
@@ -887,6 +894,9 @@ func (s *Server) handleDeleteWebinar(w http.ResponseWriter, r *http.Request) {
  * recording as an admin action rather than folding into the same log line a
  * host's own delete produces.
  */
+// roomCloseTimeout bounds closing the room when a webinar is deleted.
+const roomCloseTimeout = 5 * time.Second
+
 func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.Deleted, error) {
 	/* Close the room first, and only for a webinar that is actually live.
 	 *
@@ -899,7 +909,12 @@ func (s *Server) deleteWebinarBySlug(ctx context.Context, slug string) (store.De
 			s.log.Warn("delete webinar: could not resolve the livekit project",
 				"slug", slug, "error", err)
 		} else {
-			if err := sfu.DeleteRoom(ctx, lk.RoomName(slug)); err != nil {
+			// Its own short deadline: an unreachable SFU must not spend the request's, or the
+			// delete below fails on it (24 Oct 2026, admin delete answered 500).
+			rctx, rcancel := context.WithTimeout(ctx, roomCloseTimeout)
+			err := sfu.DeleteRoom(rctx, lk.RoomName(slug))
+			rcancel()
+			if err != nil {
 				// Logged, not fatal. The alternative is refusing to delete a webinar because
 				// the SFU is unreachable, which leaves the caller unable to do the one thing
 				// they asked for.
@@ -1290,6 +1305,13 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	/* One session on the air per host: going live with another means ending
+	 * the first. A rejoin of this one is not a start, and a simulive replays
+	 * on its own schedule, so neither is held back. */
+	if existing.Status != types.StatusLive && existing.Kind != types.KindSimulive &&
+		s.refuseSecondLive(w, r, existing.Host.ID, slug) {
+		return
+	}
 	/* Zoom opens in the Zoom app. Status stays scheduled until phase 4 hears
 	 * that the meeting ended. LiveKit is not created. */
 	if zoom.IsVenue(existing.Venue) {
@@ -1348,6 +1370,31 @@ func (s *Server) handleStartWebinar(w http.ResponseWriter, r *http.Request) {
 
 	s.log.Info("webinar started", "slug", slug, "room", room)
 	httpx.JSON(w, http.StatusOK, wb)
+}
+
+/* refuseSecondLive answers 409 already_live, and reports true, when hostID already
+ * has a session on the air other than exceptSlug. The sentence names it, so the host
+ * knows which one to end. A failed check lets the start through: a database hiccup
+ * is not a reason to keep a host off the air. */
+func (s *Server) refuseSecondLive(w http.ResponseWriter, r *http.Request, hostID, exceptSlug string) bool {
+	if hostID == "" {
+		return false
+	}
+	_, topic, kind, err := s.store.HostLiveSession(r.Context(), hostID, exceptSlug)
+	if errors.Is(err, store.ErrNotFound) {
+		return false
+	}
+	if err != nil {
+		s.log.Warn("start: live session check", "host", hostID, "error", err)
+		return false
+	}
+	noun := "webinar"
+	if kind == types.KindMeeting {
+		noun = "meeting"
+	}
+	httpx.Error(w, http.StatusConflict, "already_live",
+		fmt.Sprintf("“%s” is still live. End that %s before you start another one.", topic, noun))
+	return true
 }
 
 /* goLiveClosed reports whether Go live is still shut, and the sentence to show.

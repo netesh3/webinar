@@ -1,8 +1,17 @@
-# Self-hosted LiveKit on Hetzner
+# Self-hosted LiveKit box (the video-server stack)
+
+> **The Hetzner server is sunset (2026-10-24).** This directory is named after it but is the
+> stack every video server runs: the on-demand DigitalOcean box (`deploy/digitalocean/`,
+> `.github/workflows/livekit-do-deploy.yml`, `sfu-snapshot.yml`, `sfu-boot.sh`) and the Mumbai
+> GCP test box use these files. The Hetzner deploy and log workflows were removed, and the API
+> sends no new room to a Hetzner project (`api/internal/api/sfu_retired.go`). The Hetzner
+> specifics below (`webcast-livekit`, `88.198.141.104`, `HETZNER_SSH_*`) are history. Renaming
+> the directory (e.g. `deploy/livekit-box/`) is a follow-up: the DO image build, boot script,
+> workflows and docs all name this path.
 
 Minimum viable SFU for ~200 webinar subscribers.
 
-| Item | Value |
+| Item | Value (the sunset Hetzner box) |
 |------|--------|
 | Server | `webcast-livekit` · **CX33** (4 vCPU / 8 GB) · `fsn1` |
 | IPv4 | `88.198.141.104` (or `hcloud server describe webcast-livekit`) |
@@ -12,7 +21,9 @@ Minimum viable SFU for ~200 webinar subscribers.
 
 ## CI auto-deploy
 
-GitHub Actions workflow **Deploy LiveKit (Hetzner)** (`.github/workflows/livekit-hetzner-deploy.yml`):
+**Deploy LiveKit (DigitalOcean)** (`.github/workflows/livekit-do-deploy.yml`) is the only
+workflow that deploys this stack now. The Hetzner one (`livekit-hetzner-deploy.yml`) worked
+the same way:
 
 - **Auto:** push to `main` when `deploy/livekit-hetzner/**` (or the workflow) changes
 - **Manual:** Actions → workflow_dispatch

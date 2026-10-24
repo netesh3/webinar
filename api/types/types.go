@@ -1023,8 +1023,8 @@ type Webinar struct {
 	 * the SFU, or the WHEP mix for CDN-broadcast hosts — today's behaviour) or
 	 * DeliveryEdge (the audience watches LL-HLS and gets chat, polls and controls over
 	 * the SSE event stream, never connecting to LiveKit). A webinar on a GCP or
-	 * DigitalOcean video server is always edge; on Hetzner edge is opt-in per webinar,
-	 * behind FeatureEdgeDelivery. Meetings and simulive are always standard. See
+	 * DigitalOcean video server is always edge; on any other server it is the host's
+	 * choice per webinar (DeliveryPolicy). Meetings and simulive are always standard. See
 	 * docs/edge-delivery.md. */
 	Delivery string `json:"delivery,omitempty"`
 	/* ZoomNotice is set on a save Zoom's plan refused. Not stored. */
@@ -1277,16 +1277,16 @@ type Account struct {
  * Zoom because connecting a host's Zoom account and creating meetings there
  * is a decision per customer. The exception is the whiteboard, which starts on
  * for every account (migrations/0099) because it spends nothing and writes
- * nowhere outside the session; its switch exists to turn it off. AI writing is
- * the second exception (migrations/0126): on in every tier, its spend bounded by the
- * monthly AI caps rather than by the switch.
+ * nowhere outside the session; its switch exists to turn it off. (AI writing was
+ * briefly a second exception, migrations/0126.)
  *
  * (0127 made AI opt-in again.) migrations/0142 added simulive (off; kept on for accounts
- * that already had one), and meetings, server captions and the AI sub-switches ai_knowledge,
- * simulive_auto and followup_send, all on in every tier. A switch with Requires is in effect
- * only with all of them (EffectiveFeatures), so a sub-switch on by default does nothing for
- * an account without AI. FeatureRepurpose (repurpose.go) is an AI sub-switch that is OFF by
- * default, in no plan tier: an admin turns it on per host.
+ * that already had one), and meetings and server captions, on in every tier. A switch with
+ * Requires is in effect only with all of them (EffectiveFeatures).
+ *
+ * Every AI-backed switch (ai, ai_knowledge, simulive_auto, followup_send, repurpose, clips)
+ * is PerHost: off for every host on every plan, in no plan tier, and turned on only by an
+ * admin for one host (migrations/0159, which kept them for hosts an admin had given ai).
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1336,23 +1336,14 @@ const (
 	 * turning it off for an account keeps it off. The host's switch decides for
 	 * everyone in their session; see JoinResponse.Whiteboard. */
 	FeatureWhiteboard = "whiteboard"
-	/* FeatureEdgeDelivery lets a host choose Edge delivery for a webinar: the stage
-	 * stays on WebRTC and the audience watches a low-latency HLS feed, with chat,
-	 * polls and controls over the SSE event stream instead of LiveKit.
-	 *
-	 * Off — the default for every account, because absent means off — means the
-	 * choice is not offered and a save asking for it is refused. Only consulted on a
-	 * Hetzner video server: on GCP and DigitalOcean every webinar is edge and the switch
-	 * is implied (DeliveryPolicy). See docs/edge-delivery.md. */
-	FeatureEdgeDelivery = "edge_delivery"
 	/* FeatureAI is the AI writing help: "Write with AI" when scheduling, and the AI
 	 * features after it. Each call counts against the monthly AI caps
 	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
 	 *
-	 * Opt-in: off for every account until an admin turns it on for that host (Admin ->
-	 * Accounts, or in a plan tier's defaults). 0126 had it on in every tier; 0127 took
-	 * that back (2026-10-22). Off means no AI buttons, the AI routes answer 403
-	 * feature_off, and no recap is made. */
+	 * Opt-in: off for every account on every plan until an admin turns it on for that host
+	 * (Admin -> Accounts). No plan tier may include it (Feature.PerHost, migrations/0159).
+	 * 0126 had it on in every tier; 0127 took that back (2026-10-22). Off means no AI
+	 * buttons, the AI routes answer 403 feature_off, and no recap is made. */
 	FeatureAI = "ai"
 	/* FeatureReplayEngage replays the original session's engagement in a simulive: the chat,
 	 * Q&A, host answers and polls of the session the recording was made in, each at the same
@@ -1379,16 +1370,16 @@ const (
 	 * open to every host before this switch existed. Its job is turning them off. */
 	FeatureMeetings = "meetings"
 	/* FeatureAIKnowledge is the AI knowledge library (documents, links, past answers) and
-	 * the Q&A drafts grounded in it. Needs FeatureAI: on in every tier (migrations/0142) but
-	 * only in effect for an account that also has AI. Off: no library, and Q&A drafts are
+	 * the Q&A drafts grounded in it. Needs FeatureAI. Off by default, per host only
+	 * (migrations/0159). Off: no library, and Q&A drafts are
 	 * written from the topic and description only. */
 	FeatureAIKnowledge = "ai_knowledge"
 	/* FeatureSimuliveAuto is Auto mode: the assistant answering a simulive's questions by
-	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive; on in every tier
-	 * (migrations/0142), in effect only with all three. */
+	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive, in effect only with all
+	 * three. Off by default, per host only (migrations/0159). */
 	FeatureSimuliveAuto = "simulive_auto"
 	/* FeatureFollowupSend is sending the AI follow-up drafts by email or WhatsApp from
-	 * Results. Needs FeatureAI; on in every tier (migrations/0142). Off: the drafts are
+	 * Results. Needs FeatureAI. Off by default, per host only (migrations/0159). Off: the drafts are
 	 * still written, to copy or export, and the send routes answer 403 feature_off. */
 	FeatureFollowupSend = "followup_send"
 	/* FeatureCaptions is live server captions in the room (the caption agent). ON by default
@@ -1440,6 +1431,10 @@ type Feature struct {
 	/* Requires are the switches this one needs. Without every one of them it is not in
 	 * effect, whatever its own setting says: EffectiveFeatures drops it from the account. */
 	Requires []string `json:"requires,omitempty"`
+	/* PerHost is a switch no plan tier may include: off for every host on every plan until
+	 * an admin turns it on for that host (an override). Every AI-backed switch is one
+	 * (migrations/0159); the plan matrix refuses them (422 per_host_feature). */
+	PerHost bool `json:"perHost,omitempty"`
 }
 
 /* Features is the catalogue, in the order an admin is offered it. Iterated by the
@@ -1467,9 +1462,11 @@ var Features = []Feature{
 		Group:       FeatureGroupSessions,
 	},
 	{
-		Key:         FeatureJoinWithoutRegistration,
-		Label:       "Join without registration",
-		Description: "Let this host turn registration off so people can join with a name and no form. Off means everyone registers.",
+		Key:   FeatureJoinWithoutRegistration,
+		Label: "Join without registration",
+		// Paused for every account while OfferJoinWithoutRegistration is false: the switch is kept
+		// so grants survive, and takes effect again when the constant is restored.
+		Description: "Paused: not offered for webinars right now, so everyone registers whatever this says. When restored, lets this host turn registration off so people can join with a name and no form.",
 		Group:       FeatureGroupSessions,
 	},
 	{
@@ -1489,29 +1486,33 @@ var Features = []Feature{
 	{
 		Key:         FeatureAI,
 		Label:       "AI writing",
-		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap, hot-lead reasons and follow-up drafts after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off means no AI anywhere.",
+		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap, hot-lead reasons and follow-up drafts after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off by default for every plan; off means no AI anywhere.",
 		Group:       FeatureGroupAI,
+		PerHost:     true,
 	},
 	{
 		Key:         FeatureAIKnowledge,
 		Label:       "AI knowledge",
-		Description: "The AI knowledge library (documents, links, past answers) and Q&A drafts grounded in it. On by default, in effect only with AI. Off: no library, and drafts use the topic only.",
+		Description: "The AI knowledge library (documents, links, past answers) and Q&A drafts grounded in it. Off by default, in effect only with AI. Off: no library, and drafts use the topic only.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI},
+		PerHost:     true,
 	},
 	{
 		Key:         FeatureSimuliveAuto,
 		Label:       "Simulive Auto mode",
-		Description: "Let the AI assistant answer a simulive's questions by itself. On by default, in effect only with AI, Simulive and Simulive engagement replay.",
+		Description: "Let the AI assistant answer a simulive's questions by itself. Off by default, in effect only with AI, Simulive and Simulive engagement replay.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI, FeatureReplayEngage, FeatureSimulive},
+		PerHost:     true,
 	},
 	{
 		Key:         FeatureFollowupSend,
 		Label:       "Send follow-ups",
-		Description: "Let this host send the AI follow-up drafts by email or WhatsApp from Results. On by default, in effect only with AI. Off leaves the drafts to copy or export.",
+		Description: "Let this host send the AI follow-up drafts by email or WhatsApp from Results. Off by default, in effect only with AI. Off leaves the drafts to copy or export.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI},
+		PerHost:     true,
 	},
 	{
 		Key:         FeatureRepurpose,
@@ -1519,6 +1520,7 @@ var Features = []Feature{
 		Description: "Let this host turn an ended session's transcript into draft blog posts, newsletters, a long-form whitepaper draft and LinkedIn, X and Instagram posts, in a brand voice they set. Drafts for the host to review. Counts against the monthly AI limit; in effect only with AI. Off by default.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI},
+		PerHost:     true,
 	},
 	// Delivery and recording.
 	{
@@ -1533,12 +1535,7 @@ var Features = []Feature{
 		Description: "Suggest the best moments and reels of a recorded session (from reactions, chat, questions, polls and what was said, picked by AI) and let this host make them into captioned vertical, square and wide videos with suggested post text, made on the video server between sessions. Counts against the monthly AI limit and the host's recording storage; in effect only with AI and Cloud recording. Off by default.",
 		Group:       FeatureGroupDelivery,
 		Requires:    []string{FeatureAI, FeatureCloudRecording},
-	},
-	{
-		Key:         FeatureEdgeDelivery,
-		Label:       "Edge delivery (beta)",
-		Description: "Let this host run a webinar with the audience on a low-latency HLS feed instead of the video server. The stage stays live; chat, polls and raised hands still work. Off means every webinar uses standard delivery. Only matters on Hetzner video servers: on GCP and DigitalOcean every webinar is edge for every host.",
-		Group:       FeatureGroupDelivery,
+		PerHost:     true,
 	},
 	{
 		Key:         FeatureCaptions,
@@ -1603,6 +1600,12 @@ func EffectiveFeatures(granted []string) []string {
 		}
 		out = kept
 	}
+}
+
+// PerHostFeature reports whether a key is a switch no plan tier may include (Feature.PerHost).
+func PerHostFeature(key string) bool {
+	f, ok := FeatureByKey(key)
+	return ok && f.PerHost
 }
 
 // KnownFeature reports whether a key is one of the switches this server has.
@@ -3346,6 +3349,13 @@ type HostGrant struct {
 	CanHost bool `json:"canHost"`
 }
 
+/* AdminWebinarStatus is PATCH /api/admin/webinars/{slug}/status: an admin publishing a
+ * draft (to scheduled) or taking a scheduled session back to a draft. Those are the only
+ * two moves it accepts — live is reached through the host's room, ended through End. */
+type AdminWebinarStatus struct {
+	Status WebinarStatus `json:"status"`
+}
+
 /* FeatureGrant switches one feature on or off for one account.
  *
  * One feature per request, with the state it should end in rather than a verb, for the
@@ -3808,10 +3818,38 @@ type LobbyAdmitAllResponse struct {
  * the webinar plus one decision.
  */
 func GuestJoinAllowedFor(w Webinar, hostOpenJoin bool) bool {
-	if !hostOpenJoin || w.RegistrationRequired {
+	if !JoinWithoutRegistrationOpen(hostOpenJoin) || w.RegistrationRequired {
 		return false
 	}
 	return w.Approval != ApprovalManual && strings.TrimSpace(w.Passcode) == ""
+}
+
+/* OfferJoinWithoutRegistration is the product-wide switch for "Join without registration" on
+ * webinars: turning registration off so the shared link opens a name-only guest door.
+ *
+ * PAUSED (2026-10): false. We do not offer that option for webinars right now, so every
+ * webinar is registration-required whatever an account's FeatureJoinWithoutRegistration
+ * says: create and edit save registration required (host.go), the guest endpoint answers
+ * 403 registration_required (guest.go), and GuestJoinAllowed is false, so the landing page
+ * shows only the registration form. A webinar saved earlier with registration off is
+ * treated as registration-required from now on; its row is left as it was.
+ *
+ * Meetings are unaffected: they have no registration and their door is the lobby.
+ *
+ * The web app reads the same constant from the generated web/lib/api-types.ts, so the
+ * schedule form, the edit form, the settings tab and the guest button on the landing page
+ * hide with it (lib/join-without-registration.ts).
+ *
+ * TO RESTORE: set this to true and run `make types`. The per-account switch
+ * (Admin -> Accounts) then works as before, and the skipped guest-door tests run again. */
+const OfferJoinWithoutRegistration = false
+
+/* JoinWithoutRegistrationOpen is whether a host whose account has
+ * FeatureJoinWithoutRegistration (hasSwitch) may actually leave a webinar's registration
+ * off: the account switch AND the product-wide OfferJoinWithoutRegistration. Every
+ * reader of the switch goes through here, so the pause is one constant. */
+func JoinWithoutRegistrationOpen(hasSwitch bool) bool {
+	return OfferJoinWithoutRegistration && hasSwitch
 }
 
 type JoinRequest struct {
@@ -3980,8 +4018,9 @@ type ServerTime struct {
  *
  * EdgeOnly is a webinar on a GCP or DigitalOcean video server (or one not placed yet that
  * will be): it is always edge, the form offers no choice and the server ignores the field.
- * EdgeChoice is the old Standard / Edge choice, for a host with the edge_delivery switch on
- * any other server. Both false is standard only. Meetings and simulive are always standard. */
+ * EdgeChoice is the Standard / Edge choice, on any other server that has a live origin
+ * (BROADCAST_RTMP_BASE), for every host. Both false is standard only. Meetings and simulive
+ * are always standard. */
 type DeliveryPolicy struct {
 	EdgeOnly   bool `json:"edgeOnly"`
 	EdgeChoice bool `json:"edgeChoice"`

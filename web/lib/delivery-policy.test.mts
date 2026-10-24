@@ -28,14 +28,14 @@ assert.equal(deliveryToSend(edgeOnly, zoom, "edge"), "standard");
 assert.equal(deliveryToSend(edgeOnly, simulive, "edge"), "standard");
 assert.equal(deliveryToSend(edgeOnly, meeting, "edge"), "standard");
 
-// Hetzner with the switch: the choice, now for a series too.
+// Another server with a live origin: the choice, for a series too.
 assert.equal(deliveryOffer(choice, live), "choice");
 assert.equal(deliveryOffer(choice, series), "choice");
 assert.equal(deliveryToSend(choice, live, "edge"), "edge");
 assert.equal(deliveryToSend(choice, live, "standard"), "standard");
 assert.equal(deliveryToSend(choice, zoom, "edge"), "standard");
 
-// Hetzner without it, or not known yet: nothing shown, the field omitted.
+// No live origin, or not known yet: nothing shown, the field omitted.
 assert.equal(deliveryOffer(standard, live), "none");
 assert.equal(deliveryToSend(standard, live, "edge"), undefined);
 assert.equal(deliveryOffer(null, live), "none");

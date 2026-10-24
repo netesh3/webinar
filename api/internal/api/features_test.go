@@ -71,8 +71,8 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 
 	target := h.signup("Switchable Host", "switchable@test.dev", true)
 	// Every switch is off until somebody decides — except the whiteboard (migrations/0099),
-	// meetings and server captions (0142), which start on. AI writing is opt-in (0127), so its
-	// sub-switches, on in every tier, are not in effect; simulive is off for a new account.
+	// meetings and server captions (0142), which start on. Every AI switch is per host only
+	// (0159), in no plan; simulive is off for a new account.
 	if want := []string{types.FeatureCaptions, types.FeatureMeetings, types.FeatureWhiteboard}; !slices.Equal(target.Features, want) {
 		t.Fatalf("a new account starts with features %v, want %v", target.Features, want)
 	}
@@ -395,6 +395,7 @@ func TestCloudRecordingIsOffUntilAnAdminAllowsIt(t *testing.T) {
 		t.Fatalf("admin disable: status %d body %s", res.StatusCode, raw)
 	}
 	h.login("cloud-host@test.dev")
+	h.endLive(wb.ID) // one live session per host
 	other := h.newWebinar("Still no cloud", nil)
 	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+other.ID+"/start", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("start second webinar: status %d body %s", res.StatusCode, raw)

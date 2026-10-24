@@ -217,8 +217,6 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 		log.Info("email disabled: set SMTP_HOST and SMTP_FROM to send approval invitations")
 	}
 
-	log.Info("livekit projects", "configured", sfu.IDs(), "accepting_new_rooms", sfu.Candidates())
-
 	var youtube *yt.Client
 	if cfg.YouTubeOAuthEnabled() {
 		youtube = yt.New(cfg.GoogleClientID, cfg.GoogleClientSecret)
@@ -306,7 +304,14 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 	}
 	srv.rt = bus
 	if sfu != nil {
-		srv.sfu = edgePool{SFUPool: sfu, s: srv}
+		// routingPool keeps new rooms off the retired Hetzner server (sfu_retired.go); the
+		// box guard (sfu_box_guard.go) inside it is a no-op for every project but the
+		// on-demand box's; the edge tap wraps both.
+		srv.sfu = edgePool{SFUPool: routingPool{SFUPool: boxPool{SFUPool: sfu, s: srv}, s: srv}, s: srv}
+	}
+	if srv.sfu != nil {
+		log.Info("livekit projects", "configured", srv.sfu.IDs(), "accepting_new_rooms", srv.sfu.Candidates(),
+			"retired", srv.retiredProjects())
 	}
 	return srv
 }
@@ -620,6 +625,9 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/webinars", s.handleAdminWebinars)
 			r.Delete("/webinars/{slug}", s.handleAdminDeleteWebinar)
+			// End a live session, or move one between draft and scheduled (admin_sessions.go).
+			r.Post("/webinars/{slug}/end", s.handleAdminEndWebinar)
+			r.Patch("/webinars/{slug}/status", s.handleAdminSetWebinarStatus)
 
 			r.Get("/ai", s.handleAdminAIStatus)
 

@@ -207,8 +207,8 @@ export function HostWebinarsScreen() {
   /* features on /api/auth/me, not isAdmin. An admin without the switch gets
    * the single Schedule card. */
   const createActions = hostHomeCreateActions(account?.features);
-  /* Edge-only on a GCP or DO video server (no choice), the Standard / Edge choice for a
-   * Hetzner host with the switch, else nothing. See lib/delivery-policy.ts. */
+  /* Edge-only on a GCP or DO video server (no choice), the Standard / Edge choice on any
+   * other server with a live origin, else nothing. See lib/delivery-policy.ts. */
   const deliveryPolicy = useDeliveryPolicy(canHost && !bypass);
   const instantOffer = deliveryOffer(deliveryPolicy, { kind: "live", venue: "app" });
   const twoColumns = hostHomeCreateColumns(createActions) === 2;
