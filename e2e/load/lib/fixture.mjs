@@ -151,6 +151,11 @@ export async function cleanup(state, log = console.log) {
   }
   if (state.slug) {
     if (host) {
+      if (state.recording) {
+        // run.mjs --record: the recording's file, by name, before the webinar it belongs to.
+        await step(`delete recording ${state.recording}`, () =>
+          host.call("DELETE", `/host/webinars/${state.slug}/recordings/${state.recording}`, undefined, { okStatuses: [404, 409] }));
+      }
       await step(`end ${state.slug}`, () => host.call("POST", `/host/webinars/${state.slug}/end`, undefined, { okStatuses: [409] }));
       await step(`delete ${state.slug}`, () => host.call("DELETE", `/host/webinars/${state.slug}/`, undefined, { okStatuses: [404] }));
     } else {

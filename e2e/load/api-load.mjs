@@ -10,7 +10,8 @@
  *                  webinar every message fans out to every viewer's event stream.
  *   --question R   questions/s (kind=question); --upvote R upvotes/s of those questions
  *   --vote R       poll votes/s: needs --poll <id> (run.mjs creates and opens one) and spare
- *                  seats, since each seat votes once
+ *                  seats, since each seat votes once. A 409 (voting closed meanwhile) is
+ *                  counted as voteConflict, not as an error
  *   --join R       joins/s with seats from the keys file (a re-join of a seat is idempotent)
  *   --register R   public registrations/s at <run>-<n>@loadtest.invalid. The server allows
  *                  REGISTER_RATE_PER_MIN (30/min) per IP, so above 0.5/s expect 429s: that is
@@ -35,7 +36,8 @@ const WORDS = "great session thanks question about pricing how does this scale c
 const sentence = (n = 8) => Array.from({ length: n }, () => WORDS[Math.floor(Math.random() * WORDS.length)]).join(" ");
 
 /* runApiLoad(o) -> { windows: [stepJSON] }. o: { api, slug, keys, rates: {chat, question, upvote,
- * vote, join, register, events}, eventsHoldMs, durationMs, windowMs, pollId, run, signal, log } */
+ * vote, join, register, events}, eventsHoldMs, durationMs, windowMs, pollId (a string, or a
+ * function returning the poll to vote in now, "" to pause), run, signal, log } */
 export async function runApiLoad(o) {
   const log = o.log ?? console.log;
   const rates = o.rates;
@@ -89,16 +91,24 @@ export async function runApiLoad(o) {
       if (k && questions.length) await say("upvote", { joinKey: k, kind: "upvote", questionId: questions[Math.floor(Math.random() * questions.length)] });
     },
     vote: async () => {
-      if (!o.pollId) return;
-      const k = o.keys.find((x) => !voted.has(x));
+      // pollId may be a function: the poll open right now, or "" while votes are paused
+      // (run.mjs --engage opens its own polls, which closes this one).
+      const pollId = typeof o.pollId === "function" ? o.pollId() : o.pollId;
+      if (!pollId) return;
+      const k = o.keys.find((x) => !voted.has(`${pollId}/${x}`));
       if (!k) return;
-      voted.add(k);
-      const r = await timed(`${o.api}/webinars/${o.slug}/polls/${o.pollId}/vote`, {
+      voted.add(`${pollId}/${k}`);
+      const r = await timed(`${o.api}/webinars/${o.slug}/polls/${pollId}/vote`, {
         method: "POST",
         body: { joinKey: k, choice: Math.floor(Math.random() * 3) },
         signal: o.signal,
       });
-      rec("vote", r);
+      /* 409 is "already answered, or voting has closed": expected when a poll was closed or
+       * swapped between picking it and the vote landing. Counted, not an error. */
+      if (r.status === 409) {
+        win.sample("vote", r.ms);
+        win.count("voteConflict");
+      } else rec("vote", r);
     },
     join: async () => {
       const k = o.keys[Math.floor(Math.random() * o.keys.length)];

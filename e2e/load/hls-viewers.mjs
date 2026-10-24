@@ -18,6 +18,7 @@
  *   --workers N         processes (default: one per 150 viewers, at most the CPU count)
  *   --start-at MS       start at this epoch time (run.mjs --extra-seats prints it)
  *   --from N            skip the first N keys of --keys (a second generator takes the next slice)
+ *   --generator NAME    run as one of run.mjs --generators: label, and steps may repeat a count
  *   --max-viewers N     refuse more than N (default 1000; hard cap 5000)
  *   --out FILE          JSON results (default results/hls-<time>.json)
  *   --i-know-this-is-prod   required for webinarliv.com / *.run.app
@@ -30,6 +31,8 @@ import { apiBase, assertSafeTarget, ABSOLUTE_MAX_VIEWERS } from "./lib/client.mj
 import { runLocal, runWorkers, workerMain } from "./lib/steps.mjs";
 import { EdgeViewer } from "./lib/viewer.mjs";
 import { hlsTable, generatorWarnings, writeResults } from "./lib/report.mjs";
+import { dumpStep } from "./lib/stats.mjs";
+import { compactDump } from "./lib/generators.mjs";
 import { adminSession, seatViewers } from "./lib/fixture.mjs";
 
 const SELF = fileURLToPath(import.meta.url);
@@ -47,7 +50,8 @@ function viewerOptions(o, joinKey) {
   };
 }
 
-/* runHlsViewers(o) -> { steps: [stepJSON], warnings } . o: { api, slug, keys, steps, holdMs,
+/* runHlsViewers(o) -> { steps: [stepJSON], dumps: [step dump] } (the dumps let run.mjs merge
+ * several generators' steps exactly). o: { api, slug, keys, steps, holdMs,
  * rampMs, workers, originBase, lowLatency, variant, events, log } */
 export async function runHlsViewers(o) {
   const log = o.log ?? console.log;
@@ -55,9 +59,11 @@ export async function runHlsViewers(o) {
   if (o.keys.length < total) throw new Error(`${total} viewers need ${total} join keys, have ${o.keys.length}`);
   const workers = Math.max(1, Math.min(o.workers || Math.ceil(total / 150), availableParallelism(), total || 1));
   const results = [];
+  const dumps = [];
   const onStep = (st) => {
     const j = st.toJSON();
     results.push(j);
+    dumps.push(compactDump(dumpStep(st)));
     log(`${stamp()} ${j.name}: ${j.target} viewers held ${j.seconds}s, active ${j.active ?? 0}, ` +
       `join ok ${j.counts.joinOk ?? 0} fail ${j.counts.joinFail ?? 0}, stalls ${j.counts.stall ?? 0}, ${j.mbps} Mbit/s`);
     for (const w of generatorWarnings(j, { cores: workers })) log(`${stamp()} WARNING ${w}`);
@@ -93,7 +99,7 @@ export async function runHlsViewers(o) {
       signal: o.signal,
     });
   }
-  return { steps: results };
+  return { steps: results, dumps };
 }
 
 async function main() {
@@ -108,7 +114,7 @@ async function main() {
   }
   const api = apiBase(f.web, f);
   assertSafeTarget([f.web, api, f.origin], f);
-  const steps = parseSteps(f.steps, [5]);
+  const steps = parseSteps(f.steps, [5], { flat: !!f.generator });
   const maxViewers = Math.min(intFlag(f.maxViewers, 1000, "max-viewers"), ABSOLUTE_MAX_VIEWERS);
   const total = steps[steps.length - 1];
   if (total > maxViewers) throw new Error(`${total} viewers is over --max-viewers ${maxViewers}`);
@@ -146,7 +152,7 @@ async function main() {
     events: f.events,
   });
   console.log("\n" + hlsTable(res.steps));
-  writeResults(out, { tool: "hls-viewers", api, slug: f.slug, origin: f.origin || null, ...res });
+  writeResults(out, { tool: "hls-viewers", generator: typeof f.generator === "string" ? f.generator : null, api, slug: f.slug, origin: f.origin || null, ...res });
   console.log(`\nresults: ${out}`);
 }
 

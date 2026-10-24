@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startFake } from "./fake-server.mjs";
 import { runApiLoad } from "../api-load.mjs";
-import { plan } from "../run.mjs";
+import { plan, topStepAt, scaleSteps } from "../run.mjs";
 import { isProduction, assertSafeTarget, apiBase } from "../lib/client.mjs";
 import { probeCommand } from "../webrtc-attendees.mjs";
 import { toOrigin } from "../lib/viewer.mjs";
@@ -70,7 +70,71 @@ test("run plan: defaults, caps, seats", () => {
   const x = plan({ steps: "50,200,500", extraSeats: "500" });
   assert.equal(x.seats, 1000);
   assert.deepEqual(x.extraSteps, [50, 200, 500]);
-  assert.throws(() => plan({ steps: "500,1000", extraSeats: "500" }), /max-viewers/);
+  // Extra seats raise the default cap to fit (24 Oct: "10 + 1000 over --max-viewers 1000"),
+  // but not an explicit --max-viewers, nor the hard cap.
+  const r = plan({ steps: "10", extraSeats: "1000" });
+  assert.equal(r.maxViewers, 1010);
+  assert.match(r.notes.join(" "), /raised from 1000 to 1010/);
+  assert.throws(() => plan({ steps: "500,1000", extraSeats: "500", maxViewers: "1000" }), /max-viewers 1000/);
+  assert.throws(() => plan({ steps: "1000", extraSeats: "4500" }), /5000/);
+  // Spare seats leave room for the extra ones under the hard cap.
+  const s = plan({ steps: "1000", extraSeats: "3900", apiLoad: true });
+  assert.ok(s.seats <= 5000 && s.spare === 100, `seats ${s.seats} spare ${s.spare}`);
+});
+
+test("run plan: generators, engagement, recording, box wait", () => {
+  const g = plan({ steps: "50,200", generators: "10.0.0.1,ops@10.0.0.2" });
+  assert.equal(g.extra, 400, "default: as many on each generator as here");
+  assert.deepEqual(g.generators.map((x) => [x.host, x.from, x.count]), [["root@10.0.0.1", 0, 200], ["ops@10.0.0.2", 200, 200]]);
+  assert.deepEqual(g.generators[0].steps, [50, 200]);
+  assert.equal(g.seats, 600);
+  const odd = plan({ steps: "10,20", extraSeats: "5", generators: "a,b" });
+  assert.deepEqual(odd.extraSteps, [3, 5]);
+  assert.deepEqual(odd.generators.map((x) => x.steps), [[2, 3], [1, 2]]);
+  assert.throws(() => plan({ steps: "10", extraSeats: "0", generators: "a" }), /nothing/);
+  assert.throws(() => plan({ steps: "10", extraSeats: "1", generators: "a,b" }), /at least one/);
+  const e = plan({ steps: "50,200,500", ramp: "30s", hold: "120s", engage: true, engageChat: "10" });
+  assert.equal(e.engage.atMs, 2 * 150_000 + 30_000, "the top step's hold");
+  assert.equal(e.engage.chat, 10);
+  assert.equal(topStepAt([5], 10_000, 60_000), 10_000);
+  assert.equal(plan({}).engage, null);
+  assert.equal(plan({ record: true }).record, true);
+  assert.equal(plan({}).boxWaitMs, 360_000);
+  assert.equal(plan({ boxWait: "10m" }).boxWaitMs, 600_000);
+  assert.deepEqual(scaleSteps([50, 200, 500], 500), [50, 200, 500]);
+  assert.deepEqual(scaleSteps([10, 20], 1), [1]);
+  assert.deepEqual(scaleSteps([10, 20], 0), []);
+});
+
+test("api load: votes follow the open poll, pause, and 409 is not an error", async () => {
+  const fake = await startFake();
+  try {
+    const poll = { id: "p1" };
+    const run = runApiLoad({
+      api: `${fake.url}/api`,
+      slug: "s",
+      keys: ["A", "B", "C", "D"],
+      run: "lt1",
+      pollId: () => poll.id,
+      rates: { vote: 40 },
+      eventsHoldMs: 0,
+      durationMs: 1500,
+      windowMs: 500,
+      log: () => {},
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    poll.id = "";
+    await new Promise((r) => setTimeout(r, 300));
+    poll.id = "closed";
+    const res = await run;
+    const sum = (k) => res.windows.reduce((a, w) => a + (w.counts[k] ?? 0), 0);
+    const errs = res.windows.reduce((a, w) => a + Object.keys(w.errors).length, 0);
+    assert.equal(sum("voteOk"), 4, "each seat once in p1");
+    assert.equal(sum("voteConflict"), 4, "and once in the closed poll: counted, not an error");
+    assert.equal(errs, 0);
+  } finally {
+    await fake.close();
+  }
 });
 
 test("webrtc wrapper builds the probe-load call", () => {
