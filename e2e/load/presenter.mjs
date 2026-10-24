@@ -4,7 +4,7 @@
  * and microphone (docs/LOAD-TESTING.md).
  *
  *   node presenter.mjs --web <web origin> --slug <slug> --email <host> --password <pw>
- *     [--api URL] [--screen-share] [--duration 10m] [--video-size 1280x720] [--fps 30]
+ *     [--api URL] [--screen-share] [--duration 10m] [--video-size 1280x720] [--fps 30] [--box-wait 6m]
  *
  * run.mjs starts presenters itself (the test host plus --presenters N-1 panelists). The test
  * video is made once with ffmpeg (testsrc2 + a 440 Hz tone, MJPEG + WAV, ~10 s, looped by
@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { launchChrome, attach, clickButton, WATCH_PCS, PUBLISHING, OUTBOUND } from "./lib/chrome.mjs";
 import { parseArgs, parseDuration, sleep, stamp } from "./lib/args.mjs";
 import { apiBase, assertSafeTarget } from "./lib/client.mjs";
+import { BOX_WAIT_MS, boxProgress, videoServerStatus } from "./lib/box.mjs";
 
 const SELF = fileURLToPath(import.meta.url);
 
@@ -44,7 +45,7 @@ export function testMediaFlags({ size = "1280x720", fps = 30, seconds = 10 } = {
 }
 
 /* startPresenter(o) -> { label, status(): Promise<stats>, stop() }. o: { web, api, slug, email,
- * password, port, screenShare, mediaFlags, log }. Resolves once the presenter is publishing. */
+ * password, port, screenShare, mediaFlags, boxWaitMs, log }. Resolves once the presenter is publishing. */
 export async function startPresenter(o) {
   const log = o.log ?? console.log;
   const label = o.label ?? o.email;
@@ -65,10 +66,29 @@ export async function startPresenter(o) {
       .then(r => r.status)`);
     if (login !== 200) throw new Error(`${label}: login ${login}`);
     await page.navigate(`${o.web}/host/${o.slug}/room`, 20000);
-    if (!(await page.waitFor(clickButton("join the webinar|join the meeting"), 60000))) {
+    /* A cold video box takes 2-4 minutes to boot, and the room shows "Starting servers…"
+     * until it is up: wait up to --box-wait (default 6 min), saying what we are waiting for. */
+    const boxWaitMs = o.boxWaitMs ?? BOX_WAIT_MS;
+    const t0 = Date.now();
+    let joined = null;
+    let reloaded = false;
+    while (!joined && Date.now() - t0 < boxWaitMs) {
+      joined = await page.waitFor(clickButton("join the webinar|join the meeting"), Math.min(15000, boxWaitMs - (Date.now() - t0)));
+      if (joined) break;
+      const st = await videoServerStatus(o.api, o.slug).catch(() => null);
+      if (st?.state === "failed") throw new Error(`${label}: the video server failed to start: ${st.message ?? ""}`);
+      if (st && st.state !== "ready") log(`${stamp()} presenter ${label}: ${boxProgress(st, Date.now() - t0)}`);
+      else if (st?.state === "ready" && !reloaded && Date.now() - t0 > 60000) {
+        // The box came up but the page did not move on: load the room again, once.
+        reloaded = true;
+        log(`${stamp()} presenter ${label}: video server ready but no Join button yet; reloading the room`);
+        await page.navigate(`${o.web}/host/${o.slug}/room`, 20000);
+      }
+    }
+    if (!joined) {
       // Say what the page shows instead: an error, a sign-in screen, a different button.
       const text = await page.evaluate("(document.body?.innerText || '').replace(/\\s+/g, ' ').slice(0, 400)");
-      throw new Error(`${label}: no "Join the webinar" button on /host/${o.slug}/room; the page says: ${text}`);
+      throw new Error(`${label}: no "Join the webinar" button on /host/${o.slug}/room after ${Math.round(boxWaitMs / 1000)} s (--box-wait); the page says: ${text}`);
     }
     if (!(await page.waitFor(PUBLISHING, 60000, 1000))) throw new Error(`${label}: joined but never published video`);
     log(`${stamp()} presenter ${label} on stage and publishing`);
@@ -110,7 +130,7 @@ async function main() {
   const f = parseArgs(process.argv.slice(2));
   if (f.help || !f.web || !f.slug) {
     console.log(
-      "usage: node presenter.mjs --web <origin> --slug <slug> --email <host> --password <pw> [--screen-share] [--duration 10m]",
+      "usage: node presenter.mjs --web <origin> --slug <slug> --email <host> --password <pw> [--screen-share] [--duration 10m] [--box-wait 6m]",
     );
     process.exit(f.help ? 0 : 2);
   }
@@ -127,6 +147,7 @@ async function main() {
     email,
     password,
     screenShare: !!f.screenShare,
+    boxWaitMs: parseDuration(f.boxWait, BOX_WAIT_MS),
     mediaFlags: testMediaFlags({ size: `${w}x${h}`, fps: Number(f.fps || 30) }),
   });
   const until = Date.now() + parseDuration(f.duration, 600_000);

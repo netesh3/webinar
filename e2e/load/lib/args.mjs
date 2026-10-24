@@ -50,8 +50,9 @@ export function parseDuration(v, def) {
   return Math.round(n * mult);
 }
 
-/** "50,200,500" -> [50, 200, 500]: positive integers, strictly increasing. */
-export function parseSteps(v, def = [10]) {
+/** "50,200,500" -> [50, 200, 500]: positive integers, strictly increasing (or, with
+ * { flat: true }, never decreasing: a generator's share of a step may stay the same). */
+export function parseSteps(v, def = [10], { flat = false } = {}) {
   if (v === undefined || v === true || v === "") return def;
   const steps = String(v)
     .split(",")
@@ -64,7 +65,7 @@ export function parseSteps(v, def = [10]) {
     });
   if (!steps.length) throw new Error("no steps");
   for (let i = 1; i < steps.length; i++) {
-    if (steps[i] <= steps[i - 1]) throw new Error(`steps must increase: ${steps.join(",")}`);
+    if (steps[i] < steps[i - 1] || (!flat && steps[i] === steps[i - 1])) throw new Error(`steps must increase: ${steps.join(",")}`);
   }
   return steps;
 }

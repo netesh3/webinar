@@ -69,6 +69,7 @@ export function startFake({ partMs = 200, partsPerSeg = 4, partBytes = 2000, por
     if (/\/events\/leave$/.test(p)) return seen.leave++, res.writeHead(204).end();
     if (/\/(chat|questions|polls)$/.test(p) && req.method === "GET") return seen.backlog++, json(200, { messages: [], questions: [], polls: [] });
     if (/\/say$/.test(p)) return seen.say++, json(200, { destination: "everyone", recipients: 1 });
+    if (/\/polls\/closed\/vote$/.test(p)) return seen.vote++, json(409, { error: "already_voted" });
     if (/\/vote$/.test(p)) return seen.vote++, json(200, {});
     if (/\/register$/.test(p)) return seen.register++, json(201, { state: "unverified", joinKey: "", needsEmailVerification: true });
     if ((m = p.match(/^\/live\/([^/]+)\/index\.m3u8$/))) {

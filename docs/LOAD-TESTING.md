@@ -8,10 +8,11 @@ It runs from a generator droplet in BLR1 (or a laptop, at small scale). It goes 
 
 | Tool | What it is | What it measures |
 |---|---|---|
-| `run.mjs` | One command for the whole test: test host and edge webinar → seats → go live → presenters → ramp viewers (+ API load, + WebRTC tabs) → summary → end → delete | Everything below, plus the server's own viewer count (`GET /host/webinars/{slug}/edge`) every 30 s |
+| `run.mjs` | One command for the whole test: test host and edge webinar → seats → go live → wait for the video box → presenters → (cloud recording) → ramp viewers here and on other generators (+ API load, + engagement check, + WebRTC tabs) → summary → end → delete | Everything below, plus the server's own viewer count (`GET /host/webinars/{slug}/edge`) every 30 s, PASS/FAIL checks, and optional Grafana numbers per step |
 | `hls-viewers.mjs` | N simulated edge viewers, in steps, over several processes | See the next table |
 | `presenter.mjs` | Headless Chrome on the stage at `/host/<slug>/room`, publishing a looping 720p30 test video (ffmpeg `testsrc2`) and a 440 Hz tone; optional screen share | Outbound resolution, fps, kbit/s, and `qualityLimitationReason` (cpu/bandwidth) |
 | `api-load.mjs` | What an audience does besides watching, at rates you set: chat, questions, upvotes, poll votes, joins, public registrations, extra event streams | Latency p50/p95/p99 and errors per action, in 30 s windows |
+| `engage.mjs` | The engagement check (`run.mjs --engage`, or on its own against a run in progress): a tagged chat burst, questions and upvotes, polls and quizzes opened, voted and closed one at a time | Whether the server stored exactly what it accepted: a PASS/FAIL table |
 | `webrtc-attendees.mjs` | Flags around the existing `e2e/probe-load.mjs`: N Chrome tabs, steps, meeting or webinar | Per-tab inbound bitrate, fps, freezes, loss, resolution |
 | `setup-generator.sh` | cloud-init for a fresh Ubuntu 24.04 droplet: Node 22, Chrome, ffmpeg, the kit, file and port limits, TCP tuning | (none) |
 
@@ -88,7 +89,7 @@ An admin account. Set `PROBE_ADMIN_EMAIL` and `PROBE_ADMIN_PASSWORD` to an accou
 
 - **Seats** are guest registrations: a name (`Load viewer N`), no email, no account. Nothing mails them. The CRM hook (`engage.OnRegistered`) and the confirmation and reminder mails are never called. No `users` row is created.
 - **The host, panelists and api-load registrants** use `.invalid` addresses. The API never mails `.invalid` (verify, welcome, reset, recap, retention all skip it). api-load registrations stay unverified, so no confirmation mail, CRM contact or WhatsApp invite follows. They do create unverified audience accounts. `run.mjs` deletes those at cleanup: it finds them by the run id in their address.
-- **The webinar** has email and WhatsApp reminders off, AI off (no spam-check or auto-answer spend), and no recording.
+- **The webinar** has email and WhatsApp reminders off, AI off (no spam-check or auto-answer spend), and no recording unless you pass `--record` (then the test host is granted `cloud_recording`, and the recording is deleted with the webinar).
 - **Browsers:** presenters and WebRTC tabs map Google Analytics and GTM to 0.0.0.0 (`--host-resolver-rules` in `lib/chrome.mjs`), so the hardcoded GA4/GTM tags never fire.
 - **Deleting the webinar** removes its seats, visits (attendance), chat, questions, polls and the load-test mark. While the test runs, admin stats and the Grafana and Cloud Run graphs do show it. That is the point.
 
@@ -139,7 +140,7 @@ node run.mjs --web https://webinarliv.com --dry-run --i-know-this-is-prod   # pl
 Before each run against production:
 
 - check that no customer session is live: admin **Sessions**, or `/api/internal/live-status`;
-- remember that a run starts the on-demand box if it is down. That took **about 4 min** on 24 Oct (go-live to the presenter publishing). `run.mjs` waits for the audience stream. But `presenter.mjs` waits only **60 s** for the "Join the webinar" button, so with presenters on a cold box it fails (run 1a on 24 Oct). Raise that `waitFor` to 300000 ms (run 6 was run with that local patch), or start the box first.
+- remember that a run starts the on-demand box if it is down: about 2–4 min (about 4 min from go-live to the presenter publishing on 24 Oct). `run.mjs` waits for it (`--box-wait`, default 6 min) before the presenters join, printing `waiting for the video server (starting, 45 s so far, about 75 s left)` every 15 s, then waits for the audience stream within the same budget. The presenters wait for the room's **Join the webinar** button for `--box-wait` too. (The first run of 24 Oct failed on a cold box after a fixed 60 s.)
 
 | # | Command | Looks for |
 |---|---|---|
@@ -152,13 +153,59 @@ Before each run against production:
 
 Add `--low-latency` to steps 1–5 to measure LL playback, which is what the box serves (`hlsVariant: lowLatency`, 1 s segments, 500 ms parts).
 
-**More viewers than one generator can pull.** `--extra-seats 500` mints 500 more seats. `run.mjs` prints the exact `hls-viewers.mjs ... --keys keys-extra.json --start-at <time>` command and then waits 90 s (`--extra-wait`). On a second droplet:
+**More viewers than one generator can pull.** One droplet's NIC and cores run out somewhere past 500 viewers. `--generators` drives other droplets over SSH:
 
-1. copy `results/<run>/keys-extra.json` across;
-2. run the printed command;
-3. both generators then step together.
+```bash
+# On the lead generator, with SSH access (key in SSH_KEY, or ssh's default) to the others as root:
+SSH_KEY=~/.ssh/loadgen node run.mjs --web https://webinarliv.com --steps 50,200,500 --ramp 30s --hold 120s \
+  --generators 10.47.0.5,10.47.0.6 --extra-seats 1000 --engage --record --i-know-this-is-prod
+```
 
-Split further with `--from N`. The server's viewer count covers all generators.
+- `--extra-seats N` is how many viewers the other generators run between them; without it each runs as many as this one (`--steps`' last value). The extra seats are split evenly: generator *g* takes its contiguous slice of `keys-extra.json` (`--from`) and its share of every step, so all of them ramp together.
+- For each generator, `run.mjs` copies this kit (a tarball of `e2e/load`) to `/tmp/loadkit-<run>-<n>` (or uses `--generator-kit /opt/loadgen/e2e/load`, what `setup-generator.sh` installed), copies the seats, and starts `hls-viewers.mjs ... --start-at <t>` over SSH. Everyone starts at the same instant, `--extra-wait` (90 s) after the seats are minted. Their output is streamed with a `[host]` prefix.
+- At the end it collects each generator's results JSON, deletes the copy, prints each generator's table and then **all generators merged per step**: counts, bytes and active viewers added up, latency percentiles from the merged samples (exact enough; `approx` marks a step merged from summaries only). The generators' own `cpu%` and `loop99` are per generator (`hlsAll[].generators` in `results.json`), not added up.
+- `--max-viewers` is the total. When you did not set it, it is raised to fit this generator plus the extra seats, with a printed note (24 Oct: "10 + 1000 extra viewers is over --max-viewers 1000"). Set it explicitly to keep a cap. The hard cap is 5000 seats.
+- The generators need Node 22 and nothing else (no admin credentials: they use the minted seats).
+
+Without `--generators`, `--extra-seats N` prints the `hls-viewers.mjs` command and waits `--extra-wait` for you to start it by hand on the other droplets (copy `results/<run>/keys-extra.json` across; split it with `--from`/`--steps`). The server's viewer count covers every generator either way.
+
+### Checks: what PASS and FAIL mean
+
+Two optional checks end in a PASS/FAIL table (and `checks`/`checksPass` in `results.json`; the exit code is 1 on a FAIL). Cleanup runs either way.
+
+**`--engage`** runs `engage.mjs` once the top step's ramp is done (`(steps − 1) × (ramp + hold) + ramp` after the viewers start), from the viewers' seats:
+
+1. a chat burst: `--engage-chat 200` messages, each tagged `ENG<id> message <i>`, one every 200 ms;
+2. `--engage-questions 20` questions, then `--engage-upvotes 60` upvotes from other seats (never a seat's own question, never one question twice from a seat);
+3. `--engage-polls 3` polls and `--engage-quizzes 2` quizzes, one at a time: create, open, `--engage-voters 100` seats vote choice *i* mod options (so the tally is known), close. Opening a poll closes the one that was open, so `run.mjs` pauses `--api-load`'s votes meanwhile and reopens its poll afterwards. api-load counts a 409 on a vote (poll closed meanwhile) as `voteConflict`, not as an error.
+
+Then it reads what the server kept, as the host:
+
+| Check | PASS when |
+|---|---|
+| chat | `GET /host/webinars/{slug}/chat` (`{stats, messages}`) holds every message the server accepted, by id, with the same text (`message`) |
+| questions | `GET /webinars/{slug}/questions` (as the host) lists every accepted question |
+| upvotes | each of those questions has exactly the upvotes that were accepted for it |
+| each poll / quiz | its stored `votes` equal the accepted votes per option, it is `closed`, and a quiz still has its `correctOption` |
+
+A send the server refused (429 rate limit, 409) is reported in the JSON but is not a FAIL: only what it said yes to has to be there. A FAIL means it accepted something and then lost or miscounted it, or a read failed.
+
+**`--record`** grants the test host `cloud_recording` (`PATCH /admin/users/{id}/features`), starts a cloud recording (`POST /host/webinars/{slug}/recordings`) once the audience stream is live, and at the end stops it (`POST .../recordings/{id}/complete?durationMs=`), then:
+
+| Check | PASS when |
+|---|---|
+| ready | `GET .../recordings` shows it `ready` within `--record-wait` (10 min) |
+| size | `sizeBytes` > 0 |
+| duration | `durationMs` within ±max(15 s, 20 %) of the time it was recording |
+| playable | `GET .../recordings/{id}/file` with `Range: bytes=0-4095` (following the redirect to the CDN or a presigned URL) answers 200/206 with MP4 (`ftyp`/`moof`) or WebM (EBML) bytes |
+
+The recording is deleted with the webinar at cleanup (`--keep` keeps both).
+
+**The playback URL.** If the audience stream's playback URL is the box itself (a bare IP or `*.sslip.io`) and you did not ask for `--origin`, `run.mjs` prints a banner and repeats it under **Warnings** at the end: every viewer loaded the origin, so the numbers are the box's, not the CDN's.
+
+### Server metrics in the results (optional)
+
+With `GRAFANA_PROM_URL` (the stack's Prometheus base, e.g. `https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom`; a `/push` URL is accepted) and `GRAFANA_PROM_TOKEN` (a `metrics:read` token; `GRAFANA_PROM_USER` for Basic auth), `run.mjs` queries, for each step, averaged over the step: the box's busy cores, network out and in (Mbit/s), and MediaMTX's HLS bytes out. They are printed as a **Server (Grafana)** table and stored as `serverMetrics`. `GRAFANA_PROM_BOX` picks the box label (default `sfu-blr-1`). `GRAFANA_PROM_QUERIES='{"name":"promql"}'` replaces the queries (`$box` and `$window` are filled in): that is the hook for the API's p95 and 5xx, which the API does not export to Prometheus today (they are in Cloud Run's metrics). Without the variables nothing is queried.
 
 **Several viewer generators** (as in the 24 Oct run 6: 1 presenter generator + 4 × 250 viewers):
 
@@ -225,12 +272,12 @@ PROBE_ADMIN_EMAIL=... PROBE_ADMIN_PASSWORD=... node e2e/load/run.mjs --web http:
 | api-load p95 | Under 300 ms | Rising with viewers: the API is the bottleneck (fan-out, database) |
 | presenters | 1280x720, ~30 fps, no `limited` | `limited: cpu` on the generator is the generator. `bandwidth` is the uplink to the box |
 
-Results are written to `results/<run>/`: `plan.json`, `results.json` (every step, the server counts, presenter samples, API windows) and `keys.json`.
+Results are written to `results/<run>/`: `plan.json`, `results.json` and `keys.json` (+ `keys-extra.json`). `results.json` holds every step (`hls`, and with generators `generators[]` and the merged `hlsAll`), the server counts, presenter samples, API windows, `engage`, `recording`, `serverMetrics`, `warnings` and `checksPass`.
 
 ## Honest limits
 
 - **The generator is the first suspect.** Each step reports the generator's `cpu%` (summed over worker processes; 100 = one core) and event-loop p99 (`loop99`). The kit prints `WARNING` lines when they say the numbers are generator-bound (loop p99 > 200 ms, or CPU over 85% of the processes' cores). Believe them before believing a server limit.
-- **Bandwidth.** 1000 viewers at ~1.8 Mbit/s is ~1.8 Gbit/s into one droplet, more than a droplet can be relied on to pull. Watch `Mbit/s` against viewers × bitrate, and `iftop` on the generator. Split with `--extra-seats` at 500+.
+- **Bandwidth.** 1000 viewers at ~1.8 Mbit/s is ~1.8 Gbit/s into one droplet, more than a droplet can be relied on to pull. Watch `Mbit/s` against viewers × bitrate, and `iftop` on the generator. Split with `--generators` at 500+.
 - **Connections.** Node's fetch pools keep-alive connections per process, so N viewers use fewer TCP and TLS connections than N browsers would. Connection setup at the CDN and the origin is under-tested. Request rates are not.
 - **One place, one IP per generator.** Every viewer on a generator comes from one IP in BLR1, hits one CDN POP, and has near-zero RTT to the box. Real viewers are spread across India and mobile networks. At 250 viewers per generator (about 3,000 requests/s from one IP) through Bunny, playlists failed with `400`/`503` while 10 viewers on another generator played cleanly (2026-10-24 run 6). Until that is explained, keep each generator at 125 or fewer viewers through the CDN, and run a single-IP control separately.
 - **Retries.** After a failed blocking playlist reload, a kit viewer waits 1 s and retries the same URL indefinitely. hls.js has its own retry and back-off policy, so a browser may recover differently. Confirm stalls with a real browser tab.
