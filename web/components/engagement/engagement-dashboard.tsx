@@ -21,6 +21,7 @@ import { Hero } from "./hero";
 import { KpiGrid } from "./kpi-grid";
 import { Icon } from "./primitives";
 import { StageAttendance, useFullQuestions } from "./record-panels";
+import { WebinarAudienceDevices } from "../audience-devices";
 import { Deferred, FoldAllButton, PageSection, revealSection } from "./page-section";
 import { DashboardSkeleton, EmptyState, ErrorState, errorMessage } from "./states";
 
@@ -74,6 +75,11 @@ export function EngagementDashboard({
   const closeDrawer = useCallback(() => setOpen(null), []);
   const loadRecord = useCallback(() => setWantRecord(true), []);
   const record = useSessionRecord(source, wantRecord);
+  // Stable per source, so the devices card loads once rather than on every summary refresh.
+  const loadDevices = useMemo(() => {
+    const devices = source.devices;
+    return devices ? (signal: AbortSignal) => devices(signal) : null;
+  }, [source]);
 
   const s = summary.data;
   const fullQs = useFullQuestions(s, record);
@@ -287,6 +293,7 @@ export function EngagementDashboard({
             />
           </Card>
           <StageAttendance record={record} timeZone={s.webinar.timeZone} onLoad={loadRecord} />
+          {loadDevices && <WebinarAudienceDevices load={loadDevices} />}
         </Deferred>
       </PageSection>
 

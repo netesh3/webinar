@@ -7,6 +7,7 @@
 
 import type {
   AttendanceRow,
+  AudienceDevices,
   EngagementAttendeeDetail,
   EngagementAttendeePage,
   EngagementSummary,
@@ -43,6 +44,8 @@ export interface EngagementSource {
    *  (hosts, panelists) and every question, not just the audience's top 50. Asked for only
    *  when the host opens one of those lists, so the tab's first paint costs no extra call. */
   record?(signal?: AbortSignal): Promise<SessionRecord>;
+  /** The audience by device (GET /api/host/webinars/{slug}/devices), exact, one per person. */
+  devices?(signal?: AbortSignal): Promise<AudienceDevices>;
 }
 
 export interface SessionRecord {
@@ -103,6 +106,7 @@ export function fixtureSource(status: "ended" | "live" | "scheduled" = "ended"):
         return found.detail;
       }),
     surveyResults: (signal) => abortable(signal, () => FIXTURE_SURVEY_RESULTS),
+    devices: (signal) => abortable(signal, () => SAMPLE_DEVICES),
     record: (signal) =>
       abortable(signal, () => ({
         stage: SAMPLE_STAGE,
@@ -158,3 +162,29 @@ const SAMPLE_STAGE: AttendanceRow[] = [
     ],
   },
 ];
+
+/** The sample webinar's 85 people by device, for the preview's Audience devices card. */
+const SAMPLE_DEVICES: AudienceDevices = {
+  attendees: 85,
+  recorded: 85,
+  classes: [
+    { key: "phone", count: 49 },
+    { key: "desktop", count: 33 },
+    { key: "tablet", count: 3 },
+  ],
+  os: [
+    { key: "Android", count: 34 },
+    { key: "Windows", count: 18 },
+    { key: "iOS", count: 15 },
+    { key: "macOS", count: 13 },
+    { key: "iPadOS", count: 3 },
+    { key: "Linux", count: 2 },
+  ],
+  browsers: [
+    { key: "Chrome", count: 56 },
+    { key: "Safari", count: 19 },
+    { key: "Samsung Internet", count: 6 },
+    { key: "Edge", count: 3 },
+    { key: "other", count: 1 },
+  ],
+};

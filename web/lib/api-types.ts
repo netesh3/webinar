@@ -1356,6 +1356,38 @@ export interface AdminCostHostDetail {
 }
 
 //////////
+// source: devices.go
+
+/**
+ * DeviceCount is one bucket of a breakdown: a device class ("phone", "tablet",
+ * "desktop"), an OS ("Android", "iOS", "iPadOS", "macOS", "Windows", "Linux",
+ * "ChromeOS", "other") or a browser ("Chrome", "Safari", "Firefox", "Edge",
+ * "Samsung Internet", "other").
+ */
+export interface DeviceCount {
+  key: string;
+  count: number /* int */;
+}
+/**
+ * AudienceDevices is the audience's devices, largest bucket first.
+ */
+export interface AudienceDevices {
+  /**
+   * Attendees is everyone in the audience; Recorded is those whose device is known. The
+   * difference joined before devices were recorded, or was only seen by the video server.
+   */
+  attendees: number /* int */;
+  recorded: number /* int */;
+  classes: DeviceCount[];
+  os: DeviceCount[];
+  browsers: DeviceCount[];
+  /**
+   * Days is the admin's window; 0 for one webinar.
+   */
+  days?: number /* int */;
+}
+
+//////////
 // source: engage_v1.go
 
 /**
