@@ -16,6 +16,7 @@ export function apiSource(slug: string): EngagementSource {
     attendanceCsvUrl: api.reportCsvUrl(slug),
     chatCsvUrl: api.chatTranscriptCsvUrl(slug),
     transcriptUrl: api.transcriptUrl(slug),
+    devices: (signal) => api.webinarDevices(slug, signal),
     record: (signal) =>
       api.sessionReport(slug, signal).then((r) => ({
         stage: r.attendees.filter((a) => a.role !== "attendee"),

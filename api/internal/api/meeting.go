@@ -371,6 +371,7 @@ func (s *Server) joinMeeting(w http.ResponseWriter, r *http.Request, wb types.We
 	s.setRejoinCookie(w, wb, reg)
 	if s.issueToken(w, r, wb, sfu, spec, false, false, "", false) {
 		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
+		s.noteJoinDevice(r, slug, identity)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}
 }

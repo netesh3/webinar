@@ -212,6 +212,7 @@ import {
 } from "./http";
 import type { ClipPlan, ClipPlanInput, StudioClipsResponse, StudioRecordingsResponse } from "./api-types";
 import type { RecordingPurgeStatus } from "./api-types";
+import type { AudienceDevices } from "./api-types";
 
 /** "?a=1&b=2" from the set values, or "". */
 function query(opts: Record<string, string | number | undefined>): string {
@@ -1449,6 +1450,10 @@ export const api = {
 
   /** The attendance report, now read only for the stage's own rows (the Engagement tab's
    *  "Hosts & panelists" list); its CSV twin is the Export menu's attendance log. */
+  /** One webinar's audience by device, one per attendee. */
+  webinarDevices: (slug: string, signal?: AbortSignal) =>
+    request<AudienceDevices>(`/api/host/webinars/${seg(slug)}/devices`, { ...fresh, signal }),
+
   sessionReport: (slug: string, signal?: AbortSignal) =>
     request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, {
       ...fresh,
@@ -1668,6 +1673,9 @@ export const api = {
    *  for "how many are live". */
   adminStats: () => request<AdminStats>("/api/admin/stats", fresh),
   /** Which WhatsApp CRM features hosts used over the last 7, 30 or 90 days. */
+  /** Every webinar's audience by device, people who first joined in the window. */
+  adminDevices: (days: 7 | 30 | 90) => request<AudienceDevices>(`/api/admin/devices?days=${days}`, fresh),
+
   adminWhatsAppUsage: (days: 7 | 30 | 90) =>
     request<AdminWhatsAppUsage>(
       `/api/admin/stats/whatsapp?days=${days}`,

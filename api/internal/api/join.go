@@ -228,6 +228,7 @@ func (s *Server) joinAsAttendee(
 		s.setRejoinCookie(w, wb, reg)
 		if s.issueEdgeAudience(w, r, wb, identity, display, playback) {
 			_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
+			s.noteJoinDevice(r, slug, identity)
 			if wb.Status == types.StatusLive {
 				go s.startBroadcastIfEnabled(context.Background(), wb, sfu) // #nosec G118 -- background work that must outlive the request; it carries its own timeout
 			}
@@ -278,6 +279,7 @@ func (s *Server) joinAsAttendee(
 	}, false, cdnBroadcast, cdnStreamURL, cdnLowLatency)
 	if ok {
 		_ = s.store.TouchAttendance(r.Context(), slug, identity, reg.ID, display)
+		s.noteJoinDevice(r, slug, identity)
 		s.announceAttendeeJoined(r, sfu, wb, room, identity, display)
 	}
 }
