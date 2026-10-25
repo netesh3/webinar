@@ -36,7 +36,7 @@ import {
   showEntryPreview,
   type CameraStart,
 } from "@/lib/entry-publish";
-import { describeMediaError, mediaErrorKind } from "@/lib/media-errors";
+import { describeMediaError, isScreenShareCancel, mediaErrorKind } from "@/lib/media-errors";
 import { reportError, reportEvent } from "@/lib/observability";
 import {
   PRESENCE_HEARTBEAT_MS,
@@ -1269,6 +1269,10 @@ function ConnectedRoom({
   // A camera or microphone LiveKit could not open or lost (Grafana Faro, lib/observability.ts).
   useEffect(() => {
     const onMediaDevicesError = (err: Error, kind?: MediaDeviceKind) => {
+      /* No kind is LiveKit's screen share (sourceToKind gives one only to the camera and the
+       * microphone), and a NotAllowedError there is the presenter pressing Cancel in the
+       * share picker. Every media_device_error in Grafana for a day was that (2026-10-24). */
+      if (!kind && isScreenShareCancel(err)) return;
       reportError("media_device_error", err, { device: kind ?? "unknown", kind: mediaErrorKind(err) });
     };
     room.on(RoomEvent.MediaDevicesError, onMediaDevicesError);
