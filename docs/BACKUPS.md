@@ -46,6 +46,44 @@ only under `db-backups/`, and only keys in its own format.
 - the **newest backup, always**, however old (if the job breaks, the last good dump stays);
 - nothing that is not a backup key is ever deleted.
 
+## Storage class: Infrequent Access after 30 days
+
+The bucket's lifecycle rules ([`api/internal/r2lifecycle`](../api/internal/r2lifecycle/r2lifecycle.go),
+tested) move objects to **R2 Infrequent Access** when they are 30 days old. That covers recording
+takes and their manifests, clips, uploaded videos, and the backups here. R2 (checked 2026-10-26):
+Standard $0.015/GB-month, Infrequent Access **$0.010**, a **30-day minimum** per object,
+**$0.01/GB to read back**, and egress free in both.
+
+**What moves, by prefix** (R2 filters lifecycle rules by key prefix only, at most 1000 rules):
+
+| Prefix | Objects |
+|---|---|
+| `00/` … `ff/`, 256 rules | recording takes `id[0:2]/id[2:4]/<uuid>.<ext>` plus manifests (the mix recorder uses the same keys). Nothing else in the bucket starts with two lowercase hex characters and a slash. |
+| `uploads/` | uploaded videos |
+| `clips/` | clip and reel outputs |
+| `db-backups/` | these dumps (monthly ones are kept 12 months) |
+
+**What stays Standard:** `covers/`, `avatars/`, `chat/` and `wa/`. They're small and read often.
+
+**Effect on the app:** none in code.
+- **Reads:** GETs and range requests on an IA object are the same calls; replays, simulive and
+  the Studio play as before. Each GB read back costs $0.01. A 1 h recording (~0.45 GB) replayed
+  by 100 viewers is about $0.45.
+- **Deletes:** deleting an IA object before its 30 days in IA (recording expiry, a host's delete,
+  the recordings purge) is billed for the rest of that minimum. Objects only move at 30 days old,
+  so this matters only for a recording deleted between day 30 and day 60.
+- **A restore:** reads one dump back, which costs a fraction of a cent.
+
+**Saving:** a third off everything over a month old. At ~300 GB of month-old recordings that's
+~$1.50/month ($4.50 → $3.00), growing with the library.
+
+**Applying or changing the rules:** run **Actions → Apply R2 lifecycle**. It's a dry run by
+default, which prints the rules and changes nothing; untick it to apply. The tool reads the
+bucket's rules and keeps every rule it didn't write, including R2's default multipart-abort
+rule, because the S3 call replaces the whole set. It then replaces its own `webinarliv-ia-*`
+rules, applies the set and reads it back. Running it again changes nothing. R2 moves objects
+that already exist within about 24 hours of a change.
+
 ## Setting it up
 
 Secrets and variables (names only; set them with `gh secret set NAME -R github.com/netesh3/webinar`

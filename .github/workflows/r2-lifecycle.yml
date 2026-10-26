@@ -1,0 +1,64 @@
+# Apply R2 lifecycle: recordings, clips, uploaded videos and database backups move to R2
+# Infrequent Access once they are 30 days old (api/internal/r2lifecycle, docs/BACKUPS.md).
+#
+# Run by hand when the rules change. Idempotent: it keeps every rule on the bucket it did not
+# write (R2's default multipart-abort rule among them), replaces its own, applies the set and
+# reads it back. "Dry run" prints the set and writes nothing.
+#
+# Secrets: RECORDINGS_S3_{BUCKET,ENDPOINT,REGION,ACCESS_KEY,SECRET_KEY}, the ones Deploy API
+# and DB backup already use. Nothing secret is printed: the output is rule ids, prefixes and days.
+name: Apply R2 lifecycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only print the rules, change nothing"
+        type: boolean
+        default: true
+      days:
+        description: "Age in days at which objects move to Infrequent Access (30 or more)"
+        type: string
+        default: "30"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RECORDINGS_S3_BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
+      RECORDINGS_S3_ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
+      RECORDINGS_S3_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
+      RECORDINGS_S3_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
+      RECORDINGS_S3_SECRET_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Build r2lifecycle
+        working-directory: api
+        run: CGO_ENABLED=0 go build -o "$RUNNER_TEMP/r2lifecycle" ./cmd/r2lifecycle
+
+      - name: Apply
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          DAYS: ${{ inputs.days }}
+        run: |
+          set -euo pipefail
+          case "$DAYS" in ''|*[!0-9]*) echo "days must be a number" >&2; exit 1;; esac
+          if [ "$DRY_RUN" = "true" ]; then
+            "$RUNNER_TEMP/r2lifecycle" -dry-run -days "$DAYS"
+          else
+            "$RUNNER_TEMP/r2lifecycle" -days "$DAYS"
+          fi
