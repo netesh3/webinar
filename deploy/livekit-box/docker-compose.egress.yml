@@ -1,5 +1,5 @@
 # LiveKit Egress, Redis, and MediaMTX (the Edge HLS origin).
-# Extends the base livekit-hetzner deployment.
+# Extends the base video-box deployment (docker-compose.yml).
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.egress.yml up -d

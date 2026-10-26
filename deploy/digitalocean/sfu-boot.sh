@@ -72,9 +72,9 @@ fi
 tmp="$(mktemp -d)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 180 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$tmp" --strip-components=1 --wildcards \
-    '*/deploy/livekit-hetzner/*' '*/deploy/digitalocean/*'; then
+    '*/deploy/livekit-box/*' '*/deploy/digitalocean/*'; then
   rsync -a --exclude '.env' --exclude '.env.keys' --exclude 'livekit.yaml' --exclude 'recordings' \
-    "${tmp}/deploy/livekit-hetzner/" "${TARGET}/"
+    "${tmp}/deploy/livekit-box/" "${TARGET}/"
   install -m 755 "${tmp}/deploy/digitalocean/sfu-boot.sh" /usr/local/sbin/webinarliv-sfu-boot.sh
   log "deploy files synced from ${REPO}@${REF}"
 else

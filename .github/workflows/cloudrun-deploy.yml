@@ -37,7 +37,7 @@
 #   CAPTIONS_SECRET — optional, >= 32 chars. Turns on server-side live captions: the
 #     caption agent (deploy/captions) posts lines with it. Same value on the agent's side.
 #   MIXREC_SECRET — optional, >= 32 chars. Edge cloud recordings record the running mix
-#     through the SFU box's mix recorder (deploy/livekit-hetzner/mixrec). Same value in the
+#     through the SFU box's mix recorder (deploy/livekit-box/mixrec). Same value in the
 #     box's /opt/livekit/.env.
 #   DO_API_TOKEN — optional, with repo variable SFU_BOX_PROJECT (e.g. do-blr): the API creates
 #     and deletes the DigitalOcean video server on demand (deploy/digitalocean/README.md).
@@ -91,10 +91,11 @@
 #   RECORDINGS_CDN_BASE_URL — public host for playback (default
 #     https://recordings.webinarliv.com). Must be a Cloudflare custom domain
 #     on the bucket so the audience never talks to the origin.
-#   BROADCAST_RTMP_BASE / BROADCAST_HLS_BASE — live attendee origin (MediaMTX).
-#     Unset: CDN-broadcast attendees stay on the SFU. Both or neither.
-#     Join appends /<slug>/whep. Signaling may be live.webinarliv.com or sslip.io;
-#     ICE UDP is always the box IPv4:8189. See deploy/livekit-hetzner/README.md.
+#   BROADCAST_RTMP_BASE / BROADCAST_HLS_BASE — the live origin (MediaMTX on the box) for edge
+#     viewers. Both or neither. BROADCAST_HLS_BASE is the fallback for a LiveKit project
+#     without its own broadcastHlsBase: the box's own address, e.g.
+#     https://<box reserved IP>.sslip.io/live (live.webinarliv.com was the Hetzner origin,
+#     deleted 2026-10-26). See deploy/livekit-box/README.md.
 #   RECORDINGS_RETENTION_DAYS — days to keep cloud recordings (default 30; 0 = keep until deleted).
 #
 # Repository variables (vars.*, not secrets):
@@ -185,7 +186,7 @@ jobs:
       TICK_SECRET: ${{ secrets.TICK_SECRET }}
       # Server-side live captions (deploy/captions). Optional; unset keeps on-device captions.
       CAPTIONS_SECRET: ${{ secrets.CAPTIONS_SECRET }}
-      # Cloud recording from the edge mix (deploy/livekit-hetzner/mixrec). Optional.
+      # Cloud recording from the edge mix (deploy/livekit-box/mixrec). Optional.
       MIXREC_SECRET: ${{ secrets.MIXREC_SECRET }}
       # The on-demand DigitalOcean video server (deploy/digitalocean/README.md). SFU_BOX_PROJECT
       # turns it on (and needs the token); the token alone leaves the box unmanaged.
@@ -240,9 +241,8 @@ jobs:
       RECORDINGS_EGRESS_TEMPLATE_URL: ${{ secrets.RECORDINGS_EGRESS_TEMPLATE_URL || 'https://webinarliv.com/recorder-template' }}
       RECORDINGS_EGRESS_PRESET: ${{ secrets.RECORDINGS_EGRESS_PRESET || '1080p' }}
       RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL || 'https://recordings.webinarliv.com' }}
-      # No defaults. Both secrets together put CDN-broadcast attendees on WHEP.
-      # Signaling can be live.webinarliv.com or the SFU sslip.io host; ICE UDP
-      # is always origin:8189. See deploy/livekit-hetzner/README.md.
+      # No defaults; both or neither. The live origin fallback for a project without its own
+      # broadcastHlsBase (docs/edge-delivery.md). See deploy/livekit-box/README.md.
       BROADCAST_RTMP_BASE: ${{ secrets.BROADCAST_RTMP_BASE }}
       BROADCAST_HLS_BASE: ${{ secrets.BROADCAST_HLS_BASE }}
       RECORDINGS_RETENTION_DAYS: ${{ secrets.RECORDINGS_RETENTION_DAYS || '30' }}

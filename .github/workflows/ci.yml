@@ -63,7 +63,7 @@ jobs:
               - 'deploy/captions/**'
               - '.github/workflows/ci.yml'
             mixrec:
-              - 'deploy/livekit-hetzner/mixrec/**'
+              - 'deploy/livekit-box/mixrec/**'
               - '.github/workflows/ci.yml'
 
   # The server caption agent's unit tests (deploy/captions). numpy and pytest only: no
@@ -84,7 +84,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q tests
 
-  # The mix recorder on the SFU box (deploy/livekit-hetzner/mixrec): stdlib Go, its own module.
+  # The mix recorder on the SFU box (deploy/livekit-box/mixrec): stdlib Go, its own module.
   mixrec:
     needs: changes
     if: needs.changes.outputs.mixrec == 'true'
@@ -92,12 +92,12 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: deploy/livekit-hetzner/mixrec
+        working-directory: deploy/livekit-box/mixrec
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: deploy/livekit-hetzner/mixrec/go.mod
+          go-version-file: deploy/livekit-box/mixrec/go.mod
       # ffmpeg for the real concat test (it skips without it). No `apt-get update`, which
       # hung past the job's timeout, and capped, so a slow mirror skips the test rather
       # than failing the job.

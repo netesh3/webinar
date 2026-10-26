@@ -1,4 +1,4 @@
-# LiveKit-only stack for Hetzner (host networking for WebRTC UDP).
+# The video box's LiveKit stack (host networking for WebRTC UDP).
 # Domain via sslip.io or a real DNS A record.
 
 services:

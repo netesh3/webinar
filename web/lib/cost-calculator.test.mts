@@ -141,11 +141,14 @@ near(line(g, "origin"), 12 * 3 * 0.5228 * 0.12, 0.02);
 assert.ok(has(g, "cloudrun"));
 assert.equal(line(g, "box"), 0);
 
-// The side-by-side: same inputs, DigitalOcean and Hetzner beat GCP once meetings run.
+// The side-by-side: same inputs, DigitalOcean beats GCP once meetings run. Hetzner is not
+// offered any more (its server was deleted on 2026-10-26).
 const c = compareProviders(DEFAULT_INPUTS);
-assert.ok(c.do.monthUsd < c.gcp.monthUsd);
-assert.ok(c.hetzner.monthUsd < c.gcp.monthUsd);
-assert.ok(c.gcp.perParticipantHourUsd > c.do.perParticipantHourUsd);
+assert.ok(c.do!.monthUsd < c.gcp!.monthUsd);
+assert.ok(c.gcp!.perParticipantHourUsd > c.do!.perParticipantHourUsd);
+assert.equal(c.hetzner, undefined);
+// A calculation saved on Hetzner opens on the default provider.
+assert.equal(withDefaults({ provider: "hetzner" }).provider, "do");
 
 // Recording sizes by type: edge records the mix (≈0.52 GB/h) with no compute; meetings and
 // standard delivery use a 1.75 GB/h composite with a worker.
@@ -177,7 +180,7 @@ near(worst[3].platformUsd, worst[3].usd * 20, 1e-9);
 assert.equal(quotaFor(300).plan, "Business");
 assert.equal(quotaFor(123).plan, "Business");
 near(d.recordedHours, 37);
-// Share recorded scales it; Hetzner composites on the box cost nothing.
+// Share recorded scales it; composites on the box cost nothing on a box provider.
 const halfRec = calculateCost({ ...DEFAULT_INPUTS, recordMeetingsPercent: 50 });
 near(line(halfRec, "rec-worker"), line(d, "rec-worker") / 2, 1e-6);
 assert.equal(line(calculateCost({ ...DEFAULT_INPUTS, provider: "hetzner" }), "rec-worker"), 0);

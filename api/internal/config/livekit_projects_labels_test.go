@@ -25,52 +25,22 @@ func TestTheAddingAnSFUTemplateLoads(t *testing.T) {
 	// Placeholders stand for the keys and secrets.
 	block = regexp.MustCompile(`"<[^"]*>"`).ReplaceAllString(block, `"placeholder-value-0123456789abcdef"`)
 
-	// The default entry takes its url/key/secret from the legacy three, which stay set.
+	// Every entry states its own url/key/secret; no legacy trio (Hetzner, deleted 2026-10-26).
 	c := load(t, projectsEnv(block, map[string]string{
 		"BROADCAST_RTMP_BASE": "rtmp://127.0.0.1:1935/live",
-		"BROADCAST_HLS_BASE":  "https://live.webinarliv.com/live",
-		"LIVEKIT_URL":         "wss://88.198.141.104.sslip.io",
-		"LIVEKIT_API_KEY":     "APIlegacykey0123",
-		"LIVEKIT_API_SECRET":  "legacy-secret-0123456789abcdef0123456789abcdef",
+		"BROADCAST_HLS_BASE":  "https://box.example.test/live",
 	}))
 	if len(c.LiveKitProjects) != 2 {
-		t.Fatalf("got %d projects, want default and edge2", len(c.LiveKitProjects))
+		t.Fatalf("got %d projects, want do-blr and edge2", len(c.LiveKitProjects))
 	}
-	def, edge := c.LiveKitProjects[0], c.LiveKitProjects[1]
-	// "default" is what every existing webinar is pinned to; renaming it orphans them.
-	if def.ID != legacyProjectID || def.DisplayLabel() != "Hetzner (default)" {
-		t.Errorf("first project = %+v, want the legacy default box", def)
+	box, edge := c.LiveKitProjects[0], c.LiveKitProjects[1]
+	if box.ID != "do-blr" || box.CostProvider() != "do" || box.DisplayLabel() != "Bangalore (DigitalOcean)" {
+		t.Errorf("first project = %+v, want the DigitalOcean box", box)
 	}
-	if got := c.EdgePlaybackURLFor("default", "s"); got != "https://live.webinarliv.com/live/s/index.m3u8" {
-		t.Errorf("default broadcast = %q", got)
+	if edge.CostProvider() != "do" {
+		t.Errorf("edge2 provider = %q, want do (the template states it)", edge.CostProvider())
 	}
 	if got := c.EdgePlaybackURLFor(edge.ID, "s"); got != "https://live2.webinarliv.com/live/s/index.m3u8" {
 		t.Errorf("edge2 broadcast = %q", got)
-	}
-}
-
-func TestAProjectBroadcastOriginMustBeHTTPS(t *testing.T) {
-	err := loadErr(t, projectsEnv(`[{"id":"x","url":"wss://x.example.com","key":"K","secret":"s","broadcastHlsBase":"http://live.example.com/live"}]`, nil))
-	if !strings.Contains(err.Error(), "broadcastHlsBase must begin with https://") {
-		t.Errorf("error %q does not require https", err)
-	}
-}
-
-func TestAProjectWithNoLabelIsLabelledByItsID(t *testing.T) {
-	c := load(t, projectsEnv(`[{"id":"x","url":"wss://x.example.com","key":"K","secret":"s","label":"  "}]`, nil))
-	if got := c.LiveKitProjects[0].DisplayLabel(); got != "x" {
-		t.Errorf("label = %q, want the id", got)
-	}
-}
-
-func TestAProjectWithoutItsOwnOriginUsesTheGlobalOne(t *testing.T) {
-	c := load(t, projectsEnv(`[{"id":"x","url":"wss://x.example.com","key":"K","secret":"s"}]`, map[string]string{
-		"BROADCAST_RTMP_BASE": "rtmp://127.0.0.1:1935/live",
-		"BROADCAST_HLS_BASE":  "https://live.example.com/live",
-	}))
-	for _, id := range []string{"x", "unknown"} {
-		if got := c.EdgePlaybackURLFor(id, "s"); got != "https://live.example.com/live/s/index.m3u8" {
-			t.Errorf("%s broadcast = %q", id, got)
-		}
 	}
 }

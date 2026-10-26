@@ -271,7 +271,7 @@ For `--captions` locally, either run the caption agent (`deploy/captions`, with 
 
 ## What to watch
 
-**Grafana Cloud**, dashboard `webinarliv-overview` (stack pinkcloset2587). The box reports from boot (`deploy/livekit-hetzner/README.md`, "Grafana Cloud"). Filter `box=sfu-blr-1`.
+**Grafana Cloud**, dashboard `webinarliv-overview` (stack pinkcloset2587). The box reports from boot (`deploy/livekit-box/README.md`, "Grafana Cloud"). Filter `box=sfu-blr-1`.
 
 | Metric | Read it as |
 |---|---|

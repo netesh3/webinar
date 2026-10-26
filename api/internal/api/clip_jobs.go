@@ -33,7 +33,7 @@ import (
  *            the suggested post text, one AI call (AI_MODEL_HIGHLIGHTS, feature
  *            "clip_posts") inside the request, in the host's brand voice; a failure there
  *            leaves the clip queued and the text to "Write it again".
- *   render   on the video server, by the mix recorder (deploy/livekit-hetzner/mixrec): it
+ *   render   on the video server, by the mix recorder (deploy/livekit-box/mixrec): it
  *            claims a job over /api/internal/clip-jobs (MIXREC_SECRET), gets signed URLs to
  *            read the takes and write the MP4, and reports progress, which renews its lease.
  *            Never while a session is live or about to start on that server: the claim says

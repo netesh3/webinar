@@ -2,7 +2,7 @@
 #
 # An egress worker is a VM that runs one Edge webinar's composite (headless Chrome + encoder)
 # for a LiveKit project whose SFU box runs in remote-egress mode (EGRESS_REMOTE=true, see
-# deploy/livekit-hetzner/redeploy.sh). Workers are kept STOPPED and the API starts one when a
+# deploy/livekit-box/redeploy.sh). Workers are kept STOPPED and the API starts one when a
 # host clicks Start, so a stopped worker costs only its disk. The pool's size is simply how many
 # worker VMs exist: run this when the "egress pool full" alert email arrives.
 #

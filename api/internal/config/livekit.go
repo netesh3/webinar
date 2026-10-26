@@ -108,7 +108,7 @@ type LiveKitProject struct {
 	 * webinar needs it and start it again before one does. Nil leaves the box alone. */
 	SfuVM *SfuVM `json:"sfuVm,omitempty"`
 
-	/* MixRecorderURL is the mix recorder on this project's SFU box (deploy/livekit-hetzner/
+	/* MixRecorderURL is the mix recorder on this project's SFU box (deploy/livekit-box/
 	 * mixrec), overriding MIXREC_URL and the default derived from broadcastHlsBase. */
 	MixRecorderURL string `json:"mixRecorderUrl,omitempty"`
 

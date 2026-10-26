@@ -417,7 +417,7 @@ func (s *Server) Routes() http.Handler {
 		/* The server caption agent's endpoints (deploy/captions). Not mounted without
 		 * CAPTIONS_SECRET. See server_captions.go. */
 		s.mountCaptionsInternal(r)
-		/* The mix recorder's endpoints (deploy/livekit-hetzner/mixrec). Not mounted without
+		/* The mix recorder's endpoints (deploy/livekit-box/mixrec). Not mounted without
 		 * MIXREC_SECRET. See mixrec.go. */
 		s.mountMixRecInternal(r)
 		// The video server's clip renderer, under the same secret. See clip_jobs.go.

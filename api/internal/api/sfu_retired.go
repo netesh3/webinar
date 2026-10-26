@@ -11,23 +11,35 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* Hetzner is sunset: no new room goes to a Hetzner video server.
+/* Retired video servers: no new room goes to a Hetzner server or to a disabled project.
  *
- * Production video is the on-demand DigitalOcean box (SFU_BOX_PROJECT, sfu_box.go). The old
- * Hetzner SFU (LiveKit project "default", from the legacy LIVEKIT_* trio) is going away, and
- * until its entry leaves LIVEKIT_PROJECTS nothing new may land on it. So the pool the handlers
- * see (routingPool) never offers a Hetzner project for a new room while any other project is
- * taking rooms, and puts the box's project first, so a host with no assignment gets the box.
- * A deployment with only Hetzner-looking projects (the dev stack's "default", one LiveKit
- * Cloud project without a "provider") is left exactly as it was: there is nothing to move to.
+ * Production video is the on-demand DigitalOcean box (SFU_BOX_PROJECT, sfu_box.go). The
+ * Hetzner SFU (LiveKit project "default", from the legacy LIVEKIT_* trio) was deleted on
+ * 2026-10-26, and the GCP test server (project "india") is disabled and its VMs deleted. While
+ * either entry is still in LIVEKIT_PROJECTS nothing new may land on it, and nothing that has
+ * not run yet may stay on it. So the pool the handlers see (routingPool) never offers a
+ * Hetzner project for a new room while any other project is taking rooms (disabled ones are
+ * never candidates anyway), and puts the box's project first, so a host with no assignment
+ * gets the box. A deployment with only Hetzner-looking projects (the dev stack's "default",
+ * one LiveKit Cloud project without a "provider") is left exactly as it was: there is nothing
+ * to move to.
+ *
+ * Disabled projects count as retired too (2026-10-26). A disabled project still answers Get, so
+ * that a session live on it is not cut off (lk.Pool), but a webinar that has not run yet and
+ * is pinned to one used to keep that pin and join the disabled server: with "india"'s VMs gone,
+ * that was a join to nothing.
  *
  * Webinars already pinned to a retired project (moveOffRetired):
  *   - draft or scheduled: moved to where a new room would go (the box), at boot
  *     (MoveOffRetiredServers) or at the first join after it, and switched to edge when they
  *     fit, as BackfillEdgeDelivery does. Never while LiveKit still reports somebody in the old
- *     room: a host in the green room on Hetzner keeps it, and the move happens at a later join.
+ *     room: a host in the green room on the old server keeps it, and the move happens at a
+ *     later join. A server that is gone answers nothing within retiredRoomCheck, which reads as
+ *     an empty room.
  *   - live: left where they are. Moving a live room splits it; it ends there.
  *   - ended: the pin stays as the record of where it ran (cost reports read it).
+ * A project removed from LIVEKIT_PROJECTS altogether is the unknown-project path instead
+ * (sfu.go repin): moved at its next join, wherever it was.
  * A host assigned to a retired project (Admin -> Accounts -> Video server) is unassigned at
  * boot, so the box's demand and the deploy guard count their sessions on the box.
  *
@@ -73,14 +85,24 @@ func (s *Server) nonRetired(ids []string) []string {
 	return out
 }
 
-/* sfuRetired reports whether a configured project is retired: a Hetzner server while some
- * other project is taking new rooms. A disabled project that is not Hetzner is not retired:
- * it keeps serving what is pinned to it, as before. */
+/* sfuRetired reports whether a configured project is retired while some other project is
+ * taking new rooms: a Hetzner server, or a disabled project. Retired only decides where a
+ * webinar that has not run yet goes; a session live on a retired project keeps it. */
 func (s *Server) sfuRetired(project string) bool {
-	if project == "" || s.sfu == nil || s.costProviderOf(project) != retiredProvider {
+	if project == "" || s.sfu == nil {
+		return false
+	}
+	if s.costProviderOf(project) != retiredProvider && !s.projectDisabled(project) {
 		return false
 	}
 	return len(s.nonRetired(s.sfu.Candidates())) > 0
+}
+
+/* projectDisabled reports a configured project that takes no new rooms: listed in the pool
+ * (IDs) but not offered for one (Candidates), which is what "disabled": true in
+ * LIVEKIT_PROJECTS makes it (lk.Pool). Unknown is not disabled: that is repin's case. */
+func (s *Server) projectDisabled(project string) bool {
+	return slices.Contains(s.sfu.IDs(), project) && !slices.Contains(s.sfu.Candidates(), project)
 }
 
 // retiredProjects is every configured project sfuRetired holds for.

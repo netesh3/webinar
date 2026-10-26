@@ -67,7 +67,7 @@ type SFUBox struct {
 	// AlwaysOn keeps the box up whatever the demand (SFU_BOX_ALWAYS_ON=true): the rollback.
 	AlwaysOn bool
 
-	/* Grafana is the box's Grafana Cloud settings for Alloy (deploy/livekit-hetzner/README.md,
+	/* Grafana is the box's Grafana Cloud settings for Alloy (deploy/livekit-box/README.md,
 	 * "Grafana Cloud"), passed to every droplet in its user data so it reports from first boot
 	 * without the deploy workflow (which skips while the box is down). All five or none. */
 	Grafana BoxGrafana

@@ -2,7 +2,7 @@ package types
 
 /* Clips and reels: short videos cut from a session's recording, made on the video server.
  * See api/internal/api/clip_jobs.go (the jobs and their endpoints), api/internal/clips (the
- * captions and the reel rules) and deploy/livekit-hetzner/mixrec/clips.go (the renderer).
+ * captions and the reel rules) and deploy/livekit-box/mixrec/clips.go (the renderer).
  *
  * A clip is one moment (a highlight, or any stretch the host picks); a reel stitches 2-4
  * short moments on one theme into 30-60 seconds with quick cuts. Each is made in one format

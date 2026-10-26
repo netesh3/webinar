@@ -513,8 +513,8 @@ docker: ## Build the API container image
 # The single-VM docker-compose.prod.yml stack (DEPLOY.md / DEPLOY-ANYWHERE.md)
 # and its `make deploy*` targets were removed here: production runs the
 # managed topology instead (Cloudflare Workers + Cloud Run + Supabase +
-# Hetzner LiveKit — see docs/DEPLOYMENT-TOPOLOGY.md, and deploy/cloudrun-deploy.sh
-# / deploy/livekit-hetzner/ below). That stack was only ever used for AWS.
+# the on-demand DigitalOcean LiveKit box — see docs/DEPLOYMENT-TOPOLOGY.md, deploy/cloudrun-deploy.sh
+# / deploy/livekit-box/ below). That stack was only ever used for AWS.
 
 .PHONY: clean
 clean:

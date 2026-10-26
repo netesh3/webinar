@@ -3,9 +3,8 @@
 The second way to run a webinar, beside **Standard** (everyone on the LiveKit SFU). The old
 **CDN broadcast** mode (audience on a WHEP mix) was retired on 2026-10-20. On GCP and
 DigitalOcean video servers edge is the **only** webinar delivery (2026-10-23, see "Where edge is
-the standard" below). Production video is the on-demand DigitalOcean box and the Hetzner server
-is sunset (2026-10-24: no new room goes there, `api/internal/api/sfu_retired.go`), so every new
-webinar is edge. Any other server (a dev SFU, LiveKit Cloud) offers every host the Standard /
+the standard" below). Production video is the on-demand DigitalOcean box (the Hetzner server
+was deleted on 2026-10-26, `docs/HETZNER-SUNSET.md`), so every new webinar is edge. Any other server (a dev SFU, LiveKit Cloud) offers every host the Standard /
 Edge choice when it has a live origin; the per-account "Edge delivery (beta)" switch
 (`edge_delivery`) is gone (migration 0159 removed it from plans and accounts).
 
@@ -56,14 +55,14 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
   webinar that is live or ended.
 - **Provider.** The project's `provider` in `LIVEKIT_PROJECTS`, else guessed from its id and
   label (`do-blr` → do, `india`/Mumbai → gcp, anything else Hetzner; `CostProvider`). A
-  Hetzner project takes no new rooms while any other project does, so give a new entry its
-  `"provider"`.
+  Hetzner or disabled project is retired (takes no new rooms while any other project does), so
+  give a new entry its `"provider"`.
 - **Before the pin.** A webinar is pinned to a project on its first join. Until then the
   target is what that join would choose: the host's assigned project (Admin → Accounts → Video
-  server) when it is enabled and not Hetzner, else `SFU_BOX_PROJECT` (the box), else the first
+  server) when it is enabled and not retired, else `SFU_BOX_PROJECT` (the box), else the first
   enabled project (`firstChoice`). No enabled project at all counts as edge. An admin who
   reassigns the host before the first join moves the room; edge works on every provider. A
-  webinar not run yet that is still pinned to Hetzner is judged by where it will move.
+  webinar not run yet that is still pinned to a retired project is judged by where it will move.
 - **Form.** `GET /api/host/delivery[?slug=]` (`types.DeliveryPolicy`): `edgeOnly` hides the
   choice and shows "Your audience watches a low-latency stream; speakers join live"; the
   instant button sends edge with no choice beside it (`web/lib/delivery-policy.ts`).
@@ -71,9 +70,9 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
   recurring, venue app) pinned to, or headed for, a GCP/DO project onto edge
   (`BackfillEdgeDelivery`, idempotent; no SQL migration, because the provider lives in config).
   Live and ended sessions, meetings, simulive and Zoom are untouched. Before it,
-  `MoveOffRetiredServers` unassigns hosts from Hetzner and moves draft and scheduled webinars
-  pinned there to the box (switching them to edge); one with people in its Hetzner room moves at
-  a later join instead.
+  `MoveOffRetiredServers` unassigns hosts from retired projects (Hetzner, or any disabled one)
+  and moves draft and scheduled webinars pinned there to the box (switching them to edge); one
+  with people in its old room moves at a later join instead.
 - **Costs.** The audience is ~2.5 s behind the stage, which shows in Q&A and stage invites.
   Each concurrent webinar runs one composite mix (~1–1.5 cores on the DO c-4, or an egress
   worker on GCP), so plan the box from the number of concurrent webinars, not attendees.
@@ -318,7 +317,9 @@ delay on its own.
 
 ## Test it side by side
 
-On a Hetzner project (on GCP/DO there is no Standard webinar to compare against):
+History: this was done on the Hetzner project, the only one that offered Standard (deleted
+2026-10-26). On GCP/DO there is no Standard webinar to compare against, so it can only be
+repeated on a dev SFU:
 
 1. Deploy. The migration runs on its own.
 2. **Admin → Accounts →** pick a host **→ Features → Edge delivery (beta)** on.
@@ -353,8 +354,9 @@ LL-HLS player, add an Edge Rule **Disable Request Coalescing** for `*.m3u8` unde
 are currently not supported"), so instead of pushing a second RTMP copy, a Bunny pull zone
 mirrors the existing origin, and viewers fetch from the edge.
 
-1. Create a pull zone with the origin `https://live.webinarliv.com`, which proxies `/live/*`
-   to MediaMTX :8888. Set **Origin Shield** on, near the origin (Frankfurt).
+1. Create a pull zone with the origin the box itself, `https://<reserved IP>.sslip.io`, which
+   proxies `/live/*` to MediaMTX :8888 (production: `webinarlivindiav`, origin the DigitalOcean
+   box). `live.webinarliv.com` was the Hetzner origin, deleted 2026-10-26.
 2. Caching rules (Edge Rules):
    - **Playlists (`*.m3u8`):** no caching or a very short TTL (≤1s), and **pass query strings
      through to the origin**, including `_HLS_msn` and `_HLS_part`. These are the LL-HLS

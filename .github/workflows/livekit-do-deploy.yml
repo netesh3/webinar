@@ -1,11 +1,11 @@
 # Deploy the self-hosted LiveKit stack to the DigitalOcean video server
 # (sfu-blr-1, LiveKit project do-blr — see deploy/digitalocean/README.md).
-# The files and redeploy.sh in deploy/livekit-hetzner/ (named after the first box, now sunset;
-# the stack is shared and this is the only workflow that deploys it).
+# The files and redeploy.sh in deploy/livekit-box/ (deploy/livekit-hetzner/ until 2026-10-26,
+# when the Hetzner server was deleted; this is the only workflow that deploys the stack).
 #
 # Triggers:
 #   - workflow_dispatch — manual deploy from the Actions tab
-#   - push to main — when deploy/livekit-hetzner/** or this workflow change. Not deploy/captions/**:
+#   - push to main — when deploy/livekit-box/** or this workflow change. Not deploy/captions/**:
 #     captions run only on the separate captions box (its own snapshot; sfu-snapshot.yml rebuilds
 #     it on those changes), so a captions change never restarts the video box.
 #
@@ -18,7 +18,7 @@
 #
 # Repository variables (optional, with GRAFANA_CLOUD_TOKEN; all five or Alloy stays off):
 #   GRAFANA_CLOUD_PROM_URL, GRAFANA_CLOUD_PROM_USER, GRAFANA_CLOUD_LOKI_URL, GRAFANA_CLOUD_LOKI_USER
-#   (deploy/livekit-hetzner/README.md, "Grafana Cloud")
+#   (deploy/livekit-box/README.md, "Grafana Cloud")
 #
 # Until both SSH secrets are set the job SKIPS with a notice rather than failing, so a merge to
 # main is not red while the box is being set up. Box settings (MIXREC_*, …)
@@ -49,7 +49,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "deploy/livekit-hetzner/**"
+      - "deploy/livekit-box/**"
       - ".github/workflows/livekit-do-deploy.yml"
 
 concurrency:
@@ -148,7 +148,7 @@ jobs:
         if: env.SKIP != 'true'
         run: |
           docker run --rm \
-            -v "$PWD/deploy/livekit-hetzner/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -v "$PWD/deploy/livekit-box/Caddyfile:/etc/caddy/Caddyfile:ro" \
             -e DOMAIN=validate.example.com \
             caddy:2-alpine \
             caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
@@ -158,10 +158,10 @@ jobs:
       - name: Validate Caddyfile.turn443
         if: env.SKIP != 'true'
         run: |
-          docker build -q -t caddy-l4:validate deploy/livekit-hetzner/caddy-l4
+          docker build -q -t caddy-l4:validate deploy/livekit-box/caddy-l4
           docker run --rm \
-            -v "$PWD/deploy/livekit-hetzner/Caddyfile.turn443:/etc/caddy/Caddyfile:ro" \
-            -v "$PWD/deploy/livekit-hetzner/Caddyfile:/etc/caddy/Caddyfile.base:ro" \
+            -v "$PWD/deploy/livekit-box/Caddyfile.turn443:/etc/caddy/Caddyfile:ro" \
+            -v "$PWD/deploy/livekit-box/Caddyfile:/etc/caddy/Caddyfile.base:ro" \
             -e DOMAIN=validate.example.com \
             -e TURN_TLS_DOMAIN=turn.validate.example.com \
             caddy-l4:validate \
@@ -175,7 +175,7 @@ jobs:
             --exclude '.env' \
             --exclude 'livekit.yaml' \
             -e "ssh -F ${SSH_CONFIG}" \
-            deploy/livekit-hetzner/ \
+            deploy/livekit-box/ \
             livekit-do:/opt/livekit/
 
       # Grafana Cloud for Alloy (docker-compose.alloy.yml). Written into the box's .env, which is
@@ -194,7 +194,7 @@ jobs:
           keys="GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USER GRAFANA_CLOUD_TOKEN"
           for k in $keys; do
             if [ -z "${!k}" ]; then
-              echo "::notice::${k} not set: leaving the box's Grafana Cloud settings as they are (see deploy/livekit-hetzner/README.md, Grafana Cloud)."
+              echo "::notice::${k} not set: leaving the box's Grafana Cloud settings as they are (see deploy/livekit-box/README.md, Grafana Cloud)."
               exit 0
             fi
             case "${!k}" in *$'\n'*) echo "::error::${k} has a newline"; exit 1 ;; esac

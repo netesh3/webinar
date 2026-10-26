@@ -1,7 +1,7 @@
 // Grafana Alloy on the on-demand captions box (deploy/digitalocean/README.md "Captions box"):
 // metrics and container logs to Grafana Cloud, like the video box's
-// deploy/livekit-hetzner/alloy/config.alloy, trimmed to what this droplet runs. Started by
-// captions-boot.sh with deploy/livekit-hetzner/docker-compose.alloy.yml only when the API passed
+// deploy/livekit-box/alloy/config.alloy, trimmed to what this droplet runs. Started by
+// captions-boot.sh with deploy/livekit-box/docker-compose.alloy.yml only when the API passed
 // all five GRAFANA_CLOUD_* settings in the user data; it writes them, and ALLOY_BOX (the
 // hostname, e.g. captions-blr-1), to /opt/captions-box/alloy.env.
 //

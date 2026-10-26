@@ -174,3 +174,54 @@ func TestOnlyHetznerProjectsAreLeftAlone(t *testing.T) {
 		t.Fatalf("joined %q, want cloud-2", got)
 	}
 }
+
+/* A disabled project is retired too (2026-10-26): the GCP test server "india" was disabled and
+ * its VMs deleted, and a webinar that had not run yet still joined it, because a disabled
+ * project keeps answering for what is pinned to it. Now one that has not run moves to the box,
+ * at its next join or at boot; one that is live stays where it is. */
+func TestWebinarsOnADisabledProjectMoveToTheBox(t *testing.T) {
+	india := newFakeProject("india")
+	box := newFakeProject("do-blr")
+	h := newHarnessWith(t, []*fakeRooms{india, box}, withBox)
+	h.signup("Disabled Host", "retired-disabled@test.dev", true)
+
+	pin := func(topic, status string) string {
+		wb := h.newWebinar(topic, nil)
+		h.exec(`UPDATE webinars SET sfu_project = 'india', status = $2 WHERE slug = $1`, wb.ID, status)
+		return wb.ID
+	}
+	atJoin := pin("Scheduled on india", "scheduled")
+	atBoot := pin("Draft on india", "draft")
+	live := h.liveWebinar("Live on india", nil).ID
+	h.exec(`UPDATE webinars SET sfu_project = 'india' WHERE slug = $1`, live)
+
+	h.pool.enabled["india"] = false
+
+	if got := h.hostJoinProject(atJoin); got != "do-blr" {
+		t.Fatalf("scheduled webinar on the disabled project joined %q, want do-blr", got)
+	}
+	h.server.MoveOffRetiredServers(context.Background())
+	if got := h.pinOf(atBoot); got != "do-blr" {
+		t.Errorf("draft on the disabled project after boot: pin %q, want do-blr", got)
+	}
+	if got := h.pinOf(live); got != "india" {
+		t.Errorf("live webinar on the disabled project: pin %q, want it left on india", got)
+	}
+}
+
+/* A project removed from LIVEKIT_PROJECTS altogether, as "default" (Hetzner) is once its
+ * entry and the legacy LIVEKIT_* trio go: a webinar pinned to it that has not run repins to
+ * the box at its next join (sfu.go repin). */
+func TestAWebinarPinnedToARemovedProjectRepinsToTheBox(t *testing.T) {
+	h := newHarnessWith(t, []*fakeRooms{newFakeProject("do-blr")}, withBox)
+	h.signup("Removed Host", "retired-removed@test.dev", true)
+	wb := h.newWebinar("Pinned to a removed server", nil)
+	h.exec(`UPDATE webinars SET sfu_project = 'gone-hetzner', status = 'scheduled' WHERE slug = $1`, wb.ID)
+
+	if got := h.hostJoinProject(wb.ID); got != "do-blr" {
+		t.Fatalf("joined %q, want do-blr", got)
+	}
+	if got := h.pinOf(wb.ID); got != "do-blr" {
+		t.Fatalf("pin after the join = %q, want do-blr", got)
+	}
+}

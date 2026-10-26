@@ -31,7 +31,7 @@
 	}
 }
 
-# Unchanged sites: wss:// LiveKit, /live, /mixrec, /grafana, live.webinarliv.com.
+# Unchanged sites: wss:// LiveKit, /live, /mixrec, /grafana.
 import Caddyfile.base
 
 # Only here so Caddy obtains and renews the certificate for the TURN name (HTTP-01 on :80,
