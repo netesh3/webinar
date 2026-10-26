@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -143,7 +144,7 @@ func run(args []string) error {
 }
 
 func upload(ctx context.Context, st *store, path string, now time.Time) error {
-	f, err := os.Open(path) // #nosec G304 -- the operator names the dump file
+	f, err := os.Open(filepath.Clean(path)) // #nosec G304 G703 -- the operator names the dump file on the command line
 	if err != nil {
 		return err
 	}
@@ -215,7 +216,7 @@ func latest(ctx context.Context, st *store, path string) error {
 		return fmt.Errorf("get %s: %w", key, err)
 	}
 	defer obj.Body.Close()
-	out, err := os.Create(path) // #nosec G304 -- the operator names the output file
+	out, err := os.Create(filepath.Clean(path)) // #nosec G304 G703 -- the operator names the output file on the command line
 	if err != nil {
 		return err
 	}
