@@ -172,6 +172,7 @@ A video box deploy restarts LiveKit, so skipping its guard disconnects a live se
 | `ADMIN_EMAILS` / `ADMIN_PASSWORD` | Bootstrap admin at API boot (≥10 chars); GitHub secrets → Cloud Run env |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | First-party Google sign-in + Connect YouTube (see `deploy/SUPABASE.md`) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web Push, optional (see below) |
+| `CAPTIONS_PROVIDER` / `DEEPGRAM_API_KEY` | Live captions by Deepgram's streaming API instead of the captions box's Whisper model, optional (default `local`). The key travels to the captions box in its root-only env file; see `deploy/captions/README.md` "Deepgram" and [the decision record](decisions/2026-10-27-captions-providers.md) |
 
 **Web Push:** the installable app (`web/app/manifest.ts`, `web/public/sw.js`) works without
 any configuration; notifications need a VAPID key pair. Generate it once with

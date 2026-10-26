@@ -149,3 +149,42 @@ func TestCaptionsBoxCreateNeverLogsTheGrafanaToken(t *testing.T) {
 		}
 	}
 }
+
+func TestCaptionsUserDataDeepgram(t *testing.T) {
+	c, proj := capBoxConfig()
+	secret := strings.Repeat("s", 40)
+
+	// Local (the default): no provider lines and no third-party key in the box's env file.
+	ud, err := captionsUserData(c, proj, secret, "webinar-captions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ud, "DEEPGRAM") || strings.Contains(ud, "CAPTIONS_PROVIDER") {
+		t.Errorf("a local captions box got Deepgram settings:\n%s", ud)
+	}
+
+	key := "dg_" + strings.Repeat("a1", 20)
+	c.Captions.Provider, c.Captions.DeepgramKey = config.CaptionsProviderDeepgram, key
+	c.Captions.DeepgramModel, c.Captions.DeepgramLanguage, c.Captions.FallbackLocal = "nova-3", "multi", false
+	if ud, err = captionsUserData(c, proj, secret, "webinar-captions"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"\nCAPTIONS_PROVIDER=deepgram\n", "\nDEEPGRAM_API_KEY=" + key + "\n",
+		"\nCAPTIONS_DEEPGRAM_MODEL=nova-3\n", "\nCAPTIONS_DEEPGRAM_LANGUAGE=multi\n", "\nCAPTIONS_FALLBACK_LOCAL=false\n",
+	} {
+		if !strings.Contains(ud, want) {
+			t.Errorf("captions user data lacks %q", want)
+		}
+	}
+	// Once, inside the agent's root-only env file (before it closes), never anywhere else.
+	agentEnd := strings.Index(ud, "\nWEBINARLIV_CAPTIONS\n")
+	if strings.Count(ud, key) != 1 || strings.Index(ud, key) > agentEnd {
+		t.Errorf("Deepgram key placement:\n%s", ud)
+	}
+
+	c.Captions.DeepgramKey = "has space"
+	if _, err := captionsUserData(c, proj, secret, "webinar-captions"); err == nil || strings.Contains(err.Error(), "has space") {
+		t.Errorf("a bad key must be refused without echoing it, got %v", err)
+	}
+}

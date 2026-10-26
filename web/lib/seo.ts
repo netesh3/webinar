@@ -24,7 +24,7 @@ export type SitemapEntry = {
 export const CONTACT_UPDATED = "2026-10-27";
 
 export const LEGAL_UPDATED = {
-  privacy: "2026-10-17",
+  privacy: "2026-10-27",
   terms: "2026-09-11",
   zoom: "2026-10-17",
 } as const;

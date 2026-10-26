@@ -32,6 +32,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Callable
 
+import numpy as np
+
 from .config import Config
 from .cpuguard import Level
 from .metrics import LatencyStats
@@ -41,6 +43,9 @@ from .spool import RoomSpool
 from .transcriber import Transcriber
 
 log = logging.getLogger("captions.live")
+
+# A provider line carries no audio here: its audio was spooled as it arrived (spool_only).
+_NO_AUDIO = np.zeros(0, np.float32)
 
 # A caption older than this when its turn comes is skipped: the speaker has moved on.
 MAX_LAG_S = 12.0
@@ -55,9 +60,14 @@ class Pending:
     identity: str
     name: str
     utterance: Utterance
+    # A streaming provider's line has its end from the provider's timing, not from audio
+    # held here (deliver()).
+    ended_at_ms: int | None = None
 
     @property
     def end_ms(self) -> int:
+        if self.ended_at_ms is not None:
+            return self.ended_at_ms
         return self.utterance.started_at_ms + int(self.utterance.duration_s * 1000)
 
     @property
@@ -176,7 +186,11 @@ class LiveCaptioner:
         model = self.transcriber_for(level)
         res = model.transcribe(p.utterance.audio, language=self.cfg.whisper_language, final=False)
         self.stats.record("decode", self.clock_ms() - started)
-        text = res.text.strip()
+        return self._deliver_final(p, res.text.strip())
+
+    def _deliver_final(self, p: Pending, text: str) -> str | None:
+        """A final line's text, from the local model or a streaming provider: publish it to
+        the room and post it to the API (off the caller's thread)."""
         if not text:
             self.stats.maybe_log()
             return None
@@ -226,6 +240,53 @@ class LiveCaptioner:
     def process_next(self) -> str | None:
         p = self.next_pending()
         return self.process(p) if p else None
+
+    # ------------------------------------------- text from a streaming provider
+
+    def spool_only(self, identity: str, name: str, utt: Utterance) -> None:
+        """A streaming provider transcribes live; the utterance is only kept for the
+        after-session transcript (never queued for a local decode)."""
+        if self.spool is not None and self.cfg.final_enabled:
+            self.spool.write(identity, name, utt.audio, utt.started_at_ms)
+
+    def deliver(self, identity: str, name: str, text: str, started_ms: int, end_ms: int, *, partial: bool) -> str | None:
+        """Text a streaming provider (provider.py) already transcribed: a final is published
+        and posted as a locally decoded one is, a partial only shown (same rules as
+        process_partial). Returns the text when it went anywhere."""
+        if self.captions_off or self.level() >= Level.PAUSED:
+            self.skipped += 0 if partial else 1
+            return None
+        utt = Utterance(audio=_NO_AUDIO, started_at_ms=int(started_ms), voiced_s=max(0.0, (end_ms - started_ms) / 1000))
+        p = Pending(identity, name, utt, ended_at_ms=int(end_ms))
+        text = (text or "").strip()
+        if not partial:
+            with self._lock:
+                self._finalised.append(p.id)
+            return self._deliver_final(p, text)
+        if not text or not self.partials_allowed():
+            return None
+        with self._lock:
+            if p.id in self._finalised:
+                return None
+        shown = self._publish(p, text, partial=True)
+        if self.edge and not self._partial_post_busy:
+            self._partial_post_busy = True
+
+            def post() -> None:
+                try:
+                    status, _ = self.api.caption_line(
+                        self.room, identity, text, p.utterance.started_at_ms, p.end_ms, partial=True, published=True
+                    )
+                    if 200 <= status < 300:
+                        self.partials_posted += 1
+                finally:
+                    self._partial_post_busy = False
+
+            self.post_async(post)
+            shown = True
+        if shown:
+            self.stats.count("partials")
+        return text if shown else None
 
     # ------------------------------------------------------------ partials
 
