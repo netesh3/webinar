@@ -391,6 +391,17 @@ func captionsUserData(c config.SFUBox, proj config.LiveKitProject, captionsSecre
 		{"CAPTIONS_MAX_ROOMS", strconv.Itoa(cc.MaxRooms)},
 		{"CAPTIONS_LANGUAGE", "en"},
 	}
+	// Deepgram live captions (webcaptions/provider.py): only when chosen, so a local box's env
+	// file carries no third-party key.
+	if cc.Provider == config.CaptionsProviderDeepgram {
+		pairs = append(pairs,
+			[2]string{"CAPTIONS_PROVIDER", cc.Provider},
+			[2]string{"DEEPGRAM_API_KEY", cc.DeepgramKey},
+			[2]string{"CAPTIONS_DEEPGRAM_MODEL", cc.DeepgramModel},
+			[2]string{"CAPTIONS_DEEPGRAM_LANGUAGE", cc.DeepgramLanguage},
+			[2]string{"CAPTIONS_FALLBACK_LOCAL", strconv.FormatBool(cc.FallbackLocal)},
+		)
+	}
 	var env strings.Builder
 	for _, p := range pairs {
 		if !captionsValueSafe.MatchString(p[1]) {

@@ -182,6 +182,16 @@ export default function PrivacyPage() {
           <strong>Zoom</strong> — if a host connects Zoom, the Zoom API for
           meetings, webinars, registrants, and attendance
         </li>
+        <li>
+          <strong>Deepgram</strong> — where enabled, speech-to-text for live
+          captions: while a host has captions on, the audio of the people
+          speaking is streamed to Deepgram and the text comes back as captions
+        </li>
+        <li>
+          <strong>Groq</strong> — where enabled, speech-to-text for the
+          after-session transcript: a session&apos;s recorded speech is sent to
+          Groq once the session ends, to produce the transcript the host sees
+        </li>
       </ul>
       <p>
         These providers process data on our behalf under their terms and only as

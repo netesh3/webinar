@@ -1,0 +1,44 @@
+# Captions provider smoke test: one short live call to Deepgram and one Groq transcription,
+# with the repo secrets DEEPGRAM_API_KEY and GROQ_API_KEY, before turning CAPTIONS_PROVIDER or
+# CAPTIONS_FINAL_PROVIDER on (deploy/captions/README.md "Deepgram", "Groq";
+# docs/decisions/2026-10-27-captions-providers.md). Manual only; touches no server.
+# Prints status codes, timings and transcript text only, never a key.
+name: Captions provider smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: "What the test voice says"
+        required: false
+        default: "Welcome to the Webinar Liv captions test. Today we will cover pricing, scaling and mobile apps."
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: A spoken test clip (16 kHz mono WAV)
+        env:
+          TEXT: ${{ inputs.text }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng ffmpeg >/dev/null
+          espeak-ng -s 150 -w /tmp/raw.wav "$TEXT"
+          ffmpeg -loglevel error -y -i /tmp/raw.wav -ac 1 -ar 16000 -sample_fmt s16 /tmp/clip.wav
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Deepgram live + Groq transcription
+        env:
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CAPTIONS_DEEPGRAM_MODEL: ${{ vars.CAPTIONS_DEEPGRAM_MODEL }}
+          CAPTIONS_DEEPGRAM_LANGUAGE: ${{ vars.CAPTIONS_DEEPGRAM_LANGUAGE }}
+          CAPTIONS_GROQ_MODEL: ${{ vars.CAPTIONS_GROQ_MODEL }}
+        run: |
+          python -m pip install -q "websockets>=14,<16"
+          python .github/scripts/captions-provider-smoke.py /tmp/clip.wav

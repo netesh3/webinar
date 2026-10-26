@@ -232,9 +232,13 @@ done
 # CAPTIONS_BOX_ENABLED=true; the rest override its defaults.
 for v in CAPTIONS_BOX_ENABLED CAPTIONS_BOX_SIZE CAPTIONS_BOX_IMAGE CAPTIONS_BOX_NAME CAPTIONS_BOX_TAGS \
   CAPTIONS_BOX_CPUS CAPTIONS_BOX_MAX_ROOMS CAPTIONS_BOX_MODEL CAPTIONS_BOX_API_URL \
-  CAPTIONS_BOX_LIVEKIT_URL CAPTIONS_BOX_BOOT_TIMEOUT; do
+  CAPTIONS_BOX_LIVEKIT_URL CAPTIONS_BOX_BOOT_TIMEOUT \
+  CAPTIONS_PROVIDER CAPTIONS_FALLBACK_LOCAL CAPTIONS_DEEPGRAM_MODEL CAPTIONS_DEEPGRAM_LANGUAGE; do
   if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
 done
+# Deepgram's key for live captions (CAPTIONS_PROVIDER=deepgram): to the API, which writes it into
+# the captions box's root-only env file at create. Never printed.
+[[ -n "${DEEPGRAM_API_KEY:-}" ]] && ENV_VARS+=("DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}")
 # Grafana Cloud for the box's Alloy, passed in its user data at create (config.BoxGrafana): all
 # five or none. GRAFANA_CLOUD_TOKEN is a secret (a write-only access policy token).
 for v in GRAFANA_CLOUD_PROM_URL GRAFANA_CLOUD_PROM_USER GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USER \

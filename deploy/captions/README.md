@@ -98,6 +98,13 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_FALLBACK_MODEL` | `base.en` | used while the CPU guard is degraded |
 | `CAPTIONS_FINAL_MODEL` | `large-v3-turbo` | after-session pass, decoded as English (see Models) |
 | `CAPTIONS_FINAL_ENABLED` | `true` | `false`: no audio kept, no final transcript |
+| `CAPTIONS_PROVIDER` | `local` | `deepgram`: live captions from Deepgram's streaming API (see "Deepgram") |
+| `DEEPGRAM_API_KEY` | – | required with `CAPTIONS_PROVIDER=deepgram`; never logged |
+| `CAPTIONS_DEEPGRAM_MODEL` | `nova-3` | Deepgram model |
+| `CAPTIONS_DEEPGRAM_LANGUAGE` | `multi` | `multi` (Nova-3 code-switching, English + Hindi etc.) or `en` |
+| `CAPTIONS_DEEPGRAM_ENDPOINTING_MS` | `300` | silence before Deepgram finalises a line |
+| `CAPTIONS_DEEPGRAM_UTTERANCE_END_MS` | `1000` | 0 off, else ≥ 1000 |
+| `CAPTIONS_FALLBACK_LOCAL` | `true` | with deepgram: keep the Whisper models loaded and switch a room to them after 3 Deepgram failures in a minute; `false` loads no model |
 | `CAPTIONS_LANGUAGE` | `en` | the only value; anything else (old `auto`/`hi`) is logged as a warning and ignored. `CAPTIONS_SCRIPT` likewise |
 | `CAPTIONS_PROMPT` | – | decoder prompt to bias spellings (product names) |
 | `CAPTIONS_MAX_SPEAKERS` | `2` | transcribed at once |
@@ -173,6 +180,32 @@ Captions run only on the on-demand captions box (`captions-blr-1`, see
 - **Worker load** is rooms held over `CAPTIONS_MAX_ROOMS` (`config.room_load`), never the host
   CPU, so a busy host does not make LiveKit think the worker is gone; the CPU guard steps
   down instead.
+
+## Deepgram (CAPTIONS_PROVIDER=deepgram)
+
+`webcaptions/provider.py`. One websocket per subscribed speaker track to
+`wss://api.deepgram.com/v1/listen` (16 kHz mono linear16, `interim_results`, `smart_format`,
+`endpointing`), opened when the track's pipeline starts and closed (`CloseStream`, then the
+socket) when it ends, so a socket is never billed for a speaker who has left. Audio is sent only
+while the speaker is selected (the same gate the local model uses); a `KeepAlive` every 5 s holds
+the socket in between. Interim results are partials (display only), `is_final` results finals
+(published, stored, posted like local lines); `AudioClock` maps Deepgram's audio offsets back to
+wall-clock time across the gaps, so a line's partials and final share one caption id. The
+segmenter still runs, but only to spool audio for the after-session transcript.
+
+Failures: a socket that will not connect or drops is retried with backoff (0.5 s doubling to
+15 s). With `CAPTIONS_FALLBACK_LOCAL=true`, three failures inside a minute switch the room to the
+local models (`captions: deepgram keeps failing; … switched to the local models`); without it the
+sockets keep retrying. The key reaches the box in its env file (`/etc/webinarliv/captions.env`,
+root, 0600) from the droplet's user data, like the LiveKit secret; it is never logged.
+
+Measure: the `captions.latency` lines report `e2e` (end of speech → packet on the SFU) the same
+way for both providers, so a load test compares them directly.
+
+Before switching a provider on, run **Actions → Captions provider smoke test**
+(`.github/workflows/captions-provider-smoke.yml`): it speaks a sentence (espeak-ng), streams it
+to Deepgram live and sends it to Groq with the repo secrets `DEEPGRAM_API_KEY` and
+`GROQ_API_KEY`, and prints only status codes, timings and the transcripts.
 
 ## Latency
 

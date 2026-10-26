@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping
 
 log = logging.getLogger("captions.config")
@@ -13,6 +13,10 @@ log = logging.getLogger("captions.config")
 # English only. An old .env or worker metadata may still say CAPTIONS_LANGUAGE=auto / hi or
 # set CAPTIONS_SCRIPT: those are warned about and ignored, never a reason not to start.
 LANGUAGES = ("en",)
+
+# Who transcribes live (provider.py). local: the Whisper models here; deepgram: Deepgram's
+# streaming API, the local models loaded only as the fallback (CAPTIONS_FALLBACK_LOCAL).
+PROVIDERS = ("local", "deepgram")
 
 
 class ConfigError(ValueError):
@@ -117,6 +121,28 @@ class Config:
     # Grafana Alloy on the captions box. 0 is off.
     metrics_port: int = 0
 
+    # Live transcription provider (PROVIDERS). With deepgram, each speaker's audio streams to
+    # Deepgram (Nova-3) over a websocket and its interim/final results become partials/finals
+    # (provider.py); the segmenter still runs, but only to spool audio for the after-session
+    # transcript. The key never appears in repr() or a log line.
+    provider: str = "local"
+    deepgram_api_key: str = field(default="", repr=False)
+    deepgram_model: str = "nova-3"
+    # "multi" is Nova-3's multilingual code-switching mode (English with Hindi and others in
+    # one stream); "en" is English only and slightly cheaper.
+    deepgram_language: str = "multi"
+    # Silence (ms) before Deepgram ends an utterance, and the gap that sends UtteranceEnd.
+    deepgram_endpointing_ms: int = 300
+    deepgram_utterance_end_ms: int = 1000
+    # With deepgram: keep the local models loaded and switch a room to them when Deepgram
+    # keeps failing (FailoverTracker). Off saves the box ~0.5–1 GB and lets it be smaller.
+    fallback_local: bool = True
+
+    @property
+    def local_models(self) -> bool:
+        """Whether this worker loads the Whisper models for live captions at all."""
+        return self.provider == "local" or self.fallback_local
+
     @property
     def cpu_threads(self) -> int:
         """Every vCPU: the after-session pass, which only runs while no room is live."""
@@ -193,7 +219,20 @@ class Config:
             spool_max_mb=_int(env, "CAPTIONS_SPOOL_MAX_MB", 4096),
             health_port=_int(env, "CAPTIONS_HEALTH_PORT", 8091),
             metrics_port=_int(env, "CAPTIONS_METRICS_PORT", 0),
+            provider=(env.get("CAPTIONS_PROVIDER", "").strip().lower() or "local"),
+            deepgram_api_key=env.get("DEEPGRAM_API_KEY", "").strip(),
+            deepgram_model=env.get("CAPTIONS_DEEPGRAM_MODEL", "").strip() or "nova-3",
+            deepgram_language=env.get("CAPTIONS_DEEPGRAM_LANGUAGE", "").strip() or "multi",
+            deepgram_endpointing_ms=_int(env, "CAPTIONS_DEEPGRAM_ENDPOINTING_MS", 300),
+            deepgram_utterance_end_ms=_int(env, "CAPTIONS_DEEPGRAM_UTTERANCE_END_MS", 1000),
+            fallback_local=_bool(env.get("CAPTIONS_FALLBACK_LOCAL"), True),
         )
+        if cfg.provider not in PROVIDERS:
+            raise ConfigError(f"CAPTIONS_PROVIDER must be one of {', '.join(PROVIDERS)}, got {cfg.provider!r}")
+        if cfg.provider == "deepgram" and not cfg.deepgram_api_key:
+            raise ConfigError("CAPTIONS_PROVIDER=deepgram needs DEEPGRAM_API_KEY")
+        if cfg.deepgram_utterance_end_ms and cfg.deepgram_utterance_end_ms < 1000:
+            raise ConfigError("CAPTIONS_DEEPGRAM_UTTERANCE_END_MS must be 0 (off) or >= 1000 (Deepgram's minimum)")
         if not (0 <= cfg.metrics_port <= 65535) or (cfg.metrics_port and cfg.metrics_port == cfg.health_port):
             raise ConfigError("CAPTIONS_METRICS_PORT must be 0 (off) or a port other than CAPTIONS_HEALTH_PORT")
         if cfg.max_speakers < 1:

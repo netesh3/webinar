@@ -47,6 +47,8 @@
 #     several boxes (deploy/digitalocean/README.md "More video servers"); unset is one box.
 #     CAPTIONS_BOX_ENABLED=true (needs CAPTIONS_SECRET) adds a small captions droplet made and
 #     deleted with it; CAPTIONS_BOX_SIZE (s-4vcpu-8gb), _IMAGE, _CPUS, _MAX_ROOMS, _MODEL tune it.
+#     Variable CAPTIONS_PROVIDER=deepgram with secret DEEPGRAM_API_KEY makes Deepgram transcribe
+#     live (CAPTIONS_FALLBACK_LOCAL, _DEEPGRAM_MODEL nova-3, _DEEPGRAM_LANGUAGE multi tune it).
 #   GRAFANA_CLOUD_TOKEN — optional, with repo variables GRAFANA_CLOUD_PROM_URL, _PROM_USER,
 #     _LOKI_URL, _LOKI_USER (all five or the API refuses to boot): the box manager passes them in
 #     each droplet's user data so the box's Alloy reports to Grafana Cloud from first boot.
@@ -215,6 +217,13 @@ jobs:
       CAPTIONS_BOX_CPUS: ${{ vars.CAPTIONS_BOX_CPUS }}
       CAPTIONS_BOX_MAX_ROOMS: ${{ vars.CAPTIONS_BOX_MAX_ROOMS }}
       CAPTIONS_BOX_MODEL: ${{ vars.CAPTIONS_BOX_MODEL }}
+      # Live captions by Deepgram's streaming API instead of the box's own model (provider.py):
+      # CAPTIONS_PROVIDER=deepgram plus the DEEPGRAM_API_KEY secret. Unset is local.
+      CAPTIONS_PROVIDER: ${{ vars.CAPTIONS_PROVIDER }}
+      CAPTIONS_FALLBACK_LOCAL: ${{ vars.CAPTIONS_FALLBACK_LOCAL }}
+      CAPTIONS_DEEPGRAM_MODEL: ${{ vars.CAPTIONS_DEEPGRAM_MODEL }}
+      CAPTIONS_DEEPGRAM_LANGUAGE: ${{ vars.CAPTIONS_DEEPGRAM_LANGUAGE }}
+      DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
       # Grafana Cloud for the box's Alloy, written into each new droplet's user data so it reports
       # from boot (the same repo variables and secret livekit-do-deploy.yml uses). All five or none.
       GRAFANA_CLOUD_PROM_URL: ${{ vars.GRAFANA_CLOUD_PROM_URL }}
