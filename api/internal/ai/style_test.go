@@ -212,7 +212,14 @@ func TestCostEstimate(t *testing.T) {
 	if got := EstimateCostUSD("openai", "gpt-5-nano-2025-08-07", 2000, 1000); math.Abs(got-0.0005) > 1e-9 {
 		t.Fatalf("dated snapshot = %v", got)
 	}
-	if got := EstimateCostUSD("groq", "openai/gpt-oss-20b", 5000, 5000); got != 0 {
+	// Groq is priced from 2026-10-27 (it is what production answers on); the free ones stay $0.
+	if got := EstimateCostUSD("groq", "openai/gpt-oss-20b", 1_000_000, 1_000_000); math.Abs(got-0.375) > 1e-9 {
+		t.Fatalf("gpt-oss-20b on groq 1M+1M = %v, want 0.375", got)
+	}
+	if got := EstimateCostUSD("groq", "openai/gpt-oss-120b", 1_000_000, 1_000_000); math.Abs(got-0.75) > 1e-9 {
+		t.Fatalf("gpt-oss-120b on groq 1M+1M = %v, want 0.75", got)
+	}
+	if got := EstimateCostUSD("openrouter", "openrouter/free", 5000, 5000); got != 0 {
 		t.Fatalf("free provider cost %v", got)
 	}
 	if p := PriceFor("custom", "mystery-model"); p != unknownPrice {

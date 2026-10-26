@@ -25,14 +25,20 @@ var prices = []struct {
 	{"gpt-5-nano", Price{0.05, 0.40}},
 	{"gpt-5-mini", Price{0.25, 2.00}},
 	{"gpt-5", Price{1.25, 10.00}},
+	// Groq's gpt-oss models (Groq's model page, 2026-10-27). Groq is no longer priced as
+	// free: a paid key is billed, and on the free tier an estimate that is a little high
+	// only makes a cap trip early.
+	{"openai/gpt-oss-120b", Price{0.15, 0.60}},
+	{"openai/gpt-oss-20b", Price{0.075, 0.30}},
 	// Embeddings: input only.
 	{"text-embedding-3-small", Price{0.02, 0}},
 }
 
 var unknownPrice = Price{1.25, 10.00}
 
-// freeProviders are the free-tier providers of the short configuration.
-var freeProviders = map[string]bool{"cloudflare": true, "groq": true, "openrouter": true, "ollama": true}
+// freeProviders are the free-tier providers of the short configuration. Groq left the list
+// on 2026-10-27, when it became the provider production answers on (AI_PROVIDER).
+var freeProviders = map[string]bool{"cloudflare": true, "openrouter": true, "ollama": true}
 
 // PriceFor is the price this chain assumes for a provider and model.
 func PriceFor(providerID, model string) Price {

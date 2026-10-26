@@ -84,6 +84,11 @@ type Request struct {
 	 * that refusal never benches the provider: one feature's setting cannot take AI away
 	 * from the rest. */
 	Model string
+	/* ModelFor is the same choice for any provider, by provider id ("groq": a gpt-oss tier
+	 * for this kind of task, config.AIGroqModelQuality/Fast). It wins over Model for that
+	 * provider, and follows the same rules: asked first, refusal falls back to the
+	 * provider's own model and never benches it. */
+	ModelFor map[string]string
 }
 
 // Reply is the answer and who gave it.
@@ -109,7 +114,18 @@ type Reply struct {
 const (
 	StyleChat            = "chat"
 	StyleOpenAIReasoning = "openai-reasoning"
+	/* StyleGroqReasoning is Groq's gpt-oss models (2026-10-27): the chat body (they accept
+	 * temperature) plus reasoning_effort, which they take as low, medium or high (no
+	 * "minimal"), and include_reasoning false, so the reasoning stays out of the reply. They
+	 * reason before they answer and those tokens come out of the completion budget, so the
+	 * cap gets groqReasoningHeadroom on top: a 250-token Q&A answer would otherwise be all
+	 * reasoning and arrive empty. */
+	StyleGroqReasoning = "groq-reasoning"
 )
+
+// groqReasoningHeadroom is what a groq-reasoning request adds to MaxTokens for the
+// reasoning, at reasoning_effort low.
+const groqReasoningHeadroom = 1024
 
 // Provider is one OpenAI-compatible chat endpoint.
 type Provider struct {
@@ -124,9 +140,13 @@ type Provider struct {
 	// StructuredOutput means the provider honours response_format json_schema. One
 	// without it is asked in words, and its reply is parsed tolerantly.
 	StructuredOutput bool
+	// jsonObject: asked in words, with response_format json_object as well (the second
+	// try after a provider refused the schema; see attemptSchemaFallback).
+	jsonObject bool
 }
 
-func (p Provider) reasoning() bool { return p.Style == StyleOpenAIReasoning }
+func (p Provider) reasoning() bool     { return p.Style == StyleOpenAIReasoning }
+func (p Provider) groqReasoning() bool { return p.Style == StyleGroqReasoning }
 
 // ProviderStatus is one provider as an operator sees it. Never carries the key.
 type ProviderStatus struct {
@@ -188,7 +208,7 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
 	}
 
 	var tried []string
-	for _, p := range c.providers {
+	for i, p := range c.providers {
 		if ctx.Err() != nil {
 			break
 		}
@@ -207,6 +227,12 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
 			reply.Provider = p.ID
 			if reply.Model == "" {
 				reply.Model = p.Model
+			}
+			if i > 0 {
+				// A fallback answered: visible in the log, so a provider that keeps failing
+				// over is noticed before its own bill or quota is.
+				c.log.Info("ai: answered by a fallback provider", "provider", p.ID, "model", reply.Model,
+					"skipped", strings.Join(tried, "; "))
 			}
 			return reply, nil
 		}
@@ -229,7 +255,7 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
  * this provider, then (if the override fails) the provider's own model. Reply.Model is set
  * only when the override answered. */
 func (c *Chain) attemptWith(ctx context.Context, p Provider, req Request) (Reply, *failure) {
-	if op, ok := p.withModel(req.Model); ok {
+	if op, ok := p.withModel(req.modelFor(p)); ok {
 		reply, f := c.attempt(ctx, op, req)
 		if f == nil && req.Schema != nil {
 			if _, err := req.Schema.Extract(reply.Text); err != nil {
@@ -246,23 +272,78 @@ func (c *Chain) attemptWith(ctx context.Context, p Provider, req Request) (Reply
 			return Reply{}, f
 		}
 	}
-	return c.attempt(ctx, p, req)
+	return c.attemptSchemaFallback(ctx, p, req)
 }
 
-/* withModel is p asked for model instead of its own: only OpenAI's own API, and only a
- * different model. The body style follows the model, as config decides it for OPENAI_MODEL
- * (a gpt-5 or o-series model takes the reasoning body). */
+/* attemptSchemaFallback is one attempt, and for a provider other than OpenAI that refuses
+ * the json_schema itself (HTTP 400 that names it: Groq's strict mode does not take every
+ * keyword OpenAI's does), a second try on the same provider asked in words with
+ * response_format json_object, the reply validated as always. OpenAI's own refusal is left
+ * alone: its strict mode is what the schemas are written for. */
+func (c *Chain) attemptSchemaFallback(ctx context.Context, p Provider, req Request) (Reply, *failure) {
+	reply, f := c.attempt(ctx, p, req)
+	if f == nil || req.Schema == nil || !p.StructuredOutput || p.isOpenAI() ||
+		f.status != http.StatusBadRequest || !schemaRefusal.MatchString(f.body) || ctx.Err() != nil {
+		return reply, f
+	}
+	c.log.Warn("ai: provider refused the json_schema, asking for a JSON object in words",
+		"provider", p.ID, "model", p.Model)
+	words := p
+	words.StructuredOutput = false
+	words.jsonObject = true
+	return c.attempt(ctx, words, req)
+}
+
+// schemaRefusal is a 400 about the response_format or the schema, not about the request.
+var schemaRefusal = regexp.MustCompile(`(?i)response_format|json_schema|schema`)
+
+// modelFor is the override this request asks of p: ModelFor[p.ID], else Model for OpenAI.
+func (r Request) modelFor(p Provider) string {
+	if m := strings.TrimSpace(r.ModelFor[p.ID]); m != "" {
+		return m
+	}
+	if p.isOpenAI() {
+		return r.Model
+	}
+	return ""
+}
+
+/* withModel is p asked for model instead of its own: only a different model. On OpenAI's
+ * own API the body style follows the model, as config decides it for OPENAI_MODEL (a gpt-5
+ * or o-series model takes the reasoning body); on Groq a gpt-oss model takes the Groq
+ * reasoning body and strict json_schema; anywhere else the provider's style stays. */
 func (p Provider) withModel(model string) (Provider, bool) {
 	model = strings.TrimSpace(model)
-	if model == "" || strings.EqualFold(model, p.Model) || !p.isOpenAI() {
+	if model == "" || strings.EqualFold(model, p.Model) {
 		return p, false
 	}
-	p.Model = model
-	p.Style = StyleChat
-	if reasoningModel(model) {
-		p.Style = StyleOpenAIReasoning
+	switch {
+	case p.isOpenAI():
+		p.Style = StyleChat
+		if reasoningModel(model) {
+			p.Style = StyleOpenAIReasoning
+		}
+	case p.isGroq():
+		p.Style, p.StructuredOutput = StyleChat, false
+		if groqGPTOSS(model) {
+			p.Style, p.StructuredOutput = StyleGroqReasoning, true
+		}
 	}
+	p.Model = model
 	return p, true
+}
+
+func (p Provider) isGroq() bool {
+	u, err := url.Parse(p.BaseURL)
+	return err == nil && strings.EqualFold(u.Hostname(), groqHost)
+}
+
+// groqHost is Groq's API host; a var so a test can point it at its fake.
+var groqHost = "api.groq.com"
+
+// groqGPTOSS is one of the gpt-oss models as Groq names them (openai/gpt-oss-20b, -120b).
+func groqGPTOSS(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "openai/gpt-oss-")
 }
 
 func (p Provider) isOpenAI() bool {
@@ -402,6 +483,7 @@ type chatRequest struct {
 	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
 	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
 	ResponseFormat      *responseFormat `json:"response_format,omitempty"`
+	IncludeReasoning    *bool           `json:"include_reasoning,omitempty"`
 }
 
 type responseFormat struct {
@@ -418,26 +500,47 @@ type jsonSchemaSpec struct {
 // buildRequest is the body provider p gets for req, which has its defaults applied.
 func buildRequest(p Provider, req Request) chatRequest {
 	out := chatRequest{Model: p.Model, Messages: req.Messages}
-	if p.reasoning() {
+	switch {
+	case p.reasoning():
 		out.MaxCompletionTokens = req.MaxTokens
 		out.ReasoningEffort = req.ReasoningEffort
 		if out.ReasoningEffort == "" {
 			out.ReasoningEffort = "minimal"
 		}
-	} else {
+	case p.groqReasoning():
+		t := req.Temperature
+		off := false
+		out.Temperature, out.IncludeReasoning = &t, &off
+		out.MaxCompletionTokens = req.MaxTokens + groqReasoningHeadroom
+		out.ReasoningEffort = groqEffort(req.ReasoningEffort)
+	default:
 		t := req.Temperature
 		out.MaxTokens, out.Temperature = req.MaxTokens, &t
 	}
 	if req.Schema != nil {
-		if p.StructuredOutput {
+		switch {
+		case p.StructuredOutput:
 			out.ResponseFormat = &responseFormat{Type: "json_schema", JSONSchema: &jsonSchemaSpec{
 				Name: req.Schema.Name, Schema: req.Schema.JSON, Strict: true,
 			}}
-		} else {
+		case p.jsonObject:
+			out.Messages = req.Schema.instruct(req.Messages)
+			out.ResponseFormat = &responseFormat{Type: "json_object"}
+		default:
 			out.Messages = req.Schema.instruct(req.Messages)
 		}
 	}
 	return out
+}
+
+// groqEffort maps the request's effort onto what gpt-oss on Groq takes: low, medium, high.
+// Empty and "minimal" (OpenAI's lowest) are low; these features write copy.
+func groqEffort(e string) string {
+	switch strings.ToLower(strings.TrimSpace(e)) {
+	case "medium", "high":
+		return strings.ToLower(strings.TrimSpace(e))
+	}
+	return "low"
 }
 
 type chatResponse struct {

@@ -478,6 +478,16 @@ type Config struct {
 	 * OPENAI_MODEL. Only OpenAI's own API is asked for it (ai.Request.Model); set it to the
 	 * same value as OPENAI_MODEL to keep the clip features on that model too. */
 	AIModelHighlights string
+	/* AIGroqModelQuality and AIGroqModelFast are the Groq models per kind of task, when the
+	 * answer comes from Groq (AI_PROVIDER, config/ai.go). Quality (AI_GROQ_MODEL_QUALITY,
+	 * default openai/gpt-oss-120b) is for writing that a host reads and keeps: the recap, the
+	 * follow-ups, repurposed posts, highlights and reels, lead reasons, webinar setup, the Q&A
+	 * clusters. Fast (AI_GROQ_MODEL_FAST, default openai/gpt-oss-20b) is for the short,
+	 * frequent calls inside a live session or a page load: the sales chat, chat spam, the
+	 * Q&A answers and drafts. Both take strict json_schema on Groq. GROQ_MODEL stays the
+	 * provider's own model, asked when a tier model is refused. */
+	AIGroqModelQuality string
+	AIGroqModelFast    string
 
 	/* AIEmbeddings is the endpoint the AI knowledge embeds its chunks and questions with
 	 * (text-embedding-3-small): OpenAI's, from OPENAI_API_KEY or the AI_PROVIDERS entry on
@@ -647,6 +657,8 @@ func Load() (Config, error) {
 	c.AIMonthlyUSD = envFloatStrict("AI_MONTHLY_USD", 20)
 	c.AIHostMonthlyUSD = envFloatStrict("AI_HOST_MONTHLY_USD", 2)
 	c.AIModelHighlights = env("AI_MODEL_HIGHLIGHTS", "gpt-5-mini")
+	c.AIGroqModelQuality = env("AI_GROQ_MODEL_QUALITY", "openai/gpt-oss-120b")
+	c.AIGroqModelFast = env("AI_GROQ_MODEL_FAST", "openai/gpt-oss-20b")
 
 	// Default the public URL to the first allowed origin. That is already the
 	// frontend's address in every correct deployment, so share links are right
