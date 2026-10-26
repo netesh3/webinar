@@ -15,6 +15,9 @@ It runs from a generator droplet in BLR1 (or a laptop, at small scale). It goes 
 | `engage.mjs` | The engagement check (`run.mjs --engage`, or on its own against a run in progress): a tagged chat burst, questions and upvotes, polls and quizzes opened, voted and closed one at a time | Whether the server stored exactly what it accepted: a PASS/FAIL table |
 | `webrtc-attendees.mjs` | Flags around the existing `e2e/probe-load.mjs`: N Chrome tabs, steps, meeting or webinar | Per-tab inbound bitrate, fps, freezes, loss, resolution |
 | `captions.mjs` | The captions check (`run.mjs --captions`): captions on, which source serves them, an edge tap, the stored transcript, scored against the presenters' scripts (`lib/captions.mjs`, `lib/voice.mjs`) | Delivery, phrase latency and word error rate: a PASS/FAIL table |
+| `browser-viewers.mjs` | **Real viewers**: headless Chrome windows on the real room page, playing with the production player (`run.mjs --viewers browser`). See [Real-browser viewers](#real-browser-viewers-what-a-viewer-sees) | Stalls per viewer-minute, stall waves, time to first frame, glass-to-glass delay off the picture, player latency, path and CDN edge, fallbacks, the Reconnecting badge, join API time, chat round trip |
+| `provision-generators.mjs` | Generator droplets per region (stock Ubuntu + `setup-generator.sh`), plan-only by default, refusing what the droplet limit can't take | (none) |
+| `bunny-log.mjs` | Bunny's request log for a run's window: status codes, 499/504 rates, cache HIT ratio, per edge and minute | What the CDN did, which nothing on our side sees |
 | `setup-generator.sh` | cloud-init for a fresh Ubuntu 24.04 droplet: Node 22, Chrome, ffmpeg, espeak-ng, the kit, file and port limits, TCP tuning | (none) |
 
 ### What one HLS viewer does
@@ -61,6 +64,121 @@ Per step, the summary table and the JSON report:
 | `errors` | `<what> <status>` × count, e.g. `part 404x3`, `join 429x10`, `events timeout` |
 
 The server's own count (`server counts N edge viewer(s)`) is printed every 30 s and stored in `results.json`. It should track `active`. If it lags, beats or event streams are being lost.
+
+## Real-browser viewers (what a viewer sees)
+
+**Why.** The simulated viewers above fetch HLS the way hls.js would and model a buffer. They proved the box's capacity on 24 Oct (1,010 viewers through the CDN, box at 34%), and a customer webinar of ~130 viewers stalled in waves the next day ([decision record](decisions/2026-10-26-audience-delivery.md)). Capacity is not playback. `--viewers browser` makes the audience real Chrome windows on the real room page, decoding the real stream with the production player, so the run measures what a person in front of that page would have seen.
+
+### What is real and what is synthetic
+
+| Part | Real | Synthetic |
+|---|---|---|
+| Viewer page, player, delivery choice (box or CDN by country), fallback, event stream, chat delivery | Real: the production `/webinars/<slug>/room?k=<key>` page, hls.js, the join API | Load-test seats (guest registrations, `admin_loadtest.go`) |
+| Video decode | Real, in software (no GPU on a droplet), audio muted | |
+| Viewers' networks | Real routes from each generator's region to the box / Bunny edge | Datacenter links, not homes or phones; `--throttle-share` puts a share on Chrome's Slow/Fast 4G (latency, bandwidth, 1% loss on Slow 4G) |
+| Presenter camera and microphone | Real WebRTC publishing from a headless Chrome | The camera is `testsrc2`; the microphone is a spoken script (espeak-ng / `say`, `lib/voice.mjs`) so captions run |
+| Screen share | The room's real Share button and getDisplayMedia | What's shared is the headless Chrome's virtual screen (mostly static: low bitrate) |
+| Video share | The room's real "Share a video file" flow, a real MP4 | A generated clip: Conway's life on a coloured field (constant motion, hard on the encoder) with a stepping tone, 720p25 |
+| Glass-to-glass delay | Read off the picture each viewer is shown, every 10 s | The mix draws a time strip for it (below), only on load-test webinars |
+
+**Glass to glass.** A webinar marked as a load test gets the mix's latency clock (`mixTemplateURLFor`, `api/internal/api/edge.go`; never a customer's: the mark needs a `.invalid` host). Beside the clock text, the mix draws a **time strip** bottom left (`web/lib/clock-strip.ts`): 42 cells, each 1/80 × 1/45 of the frame (16 px at 720p, the size the speaker-view beacon proved survives encoding): a white and a black reference, 32 bits of `floor(serverMs / 10)`, an 8-bit checksum. Each viewer draws its `<video>` into a canvas, reads the cells and subtracts (`e2e/load/lib/clock-strip.mjs`). Checked locally through H.264 at 1 Mbit/s: 20 reads out of 20 exact. It counts everything after the mix draws the frame (encode, MediaMTX, CDN, the player's buffer, decode); the presenter → SFU → mix part before it is another ~0.1–0.3 s. The viewer's clock is the generator's (DigitalOcean keeps it NTP-synced, tens of ms).
+
+### The run: phases
+
+Everyone joins over the ramp, then the content runs (`--phases`, default `camera:3m,screen:6m,video:6m,engage:2m`, about 18 min with the ramp):
+
+1. **join ramp**: the viewers open, one by one
+2. **camera only** (3 min)
+3. **screen share** (6 min): the host presses Share
+4. **video share** (6 min): the host shares the generated video file
+5. **engagement** (2 min): `engage.mjs`'s chat burst, questions, upvotes, polls and quizzes, and a **chat round trip**: each generator posts 3 tagged messages and times their arrival on every one of its viewers' event streams (one clock, so the number is exact)
+6. **leave**
+
+Each phase's start and end are in `results.json`, and every number in the report is split by phase: the viewers', the generators' CPU, and the server's from Grafana.
+
+### Scenarios
+
+| `--scenario` | What | Viewers |
+|---|---|---|
+| `a` | Live, the join's path (India → straight from the box, elsewhere → CDN), captions spoken and checked, engagement | 150 |
+| `b` | As `a`, every viewer started on the CDN path (`--path cdn`: the player swaps the two URLs the join offered, `web/lib/load-probe.ts`) | 150 |
+| `c` | A simulive of a generated test video (uploaded through the app's uploader); the file plays from R2 via the recordings CDN, no video box | 100 |
+| `d` | As `a`, 20% of the viewers on Slow 4G | 150 |
+
+### Generators around the world
+
+The DigitalOcean account allows **10 droplets**. A run needs the video box and its captions box (both on demand) and the ops droplet (always on), so at most **7 generators**. `provision-generators.mjs` and `run.mjs` both check (`doctl account get`) and refuse a plan that would leave no room for the boxes. The default worldwide plan, `--regions world`: **blr1 ×3** (India: most viewers, served straight from the box), **sgp1, lon1, nyc3, sfo3** (the CDN path, from where viewers abroad are). Generators are stock Ubuntu 24.04 with `setup-generator.sh` as cloud-init, so any region works without copying a snapshot.
+
+**Sizing, measured** (2026-10-26, this kit, headless Chrome, 720p ~1 Mbit/s HLS through hls.js): **4–5% of one Apple M5 Pro core per viewer**, flat from 10 to 50 viewers. A c-4 vCPU decodes video ~2–2.5× slower than an M5 Pro core, and the real room page (React, event stream, chat) costs more than the bare test page, so plan **~20 viewers per c-4** (the default ceiling is `--max-cpu 70`: past it a generator opens no more windows and its results are marked invalid). That estimate is unverified on a droplet; the first run's per-generator CPU column confirms or corrects it.
+
+**Each viewer is a window, not a tab.** A background tab is `hidden`, and Chrome keeps a hidden page's autoplaying video paused: with tabs, one viewer per Chrome played and the rest sat still. Windows are `visible`, as a person watching is (`newWindow`, `lib/chrome.mjs`). `e2e/probe-load.mjs` (the WebRTC attendees) still opens tabs; its attendees may have been paused too.
+
+### Cost
+
+c-4 at $0.125/h each, billed while up; the boxes are billed as in any webinar.
+
+| Plan | Droplets | Run (incl. setup ~10 min, ramp, phases, cleanup) | Cost |
+|---|---|---|---|
+| Scenario a or b or d, 7 generators worldwide | 7 × c-4 | ~45 min → billed 1 h | ~$0.88 |
+| All four scenarios back to back, same generators | 7 × c-4 | ~2 h | ~$1.75 |
+| Scenario c only (100 viewers), 5 generators in India | 5 × c-4 | ~35 min | ~$0.63 |
+
+Plus Bunny traffic: ~0.5 GB per viewer-hour, so ~$0.25 for 150 viewers × 20 min on the Volume tier.
+
+### Running it
+
+The lead creates the generators (billable; ask first):
+
+```sh
+cd e2e/load
+node provision-generators.mjs --regions world --run lt1            # the plan and the limit check
+node provision-generators.mjs --regions world --run lt1 --ssh-keys <id> --create
+```
+
+Then, from one of the India generators (it runs the presenter and one viewer, and drives the others over SSH):
+
+```sh
+PROBE_ADMIN_EMAIL=... PROBE_ADMIN_PASSWORD=... \
+GRAFANA_PROM_URL=... GRAFANA_PROM_USER=... GRAFANA_PROM_TOKEN=... \
+GRAFANA_LOKI_URL=... GRAFANA_LOKI_USER=...                         # optional: caption latency lines
+node run.mjs --web https://webinarliv.com --scenario a \
+  --generators <ip,ip,...> --generator-regions <r,r,...> --generator-kit /opt/loadgen/e2e/load \
+  --i-know-this-is-prod
+```
+
+Afterwards: `node provision-generators.mjs --run lt1 --destroy`, and the Bunny log for the window (the command is printed in `browser.md`; download the day's log from Monitoring → Logs → webinarlivindiav → Download, or set `BUNNY_API_KEY` and use `--zone`).
+
+### The report
+
+`results/<run>/browser.md` and `browser.json`:
+
+- **Verdict** (PASS/FAIL), then tables for all viewers, by delivery path, by region and path, by network profile, and by phase: joined, time to first frame p50/p95, stalls per viewer-minute p50/p95/max, share with no stalls and with ≤1 per 10 min, glass-to-glass p50/p95/max, player latency, the worst stall wave, fallbacks, errors; the **CDN lag** (CDN glass-to-glass p50 minus the box's), join API p50/p95, chat round trip p50/p95.
+- **Server and network, per phase** (avg/p95/max of 15 s points, Grafana): box CPU %, CPU by container (egress = the mix, livekit, mediamtx, caddy), memory, network out, HLS out, LiveKit loss and RTT p95, captions box CPU and memory, Cloud Run instances, requests/s, p95, join/say/vote p95, 5xx/s, goroutines, the database size. DB connections are not exported (Supabase's pooler).
+- **Generators**: CPU per phase (each must stay under 70%), the CDN edge each reached, and its side prober (`lib/cdn-probe.mjs`: the plain-HLS playlist and newest segment every 2 s, TTFB p50/p95/max, totals, status codes, Bunny's Server and CDN-Cache headers).
+- **Captions**: the existing captions checks, plus the captions box's own latency lines (`caption latency ...: e2e p50 / p90`, Loki) when `GRAFANA_LOKI_URL` is set.
+
+**Pass criteria:**
+
+| Check | Pass |
+|---|---|
+| Viewers who reached the first frame | ≥ 98% |
+| Time to first frame p95 | ≤ 5 s |
+| Viewers with ≤ 1 stall per 10 minutes watched | ≥ 95% |
+| Glass-to-glass p95, straight from the box | ≤ 6 s |
+| Glass-to-glass p95, through the CDN | ≤ 7 s |
+| Player latency p95 (when no strip was read) | ≤ 6 s |
+| Stall waves: no 10 s window with > 10% of the watching viewers stalled | none |
+| Video box CPU p95, every content phase | ≤ 80% |
+| Caption delay p90 (captions box log; else p95 at the host page) | ≤ 4 s |
+| Every generator under 70% CPU | else the run is invalid, whatever it says |
+
+### Limits of the browser viewers
+
+- **Datacenter networks.** Generators are droplets: good links, one IP each. Real homes and phones are worse; `--throttle-share` is a stand-in, not a substitute, and the friends-and-family test on Jio/Airtel/home Wi-Fi is still needed before trusting a large customer webinar.
+- **Software decode.** Droplets have no GPU; phones and laptops decode in hardware. A generator's own CPU is guarded at 70%.
+- **One viewer per window, ~20 per c-4**, so 150 viewers is all 7 generators. More needs a higher droplet limit (or larger sizes, which the account refuses today).
+- **The presenter** runs on a generator in BLR1, next to the box (a perfect uplink), and shares synthetic content.
+- **The time strip** measures from the mix's frame, not from the presenter's camera.
 
 ## What the server needs (admin-only, off by default)
 

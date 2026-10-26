@@ -104,6 +104,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/layout.test.mts
 	# In-app browser (Instagram/Facebook WebView) and phone detection.
 	cd web && node --experimental-strip-types --no-warnings lib/device.test.mts
+	# The load-test kit's read-out: real viewers always start where the join sent them.
+	cd web && node --experimental-strip-types --no-warnings lib/load-probe.test.mts
+	# The latency clock's time strip: the cells the load-test kit reads off the picture.
+	cd web && node --experimental-strip-types --no-warnings lib/clock-strip.test.mts
 	# Web Push and install: who can subscribe (iOS only once installed, 16.4+), what the
 	# opt-in shows, which install prompt to offer, and the subscribe body.
 	cd web && node --experimental-strip-types --no-warnings lib/push.test.mts

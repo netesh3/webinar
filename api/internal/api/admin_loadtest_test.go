@@ -4,11 +4,13 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -152,5 +154,33 @@ func TestLoadTestSeatsAndCeiling(t *testing.T) {
 	}
 	if _, ok, err := h.store.LoadTestViewers(ctx, wb.ID); err != nil || ok {
 		t.Fatalf("load test after delete: %v %v", ok, err)
+	}
+}
+
+/* A load test's mix draws the latency clock (and its time strip) for the kit's browser
+ * viewers; a customer's mix never does unless EDGE_DEBUG_CLOCK is on for everyone. */
+func TestLoadTestMixDrawsTheLatencyClock(t *testing.T) {
+	const tmpl = "https://webinarliv.test/recorder-template"
+	h := newHarness(t, func(c *config.Config) {
+		edgeConfig(c)
+		c.RecordingsEgressTemplateURL = tmpl
+	})
+	h.signup("LT Clock Host", "lt-clock@loadtest.invalid", true)
+	wb := h.newWebinar("Load test clock", func(in *types.WebinarInput) { in.Delivery = types.DeliveryEdge })
+	promoteSeedAdmin(t, h)
+	h.login("neeraj@acme.dev")
+	if res, raw := h.do(http.MethodPut, "/api/admin/webinars/"+wb.ID+"/load-test", map[string]int{"viewers": 5}); res.StatusCode != http.StatusOK {
+		t.Fatalf("mark: %d %s", res.StatusCode, raw)
+	}
+	h.login("lt-clock@loadtest.invalid")
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d %s", res.StatusCode, raw)
+	}
+	waitForCalls(t, h, "rtmp://origin.test/live/"+wb.ID)
+	h.rooms.mu.Lock()
+	templates := slices.Clone(h.rooms.templates)
+	h.rooms.mu.Unlock()
+	if !slices.Contains(templates, "mix="+tmpl+"/edge/clock") {
+		t.Fatalf("load test mix templates = %v, want %s/edge/clock", templates, tmpl)
 	}
 }
