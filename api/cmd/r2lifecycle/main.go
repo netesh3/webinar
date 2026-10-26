@@ -50,6 +50,10 @@ func run(args []string) error {
 	if *days < 30 {
 		return fmt.Errorf("-days %d: R2 bills Infrequent Access for 30 days at least, so moving sooner only costs more", *days)
 	}
+	// Bounded here so the int32 the S3 API takes cannot overflow (gosec G115).
+	if *days > 3650 {
+		return fmt.Errorf("-days %d: more than ten years is not a lifecycle rule worth writing", *days)
+	}
 
 	bucket, endpoint := setting("BUCKET"), setting("ENDPOINT")
 	key, secret := setting("ACCESS_KEY"), setting("SECRET_KEY")
@@ -63,7 +67,7 @@ func run(args []string) error {
 			missing = append(missing, "RECORDINGS_S3_"+n)
 		}
 	}
-	ours := r2lifecycle.Rules(int32(*days))
+	ours := r2lifecycle.Rules(int32(*days)) // #nosec G115 -- 30..3650, checked above
 	if len(missing) > 0 {
 		if !*dry {
 			sort.Strings(missing)
