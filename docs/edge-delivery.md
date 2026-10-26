@@ -315,6 +315,87 @@ is one GOP; with keyframes further apart, segments would silently grow to match.
 the player's measured delay (`setEdgeVideoDelay`), not a constant, so it follows the shorter
 delay on its own.
 
+## Where the delay goes, and what cuts it (2026-10-27)
+
+The browser load test of 2026-10-26 (`e2e/load`, real Chrome viewers, the mix's clock strip) measured
+**glass-to-glass 5.1–5.7 s median, ~6.1 s p95, straight from the box**. The player's own latency in the
+same run was 3.2–4.2 s. So ~1.5–2 s is spent before the stream reaches the player, and the player sits
+~0.2–1.2 s further back than its 3 s target.
+
+| Stage | Delay | Source |
+|---|---|---|
+| Mix render (Chrome in egress) + capture | ~0.1–0.3 s | |
+| **x264 encode** | **~0.75–1 s** | see below |
+| flvmux → RTMP → MediaMTX | small | `rtmp2sink` has `sync=false`; egress's `pipeline_latency` (3 s) is a queue size and flvmux's aggregation timeout, not a fixed delay |
+| MediaMTX finishes the 1 s segment | ~0.5 s average | a segment is fetchable only when complete |
+| Fetch from the box (India) | ~0.1–0.3 s | |
+| Player cushion | 3 s target **+ stall creep up to +2 s** | see below |
+
+### The encoder: veryfast, not zero-latency
+
+LiveKit Egress **v1.15.0** (the box's image) builds the H.264 encoder in
+`pkg/pipeline/builder/video.go` (`addEncoder`): `x264enc speed-preset=veryfast`, `key-int-max` =
+1 s × fps with `scenecut=0`, `vbv-buf-capacity=2000`, `nal-hrd=cbr` for RTMP, the bitrate, and an
+`option-string` of just those. **It never sets `tune`.** With a speed preset set, GStreamer's x264enc
+(GStreamer 1.24.13, `gst-plugins-ugly/ext/x264/gstx264enc.c`, `gst_x264_enc_init_encoder`) takes
+**x264's own preset defaults** and does not apply its property defaults. So the mix is encoded with
+veryfast's buffering:
+
+- 3 B-frames, with adaptive B-frame placement
+- rate-control lookahead of 10 frames, with mb-tree
+- sync lookahead on auto (B-frames + 1, so 4 frames)
+- frame threads on auto (~1.5 × cores, so ~6 on a c-4)
+
+That's a **~15–20 frame encoder delay: ~0.75–1 s at 20 fps** (`EDGE_ENCODING_FPS`).
+`tune=zerolatency` (no B-frames, no lookahead, sync lookahead 0, sliced threads, no mb-tree) brings it
+to ~0–1 frame.
+
+**It can't be configured on the stock image.** The only x264 setting egress exposes is
+`video_encoder_threads` (egress.yaml). Fewer frame threads save ~1 frame each (~0.05 s) at a CPU cost,
+so not worth it alone. Neither v1.15.0 nor egress's `main` branch has a tune or option-string setting.
+Zero-latency needs a **patched egress image**: a few lines in `addEncoder`, applied only to stream-only
+egresses (the edge mix), not file or segment outputs:
+
+```go
+// pkg/pipeline/builder/video.go, addEncoder, after SetArg("speed-preset", "veryfast"):
+if b.conf.GetStreamConfig() != nil && b.conf.GetFileConfig() == nil && b.conf.GetSegmentConfig() == nil {
+	x264Enc.SetArg("tune", "zerolatency")
+}
+```
+
+Build it as egress's own `build/egress/Dockerfile` does (`--build-arg GSTVERSION=1.24.13`), tag it
+`livekit/egress:v1.15.0-zl`, and set the image in `deploy/livekit-box/docker-compose.egress.yml`. Then
+rebuild the box snapshot. **Not built yet.**
+
+**What zero-latency costs:** no B-frames and no mb-tree cost roughly 10–20% compression efficiency at
+the same bitrate. The mix recorder (`mixrec`) and cloud recordings copy this same encoded stream (no
+second encode), so they lose a little quality per bit too. Keep `EDGE_ENCODING_BITRATE` (1000 kbit/s)
+unless a side-by-side shows screen-share text visibly worse, then raise it ~15%.
+
+### The player: the stall creep comes back down
+
+hls.js adds `liveSyncOnStallIncrease` (0.25 s) to its target for every stall, up to one TARGETDURATION
+(2 s), and never takes it back. Since 2026-10-27 the player steps the target back down a quarter second
+after each 30 s without a stall, to 3 s and no lower (`decayedTarget` in `web/lib/edge-hls.ts`, called
+from the 1 s tick in `edge-player.tsx`). A viewer at the 2 s cap is back at 3 s after ~4 minutes without
+a stall. The catch-up jump and Back to live are unchanged.
+
+### Expected gain, and how to check it
+
+| Change | Expected | Ships with |
+|---|---|---|
+| Stall creep decays | Median and p95 down for viewers who stalled; ~0.2–1 s on the 2026-10-26 numbers | the web deploy |
+| `tune=zerolatency` (patched egress) | ~0.75–1 s off everyone's delay | a patched egress image + box snapshot rebuild |
+| Both | ~5.3 s → **~4–4.3 s** median straight from the box | |
+
+**Measure with the load kit,** before and after each change. Same scenario (`run.mjs --scenario a
+--path direct`), same generators, and few enough viewers per generator to stay under the 70% CPU guard
+(~6–8 per 4-vCPU machine, as measured). Compare `browser.md`:
+
+- *glass-to-glass p50/p95, by path*: should fall by the encoder delay
+- *player latency p50/p95*: should sit closer to 3 s after stalls
+- *stalls/viewer-min*: should not rise
+
 ## Test it side by side
 
 History: this was done on the Hetzner project, the only one that offered Standard (deleted

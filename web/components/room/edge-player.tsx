@@ -22,6 +22,7 @@ import {
   TARGET_SECONDS,
   bufferedAhead,
   catchUp,
+  decayedTarget,
   JUMP_COOLDOWN_MS,
   edgeHlsConfig,
   retryDelayMs,
@@ -75,6 +76,11 @@ export function EdgePlayer({
   // The viewer muted it themselves: never unmute behind their back.
   const userMutedRef = useRef(false);
   const lastJumpRef = useRef(0);
+  // The stall creep's decay (lib/edge-hls.ts decayedTarget): when the last stall, the last step
+  // down and this player's start were.
+  const lastStallRef = useRef<number | null>(null);
+  const lastStepRef = useRef<number | null>(null);
+  const startedRef = useRef(0);
   const statsRef = useRef<PlaybackStats | null>(null);
   // For the load-test kit's read-out (lib/load-probe.ts): the URL playing and the fallbacks.
   const sourceRef = useRef("");
@@ -251,7 +257,10 @@ export function EdgePlayer({
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) {
-          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) stats.stalled(Date.now());
+          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+            stats.stalled(Date.now());
+            lastStallRef.current = Date.now();
+          }
           return;
         }
         if (played) {
@@ -361,6 +370,7 @@ export function EdgePlayer({
    * buffer (lib/edge-hls.ts catchUp). Safari's native player keeps its own distance. */
   useEffect(() => {
     let lastTime = -1;
+    startedRef.current = Date.now();
     const timer = setInterval(() => {
       const hls = hlsRef.current;
       const video = videoRef.current;
@@ -376,6 +386,22 @@ export function EdgePlayer({
       if (hls && Number.isFinite(hls.latency) && hls.latency > 0) {
         setLatency(hls.latency);
         const target = TARGET_SECONDS;
+        /* A quiet spell takes a quarter second of stall creep back (decayedTarget). Only while
+         * playing: a paused or hidden player has no stalls to be quiet about. */
+        if (video && !video.paused && playingRef.current) {
+          const stepped = decayedTarget({
+            current: hls.targetLatency,
+            floor: TARGET_SECONDS,
+            lastStallAt: lastStallRef.current,
+            lastStepAt: lastStepRef.current,
+            startedAt: startedRef.current,
+            now: Date.now(),
+          });
+          if (stepped !== null) {
+            hls.targetLatency = stepped;
+            lastStepRef.current = Date.now();
+          }
+        }
         if (video && !video.paused && playingRef.current) {
           const next = catchUp({ latency: hls.latency, target });
           if (next === "jump" && Date.now() - lastJumpRef.current >= JUMP_COOLDOWN_MS) {
