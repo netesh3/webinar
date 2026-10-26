@@ -77,22 +77,3 @@
 
 	reverse_proxy 127.0.0.1:7880
 }
-
-# Hostname used when BROADCAST_HLS_BASE points at live.webinarliv.com (behind Cloudflare).
-#
-# `tls internal` rather than a public certificate. Behind the orange cloud an
-# HTTP-01 challenge is answered by Cloudflare's edge, not by Caddy. The zone
-# is Full (not Full strict), so Cloudflare encrypts to origin and accepts this
-# locally-issued certificate. Un-proxying this record is an outage for this
-# hostname: the local certificate will not validate in a browser. The same origin is
-# also served on {$DOMAIN} (sslip.io), which is what the CDN pull zones use.
-live.webinarliv.com {
-	tls internal
-
-	import live_origin
-	import mix_recorder
-
-	handle {
-		respond 404
-	}
-}

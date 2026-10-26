@@ -2,7 +2,7 @@
  * stretches lie in the recording's files (Segments), the rules a reel keeps (Reel), the words
  * said in it on the clip's own clock (Words, OnClip) and the burned-in captions and hook title
  * as an ASS script for libass (ASS). The video server renders from what this produces
- * (deploy/livekit-hetzner/mixrec/clips.go).
+ * (deploy/livekit-box/mixrec/clips.go).
  *
  * Times are seconds: on the recording's player timeline (its takes end to end, as
  * internal/highlights has them) going in, on the clip's own clock (0 at its first frame)

@@ -1,3 +1,7 @@
+> **History.** This guide set up recording on the Hetzner server, which was deleted on
+> 2026-10-26. Recording now runs on the DigitalOcean box (deploy/livekit-box/README.md,
+> "Recording from the mix") and stores to Cloudflare R2.
+
 # Server-Side Webinar Recording: LiveKit Egress + Backblaze B2 + Cloudflare CDN
 
 This guide explains the architecture, deployment, and configuration for zero-client-overhead webinar recording with a Zoom-style side-by-side layout, storing to Backblaze B2 and distributing via Cloudflare CDN.
@@ -100,7 +104,7 @@ to push record at the full `RECORDINGS_EGRESS_PRESET`.
 ## 2. Hetzner Server Setup (LiveKit SFU + Egress + Redis)
 
 ### Step 1: Update `docker-compose` on Hetzner
-Copy `deploy/livekit-hetzner/docker-compose.egress.yml` to the Hetzner server (e.g. `/root/livekit/docker-compose.egress.yml`).
+Copy `deploy/livekit-box/docker-compose.egress.yml` to the Hetzner server (e.g. `/root/livekit/docker-compose.egress.yml`).
 
 ### Step 2: Configure Redis in `livekit.yaml`
 Edit `/root/livekit/livekit.yaml` and add the `redis` block and `webhook` block:

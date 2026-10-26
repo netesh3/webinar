@@ -91,7 +91,7 @@ func TestLiveKitProjectsWinsOverTheLegacyVariables(t *testing.T) {
 // can be added without copying the first box's key and secret into the list.
 func TestADefaultEntryFillsFromTheLegacyVariables(t *testing.T) {
 	c := load(t, projectsEnv(`[
-	  {"id":"default","label":"Hetzner"},
+	  {"id":"default","label":"Legacy box"},
 	  {"id":"india","url":"wss://in.example.com","key":"API2","secret":"s2"}
 	]`, map[string]string{
 		"LIVEKIT_URL":        "wss://sfu.example.com",
@@ -103,7 +103,7 @@ func TestADefaultEntryFillsFromTheLegacyVariables(t *testing.T) {
 	}
 	d := c.LiveKitProjects[0]
 	if d.ID != "default" || d.URL != "wss://sfu.example.com" || d.Key != "APILEGACY" ||
-		d.Secret != "legacy-secret" || d.Label != "Hetzner" {
+		d.Secret != "legacy-secret" || d.Label != "Legacy box" {
 		t.Errorf("default = %+v, want the legacy url/key/secret and its own label", d)
 	}
 	if in := c.LiveKitProjects[1]; in.URL != "wss://in.example.com" || in.Key != "API2" {

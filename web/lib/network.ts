@@ -231,8 +231,9 @@ const BAD_LOSS_PERCENT = ADAPT.camera.down[0].atLeast;
  * number. This is the correction to a real bug, and the bug is worth writing down because the
  * absolute version looked completely reasonable.
  *
- * It was `bad: rtt >= 300` and `good: rtt <= 180`. The SFU is on Hetzner EU and the audience
- * is in India: steady round trip is ~200–250 ms (was 276–285 ms on the older us-east-1 seat;
+ * It was `bad: rtt >= 300` and `good: rtt <= 180`. The SFU was then in the EU (Hetzner, deleted
+ * 2026-10-26; the box is now in Bangalore) and the audience in India: steady round trip was
+ * ~200–250 ms, which presenters and viewers far from the box still see (was 276–285 ms on the older us-east-1 seat;
  * see e2e/probe-latency.mjs). So:
  *
  *   - 250 ms sat under an absolute 300 ms trigger. Ordinary long-haul jitter crossed it, and
@@ -1645,7 +1646,7 @@ export function describeQuality(health: NetworkHealth): {
     health.rttMs > 0 && health.rttFloorMs > 0
       ? health.rttMs - health.rttFloorMs
       : 0;
-  /* Distance is not damage. A steady ~250 ms to Hetzner EU is the topology; LiveKit's own
+  /* Distance is not damage. A steady ~250 ms to a far server is the topology; LiveKit's own
    * quality enum still grades that middling, and trusting Poor/Good alone put a permanent
    * warn/bad banner on every India viewer whose route is fine. */
   const expectedRoute =

@@ -208,9 +208,9 @@ func run() error {
 	}
 	go apiServer.StartMeetingLimitSweeper(ctx)
 	go apiServer.StartRecordingRetentionSweeper(ctx)
-	/* Future webinars still pinned to the retired Hetzner server move to the box first
-	 * (api/internal/api/sfu_retired.go); then future webinars on GCP/DO video servers are
-	 * edge-only (docs/edge-delivery.md). */
+	/* Future webinars still pinned to a retired video server (Hetzner, or any project marked
+	 * disabled) move to the box first (api/internal/api/sfu_retired.go); then future webinars
+	 * on GCP/DO video servers are edge-only (docs/edge-delivery.md). */
 	go func() {
 		apiServer.MoveOffRetiredServers(ctx)
 		apiServer.BackfillEdgeDelivery(ctx)

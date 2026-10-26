@@ -1,9 +1,8 @@
-# DigitalOcean (Bangalore) — test video server
+# DigitalOcean (Bangalore) — the production video server
 
-A third LiveKit SFU, in DigitalOcean's Bangalore region, running alongside Hetzner (`default`)
-and Mumbai GCP (`india`) so meetings and edge webinars (the only webinar delivery here, see
-below) can be tried on DigitalOcean before
-anything moves. Why DigitalOcean: meetings make SFU egress the main cost, and droplets include
+The LiveKit SFU, in DigitalOcean's Bangalore region. It started as a test beside Hetzner
+(`default`) and Mumbai GCP (`india`); the Hetzner server was deleted on 2026-10-26 and `india`
+is disabled with its VMs deleted, so every session runs here (docs/HETZNER-SUNSET.md). Why DigitalOcean: meetings make SFU egress the main cost, and droplets include
 pooled transfer (then ~$0.01/GiB) where GCP charges ~$0.12/GB. Nothing else has moved: the API
 is still on Cloud Run, the database on Supabase, recordings on R2, the edge CDN on Bunny.
 
@@ -18,7 +17,7 @@ is still on Cloud Run, the database on Supabase, recordings on R2, the edge CDN 
 | Domain | `152.42.156.192.sslip.io` (TLS via Caddy) |
 | Firewall | `sfu-media`, applied by tag `webinar-sfu`: 22, 80, 443, 7881/tcp, 3478/tcp+udp, 50000–60000/udp |
 | Project | DigitalOcean project `webinar-liv-prod` |
-| Host path | `/opt/livekit` (the `deploy/livekit-hetzner` stack, egress on the box) |
+| Host path | `/opt/livekit` (the `deploy/livekit-box` stack, egress on the box) |
 | LiveKit project id | **`do-blr`**, label "Bangalore (DigitalOcean test)" |
 
 ## On demand (since 2026-10-23)
@@ -83,7 +82,7 @@ off for everyone else since migrations/0152. Creating one starts the box at once
 on the "Starting servers…" screen.
 
 **Deploys.** "Deploy LiveKit (DigitalOcean)" reads the box's state from `live-status`: **down**,
-deleting or failed → it skips (nothing to deploy to; the next droplet syncs `deploy/livekit-hetzner`
+deleting or failed → it skips (nothing to deploy to; the next droplet syncs `deploy/livekit-box`
 from `main` at boot, `sfu-boot.sh`); creating or booting → it waits for
 ready, then deploys as before, behind the same deploy guard. The SSH host key changes with every
 droplet (the workflow scans it each run); the deploy key comes from
@@ -101,12 +100,12 @@ measured hours of the last 30 days. Rates are unchanged ($84/month, $0.125/h).
 | `api/internal/api/sfu_box.go` | the state machine, readiness probe, drain check, alerts, endpoints |
 | `api/internal/doapi` | the DigitalOcean API calls (`doapitest`: the fake the tests use) |
 | `api/internal/store/sfu_box.go`, migrations/0152 | `sfu_box_state` (with the lease), `sfu_box_runs` (hours) |
-| `deploy/digitalocean/sfu-boot.sh` | first boot: mount the volume, link `/opt/livekit`, sync deploy files, merge the Grafana Cloud settings from the user data into `.env` (Alloy; `deploy/livekit-hetzner/README.md`, Grafana Cloud), `redeploy.sh` |
+| `deploy/digitalocean/sfu-boot.sh` | first boot: mount the volume, link `/opt/livekit`, sync deploy files, merge the Grafana Cloud settings from the user data into `.env` (Alloy; `deploy/livekit-box/README.md`, Grafana Cloud), `redeploy.sh` |
 | `deploy/digitalocean/build-image.sh` | what the snapshot carries (Docker, ufw, every image; no caption agent) |
 | `api/internal/api/captions_box.go`, migrations/0163 | the captions box beside it (see "Captions box") |
 | `deploy/digitalocean/build-captions-image.sh`, `captions-boot.sh`, `docker-compose.captions-box.yml` | the captions box's image, first boot and agent |
 | `deploy/digitalocean/migrate-to-volume.sh` | one-time: move the running box's state onto the volume |
-| `deploy/livekit-hetzner/docker-compose.data.yml` | binds the certificates to the volume (`SFU_DATA_DIR`) |
+| `deploy/livekit-box/docker-compose.data.yml` | binds the certificates to the volume (`SFU_DATA_DIR`) |
 | `deploy/ops-box/` | the always-on tick droplet |
 | `.github/workflows/sfu-snapshot.yml` | builds and tags both images, keeps the newest 2 of each; a push changing `deploy/captions/**` (or the captions box's files) rebuilds the captions image only |
 
@@ -195,7 +194,7 @@ doctl compute droplet create sfu-blr-1 --region blr1 --size c-4 --image ubuntu-2
 doctl compute reserved-ip create --droplet-id <droplet id>
 doctl compute firewall create --name sfu-media --tag-names webinar-sfu --inbound-rules "…ports above…"
 
-rsync -az deploy/livekit-hetzner/ root@152.42.156.192:/opt/livekit/
+rsync -az deploy/livekit-box/ root@152.42.156.192:/opt/livekit/
 ssh root@152.42.156.192 \
   'DOMAIN=152.42.156.192.sslip.io ACME_EMAIL=<email> bash /opt/livekit/install.sh'
 ```
@@ -205,26 +204,28 @@ Keys are in `/opt/livekit/.env.keys` on the box (not in git). `docker compose ps
 
 ## Registration
 
-Appended to the `LIVEKIT_PROJECTS` GitHub secret, after `default` and `india`. Since the Hetzner
-sunset (2026-10-24, `api/internal/api/sfu_retired.go`) new rooms go here whatever the order:
-`SFU_BOX_PROJECT` is put first, and a Hetzner project (`default`) takes no new rooms while any
-other project does. An admin can still assign a host to `india` (Admin → Accounts → Video server):
+The `do-blr` entry in the `LIVEKIT_PROJECTS` GitHub secret. New rooms go here whatever the
+order: `SFU_BOX_PROJECT` is put first, and a retired project (a Hetzner one, or any marked
+`"disabled": true`, `api/internal/api/sfu_retired.go`) takes no new rooms and loses the
+webinars pinned to it that have not run yet:
 
 ```json
 {
   "id": "do-blr",
   "label": "Bangalore (DigitalOcean test)",
+  "provider": "do",
   "url": "wss://152.42.156.192.sslip.io",
   "key": "<API_KEY from .env.keys>",
   "secret": "<API_SECRET from .env.keys>",
   "broadcastHlsBase": "https://152.42.156.192.sslip.io/live",
-  "edgePlaybackBase": "https://152.42.156.192.sslip.io/live"
+  "edgePlaybackBase": "https://webinarlivindiav.b-cdn.net/live"
 }
 ```
 
-`edgePlaybackBase` points straight at the box for the test (Caddy sets MediaMTX's CDN secret, so
-direct viewers get one shared, cacheable session). Put a Bunny pull zone in front of it before
-real audiences: change **this** value to the pull zone (`https://<zone>.b-cdn.net/live`). A
+`broadcastHlsBase` is the box itself, which viewers in `EDGE_NEAR_COUNTRIES` play directly;
+`edgePlaybackBase` is the Bunny pull zone (origin: the box) for everyone else
+(docs/edge-delivery.md). Caddy sets MediaMTX's CDN secret, so every viewer shares one
+cacheable session. The pull zone must point at **this** box: a zone has one origin. A
 project's `edgePlaybackBase` wins over the API's `EDGE_PLAYBACK_BASE`, so setting only the env var
 changes nothing. Until then every viewer is on the box: the 2026-10-24 load test ("via the CDN
 playback URL") was in fact all origin, ~1 % of a core and ~1.2-1.4 Mbit/s of the box per viewer, the
@@ -248,8 +249,7 @@ other as `fallbackPlaybackUrl`. Unset, everyone plays `edgePlaybackBase` as befo
 the same plain HLS from the same `/live/*` path, so nothing on the box differs by path.
 
 CI: **Deploy LiveKit (DigitalOcean)** (`.github/workflows/livekit-do-deploy.yml`) syncs
-`deploy/livekit-hetzner/` here and runs `redeploy.sh` on every push to main that changes it, like
-the Hetzner workflow. A `deploy/captions/` change does not deploy here (captions run only on the
+`deploy/livekit-box/` here and runs `redeploy.sh` on every push to main that changes it. A `deploy/captions/` change does not deploy here (captions run only on the
 captions box, below). It needs the repo secrets `DO_SSH_HOST`
 (`root@152.42.156.192`) and `DO_SSH_PRIVATE_KEY` (a deploy key in the box's
 `authorized_keys`, and in `/mnt/sfu-data/ssh/authorized_keys` so every new droplet has it);
@@ -416,7 +416,7 @@ on the box, `docker compose -p captions logs -f` (the worker registers, then "jo
   `captions-blr-1`), and starts Grafana Alloy in the same compose project
   (`docker compose -p captions -f docker-compose.yml -f docker-compose.alloy.yml`). Without the
   file, no Alloy (and `--remove-orphans` removes one from an earlier run).
-- Alloy is the video box's `deploy/livekit-hetzner/docker-compose.alloy.yml` (same pinned image,
+- Alloy is the video box's `deploy/livekit-box/docker-compose.alloy.yml` (same pinned image,
   baked into the `webinar-captions-image` snapshot; the containerd socket mount; 0.5 CPU,
   512 MB cap) with `deploy/digitalocean/alloy/captions.alloy`: host metrics (CPU incl. `nice`,
   where the niced agent's CPU shows; memory, network, disk, load, pressure), cAdvisor per
@@ -443,13 +443,13 @@ rooms caption on each speaker's device and the host sees "server captions unavai
 ## Webinars here are always edge
 
 Every webinar (one-off, instant or a recurring series) on this box is **edge**: the stage on
-WebRTC, the audience on LL-HLS through Bunny. The schedule form offers no Standard / WebRTC
+WebRTC, the audience on plain HLS, from the box or through Bunny (docs/edge-delivery.md). The schedule form offers no Standard / WebRTC
 choice for it and the API stores edge whatever a save sends; there is no account switch (the
-"Edge delivery (beta)" setting went with Hetzner). The same holds for the Mumbai GCP project. The
+"Edge delivery (beta)" setting was removed with the Hetzner sunset). The
 provider comes from the project's `"provider": "do"` (or the id/label: `do-blr` reads as DO). A
 webinar not opened yet is judged by where it will go: the host's assigned project (Admin →
-Accounts → Video server) when it is taking rooms and not Hetzner, else this box. At boot the API
-moves draft and scheduled webinars still pinned to Hetzner here, then moves draft and scheduled
+Accounts → Video server) when it is taking rooms and not retired, else this box. At boot the API
+moves draft and scheduled webinars still pinned to a retired project here, then moves draft and scheduled
 webinars headed here onto edge; live and ended ones, meetings,
 simulive and Zoom are left alone. Meetings stay on WebRTC. See `docs/edge-delivery.md`.
 
@@ -465,12 +465,12 @@ is already running instead: no second Chrome, the audience's stream untouched. T
 put the same 32+ character secret in the API's Cloud Run env as `MIXREC_SECRET` and in
 `/opt/livekit/.env` here as `MIXREC_SECRET` (plus `MIXREC_API_URL` if the API is not
 `https://webinarliv.com`), then `redeploy.sh` (or push: the workflow syncs `mixrec/` with the rest
-of `deploy/livekit-hetzner/`). The API finds it at this box's live origin with `/live` replaced
+of `deploy/livekit-box/`). The API finds it at this box's live origin with `/live` replaced
 by `/mixrec`, i.e. `https://<reserved-ip>.sslip.io/mixrec`, or the `do-blr` project's
 `mixRecorderUrl`. The API also needs `RECORDINGS_BACKEND=s3` (R2): the recorder uploads through
 a URL the API signs, so no bucket credentials live here. Recordings wait as fMP4 segments under
 `/opt/livekit/recordings/` until they are uploaded (~0.8 GB an hour of mix). How it works and the
-fallbacks: `deploy/livekit-hetzner/README.md`, "Recording from the mix".
+fallbacks: `deploy/livekit-box/README.md`, "Recording from the mix".
 
 ## TURN over TLS on 443 (optional, off)
 
@@ -481,7 +481,7 @@ is TLS-terminated by Caddy and passed to LiveKit's TURN on `127.0.0.1:5349`; eve
 to the normal Caddy sites. LiveKit then hands every client
 `turns:turn.152.42.156.192.sslip.io:443?transport=tcp`. No new ports, firewall rules or cost:
 443/tcp is already open in `sfu-media` and ufw, and the reserved IP is unchanged. How it works:
-`deploy/livekit-hetzner/README.md`, "TURN over TLS on 443".
+`deploy/livekit-box/README.md`, "TURN over TLS on 443".
 
 To enable (when the box is idle: Caddy and LiveKit restart, which drops live rooms for a few seconds):
 

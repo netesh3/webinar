@@ -10,7 +10,7 @@
  * platform-wide, so overage is worked out for all coaches together and shared back by GB.
  *
  * Provider defaults, as of 2026-10-22. From the repo (deploy/digitalocean/README.md,
- * deploy/livekit-hetzner/README.md, PLAN.md, lib/admin-costs.ts):
+ * deploy/livekit-box/README.md, PLAN.md, lib/admin-costs.ts):
  *   DigitalOcean c-4 $84/mo ($0.125/h), 5 TB pooled, then $0.01/GiB.
  *   Hetzner CX33 ~€8.49/mo, ~20 TB included, then ~€1/TB.
  *   GCP Mumbai: e2-standard-2 SFU ~$0.07/h and c2d-highcpu-2 worker ~$0.09/h, both started
@@ -49,7 +49,11 @@ export type ApiHost = "cloudrun" | "server";
 export type RecordingStore = "r2" | "b2";
 export type CostGroup = "delivery" | "meetings" | "recording" | "ai" | "messaging" | "fixed" | "info";
 
+/* Every provider with rates: Hetzner stays for pricing sessions that ran on its server before it
+ * was deleted (2026-10-26, lib/host-costs.ts), but the calculator only offers the servers we can
+ * run on (CALCULATOR_PROVIDERS). */
 export const PROVIDERS: Provider[] = ["gcp", "hetzner", "do"];
+export const CALCULATOR_PROVIDERS: Provider[] = ["gcp", "do"];
 
 /** What a coach can be given. Each is a row in the main table, on or off for every coach. */
 export type FeatureKey =
@@ -631,7 +635,10 @@ export function withDefaults(saved: Partial<CostInputs> | null | undefined): Cos
   const s = (saved && typeof saved === "object" ? saved : {}) as Partial<CostInputs> & { recording?: boolean; ai?: boolean };
   const providers = { ...DEFAULT_PROVIDERS };
   for (const p of PROVIDERS) providers[p] = { ...DEFAULT_PROVIDERS[p], ...(s.providers?.[p] ?? {}) };
-  const provider = PROVIDERS.includes(s.provider as Provider) ? (s.provider as Provider) : DEFAULT_INPUTS.provider;
+  // A calculation saved on Hetzner (deleted 2026-10-26) opens on the default provider.
+  const provider = CALCULATOR_PROVIDERS.includes(s.provider as Provider)
+    ? (s.provider as Provider)
+    : DEFAULT_INPUTS.provider;
   const legacy: Partial<Record<FeatureKey, boolean>> = {};
   if (typeof s.recording === "boolean") legacy.recording = s.recording;
   if (typeof s.ai === "boolean") legacy.ai = s.ai;
@@ -1281,12 +1288,11 @@ export function quotaWorstCase(i: CostInputs): { plan: string; gb: number; usd: 
   });
 }
 
-/** The same inputs on every provider, for the side-by-side. */
-export function compareProviders(inputs: CostInputs): Record<Provider, CostResult> {
-  return Object.fromEntries(PROVIDERS.map((p) => [p, calculateCost({ ...inputs, provider: p })])) as Record<
-    Provider,
-    CostResult
-  >;
+/** The same inputs on every provider the calculator offers, for the side-by-side. */
+export function compareProviders(inputs: CostInputs): Partial<Record<Provider, CostResult>> {
+  return Object.fromEntries(
+    CALCULATOR_PROVIDERS.map((p) => [p, calculateCost({ ...inputs, provider: p })]),
+  ) as Partial<Record<Provider, CostResult>>;
 }
 
 // ---------------------------------------------------------------- minimum price

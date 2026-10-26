@@ -45,13 +45,13 @@ chmod 600 "$ENV_FILE"
 tmp="$(mktemp -d)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 180 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$tmp" --strip-components=1 --wildcards '*/deploy/captions/*' '*/deploy/digitalocean/*' \
-    '*/deploy/livekit-hetzner/docker-compose.alloy.yml'; then
+    '*/deploy/livekit-box/docker-compose.alloy.yml'; then
   mkdir -p "$SRC" "$BOX" "${BOX}/alloy"
   rsync -a --delete --exclude 'tests' --exclude '__pycache__' --exclude '.pytest_cache' \
     "${tmp}/deploy/captions/" "${SRC}/"
   install -m 644 "${tmp}/deploy/digitalocean/docker-compose.captions-box.yml" "${BOX}/docker-compose.yml"
   install -m 755 "${tmp}/deploy/digitalocean/captions-boot.sh" /usr/local/sbin/webinarliv-captions-boot.sh
-  install -m 644 "${tmp}/deploy/livekit-hetzner/docker-compose.alloy.yml" "${BOX}/docker-compose.alloy.yml"
+  install -m 644 "${tmp}/deploy/livekit-box/docker-compose.alloy.yml" "${BOX}/docker-compose.alloy.yml"
   install -m 644 "${tmp}/deploy/digitalocean/alloy/captions.alloy" "${BOX}/alloy/config.alloy"
   log "agent synced from ${REPO}@${REF}"
 else

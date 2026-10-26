@@ -11,7 +11,7 @@ import {
   GROUP_LABELS,
   PLAN_CAPS,
   PRESETS,
-  PROVIDERS,
+  CALCULATOR_PROVIDERS,
   quotaWorstCase,
   RECORDING_STORES,
   shareMbps,
@@ -44,7 +44,7 @@ import { Card, SectionTitle, Stat } from "./ui";
 
 const STORAGE_KEY = "admin-cost-calculator-v2";
 const GROUP_ORDER: CostGroup[] = ["delivery", "meetings", "recording", "ai", "messaging", "fixed", "info"];
-const PROVIDER_NAMES: Record<Provider, string> = { gcp: "GCP", hetzner: "Hetzner", do: "DigitalOcean" };
+const PROVIDER_NAMES: Record<Provider, string> = { gcp: "GCP", hetzner: "Hetzner (retired)", do: "DigitalOcean" };
 
 // Also read by the Cost by host tab (admin-host-costs.tsx), which prices usage at these rates.
 export function loadInputs(): CostInputs {
@@ -180,7 +180,7 @@ export function AdminCostCalculator() {
               aria-label="Video provider"
               className="inline-flex rounded-lg border border-line bg-surface-2 p-0.5"
             >
-              {PROVIDERS.map((p) => (
+              {CALCULATOR_PROVIDERS.map((p) => (
                 <button
                   key={p}
                   type="button"
@@ -374,8 +374,9 @@ export function AdminCostCalculator() {
                     </tr>
                   </thead>
                   <tbody>
-                    {PROVIDERS.map((p) => {
+                    {CALCULATOR_PROVIDERS.map((p) => {
                       const c = compare[p];
+                      if (!c) return null;
                       return (
                         <tr
                           key={p}

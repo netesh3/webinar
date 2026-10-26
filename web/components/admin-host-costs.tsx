@@ -46,7 +46,8 @@ const PRESETS: { id: Exclude<RangePreset, "custom">; label: string }[] = [
 const PROVIDER_FILTERS = [
   { id: "", label: "All providers" },
   { id: "gcp", label: "GCP" },
-  { id: "hetzner", label: "Hetzner" },
+  // Past sessions only: the Hetzner server was deleted on 2026-10-26.
+  { id: "hetzner", label: "Hetzner (retired)" },
   { id: "do", label: "DigitalOcean" },
 ];
 

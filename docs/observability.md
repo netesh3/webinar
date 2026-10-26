@@ -137,7 +137,7 @@ the stack from these (`asserts:*` ~650, `traces_spanmetrics_*` ~100, also `job="
 | **Per instance** | **~3,900** | **~720** |
 | `webcast-api` active (× ~2.7 instances in the window) | 10,685 | ~1,950 |
 | Grafana-derived `asserts:*` + `traces_spanmetrics_*` | ~750 | ~550 (they follow the routes) |
-| `livekit` (Alloy, `deploy/livekit-hetzner/alloy/config.alloy`) | 815 | ~300 |
+| `livekit` (Alloy, `deploy/livekit-box/alloy/config.alloy`) | 815 | ~300 |
 | `node` + `cadvisor` + `mediamtx` | ~220 | ~220 |
 | **Total** | **~11,800** | **~3,000** |
 

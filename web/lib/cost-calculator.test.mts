@@ -141,11 +141,14 @@ near(line(g, "origin"), 12 * 3 * 0.5228 * 0.12, 0.02);
 assert.ok(has(g, "cloudrun"));
 assert.equal(line(g, "box"), 0);
 
-// The side-by-side: same inputs, DigitalOcean and Hetzner beat GCP once meetings run.
+// The side-by-side: same inputs, DigitalOcean beats GCP once meetings run. Hetzner is not
+// offered any more (its server was deleted on 2026-10-26).
 const c = compareProviders(DEFAULT_INPUTS);
-assert.ok(c.do.monthUsd < c.gcp.monthUsd);
-assert.ok(c.hetzner.monthUsd < c.gcp.monthUsd);
-assert.ok(c.gcp.perParticipantHourUsd > c.do.perParticipantHourUsd);
+assert.ok(c.do!.monthUsd < c.gcp!.monthUsd);
+assert.ok(c.gcp!.perParticipantHourUsd > c.do!.perParticipantHourUsd);
+assert.equal(c.hetzner, undefined);
+// A calculation saved on Hetzner opens on the default provider.
+assert.equal(withDefaults({ provider: "hetzner" }).provider, "do");
 
 // Recording sizes by type: edge records the mix (≈0.52 GB/h) with no compute; meetings and
 // standard delivery use a 1.75 GB/h composite with a worker.
@@ -177,10 +180,9 @@ near(worst[3].platformUsd, worst[3].usd * 20, 1e-9);
 assert.equal(quotaFor(300).plan, "Business");
 assert.equal(quotaFor(123).plan, "Business");
 near(d.recordedHours, 37);
-// Share recorded scales it; Hetzner composites on the box cost nothing.
+// Share recorded scales it.
 const halfRec = calculateCost({ ...DEFAULT_INPUTS, recordMeetingsPercent: 50 });
 near(line(halfRec, "rec-worker"), line(d, "rec-worker") / 2, 1e-6);
-assert.equal(line(calculateCost({ ...DEFAULT_INPUTS, provider: "hetzner" }), "rec-worker"), 0);
 // B2 charges for replay; R2 doesn't.
 assert.equal(line(d, "rec-replay"), 0);
 near(line(calculateCost({ ...DEFAULT_INPUTS, recordingStore: "b2" }), "rec-replay"), 8 * 30 * edgeGbPerViewerHour(1000, 96) * 0.01, 1e-6);
@@ -348,7 +350,7 @@ near(line(pushed, "push"), -2160 * 0.0002, 1e-12);
 near(pushed.monthUsd, d.monthUsd - 2160 * 0.0002, 1e-9);
 
 // Mix recording (#620): edge webinars' recordings need no worker on any provider.
-for (const prov of ["do", "gcp", "hetzner"] as const) {
+for (const prov of ["do", "gcp"] as const) {
   const r0 = calculateCost({ ...DEFAULT_INPUTS, provider: prov, meetingsPerMonth: 0 });
   assert.equal(line(r0, "rec-worker"), 0, prov);
 }

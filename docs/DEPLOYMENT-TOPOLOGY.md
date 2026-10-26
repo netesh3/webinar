@@ -45,7 +45,7 @@ flowchart LR
 
   subgraph data [Data and media]
     SB["Supabase Postgres\nap-south-1 session pooler"]
-    LK["Hetzner LiveKit\nwss://….sslip.io"]
+    LK["LiveKit video box (DigitalOcean)\nwss://….sslip.io"]
   end
 
   Browser -->|"HTTPS HTML/JS + /api"| Web
@@ -61,7 +61,7 @@ flowchart LR
 
 1. **Page load / SSR** — browser → Cloudflare Worker → (optional) Go API via `API_INTERNAL_URL`.
 2. **Browser API calls** — browser → Worker `/api/*` (same origin; `NEXT_PUBLIC_API_BASE` empty) → proxied to Cloud Run (`API_INTERNAL_URL`). Session cookie is first-party on the Worker host so middleware can gate Host/Admin/My webinars. Direct browser→Cloud Run is not used in this topology (cookie would land on `*.run.app` and middleware would bounce authenticated routes to login).
-3. **Media** — browser ↔ Hetzner LiveKit directly (API only mints JWTs and calls room APIs; media UDP/TCP never goes through Cloud Run).
+3. **Media** — browser ↔ the LiveKit video box directly (API only mints JWTs and calls room APIs; media UDP/TCP never goes through Cloud Run).
 4. **Edge audience video** — plain HLS (fMP4, 1s segments, ~3s behind live; 2s and ~6s until 2026-10-26) from MediaMTX on the video box at `/live/<slug>/index.m3u8`, played either **directly from the box** or **through the Bunny pull zone**, chosen per viewer at join: with `EDGE_NEAR_COUNTRIES` (e.g. `IN`), viewers in those countries (or of unknown country) play the box, everyone else the CDN, each with the other as `fallbackPlaybackUrl`. The country comes from Cloudflare via the Worker's `X-Viewer-Country` header (the Worker drops the client's own CF-* headers). Moved from LL-HLS to plain HLS on 2026-10-25 after Bunny's request coalescing stalled LL-HLS blocking reloads for whole edges (89 viewers on one request); details in [edge-delivery.md](edge-delivery.md), and every delivery decision with its evidence in [decisions/2026-10-26-audience-delivery.md](decisions/2026-10-26-audience-delivery.md).
 
 Health check on the API: **`GET /readyz`** (prefer this over `/healthz` on Cloud Run).
@@ -76,14 +76,14 @@ flowchart TD
   GH["GitHub netesh3/webinar"]
   WF["Actions: Deploy API Cloud Run"]
   WFCF["Actions: Deploy Web Cloudflare"]
-  WFLK["Actions: Deploy LiveKit Hetzner"]
+  WFLK["Actions: Deploy LiveKit DigitalOcean"]
   SA["Secret GCP_SA_KEY\ndeploy SA"]
   Build["gcloud builds submit\napi/"]
   Img["Artifact Registry image\nasia-south1"]
   Deploy["gcloud run deploy webcast-api\nasia-south1"]
   Secrets["Repo secrets\nDATABASE_URL SESSION_SECRET LIVEKIT CORS WEB"]
   CFTok["Secret CLOUDFLARE_API_TOKEN\nvar CLOUDFLARE_ACCOUNT_ID"]
-  SSH["Secrets HETZNER_SSH_*"]
+  SSH["Secrets DO_SSH_*"]
   Opt["/opt/livekit\nrsync + redeploy.sh"]
 
   Dev --> GH
@@ -108,7 +108,7 @@ flowchart TD
 | Actions → **Deploy API (Cloud Run)** → Run workflow | API → Cloud Run (manual) |
 | Push to `main` changing `web/**` or `.github/workflows/cloudflare-workers-deploy.yml` | Frontend → Cloudflare Workers (auto) |
 | Actions → **Deploy Web (Cloudflare Workers)** → Run workflow | Frontend → Cloudflare Workers (manual) |
-| Push to `main` changing `deploy/livekit-hetzner/**` or `.github/workflows/livekit-do-deploy.yml` | LiveKit → the DigitalOcean box `/opt/livekit` (auto, skipped while the box is down; does **not** overwrite `.env.keys`). Not `deploy/captions/**`: captions run only on the captions box, whose snapshot that change rebuilds (`sfu-snapshot.yml`); the video box is not restarted |
+| Push to `main` changing `deploy/livekit-box/**` or `.github/workflows/livekit-do-deploy.yml` | LiveKit → the DigitalOcean box `/opt/livekit` (auto, skipped while the box is down; does **not** overwrite `.env.keys`). Not `deploy/captions/**`: captions run only on the captions box, whose snapshot that change rebuilds (`sfu-snapshot.yml`); the video box is not restarted |
 | Actions → **Deploy LiveKit (DigitalOcean)** → Run workflow | LiveKit → the DigitalOcean box (manual) |
 | `cd web && npm run deploy` (OpenNext) | Frontend → Cloudflare Workers (local / fallback) |
 
@@ -118,7 +118,7 @@ Required (DigitalOcean video box): `DO_SSH_HOST`, `DO_SSH_PRIVATE_KEY`, `DO_API_
 Optional: `CORS_ORIGINS`, `WEB_BASE_URL`, `ADMIN_EMAILS` / `ADMIN_PASSWORD` (bootstrap production admin on fresh DB).  
 Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`), `CLOUDFLARE_ACCOUNT_ID`.
 
-Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). LiveKit on Hetzner: [`deploy/livekit-hetzner/README.md`](../deploy/livekit-hetzner/README.md). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
+Local mirror of env (gitignored): [`deploy/cloudrun.env`](../deploy/cloudrun.env.example). Supabase notes: [`deploy/SUPABASE.md`](../deploy/SUPABASE.md). The video box stack: [`deploy/livekit-box/README.md`](../deploy/livekit-box/README.md) (was `deploy/livekit-hetzner/`; the Hetzner server was deleted 2026-10-26, [HETZNER-SUNSET.md](HETZNER-SUNSET.md)). Frontend Worker notes: [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md).
 
 ### Deploy guard (no deploy while a session is live)
 
@@ -152,7 +152,7 @@ A video box deploy restarts LiveKit, so skipping its guard disconnects a live se
 | Cloudflare Worker | HTML/SSR, static assets, edge routing | WebRTC media; durable DB |
 | Cloud Run API | Auth sessions, webinar state, LiveKit tokens, chat/polls APIs | Media forwarding; long-lived disk recordings (disabled: `RECORDINGS_ENABLED=false`) |
 | Supabase | Postgres schema + data; migrations applied on API boot / `make migrate` | Application logic |
-| Hetzner LiveKit | Rooms, tracks, attendee `Hidden` / publish permissions | Business roles (those come from API JWTs + DB) |
+| LiveKit (video box) | Rooms, tracks, attendee `Hidden` / publish permissions | Business roles (those come from API JWTs + DB) |
 
 ---
 

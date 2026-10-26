@@ -29,7 +29,7 @@ import {
  * Zoom and Teams both ship a trained denoiser instead of a DSP filter, which is the
  * actual difference in quality. LiveKit's own answer to that is Krisp
  * (@livekit/krisp-noise-filter) — but it only runs against LiveKit Cloud's licensing,
- * and this deployment runs its own SFU on Hetzner, so that package is a dead end here.
+ * and this deployment runs its own SFU (self-hosted LiveKit), so that package is a dead end here.
  * RNNoise (xiph.org, BSD-licensed, the same model family Discord and Mumble built
  * their reputation on) is the open, self-hostable equivalent: also a trained model,
  * also real-time, and @sapphi-red/web-noise-suppressor packages it as a plain

@@ -43,7 +43,7 @@ rm -rf "$src"
 mkdir -p "$src" /opt/captions /opt/captions-box
 curl -fsSL --retry 5 -m 300 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$src" --strip-components=1 --wildcards '*/deploy/captions/*' '*/deploy/digitalocean/*' \
-    '*/deploy/livekit-hetzner/docker-compose.alloy.yml'
+    '*/deploy/livekit-box/docker-compose.alloy.yml'
 rsync -a --delete --exclude 'tests' --exclude '__pycache__' --exclude '.pytest_cache' \
   "${src}/deploy/captions/" /opt/captions/
 install -m 644 "${src}/deploy/digitalocean/docker-compose.captions-box.yml" /opt/captions-box/docker-compose.yml
@@ -51,7 +51,7 @@ install -m 755 "${src}/deploy/digitalocean/captions-boot.sh" /usr/local/sbin/web
 # Grafana Alloy, started by captions-boot.sh only with the API's GRAFANA_CLOUD_* settings: the
 # video box's compose file (same pinned image, mounts and caps) with this box's config.
 mkdir -p /opt/captions-box/alloy
-install -m 644 "${src}/deploy/livekit-hetzner/docker-compose.alloy.yml" /opt/captions-box/docker-compose.alloy.yml
+install -m 644 "${src}/deploy/livekit-box/docker-compose.alloy.yml" /opt/captions-box/docker-compose.alloy.yml
 install -m 644 "${src}/deploy/digitalocean/alloy/captions.alloy" /opt/captions-box/alloy/config.alloy
 echo "$SEED_MODELS" >/etc/webinarliv-captions-seed
 

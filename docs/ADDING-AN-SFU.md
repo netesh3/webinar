@@ -2,9 +2,9 @@
 
 Production video runs on `do-blr`, the on-demand DigitalOcean box in Bangalore
 ([deploy/digitalocean/README.md](../deploy/digitalocean/README.md), `SFU_BOX_PROJECT`).
-`india` (Mumbai, GCP) is a test project. The old Hetzner SFU (fsn1), project id **`default`**
-from the legacy `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` secrets, is sunset
-(2026-10-24): it takes no new rooms, and its entry is removed once nothing is pinned to it.
+The Hetzner SFU (project **`default`**, from the legacy `LIVEKIT_URL` / `LIVEKIT_API_KEY` /
+`LIVEKIT_API_SECRET` secrets) was deleted on 2026-10-26, and the GCP test project `india`
+(Mumbai) is disabled with its VMs deleted ([HETZNER-SUNSET.md](HETZNER-SUNSET.md)).
 
 The API supports several self-hosted LiveKit projects at once (`LIVEKIT_PROJECTS`), and an
 admin can send one host's new webinars to a chosen project from the admin Accounts list
@@ -23,27 +23,35 @@ admin can send one host's new webinars to a chosen project from the admin Accoun
   its id/label, where **anything unrecognised reads as Hetzner** — so always give a new entry
   its `"provider"`. Draft and scheduled webinars still pinned to Hetzner move at boot or at their
   next join (not while LiveKit reports people in the old room); live and ended ones stay.
-- A disabled project still serves the webinars already pinned to it; it just takes no new ones.
-  If a host's assigned project is disabled or removed, their new webinars quietly use the
-  default order.
+- A disabled project takes no new rooms and is **retired** like Hetzner (2026-10-26): draft and
+  scheduled webinars pinned to it move to the box at boot or at their next join; a session live
+  on it keeps it until it ends. If a host's assigned project is disabled or removed, their new
+  webinars quietly use the default order.
 - A live webinar is never moved, even if its project is removed (it gets a clear 503). A
   scheduled one whose project is removed is re-pinned on its next join.
 
 ## `LIVEKIT_PROJECTS`
 
 Ids are permanent (they are in the database). Order decides where unassigned hosts go when
-`SFU_BOX_PROJECT` is not set. The template below is the general shape (a `default` entry from
-the legacy trio plus a second server, which should state `"provider"`).
+`SFU_BOX_PROJECT` is not set. The template below is the general shape: the on-demand box plus a
+second server, each stating its `"provider"`.
 
 <!-- LIVEKIT_PROJECTS template: begin -->
 ```json
 [
   {
-    "id": "default",
-    "label": "Hetzner (default)"
+    "id": "do-blr",
+    "label": "Bangalore (DigitalOcean)",
+    "provider": "do",
+    "url": "wss://203.0.113.10.sslip.io",
+    "key": "<box API key>",
+    "secret": "<box API secret>",
+    "broadcastHlsBase": "https://203.0.113.10.sslip.io/live",
+    "edgePlaybackBase": "https://example-zone.b-cdn.net/live"
   },
   {
     "id": "edge2",
+    "provider": "do",
     "label": "Second server",
     "url": "wss://sfu2.webinarliv.com",
     "key": "<second server API key>",
@@ -54,21 +62,23 @@ the legacy trio plus a second server, which should state `"provider"`).
 ```
 <!-- LIVEKIT_PROJECTS template: end -->
 
-- `default` leaves out `url`, `key` and `secret` (and `httpUrl`): it takes them from
-  `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (and `LIVEKIT_HTTP_URL`), so keep those
-  three secrets set and never copy them into the list. Anything it does state wins. Ids are stored in the database: add and disable freely, **never rename**.
+- Every entry states its own `url`, `key` and `secret`. (An entry with the id `default` may
+  still leave them out and take them from the legacy `LIVEKIT_URL` / `LIVEKIT_API_KEY` /
+  `LIVEKIT_API_SECRET`; production no longer has one.) Ids are stored in the database: add and
+  disable freely, **never rename**. To take a server out, mark it `"disabled": true` first
+  (what is pinned to it moves), and remove the entry once nothing live is on it.
 - Set it as the `LIVEKIT_PROJECTS` GitHub secret and re-run **Deploy API (Cloud Run)**. While it
   is set the legacy trio is ignored; deleting it falls back to the legacy trio.
 - `api/internal/config` test `TestTheAddingAnSFUTemplateLoads` parses this exact block.
 
 ## Setting up the second box
 
-The stack in `deploy/livekit-hetzner/` is provider-agnostic (Ubuntu 22.04/24.04, root SSH, a
+The stack in `deploy/livekit-box/` is provider-agnostic (Ubuntu 22.04/24.04, root SSH, a
 public IPv4 the box itself sees, ≥4 vCPU / 8 GB). Inbound ports: 22, 80, 443, 7881/tcp,
 3478/udp+tcp, 50000–60000/udp.
 
 1. Create the server and a DNS-only A record for its hostname (e.g. `sfu2.webinarliv.com`).
-2. Install once as root: copy `deploy/livekit-hetzner/` to `/opt/livekit` and run
+2. Install once as root: copy `deploy/livekit-box/` to `/opt/livekit` and run
    `DOMAIN=sfu2.webinarliv.com ACME_EMAIL=… bash /opt/livekit/install.sh`. Read the generated
    key/secret from `/opt/livekit/.env.keys` for `LIVEKIT_PROJECTS`.
    - If the domain is not `<ip>.sslip.io`, pin the advertised IP: after install, set

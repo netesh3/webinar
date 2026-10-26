@@ -43,8 +43,8 @@ rm -rf "$src"
 mkdir -p "$src"
 curl -fsSL --retry 5 -m 300 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$src" --strip-components=1 --wildcards \
-    '*/deploy/livekit-hetzner/*' '*/deploy/digitalocean/*'
-stack="${src}/deploy/livekit-hetzner"
+    '*/deploy/livekit-box/*' '*/deploy/digitalocean/*'
+stack="${src}/deploy/livekit-box"
 
 log "images"
 cd "$stack"

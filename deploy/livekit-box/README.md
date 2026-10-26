@@ -1,64 +1,55 @@
 # Self-hosted LiveKit box (the video-server stack)
 
-> **The Hetzner server is sunset (2026-10-24).** This directory is named after it but is the
-> stack every video server runs: the on-demand DigitalOcean box (`deploy/digitalocean/`,
-> `.github/workflows/livekit-do-deploy.yml`, `sfu-snapshot.yml`, `sfu-boot.sh`) and the Mumbai
-> GCP test box use these files. The Hetzner deploy and log workflows were removed, and the API
-> sends no new room to a Hetzner project (`api/internal/api/sfu_retired.go`). The Hetzner
-> specifics below (`webcast-livekit`, `88.198.141.104`, `HETZNER_SSH_*`) are history. Renaming
-> the directory (e.g. `deploy/livekit-box/`) is a follow-up: the DO image build, boot script,
-> workflows and docs all name this path.
+The stack every video server runs: LiveKit, Egress (the mix), MediaMTX (the live HLS origin),
+the mix recorder, Caddy, Prometheus/Grafana and Alloy. Today that is the on-demand
+DigitalOcean box (`deploy/digitalocean/`: `sfu-boot.sh`, `build-image.sh`, the
+`webinar-sfu-image` snapshot) and any extra box slots (`SFU_BOX_SLOTS`). This directory was
+`deploy/livekit-hetzner/` until 2026-10-26, named after the first server; that Hetzner server
+was deleted on 2026-10-26 (`docs/HETZNER-SUNSET.md`).
 
-Minimum viable SFU for ~200 webinar subscribers.
-
-| Item | Value (the sunset Hetzner box) |
+| Item | Value (the DigitalOcean box) |
 |------|--------|
-| Server | `webcast-livekit` · **CX33** (4 vCPU / 8 GB) · `fsn1` |
-| IPv4 | `88.198.141.104` (or `hcloud server describe webcast-livekit`) |
-| Domain | `88.198.141.104.sslip.io` (TLS via Caddy) |
-| Cost | hourly; ~€8.49/mo if left on 24/7 (EU) |
-| Host path | `/opt/livekit` |
+| Server | `sfu-blr-1`, created on demand from the newest `webinar-sfu-image` snapshot |
+| Domain | `<reserved IP>.sslip.io` (TLS via Caddy) |
+| Host path | `/opt/livekit` (a link to the `sfu-data` volume) |
 
 ## CI auto-deploy
 
 **Deploy LiveKit (DigitalOcean)** (`.github/workflows/livekit-do-deploy.yml`) is the only
-workflow that deploys this stack now. The Hetzner one (`livekit-hetzner-deploy.yml`) worked
-the same way:
+workflow that deploys this stack:
 
-- **Auto:** push to `main` when `deploy/livekit-hetzner/**` (or the workflow) changes
+- **Auto:** push to `main` when `deploy/livekit-box/**` (or the workflow) changes
 - **Manual:** Actions → workflow_dispatch
 
 It rsyncs compose/Caddyfile/template/scripts to `/opt/livekit`, runs `redeploy.sh`
 (regenerates `livekit.yaml` from the template + existing `.env.keys`, preserves
-`node_ip` / `use_external_ip`), then `docker compose pull && up -d`.
+`node_ip` / `use_external_ip`), then `docker compose pull && up -d`. A box that is down gets
+the files at its next boot instead (`sfu-boot.sh` syncs this directory from the repo).
 
 **Never overwritten:** `.env.keys`, `.env`, and the generated `livekit.yaml` during
 rsync (yaml is regenerated on the server). API keys are **not** rotated unless
 `.env.keys` is missing (fresh `install.sh` only).
 
-Repo secrets: `HETZNER_SSH_HOST` (`root@88.198.141.104`), `HETZNER_SSH_PRIVATE_KEY`.
+## Install on a new server (first boot)
 
-## Install / reinstall (first boot)
+The on-demand box never runs this: its keys and certificates are on the `sfu-data` volume
+(deploy/digitalocean/README.md). For a server of your own (docs/ADDING-AN-SFU.md):
 
 ```bash
-scp -i ~/.ssh/hetzner_sancharees deploy/livekit-hetzner/* root@SERVER:/opt/livekit/
-ssh -i ~/.ssh/hetzner_sancharees root@SERVER \
-  'DOMAIN=IP.sslip.io ACME_EMAIL=you@example.com bash /opt/livekit/install.sh'
+scp deploy/livekit-box/* root@SERVER:/opt/livekit/
+ssh root@SERVER 'DOMAIN=IP.sslip.io ACME_EMAIL=you@example.com bash /opt/livekit/install.sh'
 ```
 
 Manual refresh after editing files locally:
 
 ```bash
 rsync -az --exclude '.env.keys' --exclude '.env' --exclude 'livekit.yaml' \
-  -e 'ssh -i ~/.ssh/hetzner_sancharees' \
-  deploy/livekit-hetzner/ root@SERVER:/opt/livekit/
-ssh -i ~/.ssh/hetzner_sancharees root@SERVER '/opt/livekit/redeploy.sh'
+  deploy/livekit-box/ root@SERVER:/opt/livekit/
+ssh root@SERVER '/opt/livekit/redeploy.sh'
 ```
 
-Keys live in `/opt/livekit/.env.keys` (not in git). Point Cloud Run at:
-
-- `LIVEKIT_URL=wss://IP.sslip.io`
-- `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` from `.env.keys`
+Keys live in `/opt/livekit/.env.keys` (not in git). Add the server to `LIVEKIT_PROJECTS` with
+its own `url`, `key` and `secret` (docs/ADDING-AN-SFU.md).
 
 ## Metrics: Prometheus + Grafana (always on)
 
@@ -71,8 +62,8 @@ directory, so no new `ufw allow` rules are needed:
 - **Password — no SSH needed:** set repo secret `GRAFANA_ADMIN_PASSWORD`
   (GitHub → repo → Settings → Secrets and variables → Actions → New
   repository secret) to whatever password you want, then trigger a deploy
-  (push to `deploy/livekit-hetzner/**`, or Actions → **Deploy LiveKit
-  (Hetzner)** → Run workflow). `redeploy.sh` picks it up over SSH and writes
+  (push to `deploy/livekit-box/**`, or Actions → **Deploy LiveKit
+  (DigitalOcean)** → Run workflow). `redeploy.sh` picks it up over SSH and writes
   it into the server's `.env.keys`, overwriting any previous value — so this
   also works to rotate the password later. Leave the secret unset and
   `redeploy.sh` self-heals with a random one instead, but then the only way
@@ -200,12 +191,13 @@ tracking needed once the dashboard above is live.
 
 Edge webinars' audiences watch a mixed program, not SFU tracks. Egress composites the room
 (on this box, or on egress workers in remote-egress mode) and pushes RTMP to MediaMTX, which
-repackages it as **LL-HLS** without re-encoding. Caddy serves it on `/live/<slug>/index.m3u8`,
+repackages it as **plain HLS** (1 s fMP4 segments; LL-HLS was dropped on 2026-10-26,
+docs/decisions/2026-10-26-audience-delivery.md) without re-encoding. Caddy serves it on `/live/<slug>/index.m3u8`,
 and viewers play it through a CDN pull zone (Bunny) or directly. See `docs/edge-delivery.md`.
 
 | Piece | Where |
 |---|---|
-| MediaMTX | `docker-compose.egress.yml` · `:1935` RTMP in, `127.0.0.1:8888` LL-HLS out (behind Caddy) |
+| MediaMTX | `docker-compose.egress.yml` · `:1935` RTMP in, `127.0.0.1:8888` HLS out (behind Caddy) |
 | Public origin | `{BROADCAST_HLS_BASE}/<slug>/index.m3u8`, or the project's `edgePlaybackBase` |
 
 ### Recording from the mix (optional)
@@ -301,9 +293,5 @@ builds the image and runs `caddy validate` on `Caddyfile.turn443`.
 
 ## Stop paying
 
-```bash
-hcloud server delete webcast-livekit
-hcloud firewall delete webcast-livekit-fw
-```
-
-Sancharees (`sancharees` CX23) is untouched.
+The on-demand box is deleted by the API after a quiet spell; see deploy/digitalocean/README.md
+("Cost") for what stays billable (the volume, the reserved IP, the snapshots).

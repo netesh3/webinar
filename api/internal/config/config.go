@@ -101,7 +101,7 @@ type Config struct {
 	CaptionsSecret string
 	/* MixRecSecret switches on recording from the audience mix (api/mixrec.go): the shared
 	 * secret between this API and the mix recorder on each SFU box
-	 * (deploy/livekit-hetzner/mixrec), sent both ways in X-Mixrec-Secret. Empty means a
+	 * (deploy/livekit-box/mixrec), sent both ways in X-Mixrec-Secret. Empty means a
 	 * recording started while an edge mix runs is its own compositor, as before. At least 32
 	 * characters. */
 	MixRecSecret string
@@ -1165,7 +1165,7 @@ func countryList(v string) []string {
 func (c Config) LiveKitProjectByID(id string) (LiveKitProject, bool) { return c.liveKitProject(id) }
 
 /* MixRecorderURLFor is the mix recorder on the SFU box a project's rooms live on: the
- * sidecar that records the edge mix from MediaMTX (deploy/livekit-hetzner/mixrec). Empty
+ * sidecar that records the edge mix from MediaMTX (deploy/livekit-box/mixrec). Empty
  * when record-from-mix is off (no MIXREC_SECRET) or there is no live origin to find it by.
  *
  * The project's mixRecorderUrl, else MIXREC_URL, else the box's own Caddy: the live origin

@@ -331,7 +331,7 @@ console.log("\njudge");
 /* The bug this replaced, as tests.
  *
  * The thresholds used to be absolute: bad at rtt >= 300, good at rtt <= 180. This deployment's
- * SFU is on Hetzner EU with an audience in India, and the measured round trip is ~200–250 ms —
+ * SFU was in the EU (Hetzner, deleted 2026-10-26) with an audience in India, and the measured round trip is ~200–250 ms —
  * so a presenter was stepped down by ordinary jitter and could never climb back, because the
  * recovery condition required a latency the speed of light does not permit. Every case below
  * fails against those numbers and passes against a floor-relative excess.
@@ -800,7 +800,7 @@ console.log("\nfloorFrom");
   );
 }
 
-/* The banner: ~250 ms to Hetzner EU must not read as poor / reduced by default. */
+/* The banner: ~250 ms to a far SFU (as Hetzner EU was for India) must not read as poor / reduced by default. */
 console.log("\ndescribeQuality for EU SFU + IN clients");
 {
   const base: NetworkHealth = {

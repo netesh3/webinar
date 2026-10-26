@@ -366,7 +366,7 @@ Integration tests need `TEST_DATABASE_URL` and skip without it.
 ## Deploying
 
 Current managed topology (Cloudflare Workers + Cloud Run + Supabase + LiveKit on
-an on-demand DigitalOcean box; the Hetzner box is sunset): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md). The
+an on-demand DigitalOcean box; the Hetzner box was deleted on 2026-10-26): [`docs/DEPLOYMENT-TOPOLOGY.md`](docs/DEPLOYMENT-TOPOLOGY.md). The
 single-VM `docker-compose.prod.yml` stack this section used to document
 (DEPLOY.md / DEPLOY-ANYWHERE.md, and the `make deploy*` targets) was removed —
 it was only ever used for the earlier AWS setup and production has run the
@@ -417,7 +417,7 @@ writable storage. The API listens on Cloud Run's `PORT` when `ADDR` is unset.
 | Path changes on `main` | Workflow | Destination |
 |---|---|---|
 | `api/**`, `deploy/cloudrun-deploy.sh`, `deploy/cloudrun.env.example`, `.github/workflows/cloudrun-deploy.yml` | **Deploy API (Cloud Run)** | Cloud Run |
-| `deploy/livekit-hetzner/**`, `.github/workflows/livekit-do-deploy.yml` | **Deploy LiveKit (DigitalOcean)** | `/opt/livekit` on the on-demand DO box (the Hetzner box is sunset) |
+| `deploy/livekit-box/**`, `.github/workflows/livekit-do-deploy.yml` | **Deploy LiveKit (DigitalOcean)** | `/opt/livekit` on the on-demand DO box |
 | `deploy/captions/**`, the captions box's files in `deploy/digitalocean/` | **Video server image (DigitalOcean snapshot)**, captions image only | the `webinar-captions-image` snapshot (captions never run on the video box) |
 | `web/**` | _(manual today)_ | Cloudflare Workers — `cd web && npm run deploy` |
 
@@ -447,7 +447,7 @@ gh secret set DATABASE_URL -R netesh3/webinar   # paste Supabase URI when prompt
 ```
 
 Leave `CLOUD_SQL_INSTANCE` unset when using Supabase. LiveKit install notes:
-[`deploy/livekit-hetzner/README.md`](deploy/livekit-hetzner/README.md).
+[`deploy/livekit-box/README.md`](deploy/livekit-box/README.md).
 
 ## Scaling past 500
 

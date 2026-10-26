@@ -32,7 +32,7 @@ import (
  * tees it to one more RTMP sink, exactly as it does when a host adds YouTube mid-session
  * (attachDestinations), and the audience's output is not touched. MediaMTX records every
  * rec/* path to fMP4 segments (mediamtx.yml.template). The mix recorder, a sidecar next to
- * MediaMTX (deploy/livekit-hetzner/mixrec), joins those segments into one MP4 when the
+ * MediaMTX (deploy/livekit-box/mixrec), joins those segments into one MP4 when the
  * recording stops and PUTs it to the recording's storage key through a URL this API signs,
  * then reports size and duration here. From then on it is an ordinary recording row.
  *
@@ -149,7 +149,7 @@ func (s *Server) startMixRecording(
  * rec/{slug}, and tells the recorder to finish. The mix itself carries on.
  *
  * Neither step has to succeed for the file to arrive: the recorder also finishes a job whose
- * segments have stopped growing (deploy/livekit-hetzner/mixrec), and a mix that has already
+ * segments have stopped growing (deploy/livekit-box/mixrec), and a mix that has already
  * ended — the webinar ending — has nothing to detach. */
 func (s *Server) stopMixRecording(ctx context.Context, wb types.Webinar, sfu RoomManager, recordingID string) {
 	recURL := s.cfg.MixRecRTMPURL(wb.ID)
