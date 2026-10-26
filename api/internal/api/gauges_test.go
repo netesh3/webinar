@@ -84,4 +84,8 @@ func TestAudienceGauges(t *testing.T) {
 			t.Errorf("%s = %d (present %v), want %d; all: %v", k, g, ok, v, got)
 		}
 	}
+	// The database's size, for the 300 MB alert: a migrated database is megabytes, not zero.
+	if g, ok := got["webinarliv.db_size{scope=cluster}"]; !ok || g < 1<<20 {
+		t.Errorf("webinarliv.db_size = %d (present %v), want the database's size in bytes", g, ok)
+	}
 }

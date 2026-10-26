@@ -8,7 +8,7 @@ This is the **current production-shaped** deployment: managed frontend, API, dat
 |---|---|---|
 | Frontend (Next.js 16 via OpenNext) | Cloudflare Workers | https://webinarliv.com (also https://webinar-web.ganesh-s-p006.workers.dev) |
 | API (Go) | Google Cloud Run · `asia-south1` | https://webcast-api-65278594492.asia-south1.run.app |
-| Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` |
+| Postgres | Supabase · project `webcast-in` (`odptebpbrrixhrzfqtqp`) · `ap-south-1` | session pooler `:5432` + `sslmode=require` <br>**Free plan since 2026-10-26**: no Supabase backups (nightly `pg_dump` to R2 instead, [BACKUPS.md](BACKUPS.md)) and a 500 MB cap (alert at 300 MB, [observability](observability.md#database-size-and-backups)) |
 | Media SFU | Self-hosted LiveKit on an on-demand DigitalOcean droplet · `sfu-blr-1` (c-4, blr1), LiveKit project `do-blr` ([deploy/digitalocean](../deploy/digitalocean/README.md)). The Hetzner box (`webcast-livekit`, `88.198.141.104`) is sunset (2026-10-24): no new room goes there | `wss://152.42.156.192.sslip.io` |
 | Images | Artifact Registry · `webcast` · `asia-south1` | `asia-south1-docker.pkg.dev/selfreminder-rnix/webcast/…` |
 | CI / deploy | GitHub Actions → Cloud Run, Cloudflare Workers, the DigitalOcean video box | [cloudrun-deploy.yml](../.github/workflows/cloudrun-deploy.yml) · [cloudflare-workers-deploy.yml](../.github/workflows/cloudflare-workers-deploy.yml) · [livekit-do-deploy.yml](../.github/workflows/livekit-do-deploy.yml) |

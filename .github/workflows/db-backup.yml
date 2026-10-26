@@ -1,0 +1,136 @@
+# Nightly database backup to R2 (docs/BACKUPS.md).
+#
+# Supabase's Free plan (production since 2026-10-26) keeps no backups. This dumps the public
+# schema, plus the pgvector and pgcrypto extensions it uses, with pg_dump in a client image of
+# the server's major version, stores it under db-backups/ in the recordings bucket
+# (api/cmd/dbbackup), and prunes what the retention no longer keeps: every night for 30
+# days, the first of each month for 12 months, and always the newest.
+#
+# Fails loudly: a failed scheduled run is a red workflow and GitHub's failure email, and a
+# missing success metric (webinarliv_db_backup_last_success_seconds) fires the Grafana alert in
+# docs/observability.md after 30 hours.
+#
+# Secrets (names only, never echoed): DATABASE_URL (the Supabase :5432 session pooler URL the
+# API already uses; pg_dump needs session mode), RECORDINGS_S3_BUCKET / _ENDPOINT / _REGION /
+# _ACCESS_KEY / _SECRET_KEY (or DB_BACKUP_S3_* to use another bucket), and optionally
+# OTEL_EXPORTER_OTLP_HEADERS with the repo variable OTEL_EXPORTER_OTLP_ENDPOINT for the metric.
+name: DB backup
+
+on:
+  schedule:
+    - cron: "30 21 * * *" # 03:00 IST, the quietest hour
+  workflow_dispatch:
+    inputs:
+      dry_run_prune:
+        description: "Prune: only print what would be deleted"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      RECORDINGS_S3_BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
+      RECORDINGS_S3_ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
+      RECORDINGS_S3_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
+      RECORDINGS_S3_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
+      RECORDINGS_S3_SECRET_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+      DB_BACKUP_S3_BUCKET: ${{ secrets.DB_BACKUP_S3_BUCKET }}
+      DB_BACKUP_S3_ENDPOINT: ${{ secrets.DB_BACKUP_S3_ENDPOINT }}
+      DB_BACKUP_S3_REGION: ${{ secrets.DB_BACKUP_S3_REGION }}
+      DB_BACKUP_S3_ACCESS_KEY: ${{ secrets.DB_BACKUP_S3_ACCESS_KEY }}
+      DB_BACKUP_S3_SECRET_KEY: ${{ secrets.DB_BACKUP_S3_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Build dbbackup
+        working-directory: api
+        run: CGO_ENABLED=0 go build -o "$RUNNER_TEMP/dbbackup" ./cmd/dbbackup
+
+      - name: Server version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "Repository secret DATABASE_URL is not set." >&2
+            exit 1
+          fi
+          # The newest client can read any older server's version; pg_dump itself must not be
+          # older than the server, so the dump below uses the server's own major.
+          num=$(docker run --rm -e DATABASE_URL postgres:17 \
+            psql "$DATABASE_URL" -XAtqc 'SHOW server_version_num')
+          major=$((num / 10000))
+          echo "Postgres server major version: $major"
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+
+      - name: Dump
+        env:
+          MAJOR: ${{ steps.version.outputs.major }}
+        run: |
+          set -euo pipefail
+          docker run --rm -e DATABASE_URL -v "$RUNNER_TEMP":/out "postgres:$MAJOR" \
+            pg_dump "$DATABASE_URL" --format=custom --compress=9 \
+              --schema=public --extension=vector --extension=pgcrypto \
+              --no-owner --no-acl --file=/out/webinarliv.dump
+          # A dump that cannot be listed back is not a backup.
+          docker run --rm -v "$RUNNER_TEMP":/out "postgres:$MAJOR" \
+            pg_restore --list /out/webinarliv.dump > "$RUNNER_TEMP/toc.txt"
+          echo "Dump: $(stat -c %s "$RUNNER_TEMP/webinarliv.dump") bytes, $(grep -c ' TABLE DATA ' "$RUNNER_TEMP/toc.txt") tables with data"
+
+      - name: Upload to R2
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/dbbackup" upload "$RUNNER_TEMP/webinarliv.dump"
+
+      - name: Prune past retention
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry_run_prune }}" = "true" ]; then
+            "$RUNNER_TEMP/dbbackup" prune -dry-run
+          else
+            "$RUNNER_TEMP/dbbackup" prune
+          fi
+
+      - name: Report success to Grafana
+        if: success()
+        env:
+          OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OTLP_ENDPOINT:-}" ] || [ -z "${OTLP_HEADERS:-}" ]; then
+            echo "OTLP not configured; skipping the success metric."
+            exit 0
+          fi
+          size=$(stat -c %s "$RUNNER_TEMP/webinarliv.dump")
+          now_ns=$(date +%s%N)
+          now_s=$(date +%s)
+          # OTEL_EXPORTER_OTLP_HEADERS is "Authorization=Basic <...>"; turn it into a header
+          # without ever printing it.
+          header="${OTLP_HEADERS/=/: }"
+          body=$(cat <<JSON
+          {"resourceMetrics":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"db-backup"}}]},
+           "scopeMetrics":[{"scope":{"name":"github.com/netkumar/webcast/db-backup"},"metrics":[
+            {"name":"webinarliv.db_backup.last_success","unit":"s","gauge":{"dataPoints":[{"asInt":"$now_s","timeUnixNano":"$now_ns"}]}},
+            {"name":"webinarliv.db_backup.size","unit":"By","gauge":{"dataPoints":[{"asInt":"$size","timeUnixNano":"$now_ns"}]}}
+           ]}]}]}
+          JSON
+          )
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "${OTLP_ENDPOINT%/}/v1/metrics" \
+            -H "Content-Type: application/json" -H "$header" --data "$body")
+          echo "OTLP metrics push: HTTP $code"
+          case "$code" in 2*) ;; *) echo "::warning::could not push the backup metric (HTTP $code)";; esac
