@@ -22,8 +22,10 @@ class FakeTranscriber:
 
 
 class FakeApi:
-    def __init__(self, caption_status=200, transcript_status=201):
+    def __init__(self, caption_status=200, transcript_status=201, wanted="wanted"):
         self.captions = []
+        self.wanted = wanted  # transcript_wanted's answer: wanted | skip | gone | unknown
+        self.wanted_asked = []
         self.statuses = []
         self.transcripts = []
         self.caption_status = caption_status
@@ -48,6 +50,10 @@ class FakeApi:
 
     def status_json(self, room, state):
         return self.status(room, state), {"status": "ok", "edge": self.edge}
+
+    def transcript_wanted(self, room):
+        self.wanted_asked.append(room)
+        return self.wanted
 
     def transcript(self, room, model, lines):
         self.transcripts.append((room, model, list(lines)))

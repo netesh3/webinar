@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -118,7 +119,15 @@ class Config:
 
     @property
     def cpu_threads(self) -> int:
+        """Every vCPU: the after-session pass, which only runs while no room is live."""
         return max(1, int(self.cpus))
+
+    @property
+    def live_threads(self) -> int:
+        """A room's live decoder threads: the vCPUs shared between max_rooms rooms, at least 1.
+        Each room's job process loads its own models, and all of them at cpu_threads would
+        oversubscribe the box as soon as a second room joined (2026-10-27)."""
+        return max(1, int(self.cpus) // max(1, self.max_rooms))
 
     @property
     def partial_model_name(self) -> str:
@@ -163,7 +172,7 @@ class Config:
             prompt=env.get("CAPTIONS_PROMPT", "").strip(),
             max_speakers=_int(env, "CAPTIONS_MAX_SPEAKERS", 2),
             speaker_linger_s=_float(env, "CAPTIONS_SPEAKER_LINGER_S", 3.0),
-            max_rooms=_int(env, "CAPTIONS_MAX_ROOMS", 2),
+            max_rooms=_int(env, "CAPTIONS_MAX_ROOMS", 0) or default_max_rooms(_float(env, "CAPTIONS_CPUS", 2.0)),
             cpus=_float(env, "CAPTIONS_CPUS", 2.0),
             energy_gate=_float(env, "CAPTIONS_ENERGY_GATE", 0.012),
             silence_end_s=_float(env, "CAPTIONS_SILENCE_END_S", 0.45),
@@ -196,8 +205,27 @@ class Config:
         return cfg
 
 
+def default_max_rooms(cpus: float) -> int:
+    """One room per two vCPUs, at least one: the API's own default (config.CaptionsRoomsFor).
+    Measured 2026-10-26: one room of continuous speech held 1.2–1.6 cores of an s-2vcpu-4gb
+    and caption delay p90 reached 7.8–8.7 s (docs/decisions/2026-10-27-captions-box-size.md)."""
+    return max(1, int(cpus) // 2)
+
+
 def room_load(active_jobs: int, max_rooms: int) -> float:
     """The worker's load as LiveKit sees it: rooms held over CAPTIONS_MAX_ROOMS, never the
     host CPU (the CPU guard handles that). Below the threshold (agent.py) LiveKit offers the
     worker rooms; at max_rooms it is full."""
     return min(1.0, max(0, active_jobs) / max(1, max_rooms))
+
+
+def job_skips_final(metadata: str | None) -> bool:
+    """Whether a job's dispatch metadata asks for no after-session pass ("final":"skip").
+    Anything unreadable keeps the pass: a real session must never lose its transcript."""
+    if not metadata:
+        return False
+    try:
+        md = json.loads(metadata)
+    except ValueError:
+        return False
+    return isinstance(md, dict) and md.get("final") == "skip"

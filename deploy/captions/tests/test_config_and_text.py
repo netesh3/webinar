@@ -59,3 +59,25 @@ def test_clean_text():
     assert clean_text("[Music] hello  there ") == "hello there"
     assert clean_text("...") == ""
     assert clean_text("yes yes yes yes yes") == "yes"
+
+
+def test_rooms_default_to_one_per_two_vcpus_and_split_the_threads():
+    from webcaptions.config import Config, default_max_rooms
+
+    assert [default_max_rooms(c) for c in (1, 2, 3, 4, 8)] == [1, 1, 1, 2, 4]
+    base = {"CAPTIONS_API_URL": "https://x.test", "CAPTIONS_SECRET": "s" * 40}
+    four = Config.from_env({**base, "CAPTIONS_CPUS": "4"})
+    assert four.max_rooms == 2 and four.cpu_threads == 4 and four.live_threads == 2
+    two = Config.from_env({**base, "CAPTIONS_CPUS": "2"})
+    assert two.max_rooms == 1 and two.live_threads == 2
+    # An explicit limit still wins, and the threads follow it.
+    forced = Config.from_env({**base, "CAPTIONS_CPUS": "4", "CAPTIONS_MAX_ROOMS": "4"})
+    assert forced.max_rooms == 4 and forced.live_threads == 1
+
+
+def test_job_metadata_skip_flag_is_strict():
+    from webcaptions.config import job_skips_final
+
+    assert job_skips_final('{"slug": "x", "room": "webinar_x", "final": "skip"}')
+    for md in (None, "", "{}", '{"final": "yes"}', "not json", "[1, 2]", '{"mode": "transcript"}'):
+        assert not job_skips_final(md), md

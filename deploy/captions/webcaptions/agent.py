@@ -28,7 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from livekit import rtc
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, JobProcess, JobRequest, WorkerPermissions, cli
 
-from .config import Config, room_load
+from .config import Config, job_skips_final, room_load
 from .cpuguard import CpuGuard, GuardMonitor, Level
 from .finalizer import ChildTranscribe, Finalizer, idle_wait
 from .live import LiveCaptioner
@@ -60,7 +60,7 @@ def _models(cfg: Config) -> dict[str, WhisperTranscriber]:
 
     def get(name: str) -> WhisperTranscriber:
         if name not in by_name:
-            by_name[name] = WhisperTranscriber(name, cfg.cpu_threads, cfg.model_dir, cfg.prompt)
+            by_name[name] = WhisperTranscriber(name, cfg.live_threads, cfg.model_dir, cfg.prompt)
         return by_name[name]
 
     return {"live": get(cfg.model), "fallback": get(cfg.fallback_model), "partial": get(cfg.partial_model_name)}
@@ -101,7 +101,16 @@ async def entrypoint(ctx: JobContext) -> None:
     room_name = ctx.job.room.name
     api = ApiClient(cfg.api_url, cfg.secret)
     models = _models(cfg) if "live" not in ctx.proc.userdata else ctx.proc.userdata
-    spool = RoomSpool(cfg.spool_dir, room_name, ctx.job.id, cfg.spool_max_mb * 1024 * 1024) if cfg.final_enabled else None
+    # No after-session pass for a load test: the API marks its dispatch "final":"skip"
+    # (captionAgentMeta). Its audio is then never spooled at all.
+    skip_final = job_skips_final(ctx.job.metadata)
+    if skip_final:
+        log.info("captions: %s is a load test; no after-session transcript", room_name)
+    spool = (
+        RoomSpool(cfg.spool_dir, room_name, ctx.job.id, cfg.spool_max_mb * 1024 * 1024)
+        if cfg.final_enabled and not skip_final
+        else None
+    )
     monitor = GuardMonitor(_guard(cfg), cfg.cpu_sample_s)
     selector = SpeakerSelector(cfg.max_speakers, cfg.speaker_linger_s)
 

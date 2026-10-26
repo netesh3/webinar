@@ -19,7 +19,7 @@ import (
  *
  * On 24 Oct 2026 the caption agent took 0.66 of the c-4 video box's cores beside the edge mix's
  * 1.84, the box ran at 70–91 % and the audience stalled. With CAPTIONS_BOX_ENABLED the agent
- * runs on a droplet of its own instead (default s-2vcpu-4gb), one per video box, shared by every
+ * runs on a droplet of its own instead (default s-4vcpu-8gb), one per video box, shared by every
  * room on it. The video box never runs one (since 24 Oct 2026 its image and deploy carry no
  * caption agent), so with CAPTIONS_BOX_ENABLED off a box room has no server captions at all:
  * dispatcherFor reports no dispatcher, and the room captions on-device ("server captions
@@ -468,7 +468,12 @@ func (s *Server) captionsRedispatch(ctx context.Context, b *boxManager) {
 			continue
 		}
 		if did {
-			s.log.Info("captions box: dispatch re-sent to the captions worker", "slug", w.Slug, "display", w.Display)
+			/* A room waits like this while the box starts, and also whenever the worker is
+			 * full: it takes maxRooms rooms (one per two vCPUs) and LiveKit holds the rest
+			 * until one ends. The room keeps on-device captions meanwhile, so this log is the
+			 * only place the wait shows; "waiting" past maxRooms means the box is the limit. */
+			s.log.Info("captions box: dispatch re-sent to the captions worker", "slug", w.Slug, "display", w.Display,
+				"waiting", len(waiting), "maxRooms", b.cfg.Captions.MaxRooms)
 		}
 	}
 }

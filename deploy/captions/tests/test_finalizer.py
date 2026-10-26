@@ -165,3 +165,48 @@ def test_spool_respects_its_size_cap(tmp_path):
     sp = spool.RoomSpool(tmp_path, "webinar_cap", "AJ_3", max_bytes=SR * 2)  # one second
     assert sp.write("u", "U", np.zeros(SR, np.float32), 0)
     assert not sp.write("u", "U", np.zeros(SR, np.float32), 1000)
+
+
+# Before a pass the worker asks the API whether the transcript is still wanted (2026-10-27).
+
+class CountingTranscriber(FakeTranscriber):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.runs = 0
+
+    def transcribe(self, *a, **kw):
+        self.runs += 1
+        return super().transcribe(*a, **kw)
+
+
+def test_a_load_test_room_is_dropped_without_a_pass(tmp_path):
+    sp = write_room(tmp_path)
+    sp.mark_done()
+    api = FakeApi(wanted="skip")
+    model = CountingTranscriber("large-v3-turbo")
+    fin = Finalizer(cfg(tmp_path), api, model, wait_until_idle=lambda stop: True)
+    assert fin.run_once() == 1
+    assert api.wanted_asked == ["webinar_abc"]
+    assert model.runs == 0 and api.transcripts == []
+    assert not sp.dir.exists()
+
+
+def test_a_deleted_webinar_room_is_dropped_without_a_pass(tmp_path):
+    sp = write_room(tmp_path)
+    sp.mark_done()
+    api = FakeApi(wanted="gone")
+    model = CountingTranscriber("large-v3-turbo")
+    fin = Finalizer(cfg(tmp_path), api, model, wait_until_idle=lambda stop: True)
+    assert fin.run_once() == 1
+    assert model.runs == 0 and api.transcripts == []
+    assert not sp.dir.exists()
+
+
+def test_an_unreachable_or_older_api_keeps_the_pass(tmp_path):
+    sp = write_room(tmp_path)
+    sp.mark_done()
+    api = FakeApi(wanted="unknown")
+    fin = Finalizer(cfg(tmp_path), api, FakeTranscriber("large-v3-turbo"), wait_until_idle=lambda stop: True)
+    assert fin.run_once() == 1
+    assert len(api.transcripts) == 1  # posted as before
+    assert not sp.dir.exists()

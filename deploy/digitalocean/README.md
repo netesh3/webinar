@@ -347,34 +347,46 @@ LiveKit's and the mix's.
   starts a caption container. LiveKit's agent dispatch needs no setting on the box: the remote
   worker registers over the network.
 
-**Size and capacity.** Default `CAPTIONS_BOX_SIZE=s-2vcpu-4gb` (2 shared vCPUs, 4 GB). The agent
-takes up to `CAPTIONS_BOX_MAX_ROOMS` rooms at once (default 2 per vCPU, so 4). It runs each room
-in its own process (~0.3 GB with base.en) plus one prewarmed, and the after-session
-`large-v3-turbo` pass (~1.7 GB) runs only when no room is live. A room beyond the limit is not
-picked up and keeps on-device captions; the re-dispatch above takes it in when a slot frees.
+**Size and capacity.** Default `CAPTIONS_BOX_SIZE=s-4vcpu-8gb` (4 shared vCPUs, 8 GB), since
+2026-10-27 ([decision](../../docs/decisions/2026-10-27-captions-box-size.md)). The agent takes up to
+`CAPTIONS_BOX_MAX_ROOMS` rooms at once, by default **one room per two vCPUs** (2 on the default
+size, 1 on `s-2vcpu-4gb`, 4 on an 8-vCPU size), and each room's live decoder gets its share of the
+vCPUs (`CAPTIONS_CPUS / MAX_ROOMS` threads), so a second room never oversubscribes the first. It
+runs each room in its own process (~0.3 GB with base.en) plus one prewarmed. The after-session
+`large-v3-turbo` pass (~1.7 GB) runs only when no room is live, uses every vCPU, and is skipped
+for load tests and for webinars that no longer exist (it asks the API first:
+`POST /api/internal/transcripts/wanted`).
 
-base.en is ≈ 0.3–0.4 of a core per actively transcribed speaker, at most 2 speakers per room, and
-~0 in silence (energy gate). Interim captions (`CAPTIONS_PARTIALS`, on) add up to ~0.3 while the
-main speaker talks. These are estimates from the small.en measurement (0.66 cores on 24 Oct) and
-the model sizes, not a load test:
+**Measured** (browser load test, 2026-10-26, Grafana): on the old default `s-2vcpu-4gb`, ONE room
+of continuous speech (the load-test presenter talks without pausing; a real presenter pauses)
+held the captions container at 1.2–1.6 cores, 60–83% of the box, and caption delay p90 reached
+7.8–8.7 s. A 91–92% peak for twenty minutes was the after-session pass for a load-test webinar
+the kit had already deleted (its post got a 404). That is why the default went to 4 vCPUs, one
+room per two vCPUs, and the skip.
 
-| Captions box | $/hour | Rooms, typical (one person talking at a time) | Rooms, worst case (two talking continuously) | Default `MAX_ROOMS` |
-|---|---|---|---|---|
-| `s-2vcpu-4gb` (default) | $0.036 | 4–5 | 2–3 | 4 |
-| `c-2` (dedicated vCPUs, 4 GB) | $0.0625 | 4–5 | 2–3 | 4 |
-| `c-4` | $0.125 | 8–10 | 5–6 | 8 |
+| Captions box | $/hour | Default `MAX_ROOMS` | Notes |
+|---|---|---|---|
+| `s-2vcpu-4gb` | $0.0357 | 1 | measured: one continuously-speaking room is 60–83% of it |
+| `s-4vcpu-8gb` (default) | $0.0714 | 2 | each room's decoder on its own 2 vCPUs |
+| `c-4` | $0.125 | 2 | dedicated vCPUs, if shared ones show steal time |
+| `s-8vcpu-16gb` | ~$0.143 | 4 | for 3–4 rooms with captions at once |
+
+**What happens past the limit.** The worker reports itself full, LiveKit holds the room's
+dispatch, and the room keeps on-device captions (the speakers' browsers caption it). The API's
+re-dispatch above re-sends the dispatch every tick and logs
+`captions box: dispatch re-sent to the captions worker` with `waiting` and `maxRooms`: `waiting`
+past `maxRooms` means the box is the limit. Nothing tells the host yet; a "server captions are
+full, captioning on devices" note is a follow-up.
 
 Above ~85 % host CPU the agent's guard steps down (one speaker per room, stale windows skipped),
-and above 95 % it pauses (rooms fall back to on-device). **The video box is the tighter limit**:
-an edge webinar's mix costs ≈ 0.7–1.8 cores on the c-4, so about 2 edge webinars at once fit
-beside LiveKit. The default captions box already covers more rooms than the video box can hold.
-Choose `c-2` if shared vCPUs show steal time under load.
+and above 95 % it pauses (rooms fall back to on-device).
 
-**Cost.** It runs exactly when the video box does: c-4 $0.125/h + s-2vcpu-4gb $0.036/h = $0.161/h
-(+29 %). For a 1-hour session (box up ~2 h with the warm lead and idle grace) that is +$0.07. The
+**Cost.** It runs exactly when the video box does: c-4 $0.125/h + s-4vcpu-8gb $0.0714/h =
+$0.196/h (was $0.161/h with s-2vcpu-4gb; +$0.036/h). For a 1-hour session (box up ~2 h with the
+warm lead and idle grace) that is +$0.07 over the old size, +$0.14 in all for captions. The
 `webinar-captions-image` snapshots (~7 GB each, newest 2 kept) cost ~$0.85/month, and each image
 build ~$0.02 (a c-2 builder for ~15 min). Snapshots are built on a c-2 because its 25 GB disk fits
-every size above.
+every size above (`s-4vcpu-8gb` has 160 GB; a snapshot from a smaller disk restores onto it).
 
 **To turn it on** (manual steps; the API creates and deletes nothing until step 4):
 
