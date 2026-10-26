@@ -1,0 +1,25 @@
+# Live captions on the video box (CAPTIONS_PROVIDER=deepgram): the light caption worker,
+# deploy/captions/webcaptions/stage_agent.py. Opt-in: redeploy.sh adds this file only when
+# /opt/livekit/.env has CAPTIONS_PROVIDER=deepgram, DEEPGRAM_API_KEY and CAPTIONS_SECRET (the
+# API passes them in the box's user data; sfu-boot.sh merges them into .env).
+#
+# It joins this box's own LiveKit (host network, 127.0.0.1:7880) when the API dispatches it,
+# hears only stage microphones, and streams them to Deepgram only while someone speaks (Silero
+# VAD). No Whisper, nothing on disk. Measured ~0.002 core per speaking speaker for the VAD on
+# an M-series core; budget ~0.05 core per webinar here, capped well below anything video needs.
+services:
+  captions-worker:
+    image: webinarliv-captions-worker:local
+    build:
+      context: ./captions-worker
+      dockerfile: Dockerfile.light
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [livekit]
+    cpus: ${CAPTIONS_WORKER_CPUS:-0.5}
+    cpu_shares: 256
+    mem_limit: ${CAPTIONS_WORKER_MEM:-768m}
+    oom_score_adj: 500
+    # Written by redeploy.sh from .env and .env.keys, mode 600. Holds the Deepgram key.
+    env_file: captions-worker.env
+    stop_grace_period: 30s

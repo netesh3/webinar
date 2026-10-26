@@ -33,11 +33,10 @@ from .cpuguard import CpuGuard, GuardMonitor, Level
 from .finalizer import ChildTranscribe, Finalizer, idle_wait
 from .live import LiveCaptioner
 from .poster import ApiClient, captions_shown, sender_for
-from .provider import DeepgramStream, FailoverTracker, aiohttp_connect
 from .segmenter import Segmenter, pcm16_to_float
 from .selection import FrameWatch, LineGate, SpeakerSelector, main_source, pipeline_key, wants_key
 from .spool import RoomSpool, live_rooms
-from .transcriber import Result, WhisperTranscriber
+from .transcriber import WhisperTranscriber
 
 log = logging.getLogger("captions.agent")
 
@@ -52,20 +51,6 @@ def _guard(cfg: Config) -> CpuGuard:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-class _NoModel:
-    """Stands in for the Whisper models when CAPTIONS_PROVIDER=deepgram without the local
-    fallback: nothing is loaded, and nothing should ever ask it to decode."""
-
-    name = "none"
-
-    def load(self) -> None:
-        pass
-
-    def transcribe(self, audio, language=None, previous_language=None, final=False) -> Result:
-        log.error("captions: a local decode was asked for with no local model loaded")
-        return Result(text="", language=language or "en", segments=[])
 
 
 def _models(cfg: Config) -> dict[str, WhisperTranscriber]:
@@ -86,8 +71,6 @@ def prewarm(proc: JobProcess) -> None:
     a dispatch does not wait on them. (A throwaway first decode was measured too: CTranslate2's
     first call is no slower than the rest, so there is nothing more to warm.)"""
     cfg = Config.from_env()
-    if not cfg.local_models:
-        return  # Deepgram transcribes; no Whisper model in this process at all
     models = _models(cfg)
     for t in {id(t): t for t in models.values()}.values():
         t.load()
@@ -117,11 +100,7 @@ async def entrypoint(ctx: JobContext) -> None:
     cfg = Config.from_env()
     room_name = ctx.job.room.name
     api = ApiClient(cfg.api_url, cfg.secret)
-    if cfg.local_models:
-        models = _models(cfg) if "live" not in ctx.proc.userdata else ctx.proc.userdata
-    else:
-        none = _NoModel()
-        models = {"live": none, "fallback": none, "partial": none}
+    models = _models(cfg) if "live" not in ctx.proc.userdata else ctx.proc.userdata
     # No after-session pass for a load test: the API marks its dispatch "final":"skip"
     # (captionAgentMeta). Its audio is then never spooled at all.
     skip_final = job_skips_final(ctx.job.metadata)
@@ -148,15 +127,6 @@ async def entrypoint(ctx: JobContext) -> None:
     # the line by the time the POST starts.
     poster = ThreadPoolExecutor(max_workers=1, thread_name_prefix="caption-post")
     shown: list[bool | None] = [None]
-    # CAPTIONS_PROVIDER=deepgram (provider.py): one socket per speaker track. Results are
-    # delivered in order on one thread: deliver() publishes through publish(), which waits on
-    # this event loop, so it must never run on it.
-    deepgram = [cfg.provider == "deepgram"]
-    # With the local models loaded, 3 failures in a minute switch the room to them; without,
-    # there is nothing to switch to, so the sockets keep retrying with backoff instead.
-    dg_tracker = FailoverTracker(limit=3 if cfg.local_models else 1_000_000)
-    dg_connect = aiohttp_connect() if deepgram[0] else None
-    dg_deliver = ThreadPoolExecutor(max_workers=1, thread_name_prefix="caption-deliver") if deepgram[0] else None
 
     def spawn(coro) -> None:
         t = asyncio.ensure_future(coro)
@@ -204,10 +174,8 @@ async def entrypoint(ctx: JobContext) -> None:
         post_async=post_async,
     )
     log.info(
-        "captions joined %s (provider %s, model %s, partials %s, language %s, shown %s)",
-        room_name, cfg.provider,
-        f"{cfg.deepgram_model}/{cfg.deepgram_language}" if deepgram[0] else cfg.model,
-        cfg.partial_model_name if cfg.partials else "off", cfg.language, shown[0],
+        "captions joined %s (model %s, partials %s, language %s, shown %s)",
+        room_name, cfg.model, cfg.partial_model_name if cfg.partials else "off", cfg.language, shown[0],
     )
 
     @room.on("room_metadata_changed")
@@ -251,34 +219,18 @@ async def entrypoint(ctx: JobContext) -> None:
         segs[key] = seg
         gate = LineGate()
         watch.start(key, time.monotonic())
-        stream: DeepgramStream | None = None
-        if deepgram[0]:
-            def on_event(kind: str, start_ms: int, end_ms: int, text: str) -> None:
-                dg_deliver.submit(captioner.deliver, identity, name, text, start_ms, end_ms, partial=(kind == "partial"))
-
-            stream = DeepgramStream(cfg, key, dg_connect, on_event, dg_tracker, clock_ms=_now_ms)
         # Bounded: if this loop ever falls behind, the oldest 10 ms frames are dropped instead
         # of piling up without limit (LiveKit's default capacity 0 is unbounded).
-        audio = rtc.AudioStream(
+        stream = rtc.AudioStream(
             track, sample_rate=16_000, num_channels=1, frame_size_ms=10, capacity=AUDIO_QUEUE_FRAMES
         )
         try:
-            async for ev in audio:
+            async for ev in stream:
                 if watch.frame(key, time.monotonic()):
                     log.info("captions: first audio from %s", key)
                 # Every subscribed source is segmented (one RMS per frame); only the
                 # selected speakers' lines (and share audio) go to the model.
                 chosen = wants_key(key, selector.selected)
-                if stream is not None and deepgram[0] and dg_tracker.tripped and cfg.local_models:
-                    log.warning("captions: deepgram keeps failing; %s switched to the local models", room_name)
-                    deepgram[0] = False
-                if stream is not None and deepgram[0]:
-                    # Deepgram transcribes; the segmenter only spools for the final pass.
-                    if chosen:
-                        await stream.feed(bytes(ev.frame.data), _now_ms() - 10)
-                    for utt in seg.push(pcm16_to_float(ev.frame.data), _now_ms()):
-                        captioner.spool_only(identity, name, utt)
-                    continue
                 for utt in seg.push(pcm16_to_float(ev.frame.data), _now_ms()):
                     if gate.take(chosen):
                         captioner.add(identity, name, utt)
@@ -300,14 +252,10 @@ async def entrypoint(ctx: JobContext) -> None:
                 del segs[key]
                 watch.stop(key)
             for utt in seg.flush():
-                if stream is not None and deepgram[0]:
-                    captioner.spool_only(identity, name, utt)
-                elif gate.take(wants_key(key, selector.selected)):
+                if gate.take(wants_key(key, selector.selected)):
                     captioner.add(identity, name, utt)
                     wake.set()
-            if stream is not None:
-                await stream.close()  # billed while open: closed with the track
-            await audio.aclose()
+            await stream.aclose()
 
     async def decoder() -> None:
         # Finals first, always; a partial only when none is waiting.
@@ -389,8 +337,6 @@ async def entrypoint(ctx: JobContext) -> None:
         await asyncio.gather(*pipelines.values(), return_exceptions=True)
         if spool is not None:
             spool.mark_done()  # the finalizer in the main process picks it up
-        if dg_deliver is not None:
-            await asyncio.to_thread(dg_deliver.shutdown, True)  # Deepgram's last finals, in order
         await asyncio.to_thread(poster.shutdown, True)  # the last finals reach the API
         await asyncio.to_thread(captioner.report, None, True)
 
@@ -467,6 +413,12 @@ def _start_finalizer(cfg: Config) -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     cfg = Config.from_env()
+    if cfg.provider == "deepgram":
+        # The video box's worker (no Whisper, no finalizer): stage_agent.py.
+        from .stage_agent import main as stage_main
+
+        stage_main()
+        return
     _start_finalizer(cfg)
     cli.run_app(build_server(cfg))
 

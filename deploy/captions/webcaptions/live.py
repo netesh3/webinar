@@ -44,7 +44,7 @@ from .transcriber import Transcriber
 
 log = logging.getLogger("captions.live")
 
-# A provider line carries no audio here: its audio was spooled as it arrived (spool_only).
+# A provider line carries no audio here: the provider had it, and nothing is kept on disk.
 _NO_AUDIO = np.zeros(0, np.float32)
 
 # A caption older than this when its turn comes is skipped: the speaker has moved on.
@@ -242,12 +242,6 @@ class LiveCaptioner:
         return self.process(p) if p else None
 
     # ------------------------------------------- text from a streaming provider
-
-    def spool_only(self, identity: str, name: str, utt: Utterance) -> None:
-        """A streaming provider transcribes live; the utterance is only kept for the
-        after-session transcript (never queued for a local decode)."""
-        if self.spool is not None and self.cfg.final_enabled:
-            self.spool.write(identity, name, utt.audio, utt.started_at_ms)
 
     def deliver(self, identity: str, name: str, text: str, started_ms: int, end_ms: int, *, partial: bool) -> str | None:
         """Text a streaming provider (provider.py) already transcribed: a final is published

@@ -280,15 +280,25 @@ Set 2026-10-22. Both kinds email the account owner.
   | Disk | > 85 % for 5 min | logs or recordings filling the disk |
   | Public outbound | > 400 Mbps for 10 min | heavy meeting/webinar traffic; watch the 5 TB/month transfer |
 
-## Server captions: only on the captions box
+## Server captions: the Deepgram worker on the video box
 
-The video box never runs the caption agent: its image, boot and deploy carry none (removed
-24 Oct 2026, after the agent's 0.66 cores beside the edge mix's 1.84 stalled the audience). Server
-captions run only on the separate captions box (next section). With `CAPTIONS_BOX_ENABLED` off
-there are no server captions for this box's rooms: the API dispatches no agent, the host's
-captions control shows **"Captions: on this device (server captions unavailable)"** and each
-speaker's browser makes the captions (Whisper tiny.en, `web/lib/local-captions.ts`). No
-after-session transcript is made for the AI recap then either.
+Since 2026-10-27 server captions run on the video box itself, as the light **`captions-worker`**
+service (`deploy/livekit-box/docker-compose.captions-worker.yml`, `deploy/captions` README
+"Deepgram on the video box"). It is a voice activity detector and a Deepgram websocket per stage
+speaker, with no Whisper: a few hundredths of a core per speaker, capped at 0.5 CPU, at low
+`cpu_shares`.
+
+- **On:** with `DEEPGRAM_API_KEY` and `CAPTIONS_SECRET` set on the API (`CAPTIONS_PROVIDER`
+  defaults to `deepgram`). The API passes the settings in each droplet's user data
+  (`boxCaptionsEnv`), `sfu-boot.sh` merges them into `/opt/livekit/.env`, and `redeploy.sh`
+  starts the worker.
+- **Off:** otherwise the API sends `CAPTIONS_PROVIDER=off`, which removes the key from `.env`
+  and the worker from the box. There are then no server captions for this box's rooms: the
+  host's captions control shows **"Captions: on this device (server captions unavailable)"**
+  and each speaker's browser makes the captions (Whisper tiny.en, `web/lib/local-captions.ts`).
+
+The old Whisper agent that ran here until 24 Oct 2026 (0.66 cores beside the edge mix's 1.84
+stalled the audience) is not coming back.
 
 Boxes and volumes from before: the next `redeploy.sh` (a deploy, or the next droplet's boot)
 removes any caption container and its image, `captions.env`, `/opt/livekit/captions/`,
@@ -296,7 +306,14 @@ removes any caption container and its image, `captions.env`, `/opt/livekit/capti
 directories on the volume. `CAPTIONS_*` lines left in `/opt/livekit/.env` are ignored, and
 `sfu-boot.sh` drops `CAPTIONS_REMOTE`. `CAPTIONS_ON_VIDEO_BOX` (a short-lived opt-back-in) is gone too.
 
-## Captions box (optional, off until `CAPTIONS_BOX_ENABLED=true`)
+## Captions box (retired 2026-10-27; the `CAPTIONS_PROVIDER=local` fallback)
+
+**Retired from production on 2026-10-27** (captions run on the video box, above). The code and
+image stay. The API makes this droplet only with `CAPTIONS_BOX_ENABLED=true` **and**
+`CAPTIONS_PROVIDER=local` set explicitly. The deploy passes `CAPTIONS_BOX_ENABLED` only from the
+`CAPTIONS_BOX_ENABLED_OVERRIDE` repo variable, and the snapshot job builds its image only with
+`BUILD_CAPTIONS_IMAGE=true`. A `captions-blr-1` still up when this shipped is no longer wanted,
+and the manager deletes it on its next step.
 
 On 24 Oct 2026 the c-4 ran at 70–91 % during a live session (egress/mix 1.84 cores, caption agent
 0.66, LiveKit 0.26) and the audience stalled. The captions box moves the caption agent onto a

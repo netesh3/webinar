@@ -18,8 +18,13 @@
 # Triggers: manual, and after a successful "Deploy LiveKit (DigitalOcean)" run on main (new
 # images in the compose files should be in the next image): both images. A push to main that
 # changes the caption agent (deploy/captions/**) or the captions box's own files: the captions
-# image only. Captions never run on the video box, so those changes neither deploy to it nor
-# rebuild its image.
+# image only (when BUILD_CAPTIONS_IMAGE=true). The video box's caption worker is synced at boot
+# and its image is pre-built by the next video server image.
+#
+# The captions image is built only with repo variable BUILD_CAPTIONS_IMAGE=true (default off):
+# the captions box was retired from production on 2026-10-27 (captions run on the video box
+# with Deepgram), so its image is kept buildable for the local fallback but not rebuilt on
+# every merge.
 #
 # Repository secret: DO_API_TOKEN (read/write droplets, snapshots, tags). Without it the job
 # skips with a notice.
@@ -84,7 +89,13 @@ jobs:
         env:
           DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
           EVENT: ${{ github.event_name }}
+          BUILD_CAPTIONS_IMAGE: ${{ vars.BUILD_CAPTIONS_IMAGE }}
         run: |
+          if [ "${KIND}" = "captions" ] && [ "${BUILD_CAPTIONS_IMAGE}" != "true" ]; then
+            echo "::notice::The captions box is retired (2026-10-27): its image is built only with repo variable BUILD_CAPTIONS_IMAGE=true."
+            echo "SKIP=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
           # A captions-only push rebuilds the captions image, not the video server's.
           if [ "${EVENT}" = "push" ] && [ "${KIND}" != "captions" ]; then
             echo "::notice::A captions change: only the captions image is rebuilt."

@@ -228,16 +228,19 @@ for v in SFU_BOX_PROJECT SFU_BOX_ALWAYS_ON SFU_BOX_WARM_LEAD SFU_BOX_IDLE_GRACE 
   SFU_BOX_REPO SFU_BOX_REF SFU_BOX_TURN_HOST SFU_BOX_AREA SFU_BOX_CAPACITY SFU_BOX_SLOTS SFU_BOX_POINTS; do
   if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
 done
-# The captions box made and deleted with it (api/internal/api/captions_box.go). Off unless
-# CAPTIONS_BOX_ENABLED=true; the rest override its defaults.
-for v in CAPTIONS_BOX_ENABLED CAPTIONS_BOX_SIZE CAPTIONS_BOX_IMAGE CAPTIONS_BOX_NAME CAPTIONS_BOX_TAGS \
+# Who transcribes server captions (api/internal/config/captions_provider.go): deepgram, from a
+# worker on the video box, when DEEPGRAM_API_KEY is set (the default), else local.
+# The captions box (api/internal/api/captions_box.go), retired 2026-10-27, is made only with
+# CAPTIONS_BOX_ENABLED=true AND CAPTIONS_PROVIDER=local; the workflow passes
+# CAPTIONS_BOX_ENABLED from the CAPTIONS_BOX_ENABLED_OVERRIDE variable. The rest override its defaults.
+for v in CAPTIONS_PROVIDER CAPTIONS_DEEPGRAM_MODEL CAPTIONS_DEEPGRAM_LANGUAGE CAPTIONS_API_URL \
+  CAPTIONS_BOX_ENABLED CAPTIONS_BOX_SIZE CAPTIONS_BOX_IMAGE CAPTIONS_BOX_NAME CAPTIONS_BOX_TAGS \
   CAPTIONS_BOX_CPUS CAPTIONS_BOX_MAX_ROOMS CAPTIONS_BOX_MODEL CAPTIONS_BOX_API_URL \
-  CAPTIONS_BOX_LIVEKIT_URL CAPTIONS_BOX_BOOT_TIMEOUT \
-  CAPTIONS_PROVIDER CAPTIONS_FALLBACK_LOCAL CAPTIONS_DEEPGRAM_MODEL CAPTIONS_DEEPGRAM_LANGUAGE; do
+  CAPTIONS_BOX_LIVEKIT_URL CAPTIONS_BOX_BOOT_TIMEOUT; do
   if [[ -n "${!v:-}" ]]; then ENV_VARS+=("${v}=${!v}"); fi
 done
-# Deepgram's key for live captions (CAPTIONS_PROVIDER=deepgram): to the API, which writes it into
-# the captions box's root-only env file at create. Never printed.
+# Deepgram's key for live captions: to the API, which passes it to each video box in its user
+# data (boxCaptionsEnv); it ends up in the box's root-only .env. Never printed.
 [[ -n "${DEEPGRAM_API_KEY:-}" ]] && ENV_VARS+=("DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}")
 # Grafana Cloud for the box's Alloy, passed in its user data at create (config.BoxGrafana): all
 # five or none. GRAFANA_CLOUD_TOKEN is a secret (a write-only access policy token).

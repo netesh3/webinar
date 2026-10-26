@@ -12,13 +12,15 @@
 #   4. syncs the latest deploy files from the repo at SFU_REF, as the deploy workflow does, so a
 #      box that was down during a deploy still comes up current;
 #   5. merges the Grafana Cloud settings the API passed in the user data (SFU_GRAFANA_ENV) into
-#      .env, so Alloy reports from first boot;
+#      .env, so Alloy reports from first boot, and the caption worker's (SFU_CAPTIONS_ENV:
+#      CAPTIONS_PROVIDER=deepgram with its keys, or CAPTIONS_PROVIDER=off);
 #   6. runs redeploy.sh with SFU_DATA_DIR and OPS_BOX=true (the ops box runs the API tick).
 #
 # Docker, the images and the host firewall come from the snapshot (build-image.sh). Output goes to
-# /var/log/webinarliv-boot.log. Safe to run again by hand. No captions here: they run only on the
-# captions box (captions-boot.sh). SFU_CAPTIONS_REMOTE, which older APIs put in the user data, is
-# ignored.
+# /var/log/webinarliv-boot.log. Safe to run again by hand. Captions run here only as the light
+# Deepgram worker (deploy/livekit-box/docker-compose.captions-worker.yml); the Whisper captions
+# box is the separate local fallback (captions-boot.sh). SFU_CAPTIONS_REMOTE, which older APIs
+# put in the user data, is ignored.
 set -euo pipefail
 
 DATA="${SFU_DATA_DIR:-/mnt/sfu-data}"
@@ -72,9 +74,11 @@ fi
 tmp="$(mktemp -d)"
 if curl -fsSL --retry 5 --retry-delay 3 -m 180 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$tmp" --strip-components=1 --wildcards \
-    '*/deploy/livekit-box/*' '*/deploy/digitalocean/*'; then
+    '*/deploy/livekit-box/*' '*/deploy/digitalocean/*' '*/deploy/captions/*'; then
   rsync -a --exclude '.env' --exclude '.env.keys' --exclude 'livekit.yaml' --exclude 'recordings' \
     "${tmp}/deploy/livekit-box/" "${TARGET}/"
+  # The caption worker's source (built by redeploy.sh only when it runs).
+  rsync -a --delete --exclude 'tests' --exclude '__pycache__' "${tmp}/deploy/captions/" "${TARGET}/captions-worker/"
   install -m 755 "${tmp}/deploy/digitalocean/sfu-boot.sh" /usr/local/sbin/webinarliv-sfu-boot.sh
   log "deploy files synced from ${REPO}@${REF}"
 else
@@ -109,6 +113,38 @@ if [[ -n "$grafana_file" && -f "$grafana_file" ]]; then
     log "ignoring ${grafana_file}: not the five GRAFANA_CLOUD_* lines"
   fi
   rm -f "$grafana_file"
+fi
+
+# The caption worker's settings, from the API (user data writes SFU_CAPTIONS_ENV; boxCaptionsEnv
+# in api/internal/api/sfu_box.go). They replace every caption-worker line in .env, so turning
+# Deepgram off in the API (CAPTIONS_PROVIDER=off, nothing else) also removes the key from the
+# volume. A file with any line that is not one of these plain KEY=value lines is ignored, as is
+# deepgram without its key and secret. Values are never printed.
+CAPTIONS_ENV_KEYS='CAPTIONS_PROVIDER|DEEPGRAM_API_KEY|CAPTIONS_SECRET|CAPTIONS_API_URL|CAPTIONS_AGENT_NAME|CAPTIONS_DEEPGRAM_MODEL|CAPTIONS_DEEPGRAM_LANGUAGE'
+captions_file="${SFU_CAPTIONS_ENV:-}"
+if [[ -n "$captions_file" && -f "$captions_file" ]]; then
+  ok=1
+  grep -vqE "^(${CAPTIONS_ENV_KEYS})=[A-Za-z0-9._:/@+=%?&,~-]+$" "$captions_file" && ok=0
+  provider="$(grep -E '^CAPTIONS_PROVIDER=' "$captions_file" | tail -1 | cut -d= -f2-)"
+  case "$provider" in
+    off) ;;
+    deepgram)
+      for k in DEEPGRAM_API_KEY CAPTIONS_SECRET CAPTIONS_API_URL; do
+        grep -qE "^${k}=" "$captions_file" || ok=0
+      done ;;
+    *) ok=0 ;;
+  esac
+  if [[ "$ok" == 1 ]]; then
+    tmp_env="$(mktemp "${TARGET}/.env.XXXXXX")"
+    grep -vE "^(${CAPTIONS_ENV_KEYS})=" "${TARGET}/.env" >"$tmp_env" || :
+    cat "$captions_file" >>"$tmp_env"
+    chmod 600 "$tmp_env" # it holds the Deepgram key now
+    mv "$tmp_env" "${TARGET}/.env"
+    log "caption worker settings from the API written to .env (CAPTIONS_PROVIDER=${provider})"
+  else
+    log "ignoring ${captions_file}: not the caption worker's lines"
+  fi
+  rm -f "$captions_file"
 fi
 
 # CAPTIONS_REMOTE in .env (written here by older versions) is unused now; drop it.

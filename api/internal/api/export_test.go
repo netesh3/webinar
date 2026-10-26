@@ -8,6 +8,7 @@ import (
 	"github.com/livekit/protocol/livekit"
 
 	"github.com/netkumar/webcast/api/internal/ai"
+	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/internal/doapi"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
@@ -183,8 +184,15 @@ func ForgetBoxCache(s *Server) {
 	s.box.mu.Unlock()
 }
 
-// SetCaptionsOn flips CAPTIONS_BOX_ENABLED on a running server (as a restart with it would).
-func SetCaptionsOn(s *Server, on bool) { s.box.cfg.Captions.On = on }
+// SetCaptionsOn flips CAPTIONS_BOX_ENABLED on a running server (as a restart with it would),
+// with CAPTIONS_PROVIDER=local set explicitly: the only way the captions box is ever made.
+func SetCaptionsOn(s *Server, on bool) {
+	s.box.cfg.Captions.On = on
+	s.cfg.CaptionsProvider = config.CaptionsProvider{Name: config.CaptionsProviderLocal, Explicit: true}
+}
+
+// SetCaptionsProvider sets CAPTIONS_PROVIDER (and DEEPGRAM_API_KEY) on a running server.
+func SetCaptionsProvider(s *Server, p config.CaptionsProvider) { s.cfg.CaptionsProvider = p }
 
 // ForgetCaptionsSweep lets the next step check for a stray captions droplet at once.
 func ForgetCaptionsSweep(s *Server) {

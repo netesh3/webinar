@@ -272,12 +272,11 @@ if [[ -n "$SFU_DATA_DIR" ]]; then
   DATA_COMPOSE=1
 fi
 
-# Captions do not run on this box (they run only on the separate on-demand captions box:
-# deploy/digitalocean/README.md "Captions box"). One-time cleanup for boxes and volumes from
-# before that: remove a caption agent container left running, its image, and the stale
-# captions.env, ./captions source and docker-compose.captions.yml old deploys left here (the
-# CAPTIONS_* lines in .env, CAPTIONS_ON_VIDEO_BOX included, are simply unused now). Harmless
-# when there is nothing to remove.
+# The old on-box caption agent (Whisper, before the captions box) is gone for good. One-time
+# cleanup for boxes and volumes from before: remove its container, its image, and the stale
+# captions.env, ./captions source and docker-compose.captions.yml old deploys left here
+# (CAPTIONS_ON_VIDEO_BOX in .env is unused). Harmless when there is nothing to remove. The
+# light Deepgram worker below is a different service (captions-worker) with its own files.
 docker ps -aq --filter label=com.docker.compose.service=captions | xargs -r docker rm -f >/dev/null
 docker image rm webinarliv-captions:local >/dev/null 2>&1 || true
 rm -rf captions.env captions docker-compose.captions.yml
@@ -313,6 +312,52 @@ fi
 if [[ "$MIXREC" != 1 ]]; then
   docker ps -aq --filter label=com.docker.compose.service=mixrec | xargs -r docker rm -f >/dev/null
   rm -f mixrec.env
+fi
+
+# Live captions on this box (docker-compose.captions-worker.yml, ./captions-worker: a copy of
+# deploy/captions): the light Deepgram worker, no Whisper. Opt-in: CAPTIONS_PROVIDER=deepgram,
+# DEEPGRAM_API_KEY and CAPTIONS_SECRET (32+) in .env, which the API passes in the box's user
+# data (sfu-boot.sh) and the deploy workflow writes. Anything else (CAPTIONS_PROVIDER=off, as
+# the API sends when captions are not on the video box): the worker is not run, an old one is
+# removed. The env file is mode 600 and its values are never printed.
+CAPTIONS_WORKER=0
+if [[ "$(env_value CAPTIONS_PROVIDER)" == "deepgram" ]]; then
+  cw_key="$(env_value DEEPGRAM_API_KEY)"
+  cw_secret="$(env_value CAPTIONS_SECRET)"
+  if [[ ! "$cw_key" =~ ^[A-Za-z0-9_-]{20,128}$ ]]; then
+    echo "CAPTIONS_PROVIDER=deepgram but DEEPGRAM_API_KEY in .env is missing or not a plain token; the caption worker not started" >&2
+  elif (( ${#cw_secret} < 32 )); then
+    echo "CAPTIONS_PROVIDER=deepgram but CAPTIONS_SECRET in .env is missing or under 32 characters; the caption worker not started" >&2
+  elif [[ ! -f docker-compose.captions-worker.yml || ! -f captions-worker/Dockerfile.light || ! -d captions-worker/webcaptions ]]; then
+    echo "CAPTIONS_PROVIDER=deepgram but docker-compose.captions-worker.yml or captions-worker/ is missing; sync deploy files" >&2
+  else
+    umask 077
+    {
+      echo "LIVEKIT_URL=ws://127.0.0.1:7880"
+      echo "LIVEKIT_API_KEY=${API_KEY}"
+      echo "LIVEKIT_API_SECRET=${API_SECRET}"
+      echo "CAPTIONS_PROVIDER=deepgram"
+      echo "DEEPGRAM_API_KEY=${cw_key}"
+      echo "CAPTIONS_SECRET=${cw_secret}"
+      echo "CAPTIONS_API_URL=$(env_value CAPTIONS_API_URL | sed 's|/*$||' | grep . || echo https://webinarliv.com)"
+      echo "CAPTIONS_AGENT_NAME=$(env_value CAPTIONS_AGENT_NAME | grep . || echo webinar-captions)"
+      echo "CAPTIONS_FINAL_ENABLED=false"
+      echo "CAPTIONS_HEALTH_PORT=8093"
+      echo "CAPTIONS_MAX_ROOMS=$(env_value CAPTIONS_WORKER_MAX_ROOMS | grep . || echo 20)"
+      for v in CAPTIONS_DEEPGRAM_MODEL CAPTIONS_DEEPGRAM_LANGUAGE CAPTIONS_VAD_PREROLL_MS CAPTIONS_VAD_HANGOVER_S; do
+        val="$(env_value "$v")"
+        if [[ -n "$val" ]]; then echo "${v}=${val}"; fi
+      done
+    } >captions-worker.env
+    umask 022
+    COMPOSE_ARGS+=("-f" "docker-compose.captions-worker.yml")
+    CAPTIONS_WORKER=1
+  fi
+  unset cw_key cw_secret
+fi
+if [[ "$CAPTIONS_WORKER" != 1 ]]; then
+  docker ps -aq --filter label=com.docker.compose.service=captions-worker | xargs -r docker rm -f >/dev/null
+  rm -f captions-worker.env
 fi
 
 # Grafana Alloy (docker-compose.alloy.yml, alloy/config.alloy): metrics and container logs to
@@ -367,6 +412,11 @@ if [[ "$TURN443" == 1 ]]; then
 fi
 if [[ "$MIXREC" == 1 && -z "$(env_value MIXREC_IMAGE)" ]]; then
   BUILD_SERVICES+=(mixrec)
+fi
+if [[ "$CAPTIONS_WORKER" == 1 ]]; then
+  # Cached after the first build (the snapshot pre-builds it: build-image.sh); a code change
+  # rebuilds only the last layers.
+  BUILD_SERVICES+=(captions-worker)
 fi
 if (( ${#BUILD_SERVICES[@]} > 0 )); then
   docker compose "${COMPOSE_ARGS[@]}" build "${BUILD_SERVICES[@]}"
@@ -457,6 +507,9 @@ fi
 echo "LiveKit redeployed at wss://${DOMAIN} (keys unchanged in ${TARGET}/.env.keys)"
 if [[ "$MIXREC" == 1 ]]; then
   echo "Mix recorder: on (https://${DOMAIN}/mixrec/v1/health; docker compose logs mixrec)"
+fi
+if [[ "$CAPTIONS_WORKER" == 1 ]]; then
+  echo "Live captions: the Deepgram worker on (docker compose logs captions-worker; captions.cost lines)"
 fi
 if [[ "$ALLOY" == 1 ]]; then
   echo "Grafana Cloud: Alloy on, box=${ALLOY_BOX} (docker compose logs alloy)"
