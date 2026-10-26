@@ -491,6 +491,11 @@ type Config struct {
 	 * provider's own model, asked when a tier model is refused. */
 	AIGroqModelQuality string
 	AIGroqModelFast    string
+	/* AIGroqMaxRequestTokens (AI_GROQ_MAX_REQUEST_TOKENS, default 7000) is the largest
+	 * estimated request Groq is asked; bigger ones (a one-hour recap, highlights) go straight
+	 * to OpenAI (internal/ai/budget.go). 7000 is a margin under Groq's free-tier 8,000 tokens a
+	 * minute per model; raise it on the Developer tier. 0 turns the routing off. */
+	AIGroqMaxRequestTokens int
 
 	/* AIEmbeddings is the endpoint the AI knowledge embeds its chunks and questions with
 	 * (text-embedding-3-small): OpenAI's, from OPENAI_API_KEY or the AI_PROVIDERS entry on
@@ -663,6 +668,7 @@ func Load() (Config, error) {
 	c.AIModelHighlights = env("AI_MODEL_HIGHLIGHTS", "gpt-5-mini")
 	c.AIGroqModelQuality = env("AI_GROQ_MODEL_QUALITY", "openai/gpt-oss-120b")
 	c.AIGroqModelFast = env("AI_GROQ_MODEL_FAST", "openai/gpt-oss-20b")
+	c.AIGroqMaxRequestTokens = envInt("AI_GROQ_MAX_REQUEST_TOKENS", 7000)
 
 	// Default the public URL to the first allowed origin. That is already the
 	// frontend's address in every correct deployment, so share links are right

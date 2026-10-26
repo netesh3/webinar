@@ -50,3 +50,41 @@ faster responses. The estimator now prices Groq (it was counted as free).
 
 The AI is a drafting tool for the host, never the coach: prompts and the privacy page keep
 saying so.
+
+## Expected tokens per feature and where it runs
+
+Added 2026-10-27 with token-aware routing (`api/internal/ai/budget.go`). Groq's free tier
+allows each model **8,000 tokens a minute** (and 200,000 a day, 30 requests a minute). Groq
+counts the reply cap (`max_completion_tokens`) against that budget when a request arrives,
+so a request's size is **input + reply cap + 1,024 reasoning headroom**. A request estimated
+over `AI_GROQ_MAX_REQUEST_TOKENS` (default **7,000**) goes straight to OpenAI, without
+benching Groq; everything smaller stays on Groq. On Groq's Developer tier, raise the budget
+(for example to 30,000) and the large features move to Groq too.
+
+Estimates for a typical **one-hour webinar**: ~9,000 spoken words ≈ 54k characters ≈ 13.5k
+tokens of transcript, ~16k with the speaker names and timestamps each line carries
+(~4 characters per token).
+
+| Feature | What it reads | Input ≈ | Reply cap | Total ≈ (Groq) | Runs on |
+|---|---|---|---|---|---|
+| Recap | whole transcript (cut into notes only past 200k chars), Q&A, chat | ~17k | 5,000 | ~23k | **OpenAI** |
+| Highlights | whole transcript (chunks past 100k chars) | ~16k | 2,500 | ~19.5k | **OpenAI** |
+| Reels | whole transcript plus peaks, like highlights | ~16k | 2,500 | ~19.5k | **OpenAI** |
+| Repurpose (each format) | whole transcript (direct up to 100k chars) | ~16k | 1,500–5,000 | ~18–22k | **OpenAI** |
+| Follow-up drafts | topic, recap summary and key points, groups | ~1.5–2.5k | 4,000 | ~6.5–7.5k | borderline: OpenAI when the recap is long |
+| AI knowledge harvest | up to 25 open questions plus knowledge excerpts | ~2–3k | 250 × questions + 400 (6,650 at 25) | ~4–11k | Groq for small batches, OpenAI for full ones |
+| Lead notes | per lead: short question and chat lines | ~0.5–2k | 2,500 | ~4–5.5k | Groq |
+| Clip post text | one clip's excerpt | ~1–2k | 2,500 | ~4.5–5.5k | Groq |
+| Q&A answer (live) | last 5 minutes of captions plus the question | ~1.2–1.5k | 2,500 | ~4.7–5k | Groq |
+| Q&A drafts | the questions plus past answers | ~1–2k | 300 × questions + 400 | ~2.5–5k | Groq |
+| Auto Q&A | the questions | ~0.5–1.5k | 250 × questions + 400 | ~2–4k | Groq |
+| Q&A clusters | the question list | ~1k | 600 | ~2.6k | Groq |
+| Chat spam pass | up to 40 pending messages plus 12 sample lines (every 30 s or 20 pending) | ~1.5–2.5k | 1,500 | ~4–5k | Groq |
+| Sales chat | the visitor's conversation | ~1–2k | 350 | ~2.4–3.4k | Groq |
+| Webinar setup | the host's short brief | ~0.5k | 2,000 | ~3.5k | Groq |
+
+So on the free tier the **transcript-wide features** (recap, highlights, reels, repurpose, and
+usually follow-ups and full harvests) go to **OpenAI** (gpt-5-nano / gpt-5-mini as before),
+and the **live, frequent ones** (Q&A, spam, sales chat, drafts) stay on **Groq**. The router
+logs each skip once: `ai: request over the groq budget, sent to openai` with the feature and
+the estimate.

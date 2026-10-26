@@ -68,6 +68,14 @@ func SetSpamEvery(d time.Duration) func() {
 	return func() { spamEvery = old }
 }
 
+// SetSpamBatch sets how many pending messages make a spam pass due; the returned func
+// restores it.
+func SetSpamBatch(n int) func() {
+	old := spamBatch
+	spamBatch = n
+	return func() { spamBatch = old }
+}
+
 // RunSpamLane is the spam lane of RunTick on its own.
 func RunSpamLane(s *Server, ctx context.Context) { s.runSpamLane(ctx) }
 

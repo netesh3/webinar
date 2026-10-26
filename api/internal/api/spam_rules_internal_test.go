@@ -125,4 +125,11 @@ func TestSpamDue(t *testing.T) {
 	if !spamDue(1, now.Add(-spamEvery), now) {
 		t.Error("one old enough is due")
 	}
+	// 2026-10-27: fewer, fuller passes for Groq's free-tier limits.
+	if spamBatch != 20 || spamEvery != 30*time.Second || spamBatch > spamWindow {
+		t.Errorf("batching = %d messages / %v (window %d), want 20 / 30s within the window", spamBatch, spamEvery, spamWindow)
+	}
+	if spamDue(spamBatch-1, now.Add(-29*time.Second), now) {
+		t.Error("19 messages at 29 s are not due yet")
+	}
 }

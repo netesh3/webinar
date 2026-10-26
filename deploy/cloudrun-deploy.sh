@@ -284,6 +284,8 @@ done
 [[ -n "${AI_PROVIDER:-}" ]] && ENV_VARS+=("AI_PROVIDER=${AI_PROVIDER}")
 [[ -n "${AI_GROQ_MODEL_QUALITY:-}" ]] && ENV_VARS+=("AI_GROQ_MODEL_QUALITY=${AI_GROQ_MODEL_QUALITY}")
 [[ -n "${AI_GROQ_MODEL_FAST:-}" ]] && ENV_VARS+=("AI_GROQ_MODEL_FAST=${AI_GROQ_MODEL_FAST}")
+# Largest estimated request Groq is asked; bigger ones go to OpenAI (internal/ai/budget.go).
+[[ -n "${AI_GROQ_MAX_REQUEST_TOKENS:-}" ]] && ENV_VARS+=("AI_GROQ_MAX_REQUEST_TOKENS=${AI_GROQ_MAX_REQUEST_TOKENS}")
 [[ -n "${OPENROUTER_API_KEY:-}" ]] && ENV_VARS+=("OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
 [[ -n "${OPENROUTER_MODEL:-}" ]] && ENV_VARS+=("OPENROUTER_MODEL=${OPENROUTER_MODEL}")
 # Razorpay — self-serve plans. Key id and secret together or neither (config.go
