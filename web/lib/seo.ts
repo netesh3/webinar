@@ -20,6 +20,9 @@ export type SitemapEntry = {
 
 /** "Last updated" on the legal pages, as YYYY-MM-DD. The pages show these dates, and
  *  the sitemap reports them, so bump the date here when the text changes. */
+/** When /contact last changed (its sitemap date). */
+export const CONTACT_UPDATED = "2026-10-27";
+
 export const LEGAL_UPDATED = {
   privacy: "2026-10-17",
   terms: "2026-09-11",
@@ -113,6 +116,7 @@ export function sitemapEntries(
     })),
     { path: "/privacy", lastModified: LEGAL_UPDATED.privacy, changeFrequency: "yearly", priority: 0.3 },
     { path: "/terms", lastModified: LEGAL_UPDATED.terms, changeFrequency: "yearly", priority: 0.3 },
+    { path: "/contact", lastModified: CONTACT_UPDATED, changeFrequency: "yearly", priority: 0.4 },
     { path: "/integrations/zoom", lastModified: LEGAL_UPDATED.zoom, changeFrequency: "yearly", priority: 0.3 },
     // Not listed: /home (the same page as /, canonical there), /zoom/test-plan (for the
     // Zoom reviewers, noindex), and everything in PRIVATE_PATHS.

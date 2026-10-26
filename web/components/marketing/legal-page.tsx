@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { TopNav } from "@/components/top-nav";
+import { SocialLinks } from "@/components/marketing/social-links";
 
 const SUPPORT_EMAIL = "support@webinarliv.com";
 
@@ -45,7 +46,10 @@ export function LegalFooterNav() {
       <span aria-hidden>·</span>
       <Link href="/">Home</Link>
       <span aria-hidden>·</span>
+      <Link href="/contact">Contact</Link>
+      <span aria-hidden>·</span>
       <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+      <SocialLinks className="legal-footer-social" />
     </nav>
   );
 }
@@ -60,8 +64,9 @@ export function HomeLegalFooter() {
           <Link href="/blog/category/tutorials">Tutorials</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
-          <a href={`mailto:${SUPPORT_EMAIL}`}>Contact</a>
+          <Link href="/contact">Contact</Link>
         </nav>
+        <SocialLinks className="home-legal-footer-social" />
       </div>
     </footer>
   );

@@ -1980,6 +1980,52 @@ html[data-theme="dark"] .legal {
   text-decoration: underline;
 }
 
+/* Social profiles (components/marketing/social-links.tsx): icons in the footers, icons with
+ * names on /contact. */
+.social-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.social-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 2.1rem;
+  min-height: 2.1rem;
+  border-radius: 999px;
+  color: var(--home-ink-2);
+  text-decoration: none;
+}
+
+.social-links a:hover,
+.social-links a:focus-visible {
+  color: var(--home-accent);
+  background: color-mix(in oklab, var(--home-accent) 10%, transparent);
+}
+
+.social-links-labelled {
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.social-links-labelled a {
+  padding: 0.4rem 0.85rem 0.4rem 0.65rem;
+  border: 1px solid color-mix(in oklab, var(--home-ink) 14%, transparent);
+  font-weight: 500;
+}
+
+.legal-footer-social {
+  width: 100%;
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+
 /* ------------------------------------------------------------------ blog
  *
  * /blog, /blog/category/*, /blog/<slug>. Inside `.home`, so it uses the marketing
