@@ -24,7 +24,7 @@
 		# MediaMTX; cached at the CDN that would be a hole in the stream for every viewer
 		# behind that edge. Errors are never stored (below).
 		#
-		# Playlists change every segment (~2s): a second at the CDN shares one fetch between
+		# Playlists change every segment (1s): a second at the CDN shares one fetch between
 		# everyone at an edge and still has them see each new segment within a second.
 		# Segments and the init segment never change once written and their names are unique
 		# to the muxer, so they can be kept as long as anyone could ask for them.

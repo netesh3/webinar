@@ -237,8 +237,8 @@ reloads), and through Bunny those reloads failed under a real audience: request 
 every viewer waiting for the next part to one origin request, and those shared requests got
 stuck. In Bunny's log for `video1_stream.m3u8?_HLS_msn=1585&_HLS_part=0`, 89 viewers at the
 Singapore edge waited until they gave up (`499`) while this box was healthy, and the same at the
-Mumbai edges. MediaMTX now writes plain fMP4 HLS (`hlsVariant: fmp4`, 2s segments), about one
-request a second per viewer and all of it cacheable, ~6s behind live. `HLS_PART_DURATION` in an
+Mumbai edges. MediaMTX now writes plain fMP4 HLS (`hlsVariant: fmp4`, 1s segments since 2026-10-26, 2s before), two or
+three requests a second per viewer and all of it cacheable, ~3s behind live (~6s with 2s segments). `HLS_PART_DURATION` in an
 old box's `.env` is ignored.
 
 **Delivery by where the viewer is.** With `EDGE_NEAR_COUNTRIES` set on the API (e.g. `IN`), a

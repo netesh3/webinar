@@ -11,6 +11,7 @@ import {
   PlaybackStats,
   STALL_WINDOW_MS,
   TARGET_SECONDS,
+  MAX_LATENCY_SECONDS,
   bufferedAhead,
   catchUp,
   seekToTarget,
@@ -30,15 +31,23 @@ import {
 } from "./edge-route.ts";
 import { clockOffset, formatClock } from "./server-clock.ts";
 
-// Plain HLS only (2026-10-25): no low-latency mode, no blocking reloads, ~6s behind live.
+// Plain HLS only (2026-10-25): no low-latency mode, no blocking reloads. Since 2026-10-26
+// 1s segments with the player three back: ~3s behind live.
 {
   const c = edgeHlsConfig();
   assert.equal(c.lowLatencyMode, false);
   assert.equal(c.liveDurationInfinity, true);
   assert.equal(c.liveSyncDuration, TARGET_SECONDS);
-  assert.equal(TARGET_SECONDS, 6);
-  // The buffer holds the whole target and more, so a slow request is absorbed.
+  assert.equal(TARGET_SECONDS, 3);
+  // hls.js's own seek-back only past where our buffer-aware jump acts, and short of Back to live.
+  assert.equal(c.liveMaxLatencyDuration, MAX_LATENCY_SECONDS);
+  assert.ok(MAX_LATENCY_SECONDS > TARGET_SECONDS + CATCH_UP.jumpAbove);
+  assert.ok(BEHIND_LIVE_SECONDS > MAX_LATENCY_SECONDS);
+  // The buffer cap holds the whole target and more, and stays small (a cap, ~8–10s).
   assert.ok(c.maxBufferLength > TARGET_SECONDS);
+  assert.ok(c.maxBufferLength <= 10);
+  // A stall nudges the target by a quarter second, so a 3s target does not drift to 6s fast.
+  assert.equal(c.liveSyncOnStallIncrease, 0.25);
   // Audio is never time-stretched: no playback-rate catch-up.
   assert.equal(c.maxLiveSyncPlaybackRate, 1);
   // Not the segment-count settings: the delay is set in seconds, not 3 × TARGETDURATION.
@@ -51,7 +60,8 @@ import { clockOffset, formatClock } from "./server-clock.ts";
 // Keeping near live: only a jump, and only when well past the target.
 {
   const at = (latency: number) => catchUp({ latency, target: TARGET_SECONDS });
-  assert.equal(at(6), "stay");
+  assert.equal(at(4), "stay");
+  assert.equal(at(6.5), "jump");
   assert.equal(at(TARGET_SECONDS + CATCH_UP.jumpAbove), "stay");
   assert.equal(at(TARGET_SECONDS + CATCH_UP.jumpAbove + 0.1), "jump");
   // Nothing to go on: leave it alone.
