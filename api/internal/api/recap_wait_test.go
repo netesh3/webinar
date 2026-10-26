@@ -3,7 +3,9 @@ package api_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/aiwrite"
 	"github.com/netkumar/webcast/api/types"
@@ -171,5 +173,44 @@ func TestRecapSilentSessionDoesNotWaitOutTheTranscript(t *testing.T) {
 	}
 	if model.callCount() != 0 {
 		t.Fatalf("model calls = %d, want none", model.callCount())
+	}
+}
+
+/* CAPTIONS_PROVIDER=deepgram: the live finals are the session transcript. The worker on the
+ * video box posts them when the room ends (deploy/captions/webcaptions/stage.py), and that one
+ * post completes the session: the recap is written at once from it, with no after-session pass
+ * to wait for and the session no longer finalizing. */
+func TestRecapFromTheDeepgramFinalsPostedAtRoomEnd(t *testing.T) {
+	h, model := aiHarness(t, recapReply, captionsConfig)
+	host := recapHost(t, h)
+	slug := captionedSessionEnded(t, h, host, "Deepgram session")
+	if got := h.getRecap(slug); got.Status != types.RecapPending {
+		t.Fatalf("before the room's transcript: %+v", got)
+	}
+	start := time.Now().Add(-2 * time.Minute).UnixMilli()
+	res, raw := h.agentPost("/api/internal/transcripts", testCaptionsSecret, map[string]any{
+		"room": "webinar_" + slug, "model": "deepgram/nova-3", "segments": []map[string]any{
+			{"identity": "user_" + host.ID, "name": "Priya", "start": start, "end": start + 3000, "text": "Deepgram heard this live."},
+			{"identity": "user_" + host.ID, "name": "Priya", "start": start + 4000, "end": start + 6000, "text": "And this."},
+		},
+	})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("transcript: %d %s", res.StatusCode, raw)
+	}
+	got := h.getRecap(slug)
+	if got.Status != types.RecapReady || got.Source != types.RecapSourceServerTranscript || model.callCount() != 1 {
+		t.Fatalf("after the room's transcript: %+v (model calls %d)", got, model.callCount())
+	}
+	if msg := userMessage(model.lastBody()); !strings.Contains(msg, "Deepgram heard this live.") {
+		t.Errorf("the recap did not use the finals: %s", msg)
+	}
+	fin, err := h.store.FinalizingSessions(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fin {
+		if f.Slug == slug {
+			t.Fatalf("still finalizing after the transcript: %+v", f)
+		}
 	}
 }

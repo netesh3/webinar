@@ -40,6 +40,8 @@ func newCaptionsRig(t *testing.T, on bool) *boxRig {
 	r := newBoxRigWith(t, func(c *config.Config) {
 		c.CaptionsSecret = testCaptionsSecret
 		c.LiveKitProjects = []config.LiveKitProject{{ID: boxProject, URL: "wss://lk.test", Key: "APIboxkey", Secret: "boxsecret123"}}
+		// The captions box is only ever the explicit local fallback.
+		c.CaptionsProvider = config.CaptionsProvider{Name: config.CaptionsProviderLocal, Explicit: true}
 	}, func(b *config.SFUBox) {
 		b.Captions = config.CaptionsBox{On: on, Name: "captions-blr-1", Size: "s-2vcpu-4gb",
 			SnapshotTag: "webinar-captions-image", Tags: []string{"webinar-captions"},
@@ -78,8 +80,8 @@ func TestCaptionsBoxMadeAndDeletedWithTheVideoBox(t *testing.T) {
 		t.Fatalf("creates = %d, want 2", len(r.fake.Created))
 	}
 	video, capCreate := r.fake.Created[0], r.fake.Created[1]
-	if strings.Contains(video.UserData, "CAPTIONS") {
-		t.Errorf("the video box's user data should say nothing about captions:\n%s", video.UserData)
+	if strings.Contains(video.UserData, "DEEPGRAM") || !strings.Contains(video.UserData, "\nCAPTIONS_PROVIDER=off\n") {
+		t.Errorf("the video box's user data should switch its caption worker off:\n%s", video.UserData)
 	}
 	tags := strings.Join(capCreate.Tags, ",")
 	if capCreate.Size != "s-2vcpu-4gb" || capCreate.Image != 7 || len(capCreate.Volumes) != 0 ||
@@ -261,8 +263,9 @@ func TestCaptionsBoxOffByDefault(t *testing.T) {
 	if len(r.fake.Created) != 1 || len(r.fake.Tagged(capTag)) != 0 {
 		t.Fatalf("creates %d, captions droplets %v; want only the video box", len(r.fake.Created), r.fake.Tagged(capTag))
 	}
-	if strings.Contains(r.fake.Created[0].UserData, "CAPTIONS") {
-		t.Errorf("the video box's user data should say nothing about captions:\n%s", r.fake.Created[0].UserData)
+	if ud := r.fake.Created[0].UserData; !strings.Contains(ud, "\nCAPTIONS_PROVIDER=off\n") ||
+		strings.Contains(ud, "DEEPGRAM") || strings.Contains(ud, testCaptionsSecret) {
+		t.Errorf("the video box's user data should only switch its caption worker off:\n%s", ud)
 	}
 	if cb := r.captions(); cb.Actual != store.BoxDown || cb.DropletID != 0 {
 		t.Fatalf("captions = %+v", cb)
@@ -277,5 +280,41 @@ func TestCaptionsBoxOffByDefault(t *testing.T) {
 	r.step()
 	if ids := r.fake.Tagged(capTag); len(ids) != 0 {
 		t.Fatalf("stray captions droplet left: %v", ids)
+	}
+}
+
+/* CAPTIONS_PROVIDER=deepgram (the default with a key): the caption worker runs on the video box,
+ * its settings go in the video droplet's user data, and no captions droplet is ever made, even
+ * with CAPTIONS_BOX_ENABLED=true left over. */
+func TestDeepgramCaptionsRunOnTheVideoBoxAndMakeNoCaptionsDroplet(t *testing.T) {
+	key := "dg" + strings.Repeat("k", 38)
+	r := newBoxRigWith(t, func(c *config.Config) {
+		c.CaptionsSecret = testCaptionsSecret
+		c.LiveKitProjects = []config.LiveKitProject{{ID: boxProject, URL: "wss://lk.test", Key: "APIboxkey", Secret: "boxsecret123"}}
+		c.CaptionsProvider = config.CaptionsProvider{Name: config.CaptionsProviderDeepgram, DeepgramKey: key,
+			DeepgramModel: "nova-3", DeepgramLanguage: "multi", APIURL: "https://webinarliv.test"}
+	}, func(b *config.SFUBox) {
+		b.Captions = config.CaptionsBox{On: true, Name: "captions-blr-1", Size: "s-2vcpu-4gb",
+			SnapshotTag: "webinar-captions-image", Tags: []string{"webinar-captions"},
+			Model: "base.en", APIURL: "https://webinarliv.test"}.WithDefaults()
+	})
+	r.fake.AddImage(doapi.Image{ID: 7, Name: "webinar-captions-image-1", CreatedAt: "2026-10-24T00:00:00Z",
+		Regions: []string{"blr1"}, Tags: []string{"webinar-captions-image"}, Status: "available"})
+	r.h.login("box-host@test.dev")
+	r.h.newWebinar("Deepgram captions", nil)
+	r.step()
+	r.step()
+	if len(r.fake.Created) != 1 || len(r.fake.Tagged(capTag)) != 0 {
+		t.Fatalf("creates %d, captions droplets %v; want only the video box", len(r.fake.Created), r.fake.Tagged(capTag))
+	}
+	ud := r.fake.Created[0].UserData
+	for _, want := range []string{"\nCAPTIONS_PROVIDER=deepgram\n", "\nDEEPGRAM_API_KEY=" + key + "\n",
+		"\nCAPTIONS_SECRET=" + testCaptionsSecret + "\n", "\nCAPTIONS_API_URL=https://webinarliv.test\n"} {
+		if !strings.Contains(ud, want) {
+			t.Errorf("video box user data lacks %q", strings.TrimSpace(want))
+		}
+	}
+	if cb := r.captions(); cb.Actual != store.BoxDown || cb.DropletID != 0 {
+		t.Fatalf("captions box = %+v, want down", cb)
 	}
 }

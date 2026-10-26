@@ -1,0 +1,25 @@
+# The video box's caption worker (CAPTIONS_PROVIDER=deepgram): Silero VAD and a Deepgram
+# websocket per stage speaker, no Whisper. Built on the video box by redeploy.sh (and baked
+# into the box snapshot by build-image.sh) from the captions-worker/ copy of this directory:
+#
+#   docker build -f Dockerfile.light -t webinarliv-captions-worker:local deploy/captions
+#
+# Docs: deploy/captions/README.md "Deepgram on the video box".
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+COPY requirements-light.txt .
+RUN pip install --no-cache-dir -r requirements-light.txt
+
+COPY webcaptions ./webcaptions
+
+RUN useradd --system --uid 10001 --home-dir /app captions
+USER captions
+
+# Nothing on disk: no spool, no weights. exec so docker's SIGTERM reaches the worker, which
+# then closes its sockets and posts each room's transcript.
+CMD ["python", "-m", "webcaptions.stage_agent", "start"]

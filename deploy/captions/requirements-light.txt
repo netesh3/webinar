@@ -1,0 +1,7 @@
+# The video box's caption worker (CAPTIONS_PROVIDER=deepgram, webcaptions/stage_agent.py):
+# LiveKit, Silero VAD (onnxruntime and its ~2 MB model) and numpy. No faster-whisper, no
+# CTranslate2, no model weights. Same pins as requirements.txt: bump together.
+livekit-agents==1.8.8
+livekit==1.1.20
+livekit-plugins-silero==1.8.8
+numpy>=1.26,<3

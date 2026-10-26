@@ -14,8 +14,9 @@ log = logging.getLogger("captions.config")
 # set CAPTIONS_SCRIPT: those are warned about and ignored, never a reason not to start.
 LANGUAGES = ("en",)
 
-# Who transcribes live (provider.py). local: the Whisper models here; deepgram: Deepgram's
-# streaming API, the local models loaded only as the fallback (CAPTIONS_FALLBACK_LOCAL).
+# Who transcribes live (provider.py). local: the Whisper models here (the captions box, now
+# only a fallback, docs/decisions/2026-10-27-captions-providers.md); deepgram: Deepgram's
+# streaming API from a light worker on the video box, no Whisper loaded at all.
 PROVIDERS = ("local", "deepgram")
 
 
@@ -121,10 +122,12 @@ class Config:
     # Grafana Alloy on the captions box. 0 is off.
     metrics_port: int = 0
 
-    # Live transcription provider (PROVIDERS). With deepgram, each speaker's audio streams to
-    # Deepgram (Nova-3) over a websocket and its interim/final results become partials/finals
-    # (provider.py); the segmenter still runs, but only to spool audio for the after-session
-    # transcript. The key never appears in repr() or a log line.
+    # Live transcription provider (PROVIDERS). With deepgram, each stage speaker's microphone
+    # streams to Deepgram (Nova-3) over a websocket, only while the voice activity detector
+    # hears speech (provider.SpeechGate); interim/final results become partials/finals, and
+    # the finals are the session transcript (posted when the room ends; nothing spooled, no
+    # after-session pass). The key never appears in repr() or a log line.
+    # Default: deepgram when DEEPGRAM_API_KEY is set, else local.
     provider: str = "local"
     deepgram_api_key: str = field(default="", repr=False)
     deepgram_model: str = "nova-3"
@@ -134,14 +137,15 @@ class Config:
     # Silence (ms) before Deepgram ends an utterance, and the gap that sends UtteranceEnd.
     deepgram_endpointing_ms: int = 300
     deepgram_utterance_end_ms: int = 1000
-    # With deepgram: keep the local models loaded and switch a room to them when Deepgram
-    # keeps failing (FailoverTracker). Off saves the box ~0.5–1 GB and lets it be smaller.
-    fallback_local: bool = True
+    # The speech gate: audio kept from before speech starts (sent first so the first word is
+    # not cut) and how long a socket stays open after speech stops before it is closed.
+    vad_preroll_ms: int = 400
+    vad_hangover_s: float = 9.0
 
     @property
     def local_models(self) -> bool:
-        """Whether this worker loads the Whisper models for live captions at all."""
-        return self.provider == "local" or self.fallback_local
+        """Whether this worker loads the Whisper models at all (never with deepgram)."""
+        return self.provider == "local"
 
     @property
     def cpu_threads(self) -> int:
@@ -219,13 +223,17 @@ class Config:
             spool_max_mb=_int(env, "CAPTIONS_SPOOL_MAX_MB", 4096),
             health_port=_int(env, "CAPTIONS_HEALTH_PORT", 8091),
             metrics_port=_int(env, "CAPTIONS_METRICS_PORT", 0),
-            provider=(env.get("CAPTIONS_PROVIDER", "").strip().lower() or "local"),
+            provider=(
+                env.get("CAPTIONS_PROVIDER", "").strip().lower()
+                or ("deepgram" if env.get("DEEPGRAM_API_KEY", "").strip() else "local")
+            ),
             deepgram_api_key=env.get("DEEPGRAM_API_KEY", "").strip(),
             deepgram_model=env.get("CAPTIONS_DEEPGRAM_MODEL", "").strip() or "nova-3",
             deepgram_language=env.get("CAPTIONS_DEEPGRAM_LANGUAGE", "").strip() or "multi",
             deepgram_endpointing_ms=_int(env, "CAPTIONS_DEEPGRAM_ENDPOINTING_MS", 300),
             deepgram_utterance_end_ms=_int(env, "CAPTIONS_DEEPGRAM_UTTERANCE_END_MS", 1000),
-            fallback_local=_bool(env.get("CAPTIONS_FALLBACK_LOCAL"), True),
+            vad_preroll_ms=_int(env, "CAPTIONS_VAD_PREROLL_MS", 400),
+            vad_hangover_s=_float(env, "CAPTIONS_VAD_HANGOVER_S", 9.0),
         )
         if cfg.provider not in PROVIDERS:
             raise ConfigError(f"CAPTIONS_PROVIDER must be one of {', '.join(PROVIDERS)}, got {cfg.provider!r}")

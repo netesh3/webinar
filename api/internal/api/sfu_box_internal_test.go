@@ -72,7 +72,7 @@ func TestBoxBackoff(t *testing.T) {
 
 func TestBoxUserData(t *testing.T) {
 	c := config.SFUBox{Repo: "netesh3/webinar", Ref: "main", Volume: "sfu-data"}
-	ud, err := boxUserData(c)
+	ud, err := boxUserData(c, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestBoxUserData(t *testing.T) {
 	}
 	// Nothing from config reaches the shell unquoted unless it is a plain name.
 	c.Ref = "main; rm -rf /"
-	if _, err := boxUserData(c); err == nil {
+	if _, err := boxUserData(c, nil); err == nil {
 		t.Error("a ref with shell in it was accepted")
 	}
 }
@@ -92,7 +92,7 @@ func TestBoxUserData(t *testing.T) {
 func TestBoxUserDataGrafana(t *testing.T) {
 	c := config.SFUBox{Repo: "netesh3/webinar", Ref: "main", Volume: "sfu-data"}
 	// Unset: no Grafana lines at all.
-	ud, err := boxUserData(c)
+	ud, err := boxUserData(c, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestBoxUserDataGrafana(t *testing.T) {
 		PromURL: "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push", PromUser: "1234567",
 		LokiURL: "https://logs-prod-028.grafana.net/loki/api/v1/push", LokiUser: "765432", Token: token,
 	}
-	if ud, err = boxUserData(c); err != nil {
+	if ud, err = boxUserData(c, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -145,7 +145,7 @@ func TestBoxUserDataGrafana(t *testing.T) {
 		{PromURL: c.Grafana.PromURL, PromUser: "1", LokiURL: c.Grafana.LokiURL, LokiUser: "2", Token: "tok\nWEBINARLIV_GRAFANA\nreboot"},
 	} {
 		c.Grafana = g
-		ud, err := boxUserData(c)
+		ud, err := boxUserData(c, nil)
 		if err != nil || strings.Contains(ud, "GRAFANA") {
 			t.Errorf("unusable %+v: err %v\n%s", g.PromUser, err, ud)
 		}
@@ -163,5 +163,63 @@ func TestBoxCreateDoesNotLogUserData(t *testing.T) {
 		if strings.Contains(line, "s.log.") && (strings.Contains(line, "userData") || strings.Contains(line, "Grafana")) {
 			t.Errorf("a log line names the user data or Grafana settings: %s", strings.TrimSpace(line))
 		}
+	}
+}
+
+func TestBoxCaptionsEnvAndUserData(t *testing.T) {
+	key := "dg" + strings.Repeat("a1", 20)
+	secret := strings.Repeat("s", 40)
+	cfg := &config.Config{CaptionsSecret: secret, CaptionsAgentName: "webinar-captions",
+		CaptionsProvider: config.CaptionsProvider{Name: "deepgram", DeepgramKey: key, DeepgramModel: "nova-3",
+			DeepgramLanguage: "multi", APIURL: "https://webinarliv.com"}}
+	pairs, err := boxCaptionsEnv(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := config.SFUBox{Repo: "netesh3/webinar", Ref: "main", Volume: "sfu-data"}
+	ud, err := boxUserData(c, pairs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"(umask 077; cat >" + boxCaptionsFile + " <<'WEBINARLIV_CAPTIONS'\nCAPTIONS_PROVIDER=deepgram\n",
+		"\nDEEPGRAM_API_KEY=" + key + "\n", "\nCAPTIONS_SECRET=" + secret + "\n",
+		"\nCAPTIONS_API_URL=https://webinarliv.com\n", "\nCAPTIONS_AGENT_NAME=webinar-captions\n",
+		"\nCAPTIONS_DEEPGRAM_MODEL=nova-3\n", "\nCAPTIONS_DEEPGRAM_LANGUAGE=multi\nWEBINARLIV_CAPTIONS\n)\n",
+		"export SFU_CAPTIONS_ENV=" + boxCaptionsFile + "\n",
+	} {
+		if !strings.Contains(ud, want) {
+			t.Errorf("user data lacks %q:\n%s", want, ud)
+		}
+	}
+	if strings.Count(ud, key) != 1 || strings.Index(ud, "SFU_CAPTIONS_ENV") > strings.Index(ud, "exec ") {
+		t.Errorf("key placement:\n%s", ud)
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := t.TempDir() + "/ud.sh"
+		if err := os.WriteFile(f, []byte(ud), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil { // #nosec G204 -- test, fixed args
+			t.Errorf("bash -n: %v %s", err, out)
+		}
+	}
+
+	// Local, no secret, or no key: the box is told to run no worker (and drop old keys).
+	for _, off := range []*config.Config{
+		{CaptionsSecret: secret, CaptionsProvider: config.CaptionsProvider{Name: "local"}},
+		{CaptionsProvider: cfg.CaptionsProvider},
+		{CaptionsSecret: secret, CaptionsProvider: config.CaptionsProvider{Name: "deepgram"}},
+	} {
+		if p, err := boxCaptionsEnv(off); err != nil || len(p) != 1 || p[0] != [2]string{"CAPTIONS_PROVIDER", "off"} {
+			t.Errorf("off: %v %v", p, err)
+		}
+	}
+	// A value that cannot go in the file: off, and the error names the variable, not the value.
+	bad := *cfg
+	bad.CaptionsSecret = strings.Repeat("s", 40) + "\nWEBINARLIV_CAPTIONS\nreboot"
+	p, err := boxCaptionsEnv(&bad)
+	if err == nil || len(p) != 1 || strings.Contains(err.Error(), "reboot") || !strings.Contains(err.Error(), "CAPTIONS_SECRET") {
+		t.Errorf("bad secret: %v %v", p, err)
 	}
 }

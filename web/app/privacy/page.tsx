@@ -183,14 +183,11 @@ export default function PrivacyPage() {
           meetings, webinars, registrants, and attendance
         </li>
         <li>
-          <strong>Deepgram</strong> — where enabled, speech-to-text for live
-          captions: while a host has captions on, the audio of the people
-          speaking is streamed to Deepgram and the text comes back as captions
-        </li>
-        <li>
-          <strong>Groq</strong> — where enabled, speech-to-text for the
-          after-session transcript: a session&apos;s recorded speech is sent to
-          Groq once the session ends, to produce the transcript the host sees
+          <strong>Deepgram</strong> — speech-to-text for live captions and the
+          session transcript: while captions are on, the microphone audio of
+          the host and speakers on stage (never the audience) is streamed to
+          Deepgram only while they are talking, and the text comes back as
+          captions. We keep the text, not the audio
         </li>
       </ul>
       <p>

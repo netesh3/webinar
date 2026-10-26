@@ -111,6 +111,9 @@ type Config struct {
 	// CaptionsAgentName is the LiveKit agent name the caption agent registers under
 	// (CAPTIONS_AGENT_NAME on both sides). Default "webinar-captions".
 	CaptionsAgentName string
+	// CaptionsProvider is who transcribes them: Deepgram from the video box, or the local
+	// models on the captions box (captions_provider.go).
+	CaptionsProvider CaptionsProvider
 
 	// Recording.
 	//
@@ -541,6 +544,7 @@ func Load() (Config, error) {
 		VAPIDSubject:         strings.TrimSpace(env("VAPID_SUBJECT", "")),
 		CaptionsSecret:       strings.TrimSpace(env("CAPTIONS_SECRET", "")),
 		CaptionsAgentName:    strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
+		CaptionsProvider:     loadCaptionsProvider(),
 		MixRecSecret:         strings.TrimSpace(env("MIXREC_SECRET", "")),
 		MixRecURL:            strings.TrimRight(strings.TrimSpace(env("MIXREC_URL", "")), "/"),
 		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
@@ -913,6 +917,7 @@ func (c Config) validate() error {
 		errs = append(errs, errors.New("AI_HOST_MONTHLY_USD must be a number of US dollars, >= 0"))
 	}
 	errs = append(errs, c.validateSFUBox()...)
+	errs = append(errs, c.validateCaptionsProvider()...)
 
 	return errors.Join(errs...)
 }

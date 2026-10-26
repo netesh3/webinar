@@ -56,10 +56,21 @@ var _ captionsRedispatcher = (*lk.Client)(nil)
 // captionsStepReserve is the least time left in the step for the captions box to be stepped.
 const captionsStepReserve = 5 * time.Second
 
-// captionsOn is whether a captions box is wanted at all.
+/* captionsOn is whether a captions box is wanted at all: CAPTIONS_BOX_ENABLED=true with
+ * CAPTIONS_PROVIDER=local set explicitly (config.CaptionsBoxOn). The captions box was retired
+ * from production on 2026-10-27 (captions run on the video box, captionsOnVideoBox); this is
+ * its fallback, and every coupling to it (made and deleted with the video box, the admin card,
+ * the redispatch when it comes up) is behind this switch. */
 func (s *Server) captionsOn() bool {
-	// CAPTIONS_BOX_ENABLED is one switch for the whole pool; every box's captions follow it.
-	return s.box != nil && s.box.cfg.Captions.On && s.serverCaptionsConfigured()
+	// One switch for the whole pool; every box's captions follow it.
+	return s.box != nil && s.box.cfg.Captions.On && s.cfg.CaptionsProvider.ExplicitLocal() && s.serverCaptionsConfigured()
+}
+
+/* captionsOnVideoBox is whether the caption worker runs on the video box itself
+ * (CAPTIONS_PROVIDER=deepgram: the captions-worker service, deploy/livekit-box), so a box
+ * room has a worker for its dispatch without any captions droplet. */
+func (s *Server) captionsOnVideoBox() bool {
+	return s.cfg.CaptionsProvider.OnVideoBox() && s.serverCaptionsConfigured()
 }
 
 // captionsBoxWanted is the rule: the video box has a droplet that is not going away.
@@ -85,7 +96,7 @@ func (s *Server) captionsBoxStep(ctx context.Context, b *boxManager, holder stri
 		s.log.Error("captions box: read", "project", project, "error", err)
 		return
 	}
-	if !b.cfg.Captions.On && cb.Actual == store.BoxDown && cb.DropletID == 0 && cb.Failures == 0 {
+	if !(b.cfg.Captions.On && s.cfg.CaptionsProvider.ExplicitLocal()) && cb.Actual == store.BoxDown && cb.DropletID == 0 && cb.Failures == 0 {
 		// Never switched on (or long off): only the occasional check for a stray droplet.
 		s.captionsSweepStray(ctx, b, &cb, b.now())
 		if cb.Actual == store.BoxDown {
@@ -391,17 +402,6 @@ func captionsUserData(c config.SFUBox, proj config.LiveKitProject, captionsSecre
 		{"CAPTIONS_MAX_ROOMS", strconv.Itoa(cc.MaxRooms)},
 		{"CAPTIONS_LANGUAGE", "en"},
 	}
-	// Deepgram live captions (webcaptions/provider.py): only when chosen, so a local box's env
-	// file carries no third-party key.
-	if cc.Provider == config.CaptionsProviderDeepgram {
-		pairs = append(pairs,
-			[2]string{"CAPTIONS_PROVIDER", cc.Provider},
-			[2]string{"DEEPGRAM_API_KEY", cc.DeepgramKey},
-			[2]string{"CAPTIONS_DEEPGRAM_MODEL", cc.DeepgramModel},
-			[2]string{"CAPTIONS_DEEPGRAM_LANGUAGE", cc.DeepgramLanguage},
-			[2]string{"CAPTIONS_FALLBACK_LOCAL", strconv.FormatBool(cc.FallbackLocal)},
-		)
-	}
 	var env strings.Builder
 	for _, p := range pairs {
 		if !captionsValueSafe.MatchString(p[1]) {
@@ -449,7 +449,9 @@ func captionsGrafana(g config.BoxGrafana) string {
 }
 
 /* captionsRedispatch re-creates the dispatch of every live room on the box still waiting for
- * the agent whose dispatch has no job (see RedispatchIdle), now that the captions box is up. */
+ * the agent whose dispatch has no job (see RedispatchIdle), now that the captions box is up,
+ * or (captionsOnVideoBox) while the video box is ready: its worker may have registered after
+ * the dispatch, after a redeploy say. */
 func (s *Server) captionsRedispatch(ctx context.Context, b *boxManager) {
 	waiting, err := s.store.CaptionsAwaitingAgent(ctx, b.cfg.Project, s.defaultCostProject())
 	if err != nil {

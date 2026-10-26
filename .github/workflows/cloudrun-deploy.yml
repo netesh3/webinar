@@ -45,10 +45,13 @@
 #     SFU_BOX_IDLE_GRACE, SFU_BOX_SSH_KEYS, SFU_BOX_PARK_DROPLET override the defaults.
 #     SFU_BOX_SLOTS (JSON), SFU_BOX_AREA, SFU_BOX_CAPACITY and SFU_BOX_POINTS make it a pool of
 #     several boxes (deploy/digitalocean/README.md "More video servers"); unset is one box.
-#     CAPTIONS_BOX_ENABLED=true (needs CAPTIONS_SECRET) adds a small captions droplet made and
-#     deleted with it; CAPTIONS_BOX_SIZE (s-4vcpu-8gb), _IMAGE, _CPUS, _MAX_ROOMS, _MODEL tune it.
-#     Variable CAPTIONS_PROVIDER=deepgram with secret DEEPGRAM_API_KEY makes Deepgram transcribe
-#     live (CAPTIONS_FALLBACK_LOCAL, _DEEPGRAM_MODEL nova-3, _DEEPGRAM_LANGUAGE multi tune it).
+#   DEEPGRAM_API_KEY — optional, with CAPTIONS_SECRET: live captions by Deepgram from a light
+#     worker on each video box (CAPTIONS_PROVIDER defaults to deepgram when it is set; the API
+#     passes it to each droplet in its user data). Variables CAPTIONS_DEEPGRAM_MODEL (nova-3) and
+#     CAPTIONS_DEEPGRAM_LANGUAGE (multi) tune it; CAPTIONS_PROVIDER=local forces the old path.
+#     The separate captions box was retired on 2026-10-27 and is never made by this deploy: it
+#     needs variable CAPTIONS_BOX_ENABLED_OVERRIDE=true AND CAPTIONS_PROVIDER=local (the
+#     fallback); CAPTIONS_BOX_SIZE (s-4vcpu-8gb), _IMAGE, _CPUS, _MAX_ROOMS, _MODEL tune it.
 #   GRAFANA_CLOUD_TOKEN — optional, with repo variables GRAFANA_CLOUD_PROM_URL, _PROM_USER,
 #     _LOKI_URL, _LOKI_USER (all five or the API refuses to boot): the box manager passes them in
 #     each droplet's user data so the box's Alloy reports to Grafana Cloud from first boot.
@@ -210,17 +213,18 @@ jobs:
       SFU_BOX_CAPACITY: ${{ vars.SFU_BOX_CAPACITY }}
       SFU_BOX_SLOTS: ${{ vars.SFU_BOX_SLOTS }}
       SFU_BOX_POINTS: ${{ vars.SFU_BOX_POINTS }}
-      # The captions box beside it (api/internal/api/captions_box.go): off until CAPTIONS_BOX_ENABLED=true.
-      CAPTIONS_BOX_ENABLED: ${{ vars.CAPTIONS_BOX_ENABLED }}
+      # The captions box beside it (api/internal/api/captions_box.go): retired 2026-10-27, so the old
+      # CAPTIONS_BOX_ENABLED variable no longer reaches the API. The fallback, by hand only:
+      # CAPTIONS_BOX_ENABLED_OVERRIDE=true together with CAPTIONS_PROVIDER=local.
+      CAPTIONS_BOX_ENABLED: ${{ vars.CAPTIONS_BOX_ENABLED_OVERRIDE }}
       CAPTIONS_BOX_SIZE: ${{ vars.CAPTIONS_BOX_SIZE }}
       CAPTIONS_BOX_IMAGE: ${{ vars.CAPTIONS_BOX_IMAGE }}
       CAPTIONS_BOX_CPUS: ${{ vars.CAPTIONS_BOX_CPUS }}
       CAPTIONS_BOX_MAX_ROOMS: ${{ vars.CAPTIONS_BOX_MAX_ROOMS }}
       CAPTIONS_BOX_MODEL: ${{ vars.CAPTIONS_BOX_MODEL }}
-      # Live captions by Deepgram's streaming API instead of the box's own model (provider.py):
-      # CAPTIONS_PROVIDER=deepgram plus the DEEPGRAM_API_KEY secret. Unset is local.
+      # Live captions by Deepgram from the video box (webcaptions/stage_agent.py). Unset
+      # CAPTIONS_PROVIDER is deepgram when the DEEPGRAM_API_KEY secret is set, else local.
       CAPTIONS_PROVIDER: ${{ vars.CAPTIONS_PROVIDER }}
-      CAPTIONS_FALLBACK_LOCAL: ${{ vars.CAPTIONS_FALLBACK_LOCAL }}
       CAPTIONS_DEEPGRAM_MODEL: ${{ vars.CAPTIONS_DEEPGRAM_MODEL }}
       CAPTIONS_DEEPGRAM_LANGUAGE: ${{ vars.CAPTIONS_DEEPGRAM_LANGUAGE }}
       DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}

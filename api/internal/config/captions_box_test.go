@@ -54,6 +54,7 @@ func TestCaptionsBoxDefaultsAndValidation(t *testing.T) {
 		c.SFUBox.Captions = CaptionsBox{On: true, Name: "captions-blr-1", Size: "s-2vcpu-4gb",
 			SnapshotTag: "webinar-captions-image", Tags: []string{"webinar-captions"}, Model: "base.en",
 			APIURL: "https://webinarliv.com"}.WithDefaults()
+		c.CaptionsProvider = CaptionsProvider{Name: CaptionsProviderLocal, Explicit: true}
 		return c
 	}
 	if errs := good().validateSFUBox(); len(errs) != 0 {
@@ -94,59 +95,58 @@ func TestCaptionsRoomsFor(t *testing.T) {
 	}
 }
 
-func TestCaptionsBoxDeepgramDefaultsAndValidation(t *testing.T) {
-	for _, k := range []string{"CAPTIONS_BOX_SIZE", "CAPTIONS_BOX_CPUS", "CAPTIONS_BOX_MAX_ROOMS", "CAPTIONS_PROVIDER",
-		"DEEPGRAM_API_KEY", "CAPTIONS_DEEPGRAM_MODEL", "CAPTIONS_DEEPGRAM_LANGUAGE", "CAPTIONS_FALLBACK_LOCAL"} {
+/* The provider: deepgram when DEEPGRAM_API_KEY is set, else local; the captions box only with
+ * CAPTIONS_PROVIDER=local set explicitly AND CAPTIONS_BOX_ENABLED=true. */
+func TestCaptionsProviderDefaultsAndTheCaptionsBoxSwitch(t *testing.T) {
+	for _, k := range []string{"CAPTIONS_PROVIDER", "DEEPGRAM_API_KEY", "CAPTIONS_DEEPGRAM_MODEL",
+		"CAPTIONS_DEEPGRAM_LANGUAGE", "CAPTIONS_API_URL", "CAPTIONS_BOX_ENABLED"} {
 		t.Setenv(k, "")
 	}
-	if b := loadCaptionsBox(); b.Provider != "local" || b.Size != "s-4vcpu-8gb" || b.MaxRooms != 2 {
-		t.Fatalf("unset provider: %q on %q (%d rooms), want local on s-4vcpu-8gb, 2 rooms", b.Provider, b.Size, b.MaxRooms)
+	p := loadCaptionsProvider()
+	if p.Name != "local" || p.Explicit || p.OnVideoBox() {
+		t.Fatalf("no key: %+v", p)
 	}
-	// Deepgram with the local fallback: the box keeps its local size (it may take a room over).
-	t.Setenv("CAPTIONS_PROVIDER", "deepgram")
-	if b := loadCaptionsBox(); b.Size != "s-4vcpu-8gb" || b.MaxRooms != 2 || !b.FallbackLocal || b.DeepgramModel != "nova-3" || b.DeepgramLanguage != "multi" {
-		t.Fatalf("deepgram + fallback = %+v", b)
-	}
-	// Without it the box only moves audio: 1 vCPU, many rooms.
-	t.Setenv("CAPTIONS_FALLBACK_LOCAL", "false")
-	if b := loadCaptionsBox(); b.Size != "s-1vcpu-2gb" || b.CPUs != 1 || b.MaxRooms != 8 {
-		t.Fatalf("deepgram only: size %q cpus %d rooms %d", b.Size, b.CPUs, b.MaxRooms)
-	}
-	// An explicit size still wins.
-	t.Setenv("CAPTIONS_BOX_SIZE", "s-2vcpu-4gb")
-	if b := loadCaptionsBox(); b.Size != "s-2vcpu-4gb" || b.MaxRooms != 16 {
-		t.Fatalf("deepgram on 2 vCPU: size %q rooms %d", b.Size, b.MaxRooms)
+	t.Setenv("CAPTIONS_BOX_ENABLED", "true")
+	c := Config{CaptionsProvider: p}
+	c.SFUBox.Captions = loadCaptionsBox()
+	if c.CaptionsBoxOn() {
+		t.Fatal("CAPTIONS_BOX_ENABLED with local only by default made the captions box")
 	}
 
-	base := func() Config {
-		c := Config{CaptionsSecret: strings.Repeat("k", 40),
-			LiveKitProjects: []LiveKitProject{{ID: "do-blr", URL: "wss://x", Key: "k", Secret: "s"}}}
-		c.SFUBox = loadSFUBox()
-		c.SFUBox.Project, c.SFUBox.Token = "do-blr", "tok"
-		c.SFUBox.Captions = CaptionsBox{On: true, Name: "captions-blr-1", Size: "s-1vcpu-2gb",
-			SnapshotTag: "webinar-captions-image", Tags: []string{"webinar-captions"}, Model: "base.en",
-			APIURL: "https://webinarliv.com", Provider: CaptionsProviderDeepgram, DeepgramKey: strings.Repeat("d", 40),
-			DeepgramModel: "nova-3", DeepgramLanguage: "multi"}.WithDefaults()
-		return c
+	key := "dg_" + strings.Repeat("x", 37)
+	t.Setenv("DEEPGRAM_API_KEY", key)
+	p = loadCaptionsProvider()
+	if p.Name != "deepgram" || !p.OnVideoBox() || p.DeepgramModel != "nova-3" || p.DeepgramLanguage != "multi" || p.APIURL != "https://webinarliv.com" {
+		t.Fatalf("with a key: %+v", p)
 	}
-	if errs := base().validateSFUBox(); len(errs) != 0 {
-		t.Fatalf("a good deepgram captions box reported %v", errs)
+	c.CaptionsProvider = p
+	if c.CaptionsBoxOn() {
+		t.Fatal("deepgram made the captions box")
 	}
-	for name, mutate := range map[string]func(*Config){
-		"no key":           func(c *Config) { c.SFUBox.Captions.DeepgramKey = "" },
-		"key with a space": func(c *Config) { c.SFUBox.Captions.DeepgramKey = "abc def ghi jkl mno pqr" },
-		"unknown provider": func(c *Config) { c.SFUBox.Captions.Provider = "whisperx" },
-		"model with quote": func(c *Config) { c.SFUBox.Captions.DeepgramModel = `nova"3` },
+	if errs := c.validateCaptionsProvider(); len(errs) != 0 {
+		t.Fatalf("a good deepgram config reported %v", errs)
+	}
+
+	t.Setenv("CAPTIONS_PROVIDER", "local")
+	c.CaptionsProvider = loadCaptionsProvider()
+	if !c.CaptionsBoxOn() || c.CaptionsProvider.OnVideoBox() {
+		t.Fatalf("explicit local with CAPTIONS_BOX_ENABLED: %+v", c.CaptionsProvider)
+	}
+
+	for name, p := range map[string]CaptionsProvider{
+		"no key":      {Name: "deepgram", DeepgramModel: "nova-3", DeepgramLanguage: "multi", APIURL: "https://webinarliv.com"},
+		"key with \n": {Name: "deepgram", DeepgramKey: key + "\nX=1", DeepgramModel: "nova-3", DeepgramLanguage: "multi", APIURL: "https://webinarliv.com"},
+		"bad model":   {Name: "deepgram", DeepgramKey: key, DeepgramModel: "nova 3", DeepgramLanguage: "multi", APIURL: "https://webinarliv.com"},
+		"http api":    {Name: "deepgram", DeepgramKey: key, DeepgramModel: "nova-3", DeepgramLanguage: "multi", APIURL: "http://webinarliv.com"},
+		"unknown":     {Name: "whisper"},
 	} {
-		c := base()
-		mutate(&c)
-		errs := c.validateSFUBox()
+		errs := (Config{CaptionsProvider: p}).validateCaptionsProvider()
 		if len(errs) == 0 {
-			t.Errorf("%s: not refused", name)
+			t.Errorf("%s: accepted", name)
 		}
-		for _, e := range errs {
-			if strings.Contains(e.Error(), strings.Repeat("d", 40)) {
-				t.Errorf("%s: an error echoes the key", name)
+		for _, err := range errs {
+			if strings.Contains(err.Error(), key) {
+				t.Errorf("%s: the key is in the error", name)
 			}
 		}
 	}

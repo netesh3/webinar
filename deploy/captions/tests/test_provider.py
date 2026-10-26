@@ -13,8 +13,10 @@ from webcaptions.live import LiveCaptioner
 from webcaptions.provider import (
     BYTES_PER_MS,
     AudioClock,
+    CostStats,
     DeepgramStream,
     FailoverTracker,
+    SpeechGate,
     listen_url,
     parse_message,
 )
@@ -67,11 +69,19 @@ def test_config_requires_a_key_and_hides_it_from_repr():
         Config.from_env({"CAPTIONS_API_URL": "http://api", "CAPTIONS_SECRET": "x" * 40, "CAPTIONS_PROVIDER": "deepgram"})
     c = Config.from_env({
         "CAPTIONS_API_URL": "http://api", "CAPTIONS_SECRET": "x" * 40,
-        "CAPTIONS_PROVIDER": "deepgram", "DEEPGRAM_API_KEY": "s3cr3t" * 6, "CAPTIONS_FALLBACK_LOCAL": "false",
+        "CAPTIONS_PROVIDER": "deepgram", "DEEPGRAM_API_KEY": "s3cr3t" * 6,
     })
     assert c.provider == "deepgram" and not c.local_models
     assert "s3cr3t" not in repr(c)
-    assert Config.from_env({"CAPTIONS_API_URL": "http://api", "CAPTIONS_SECRET": "x" * 40}).provider == "local"
+
+
+def test_provider_defaults_to_deepgram_with_a_key_else_local():
+    base = {"CAPTIONS_API_URL": "http://api", "CAPTIONS_SECRET": "x" * 40}
+    assert Config.from_env(base).provider == "local"
+    assert Config.from_env(base).local_models
+    assert Config.from_env({**base, "DEEPGRAM_API_KEY": "k" * 40}).provider == "deepgram"
+    # An explicit local wins over a key that happens to be there.
+    assert Config.from_env({**base, "DEEPGRAM_API_KEY": "k" * 40, "CAPTIONS_PROVIDER": "local"}).provider == "local"
 
 
 # ------------------------------------------------------------------- timing
@@ -152,14 +162,15 @@ def test_results_arrive_with_wall_times_and_close_ends_the_socket():
 
     async def scenario():
         s = DeepgramStream(cfg(), "user_1", connect, lambda *e: events.append(e), FailoverTracker())
-        await s.feed(b"\0" * 320, NOW)  # first frame: starts the connect, dropped
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        await s.open()
+        # Sent while the socket is still connecting: held, then sent in order (nothing lost).
         for i in range(100):
-            await s.feed(b"\0" * 320, NOW + 10 + i * 10)
+            await s.send(b"\0" * 320, NOW + 10 + i * 10)
+        await asyncio.sleep(0.01)
         sock.inbox.put_nowait(result("hello every", 0.0, 0.6, False))
         sock.inbox.put_nowait(result("Hello, everyone.", 0.0, 0.9, True))
         await asyncio.sleep(0.01)
+        await s.finalize()
         await s.close()
         return s
 
@@ -169,52 +180,146 @@ def test_results_arrive_with_wall_times_and_close_ends_the_socket():
         ("final", NOW + 10, NOW + 910, "Hello, everyone."),
     ]
     assert len(sock.sent) == 100
-    assert '{"type":"CloseStream"}' in sock.text and sock.closed
+    assert sock.text[:2] == ['{"type":"Finalize"}', '{"type":"CloseStream"}'] and sock.closed
     assert s.ws is None
 
 
-def test_a_failing_connect_counts_and_feeding_never_raises():
+def test_nothing_is_sent_or_opened_unless_the_gate_opened_it():
+    calls = []
+
+    async def connect(url, headers):
+        calls.append(url)
+        return FakeSocket()
+
+    async def scenario():
+        s = DeepgramStream(cfg(), "user_1", connect, lambda *e: None, FailoverTracker())
+        await s.send(b"\0" * 320, NOW)
+        await asyncio.sleep(0.01)
+        return s
+
+    s = run(scenario())
+    assert calls == [] and s.ws is None
+
+
+def test_a_failing_connect_counts_and_trips_the_room_to_paused():
     tracker = FailoverTracker(limit=2)
+    health = []
 
     async def connect(url, headers):
         raise OSError("401 Unauthorized")
 
     async def scenario():
-        s = DeepgramStream(cfg(), "user_1", connect, lambda *e: None, tracker)
-        s._retry_at = 0
-        await s.feed(b"\0" * 320, NOW)
+        s = DeepgramStream(cfg(), "user_1", connect, lambda *e: None, tracker, on_health=health.append)
+        await s.open()
         await asyncio.sleep(0.01)
         s._retry_at = 0
-        await s.feed(b"\0" * 320, NOW + 10)
+        await s.send(b"\0" * 320, NOW + 10)
         await asyncio.sleep(0.01)
         await s.close()
 
     run(scenario())
-    assert tracker.tripped
+    assert tracker.tripped and health == [False]
 
 
-def test_a_dropped_socket_is_a_failure_and_reconnects():
+def test_a_dropped_socket_is_a_failure_and_reconnects_and_recovery_reports_live():
     socks = [FakeSocket(), FakeSocket()]
-    tracker = FailoverTracker(limit=5)
+    tracker = FailoverTracker(limit=1)
+    health = []
 
     async def connect(url, headers):
         return socks.pop(0)
 
     async def scenario():
-        s = DeepgramStream(cfg(), "user_1", connect, lambda *e: None, tracker)
-        await s.feed(b"\0" * 320, NOW)
+        s = DeepgramStream(cfg(), "user_1", connect, lambda *e: None, tracker, on_health=health.append)
+        await s.open()
         await asyncio.sleep(0.01)
         first = s.ws
         first.inbox.put_nowait(None)  # Deepgram closed it
         await asyncio.sleep(0.01)
-        assert s.ws is None and len(tracker._fails) == 1
+        assert s.ws is None and tracker.tripped
         s._retry_at = 0
-        await s.feed(b"\0" * 320, NOW + 10)
+        await s.send(b"\0" * 320, NOW + 10)
         await asyncio.sleep(0.01)
         assert s.ws is not None and s.ws is not first
+        assert s.ws.sent == [b"\0" * 320]  # held through the reconnect
         await s.close()
 
     run(scenario())
+    assert health == [False, True] and not tracker.tripped
+
+
+# ------------------------------------------------------------------- the gate
+
+SPEECH, QUIET = 0.9, 0.05
+
+
+def frames(gate, probs, start=0):
+    """Push one 10 ms frame per probability; the frame's bytes are its index."""
+    out = []
+    for i, p in enumerate(probs, start):
+        out.append([a if a[0] != "send" else ("send", a[2]) for a in gate.push(bytes([i % 256]), i * 10, p)])
+    return out
+
+
+def flat(actions):
+    return [a for step in actions for a in step]
+
+
+def test_gate_opens_on_speech_with_the_preroll_first():
+    g = SpeechGate(preroll_ms=400, hangover_s=9.0, min_speech_ms=60)
+    acts = flat(frames(g, [QUIET] * 50 + [SPEECH] * 6))
+    assert acts[0] == ("open",)
+    sends = [a[1] for a in acts[1:]]
+    # 40 frames of pre-roll (400 ms) ending with the frame that confirmed speech.
+    assert len(sends) == 40 and sends[-1] == 55 * 10 and sends[0] == 16 * 10
+    assert g.state == "speaking"
+
+
+def test_gate_ignores_a_click_shorter_than_min_speech():
+    g = SpeechGate(min_speech_ms=60)
+    assert flat(frames(g, [QUIET] * 10 + [SPEECH] * 3 + [QUIET] * 100)) == []
+    assert g.state == "idle"
+
+
+def test_gate_finalizes_on_end_of_speech_and_closes_after_the_hangover():
+    g = SpeechGate(preroll_ms=100, hangover_s=2.0, end_silence_ms=500, min_speech_ms=10)
+    acts = flat(frames(g, [SPEECH] * 100 + [QUIET] * 300))
+    kinds = [a[0] for a in acts]
+    assert kinds.count("open") == 1 and kinds.count("finalize") == 1 and kinds.count("close") == 1
+    fin, close = kinds.index("finalize"), kinds.index("close")
+    # Speech and the 0.5 s of silence that ended it are sent; nothing after the finalize.
+    assert all(k == "send" for k in kinds[1:fin]) and kinds[fin + 1:] == ["close"]
+    assert kinds.count("send") == 1 + 99 + 50  # the pre-roll's one frame, the speech, the end silence
+    assert close == len(kinds) - 1 and g.state == "idle"
+
+
+def test_speech_again_inside_the_hangover_reuses_the_socket():
+    g = SpeechGate(preroll_ms=100, hangover_s=9.0, min_speech_ms=10)
+    acts = flat(frames(g, [SPEECH] * 50 + [QUIET] * 200 + [SPEECH] * 50))
+    kinds = [a[0] for a in acts]
+    assert kinds.count("open") == 1 and "close" not in kinds and g.state == "speaking"
+
+
+def test_mute_closes_at_once_and_forgets_the_preroll():
+    g = SpeechGate(min_speech_ms=10)
+    flat(frames(g, [SPEECH] * 20))
+    assert g.force_close() == [("close",)]
+    assert g.state == "idle" and not g.preroll
+    assert g.force_close() == []  # nothing open, nothing to close
+
+
+def test_cost_stats_count_audio_connection_time_and_sockets():
+    t = [0.0]
+    c = CostStats("webinar_abc", every_s=60, clock_s=lambda: t[0])
+    c.opened(1)
+    c.sent(1000 * BYTES_PER_MS)
+    t[0] = 12.5
+    c.closed(1)
+    assert c.maybe_log() is None  # not a minute yet
+    t[0] = 61
+    line = c.maybe_log()
+    assert line == ("caption cost webinar_abc: deepgram audio 1.0s, connected 12.5s, "
+                    "opens 1, closes 1, open now 0, failures 0")
 
 
 # --------------------------------------------- results into the room and API

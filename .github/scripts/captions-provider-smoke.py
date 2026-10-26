@@ -1,9 +1,9 @@
 """Captions provider smoke test (.github/workflows/captions-provider-smoke.yml).
 
-One short live call to Deepgram's streaming API and one Groq transcription of the same clip,
-with the repo secrets DEEPGRAM_API_KEY and GROQ_API_KEY, the settings the captions worker uses
-(deploy/captions/webcaptions/provider.py, groq_final.py). Prints only status codes, timings and
-transcript text: never a key, never the request.
+One short live call to Deepgram's streaming API with a few seconds of a test WAV, the repo
+secret DEEPGRAM_API_KEY and the settings the video box's caption worker uses
+(deploy/captions/webcaptions/provider.py). Prints only the HTTP status, timings and the
+transcript: never a key, never the request.
 
     python3 captions-provider-smoke.py clip.wav
 """
@@ -13,10 +13,7 @@ import json
 import os
 import sys
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
-import uuid
 import wave
 
 
@@ -44,7 +41,8 @@ async def deepgram(pcm):
     try:
         async with websockets.connect("wss://api.deepgram.com/v1/listen?" + q,
                                       additional_headers={"Authorization": "Token " + key}) as ws:
-            print(f"deepgram: connected in {time.monotonic() - t0:.2f}s")
+            status = getattr(getattr(ws, "response", None), "status_code", 101)
+            print(f"deepgram: HTTP {status} (connected in {time.monotonic() - t0:.2f}s)")
 
             async def reader():
                 nonlocal partials
@@ -71,55 +69,20 @@ async def deepgram(pcm):
                 await asyncio.wait_for(task, 10)
             except asyncio.TimeoutError:
                 task.cancel()
-    except Exception as err:  # the handshake status is in the message; the key is not
-        print(f"deepgram: FAILED: {type(err).__name__}: {err}")
+    except Exception as err:  # the handshake's status, never the key
+        status = getattr(getattr(err, "response", None), "status_code", None)
+        print(f"deepgram: FAILED: HTTP {status}" if status else f"deepgram: FAILED: {type(err).__name__}")
         return False
     print(f"deepgram: {len(finals)} final(s), {partials} interim result(s)")
     return bool(finals)
 
 
-def groq(path):
-    key = os.environ.get("GROQ_API_KEY", "").strip()
-    if not key:
-        print("groq: GROQ_API_KEY is not set; skipped")
-        return False
-    with open(path, "rb") as f:
-        data = f.read()
-    boundary = "smoke-" + uuid.uuid4().hex
-    parts = []
-    for k, v in {"model": os.environ.get("CAPTIONS_GROQ_MODEL") or "whisper-large-v3-turbo",
-                 "response_format": "verbose_json", "language": "en", "temperature": "0",
-                 "timestamp_granularities[]": "segment"}.items():
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
-    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="clip.wav"\r\n'
-                 f"Content-Type: audio/wav\r\n\r\n".encode() + data + f"\r\n--{boundary}--\r\n".encode())
-    req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/audio/transcriptions", data=b"".join(parts), method="POST",
-        headers={"Authorization": "Bearer " + key, "Content-Type": f"multipart/form-data; boundary={boundary}",
-                 "User-Agent": "webinarliv-captions-smoke/1.0"},
-    )
-    t0 = time.monotonic()
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            status, body = resp.status, resp.read()
-    except urllib.error.HTTPError as err:
-        print(f"groq: FAILED: HTTP {err.code}")
-        return False
-    j = json.loads(body)
-    print(f"groq: HTTP {status} in {time.monotonic() - t0:.2f}s, {len(j.get('segments') or [])} segment(s)")
-    for s in j.get("segments") or []:
-        print(f"groq segment {s.get('start', 0):5.2f}-{s.get('end', 0):5.2f}s: {str(s.get('text', '')).strip()}")
-    return bool((j.get("text") or "").strip())
-
-
 def main():
-    path = sys.argv[1]
-    pcm = read_pcm(path)
+    pcm = read_pcm(sys.argv[1])
     print(f"clip: {len(pcm) / 32000:.1f}s")
-    ok_dg = asyncio.run(deepgram(pcm))
-    ok_groq = groq(path)
-    print(f"result: deepgram {'OK' if ok_dg else 'FAIL'}, groq {'OK' if ok_groq else 'FAIL'}")
-    sys.exit(0 if (ok_dg and ok_groq) else 1)
+    ok = asyncio.run(deepgram(pcm))
+    print(f"result: deepgram {'OK' if ok else 'FAIL'}")
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

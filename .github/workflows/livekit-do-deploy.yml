@@ -5,9 +5,9 @@
 #
 # Triggers:
 #   - workflow_dispatch — manual deploy from the Actions tab
-#   - push to main — when deploy/livekit-box/** or this workflow change. Not deploy/captions/**:
-#     captions run only on the separate captions box (its own snapshot; sfu-snapshot.yml rebuilds
-#     it on those changes), so a captions change never restarts the video box.
+#   - push to main — when deploy/livekit-box/** or this workflow change. Not deploy/captions/**,
+#     so a captions change never restarts the video box on its own: the next droplet syncs it at
+#     boot (sfu-boot.sh), and a manual run brings it to a box that is up.
 #
 # Repository secrets:
 #   DO_SSH_HOST         — root@152.42.156.192 (the reserved IP)
@@ -15,6 +15,9 @@
 #                         /root/.ssh/authorized_keys (not anybody's personal key)
 #   GRAFANA_ADMIN_PASSWORD — optional: the box's local Grafana login (user "admin")
 #   GRAFANA_CLOUD_TOKEN — optional: Grafana Cloud access policy token for Alloy (metrics + logs)
+#   DEEPGRAM_API_KEY, CAPTIONS_SECRET — optional, both: live captions on the box (the Deepgram
+#                         caption worker, docker-compose.captions-worker.yml). Written into its
+#                         .env as the API writes them into each new droplet's user data.
 #
 # Repository variables (optional, with GRAFANA_CLOUD_TOKEN; all five or Alloy stays off):
 #   GRAFANA_CLOUD_PROM_URL, GRAFANA_CLOUD_PROM_USER, GRAFANA_CLOUD_LOKI_URL, GRAFANA_CLOUD_LOKI_USER
@@ -177,6 +180,11 @@ jobs:
             -e "ssh -F ${SSH_CONFIG}" \
             deploy/livekit-box/ \
             livekit-do:/opt/livekit/
+          # The caption worker's source (redeploy.sh builds it only when captions run on the box).
+          rsync -az --delete --exclude 'tests' --exclude '__pycache__' \
+            -e "ssh -F ${SSH_CONFIG}" \
+            deploy/captions/ \
+            livekit-do:/opt/livekit/captions-worker/
 
       # Grafana Cloud for Alloy (docker-compose.alloy.yml). Written into the box's .env, which is
       # on the sfu-data volume, so every later droplet has them at boot without this workflow.
@@ -209,6 +217,49 @@ jobs:
             chmod --reference=.env "$tmp" 2>/dev/null || chmod 600 "$tmp"
             mv "$tmp" .env'
           echo "Grafana Cloud settings written to /opt/livekit/.env"
+
+      # Live captions on the box (the Deepgram worker): the same settings the API gives each new
+      # droplet (boxCaptionsEnv), so a box that is up gets them too. CAPTIONS_PROVIDER=local in the
+      # repo variables, or either secret missing: CAPTIONS_PROVIDER=off, the worker stops and the
+      # key leaves .env. Values go over stdin, never on a command line, and are never printed.
+      - name: Caption worker settings (Deepgram)
+        if: env.SKIP != 'true'
+        env:
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          CAPTIONS_SECRET: ${{ secrets.CAPTIONS_SECRET }}
+          CAPTIONS_PROVIDER: ${{ vars.CAPTIONS_PROVIDER }}
+          CAPTIONS_AGENT_NAME: ${{ vars.CAPTIONS_AGENT_NAME }}
+          CAPTIONS_DEEPGRAM_MODEL: ${{ vars.CAPTIONS_DEEPGRAM_MODEL }}
+          CAPTIONS_DEEPGRAM_LANGUAGE: ${{ vars.CAPTIONS_DEEPGRAM_LANGUAGE }}
+        run: |
+          plain='^[A-Za-z0-9._:/@+=%?&,~-]+$'
+          if [ -n "$DEEPGRAM_API_KEY" ] && [ "${#CAPTIONS_SECRET}" -ge 32 ] && [ "${CAPTIONS_PROVIDER:-deepgram}" = "deepgram" ]; then
+            lines="CAPTIONS_PROVIDER=deepgram
+          DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+          CAPTIONS_SECRET=${CAPTIONS_SECRET}
+          CAPTIONS_API_URL=https://webinarliv.com
+          CAPTIONS_AGENT_NAME=${CAPTIONS_AGENT_NAME:-webinar-captions}
+          CAPTIONS_DEEPGRAM_MODEL=${CAPTIONS_DEEPGRAM_MODEL:-nova-3}
+          CAPTIONS_DEEPGRAM_LANGUAGE=${CAPTIONS_DEEPGRAM_LANGUAGE:-multi}"
+            state=on
+          else
+            lines="CAPTIONS_PROVIDER=off"
+            state=off
+          fi
+          lines="$(printf '%s\n' "$lines" | sed 's/^ *//')"
+          while IFS= read -r l; do
+            [[ "${l#*=}" =~ $plain ]] || { echo "::error::${l%%=*} has a character the box's .env cannot carry"; exit 1; }
+          done <<<"$lines"
+          printf '%s\n' "$lines" | ssh -F "${SSH_CONFIG}" livekit-do '
+            set -eu
+            cd /opt/livekit
+            new="$(cat)"
+            tmp="$(mktemp)"
+            grep -vE "^(CAPTIONS_PROVIDER|DEEPGRAM_API_KEY|CAPTIONS_SECRET|CAPTIONS_API_URL|CAPTIONS_AGENT_NAME|CAPTIONS_DEEPGRAM_MODEL|CAPTIONS_DEEPGRAM_LANGUAGE)=" .env >"$tmp" || :
+            printf "%s\n" "$new" >>"$tmp"
+            chmod 600 "$tmp"
+            mv "$tmp" .env'
+          echo "Caption worker: ${state} in /opt/livekit/.env"
 
       - name: Regenerate config and restart compose
         if: env.SKIP != 'true'

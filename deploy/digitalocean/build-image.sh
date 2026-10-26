@@ -7,7 +7,8 @@
 # host firewall, every image the stack runs (pulled, or built from the repo at SFU_REF: mixrec,
 # the caddy-l4 build) and the boot script. Keys and certificates are on the sfu-data volume; the
 # deploy files are synced from the repo at every boot (sfu-boot.sh). No caption agent or models:
-# captions run only on the captions box (its own snapshot, build-captions-image.sh).
+# the Whisper captions box has its own snapshot (build-captions-image.sh); only the light
+# Deepgram caption worker image is built here.
 #
 # On failure it does NOT power off, so the workflow times out and deletes the builder instead of
 # snapshotting a half-built image. Log: /var/log/webinarliv-build.log.
@@ -43,7 +44,7 @@ rm -rf "$src"
 mkdir -p "$src"
 curl -fsSL --retry 5 -m 300 "https://codeload.github.com/${REPO}/tar.gz/${REF}" |
   tar -xz -C "$src" --strip-components=1 --wildcards \
-    '*/deploy/livekit-box/*' '*/deploy/digitalocean/*'
+    '*/deploy/livekit-box/*' '*/deploy/digitalocean/*' '*/deploy/captions/*'
 stack="${src}/deploy/livekit-box"
 
 log "images"
@@ -58,6 +59,9 @@ docker compose --profile local-egress "${files[@]}" pull --ignore-buildable
 docker pull caddy:2-alpine
 docker build -t webinarliv-mixrec:local mixrec
 docker build -t webinarliv-caddy-l4:local caddy-l4
+# The Deepgram caption worker (docker-compose.captions-worker.yml; ~400 MB, no models), so a
+# box with captions on does not build it at first boot.
+docker build -f Dockerfile.light -t webinarliv-captions-worker:local "${src}/deploy/captions"
 
 install -m 755 "${src}/deploy/digitalocean/sfu-boot.sh" /usr/local/sbin/webinarliv-sfu-boot.sh
 

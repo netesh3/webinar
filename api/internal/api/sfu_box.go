@@ -380,6 +380,10 @@ func (s *Server) boxStep(ctx context.Context, b *boxManager) {
 	}
 	// The captions droplet follows, once the video box's step is saved (captions_box.go).
 	s.captionsBoxStep(ctx, b, holder, st)
+	// Captions on the video box itself: a room whose dispatch came before its worker gets it again.
+	if s.captionsOnVideoBox() && st.Actual == store.BoxReady {
+		s.captionsRedispatch(ctx, b)
+	}
 }
 
 func orNone(s string) string {
@@ -684,7 +688,12 @@ func (s *Server) boxCreate(ctx context.Context, b *boxManager) (doapi.Droplet, e
 	if len(vol.DropletIDs) > 0 {
 		return doapi.Droplet{}, fmt.Errorf("volume %q is still attached to droplet %d", c.Volume, vol.DropletIDs[0])
 	}
-	userData, err := boxUserData(c)
+	captions, cerr := boxCaptionsEnv(&s.cfg)
+	if cerr != nil {
+		// The box still comes up; its rooms caption on-device.
+		s.log.Warn("sfu box: captions not passed to the box", "error", cerr)
+	}
+	userData, err := boxUserData(c, captions)
 	if err != nil {
 		return doapi.Droplet{}, err
 	}
@@ -775,6 +784,44 @@ var boxSafe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 // boxGrafanaFile is where the user data leaves the Grafana Cloud settings for sfu-boot.sh (tmpfs).
 const boxGrafanaFile = "/run/webinarliv-grafana.env"
 
+// boxCaptionsFile is where the user data leaves the caption worker's settings for sfu-boot.sh (tmpfs).
+const boxCaptionsFile = "/run/webinarliv-captions.env"
+
+// boxCaptionsOff is the caption worker's settings when it should not run on the box.
+var boxCaptionsOff = [][2]string{{"CAPTIONS_PROVIDER", "off"}}
+
+/* boxCaptionsEnv is the video box caption worker's settings (CAPTIONS_PROVIDER=deepgram,
+ * deploy/livekit-box/docker-compose.captions-worker.yml): the Deepgram key, CAPTIONS_SECRET to
+ * post lines with, where to post them and the agent name the API dispatches. Without
+ * captions on the video box (captionsOnVideoBox), CAPTIONS_PROVIDER=off, so sfu-boot.sh drops
+ * any the volume's .env still has and redeploy.sh stops the worker. An error names the
+ * variable, never the value. */
+func boxCaptionsEnv(cfg *config.Config) ([][2]string, error) {
+	p := cfg.CaptionsProvider
+	if !p.OnVideoBox() || cfg.CaptionsSecret == "" {
+		return boxCaptionsOff, nil
+	}
+	agent := strings.TrimSpace(cfg.CaptionsAgentName)
+	if agent == "" {
+		agent = "webinar-captions"
+	}
+	pairs := [][2]string{
+		{"CAPTIONS_PROVIDER", config.CaptionsProviderDeepgram},
+		{"DEEPGRAM_API_KEY", p.DeepgramKey},
+		{"CAPTIONS_SECRET", cfg.CaptionsSecret},
+		{"CAPTIONS_API_URL", p.APIURL},
+		{"CAPTIONS_AGENT_NAME", agent},
+		{"CAPTIONS_DEEPGRAM_MODEL", p.DeepgramModel},
+		{"CAPTIONS_DEEPGRAM_LANGUAGE", p.DeepgramLanguage},
+	}
+	for _, kv := range pairs {
+		if !captionsValueSafe.MatchString(kv[1]) {
+			return boxCaptionsOff, fmt.Errorf("video box captions: %s is empty or has a character the env file cannot carry", kv[0])
+		}
+	}
+	return pairs, nil
+}
+
 /* boxUserData is the droplet's first-boot script: fetch the boot script from the repo (the
  * snapshot's copy when GitHub cannot be reached) and run it. The boot script mounts the volume,
  * syncs the deploy files from the same ref and runs redeploy.sh (deploy/digitalocean/sfu-boot.sh).
@@ -785,8 +832,12 @@ const boxGrafanaFile = "/run/webinarliv-grafana.env"
  * plain (config) and go in a quoted heredoc, so nothing in them is expanded or echoed. The
  * script is never logged (the create log names the image, size and region only).
  *
- * Nothing about captions: they never run on this box, only on the captions box (captions_box.go). */
-func boxUserData(c config.SFUBox) (string, error) {
+ * The caption worker's settings (boxCaptionsEnv) go the same way, to boxCaptionsFile through
+ * SFU_CAPTIONS_ENV: sfu-boot.sh merges them into .env and redeploy.sh starts the worker only
+ * with CAPTIONS_PROVIDER=deepgram there. The Deepgram key and CAPTIONS_SECRET thus sit in the
+ * user data like the Grafana token (readable from inside the droplet and with the DigitalOcean
+ * token) and in the volume's .env (root, 0600) like the box's LiveKit keys. */
+func boxUserData(c config.SFUBox, captions [][2]string) (string, error) {
 	for _, v := range []string{c.Repo, c.Ref, c.Volume} {
 		if !boxSafe.MatchString(v) {
 			return "", fmt.Errorf("SFU_BOX_REPO, SFU_BOX_REF and SFU_BOX_VOLUME must be plain names, got %q", v)
@@ -803,6 +854,20 @@ func boxUserData(c config.SFUBox) (string, error) {
 		b.WriteString("WEBINARLIV_GRAFANA\n)\n")
 		b.WriteString("export SFU_GRAFANA_ENV=" + boxGrafanaFile + "\n")
 		grafana = b.String()
+	}
+	if len(captions) > 0 {
+		var b strings.Builder
+		b.WriteString("# The caption worker's settings (boxCaptionsEnv); merged into .env by sfu-boot.sh.\n")
+		b.WriteString("(umask 077; cat >" + boxCaptionsFile + " <<'WEBINARLIV_CAPTIONS'\n")
+		for _, p := range captions {
+			if !captionsValueSafe.MatchString(p[1]) {
+				return "", fmt.Errorf("video box captions: %s is empty or has a character the env file cannot carry", p[0])
+			}
+			b.WriteString(p[0] + "=" + p[1] + "\n")
+		}
+		b.WriteString("WEBINARLIV_CAPTIONS\n)\n")
+		b.WriteString("export SFU_CAPTIONS_ENV=" + boxCaptionsFile + "\n")
+		grafana += b.String()
 	}
 	return fmt.Sprintf(`#!/bin/bash
 # Webinar Liv on-demand video server, first boot. Written by the API (api/internal/api/sfu_box.go).
