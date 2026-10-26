@@ -29,7 +29,7 @@ import { useRoomUI } from "./context";
  * unless a host does it, or turns on Auto-hide. */
 
 // How often the room re-reads the flags. The read is also what lets a due AI pass run (the
-// server's batching window is 15 s).
+// server's batching window is 30 s, so a pass is never more than one poll late).
 const SPAM_POLL_MS = 15_000;
 
 export type SpamApi = {

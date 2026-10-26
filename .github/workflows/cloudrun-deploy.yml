@@ -72,7 +72,8 @@
 #     AI_PROVIDER, optional repo Variable: groq or openai, which is tried first. Unset means
 #     groq when GROQ_API_KEY is set (2026-10-27): Groq answers, OpenAI is the fallback on a
 #     Groq 429/5xx, and OpenAI still does the embeddings (OPENAI_API_KEY stays required for
-#     the AI knowledge). AI_GROQ_MODEL_QUALITY / AI_GROQ_MODEL_FAST, optional Variables: the
+#     the AI knowledge). AI_GROQ_MODEL_QUALITY / AI_GROQ_MODEL_FAST / AI_GROQ_MAX_REQUEST_TOKENS
+#     (default 7000; raise on Groq's Developer tier), optional Variables: the
 #     Groq model per kind of task (openai/gpt-oss-120b / openai/gpt-oss-20b when unset).
 #   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET — self-serve plans (Buy on /pricing).
 #     Both or neither. RAZORPAY_WEBHOOK_SECRET signs POST /api/webhooks/razorpay.
@@ -294,6 +295,7 @@ jobs:
       AI_PROVIDER: ${{ vars.AI_PROVIDER }}
       AI_GROQ_MODEL_QUALITY: ${{ vars.AI_GROQ_MODEL_QUALITY }}
       AI_GROQ_MODEL_FAST: ${{ vars.AI_GROQ_MODEL_FAST }}
+      AI_GROQ_MAX_REQUEST_TOKENS: ${{ vars.AI_GROQ_MAX_REQUEST_TOKENS }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
       RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}

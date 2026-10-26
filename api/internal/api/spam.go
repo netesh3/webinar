@@ -41,13 +41,16 @@ import (
  */
 
 var (
-	// spamEvery is the longest a pending message waits for a pass. A var for tests.
-	spamEvery = 15 * time.Second
+	/* spamEvery is the longest a pending message waits for a pass. A var for tests.
+	 * 30 s (was 15 s, 2026-10-27): with Groq's free tier at 30 requests and 8,000 tokens a
+	 * minute per model, fewer, fuller passes leave room for the other features. */
+	spamEvery = 30 * time.Second
+	// spamBatch pending messages make a pass due at once (was 8; 20 since 2026-10-27, see
+	// spamEvery). Stays at or under spamWindow. A var for tests.
+	spamBatch = 20
 )
 
 const (
-	// spamBatch pending messages make a pass due at once.
-	spamBatch = 8
 	// spamWindow bounds one pass's pending messages, oldest first.
 	spamWindow = 40
 	// spamSampleN is how many recent chat lines go with them.

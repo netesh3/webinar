@@ -25,6 +25,7 @@ func newAIChain(cfg config.Config, log *slog.Logger) *ai.Chain {
 		})
 	}
 	chain := ai.New(providers, log)
+	chain.SetGroqRequestBudget(cfg.AIGroqMaxRequestTokens)
 	if chain.Enabled() {
 		ids := make([]string, 0, len(providers))
 		for _, p := range providers {
@@ -71,6 +72,9 @@ func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.
 	}
 	if req.Model == "" {
 		req.Model = s.aiModelFor(feature)
+	}
+	if req.Feature == "" {
+		req.Feature = feature
 	}
 	if req.ModelFor == nil {
 		if m := s.aiGroqModelFor(feature); m != "" {

@@ -89,6 +89,8 @@ type Request struct {
 	 * provider, and follows the same rules: asked first, refusal falls back to the
 	 * provider's own model and never benches it. */
 	ModelFor map[string]string
+	// Feature names the caller (types.AIFeature*) for the log lines; optional.
+	Feature string
 }
 
 // Reply is the answer and who gave it.
@@ -173,6 +175,9 @@ type Chain struct {
 	// request deadline before the next gets a turn.
 	attemptTimeout time.Duration
 
+	// groqBudget is the largest estimated request Groq is asked (budget.go); 0 = no limit.
+	groqBudget int
+
 	mu      sync.Mutex
 	benched map[string]bench
 }
@@ -214,6 +219,13 @@ func (c *Chain) Complete(ctx context.Context, req Request) (Reply, error) {
 		}
 		if b, ok := c.isBenched(p.ID); ok {
 			tried = append(tried, p.ID+": benched ("+b.reason+")")
+			continue
+		}
+		if skip, est := c.overGroqBudget(i, req); skip {
+			// Not a failure: Groq stays in the chain for everything smaller (budget.go).
+			c.log.Info("ai: request over the groq budget, sent to openai", "feature", req.Feature,
+				"estimated_tokens", est, "budget", c.groqBudget, "reason", "over groq budget")
+			tried = append(tried, p.ID+": over groq budget")
 			continue
 		}
 		reply, f := c.attemptWith(ctx, p, req)

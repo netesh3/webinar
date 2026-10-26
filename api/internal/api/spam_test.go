@@ -163,6 +163,8 @@ func TestSpamAIPassIsBatchedScrubbedAndCapped(t *testing.T) {
 		`{"id":"m2","spam":false,"category":"other","confidence":0.1},` +
 		`{"id":"m9","spam":true,"category":"scam","confidence":0.95}]}`
 	h, model, wb, g := spamSetup(t, reply, false, nil)
+	// The batching rule with a small batch, so eight messages make it (production: 20).
+	t.Cleanup(api.SetSpamBatch(8))
 
 	// Suspicious but not flagged: three links. Not a batch and not old enough: no call.
 	a := h.spamChat(wb.ID, g[0], "my course at www.bestcourse.example.com")
