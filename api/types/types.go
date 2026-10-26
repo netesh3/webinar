@@ -973,11 +973,16 @@ type Webinar struct {
 	 * There is deliberately no matching field on WebinarInput: a settable copy would let a
 	 * caller ask for a door the approval mode forbids.
 	 */
-	GuestJoinAllowed bool             `json:"guestJoinAllowed"`
-	AttendeeLimit    int              `json:"attendeeLimit"`
-	RegistrantCount  int              `json:"registrantCount"`
-	PriceUsd         *int             `json:"priceUsd"`
-	CustomQuestions  []CustomQuestion `json:"customQuestions"`
+	GuestJoinAllowed bool `json:"guestJoinAllowed"`
+	AttendeeLimit    int  `json:"attendeeLimit"`
+	/* AudienceCapOverride is an admin's per-webinar ceiling (1..MaxAudienceOverride) in place
+	 * of the usual MaxWebinarAudience and plan cap; 0 when none is set. Only an admin sets it
+	 * (PATCH /api/admin/webinars/{slug}/audience-cap), and the host's own limit may then go
+	 * up to it. */
+	AudienceCapOverride int              `json:"audienceCapOverride,omitempty"`
+	RegistrantCount     int              `json:"registrantCount"`
+	PriceUsd            *int             `json:"priceUsd"`
+	CustomQuestions     []CustomQuestion `json:"customQuestions"`
 
 	Options  WebinarOptions  `json:"options"`
 	Controls SessionControls `json:"controls"`
@@ -4060,9 +4065,15 @@ type DeliveryPolicy struct {
 /* EdgeStatus is the host's view of a webinar's delivery: whether the audience is on edge,
  * how many are watching the feed right now (open event streams), and what they play. */
 type EdgeStatus struct {
-	Delivery    string `json:"delivery"`
-	Viewers     int    `json:"viewers"`
-	PlaybackURL string `json:"playbackUrl,omitempty"`
+	Delivery string `json:"delivery"`
+	Viewers  int    `json:"viewers"`
+	/* Audience is the attendees counted against the limit right now, on either delivery:
+	 * open visits by attendees not on the stage, plus anyone admitted in the last minute and
+	 * a half whose visit has not opened yet (store.AudienceAdmission). AudienceLimit is the
+	 * limit itself (ExpectedAudience), so the host can see "N / limit". */
+	Audience      int    `json:"audience"`
+	AudienceLimit int    `json:"audienceLimit"`
+	PlaybackURL   string `json:"playbackUrl,omitempty"`
 	/* AudienceStream is, while an Edge webinar is live, whether its audience has a picture:
 	 * "preparing" until the mix's egress is active (an egress worker may be booting, about a
 	 * minute), then "live". Empty when not live or not Edge. The host room shows "getting your
@@ -4107,6 +4118,20 @@ const (
 
 // PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
 const PlanLaunchAttendees = 200
+
+/* MaxWebinarAudience is the most attendees one webinar admits, whatever the plan: what one
+ * video box serves straight to its audience alongside other sessions (2026-10-25: 130 viewers
+ * through the CDN froze in waves, while the box itself served every test cleanly). An admin
+ * can raise one webinar past it, up to MaxAudienceOverride (AudienceCapOverride). */
+const MaxWebinarAudience = 300
+
+// MaxAudienceOverride is the largest per-webinar ceiling an admin may set.
+const MaxAudienceOverride = 1000
+
+// SetAudienceCapRequest is PATCH /api/admin/webinars/{slug}/audience-cap. Null removes it.
+type SetAudienceCapRequest struct {
+	AudienceCap *int `json:"audienceCap"`
+}
 
 // PlanAttendeeCap is the most concurrent attendees a plan's webinars admit, before
 // the server's own MAX_ATTENDEES ceiling. Matches the pricing page.

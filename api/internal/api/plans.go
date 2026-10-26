@@ -12,12 +12,18 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* attendeeCeiling is the most attendees a plan's webinars admit: the plan's cap,
- * never above the server's MAX_ATTENDEES. A webinar's own attendee_limit sits under
- * this; it is applied when the webinar is saved and again at join, so a downgrade
- * takes effect on webinars already scheduled. */
+/* attendeeCeiling is the most attendees a plan's webinars admit: the plan's cap, never
+ * above the server's MAX_ATTENDEES or types.MaxWebinarAudience (what one video box serves
+ * straight to its audience). A webinar's own attendee_limit sits under this; it is applied
+ * when the webinar is saved and again at join, so a downgrade takes effect on webinars already
+ * scheduled. An admin's per-webinar override replaces it (store.ExpectedAudience). */
 func (s *Server) attendeeCeiling(plan types.Plan) int {
-	return min(s.cfg.MaxAttendees, types.PlanAttendeeCap(plan))
+	return min(s.cfg.MaxAttendees, types.PlanAttendeeCap(plan), types.MaxWebinarAudience)
+}
+
+// audienceLimit is the webinar's attendee limit as it applies now (store.ExpectedAudience).
+func (s *Server) audienceLimit(ctx context.Context, wb types.Webinar) int {
+	return store.ExpectedAudience(wb, s.ceilingForHost(ctx, wb.Host.ID))
 }
 
 // ceilingForHost reads the host's plan. A failed read is the launch default rather

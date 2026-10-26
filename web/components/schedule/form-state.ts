@@ -75,6 +75,9 @@ export type FormState = {
   registrationRequired: boolean;
   approval: WebinarInput["approval"];
   attendeeLimit: number;
+  /* An admin's ceiling for this webinar (Webinar.audienceCapOverride); 0 when none. Read
+   * only: the form never sends it, but it widens what the limit may be set to. */
+  audienceCapOverride: number;
   passcode: string;
   panelistEmails: string;
   takeaways: string;
@@ -114,9 +117,11 @@ export type SetForm = <K extends keyof FormState>(
  * every webinar was provisioned for the largest audience the operator had ever configured
  * whether or not anybody expected one. Choosing more should be a decision, not the fallback.
  */
-const ATTENDEE_LIMITS = [50, 100, 200, 300, 400, 500] as const;
+const ATTENDEE_LIMITS = [25, 50, 100, 150, 200, 250, 300] as const;
 
-export const DEFAULT_ATTENDEE_LIMIT = ATTENDEE_LIMITS[0];
+/* 50 is the default even though 25 is offered first: the smaller one is for a small cohort,
+ * and nobody should land on it by not choosing. */
+export const DEFAULT_ATTENDEE_LIMIT = 50;
 
 /* Which of those to offer, given what this server admits to, and whatever the webinar already
  * has.
@@ -132,7 +137,11 @@ export function limitOptions(maxAttendees: number, current: number): number[] {
     maxAttendees > 0
       ? maxAttendees
       : ATTENDEE_LIMITS[ATTENDEE_LIMITS.length - 1];
-  const offered = ATTENDEE_LIMITS.filter((n) => n <= ceiling);
+  const offered: number[] = ATTENDEE_LIMITS.filter((n) => n <= ceiling);
+  /* The ceiling itself, when it is not one of the steps: a plan or an admin's override for
+   * this webinar (AudienceCapOverride, up to 1000) is a number somebody chose, and the most
+   * a coach may pick should be on the list. */
+  if (maxAttendees > 0 && !offered.includes(maxAttendees)) offered.push(maxAttendees);
   const known: readonly number[] = ATTENDEE_LIMITS;
   const withCurrent =
     current > 0 && !known.includes(current)
@@ -163,6 +172,7 @@ export function initialState(
       registrationRequired: webinar.registrationRequired,
       approval: webinar.approval,
       attendeeLimit: webinar.attendeeLimit,
+      audienceCapOverride: webinar.audienceCapOverride ?? 0,
       passcode: webinar.passcode ?? "",
       // The panel as saved, so the save sends it back rather than an empty box.
       panelistEmails: panelistBox(webinar.panelistEmails),
@@ -210,6 +220,7 @@ export function initialState(
       maxAttendees > 0
         ? Math.min(DEFAULT_ATTENDEE_LIMIT, maxAttendees)
         : DEFAULT_ATTENDEE_LIMIT,
+    audienceCapOverride: 0,
     passcode: "",
     panelistEmails: "",
     takeaways: "",

@@ -143,7 +143,7 @@ func (s *Server) joinAsAttendee(
 	}
 
 	room := lk.RoomName(slug)
-	limit := min(wb.AttendeeLimit, s.ceilingForHost(r.Context(), wb.Host.ID))
+	limit := s.audienceLimit(r.Context(), wb)
 	/* A load test (admin_loadtest.go) admits its own number of viewers instead: only ever set by
 	 * an admin, on a test account's webinar. A failed read keeps the ordinary ceiling. */
 	if n, ok, lerr := s.store.LoadTestViewers(r.Context(), slug); lerr != nil {
@@ -158,32 +158,9 @@ func (s *Server) joinAsAttendee(
 	// It also decides WHICH LiveKit project this webinar lives on, the first time anybody
 	// joins, and hands back the client for it — so the token minted below is signed by the
 	// same project the room was created on. See sfu.go.
-	sfu, count, known, err := s.ensureRoom(r.Context(), wb, room)
+	sfu, roomCount, known, err := s.ensureRoom(r.Context(), wb, room)
 	if err != nil {
 		s.failSFU(w, r, wb, err)
-		return
-	}
-
-	// Check live occupancy, not the registration count: registrations are
-	// usually 3-4x the people who actually show up, so counting registrations
-	// would turn away attendees while the room was half empty.
-	//
-	// The number normally arrives with the room above, so this second call to the
-	// SFU is a fallback rather than the path. It is the difference between one and
-	// two round trips on every join, and a full audience arrives all at once.
-	if wb.Delivery == types.DeliveryEdge {
-		/* An edge audience is not on the video server, so the server's count is only the
-		 * stage. The viewers are the open event streams (edgeOccupancy). Counted the same
-		 * way for someone being let back onto the stage, which errs towards admitting. */
-		count, err = s.edgeOccupancy(r.Context(), slug)
-	} else if !known {
-		count, err = sfu.ParticipantCount(r.Context(), room)
-	}
-	if err != nil {
-		s.log.Warn("join: participant count failed, allowing", "error", err, "room", room)
-	} else if count >= limit {
-		httpx.Error(w, http.StatusConflict, "room_full",
-			"This webinar has reached its attendee limit.")
 		return
 	}
 
@@ -219,6 +196,45 @@ func (s *Server) joinAsAttendee(
 		grant.CoHost = false
 		grant.MutedByHost = false
 		grant.AudioOnly = false
+	}
+
+	/* The attendee limit (ExpectedAudience), checked against live occupancy rather than the
+	 * registration count: registrations are usually 3-4x the people who actually show up, so
+	 * counting them would turn attendees away from a half-empty room. One count serves both
+	 * deliveries (store.AudienceAdmission): attendees with an open visit, or let in during the
+	 * last minute and a half, not on the stage. The video server's own count would include the
+	 * host, panelists, the recorder and the caption agent, and an edge audience is not on it.
+	 *
+	 * Never turned away: the host, anyone the host put on the stage (a stage grant, co-hosts
+	 * included: the stage has its own cap), and anyone already let in this run, so a reconnect
+	 * or a reload is never the moment somebody loses their seat. No lock: two people arriving
+	 * together can both take the last seat, an overshoot of the few joins in flight at once,
+	 * which is cheaper than serialising every join of a full audience arriving at once.
+	 * A failed count lets the join through, as before. */
+	if !isHost && !grant.Granted {
+		seats, aerr := s.store.AudienceAdmission(r.Context(), slug, identity)
+		if aerr != nil {
+			s.log.Warn("join: audience count failed, allowing", "error", aerr, "webinar", slug)
+		} else if !seats.Admitted && seats.Count >= limit {
+			httpx.Error(w, http.StatusConflict, "room_full", fullMessage(limit))
+			return
+		}
+		/* And the room's own ceiling, on a webinar whose audience is on the video server: the
+		 * room was made for limit + stageHeadroom people (ensureRoom), and LiveKit refuses
+		 * anyone past that, so it is said here rather than met as a connection that fails.
+		 * Nobody already in counts twice: LiveKit replaces a duplicate identity. The count
+		 * normally arrives with the room above; this is the one extra call when it did not. */
+		if wb.Delivery != types.DeliveryEdge && !seats.Admitted {
+			if !known {
+				roomCount, err = sfu.ParticipantCount(r.Context(), room)
+			}
+			if err != nil {
+				s.log.Warn("join: participant count failed, allowing", "error", err, "room", room)
+			} else if roomCount >= limit+stageHeadroom {
+				httpx.Error(w, http.StatusConflict, "room_full", fullMessage(limit))
+				return
+			}
+		}
 	}
 
 	/* Edge delivery: no LiveKit token at all for the audience, only the LL-HLS playlist and
@@ -659,7 +675,7 @@ func (s *Server) ensureRoom(
 		return nil, 0, false, err
 	}
 
-	limit := min(wb.AttendeeLimit, s.ceilingForHost(ctx, wb.Host.ID))
+	limit := s.audienceLimit(ctx, wb)
 	if isMeeting(wb) {
 		/* A meeting's room is sized to the meeting, not to the attendee ceiling: the headroom
 		 * below is for a reconnect overlapping its own old session and for a recorder, and the
@@ -960,4 +976,10 @@ func (s *Server) pinnedProject(ctx context.Context, wb types.Webinar) string {
 		return wb.SFUProject
 	}
 	return project
+}
+
+/* fullMessage is what a joiner past the attendee limit is told. The number is the limit, so the
+ * person can pass it on; raising it is the host's call (or an admin's, past 300). */
+func fullMessage(limit int) string {
+	return fmt.Sprintf("This webinar is full (%d attendees). Ask the host to raise the limit.", limit)
 }

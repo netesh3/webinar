@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -147,5 +148,59 @@ func (s *Server) handleAdminSetWebinarStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.logAdminAction(admin.ID, "set_status", slug, "from", wb.Status, "to", updated.Status)
+	httpx.JSON(w, http.StatusOK, updated)
+}
+
+/* handleAdminSetAudienceCap is PATCH /api/admin/webinars/{slug}/audience-cap: an admin's
+ * ceiling for one webinar's audience, in place of types.MaxWebinarAudience and the plan's cap.
+ *
+ * A number (1..MaxAudienceOverride) is also the webinar's attendee limit from then on: an admin
+ * raising a webinar to 800 means 800 seats, not permission the host has to notice and use. Null
+ * takes the override off and brings the limit back under the usual ceiling. Not for meetings,
+ * which have their own cap (PATCH /api/admin/users/{id}/meeting-cap). The join check reads the
+ * new number on the next join; a webinar already live does not need restarting. */
+func (s *Server) handleAdminSetAudienceCap(w http.ResponseWriter, r *http.Request) {
+	admin := userFromContext(r.Context())
+	slug := chi.URLParam(r, "slug")
+	var body types.SetAudienceCapRequest
+	if err := httpx.DecodeJSON(w, r, &body); err != nil {
+		return
+	}
+	if body.AudienceCap != nil && (*body.AudienceCap < 1 || *body.AudienceCap > types.MaxAudienceOverride) {
+		httpx.Fields(w, map[string]string{
+			"audienceCap": fmt.Sprintf("Between 1 and %d, or empty to use the usual ceiling.", types.MaxAudienceOverride),
+		})
+		return
+	}
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "admin audience cap", err)
+		return
+	}
+	if wb.Kind == types.KindMeeting {
+		httpx.Error(w, http.StatusConflict, "meeting",
+			"A meeting's size is set by its host's meeting cap, not here.")
+		return
+	}
+	limit := 0
+	if body.AudienceCap != nil {
+		limit = *body.AudienceCap
+	} else {
+		limit = min(wb.AttendeeLimit, s.ceilingForHost(r.Context(), wb.Host.ID))
+	}
+	updated, err := s.store.SetAudienceCap(r.Context(), slug, body.AudienceCap, limit)
+	if errors.Is(err, store.ErrNotFound) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "admin audience cap", err)
+		return
+	}
+	s.logAdminAction(admin.ID, "audience_cap", slug, "cap", updated.AudienceCapOverride, "limit", updated.AttendeeLimit)
 	httpx.JSON(w, http.StatusOK, updated)
 }

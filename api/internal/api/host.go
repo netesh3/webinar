@@ -469,6 +469,10 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 			prevRecording = prev.SimuliveRecordingID
 		}
 		ceiling = s.ceilingForHost(r.Context(), prev.Host.ID)
+		// An admin's override (AudienceCapOverride) is this webinar's ceiling instead.
+		if prev.AudienceCapOverride > 0 {
+			ceiling = prev.AudienceCapOverride
+		}
 		stageCap = s.stageCapForHost(r.Context(), prev.Host.ID)
 		if prev.Kind == types.KindMeeting {
 			stageCap = s.meetingCapForHost(r.Context(), prev.Host.ID)

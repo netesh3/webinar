@@ -3357,7 +3357,7 @@ func TestAttendeeLimitDefaultsAndClamps(t *testing.T) {
 	}
 
 	// Each dropdown value is accepted verbatim.
-	for _, want := range []int{50, 100, 200, 300, 400, 500} {
+	for _, want := range []int{25, 50, 100, 150, 200, 250, 300} {
 		res, raw := h.do(http.MethodPost, "/api/host/webinars", map[string]any{
 			"topic": fmt.Sprintf("Limit %d", want), "startsAt": soon(),
 			"durationMin": 30, "status": "scheduled", "attendeeLimit": want,
@@ -3382,8 +3382,9 @@ func TestAttendeeLimitDefaultsAndClamps(t *testing.T) {
 		t.Fatalf("create with 5000: status %d body %s", res.StatusCode, raw)
 	}
 	h.decode(raw, &wb)
-	if wb.AttendeeLimit != 500 {
-		t.Errorf("5000 seats came back as %d, want the 500 ceiling", wb.AttendeeLimit)
+	// MAX_ATTENDEES is 500 and the plan allows 500, but no webinar admits more than 300.
+	if wb.AttendeeLimit != types.MaxWebinarAudience {
+		t.Errorf("5000 seats came back as %d, want the %d per-webinar ceiling", wb.AttendeeLimit, types.MaxWebinarAudience)
 	}
 }
 

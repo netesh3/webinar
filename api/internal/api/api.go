@@ -632,6 +632,8 @@ func (s *Server) Routes() http.Handler {
 			// End a live session, or move one between draft and scheduled (admin_sessions.go).
 			r.Post("/webinars/{slug}/end", s.handleAdminEndWebinar)
 			r.Patch("/webinars/{slug}/status", s.handleAdminSetWebinarStatus)
+			// A per-webinar audience ceiling past the usual 300 (or under it), up to 1000.
+			r.Patch("/webinars/{slug}/audience-cap", s.handleAdminSetAudienceCap)
 			// Load tests (admin_loadtest.go, docs/LOAD-TESTING.md): test accounts only, off by default.
 			r.Post("/users/{id}/verify-email", s.handleAdminVerifyTestEmail)
 			r.Put("/webinars/{slug}/load-test", s.handleAdminSetLoadTest)

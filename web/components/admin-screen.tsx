@@ -24,6 +24,7 @@ import {
   FeatureAI,
   FeatureInstantWebinar,
   MaxMediaQuotaMB,
+  MaxWebinarAudience,
   PlanBusiness,
   PlanEnterprise,
   PlanLaunchAttendees,
@@ -1680,6 +1681,14 @@ function AdminWebinars({
                     <ButtonLink href={`/host/${w.id}`} variant="secondary" size="sm">
                       View
                     </ButtonLink>
+                    {w.kind !== "meeting" && w.status !== "ended" && (
+                      <AudienceCapSelect
+                        webinar={w}
+                        onSaved={(updated) =>
+                          setRows((prev) => (prev ?? []).map((r) => (r.id === updated.id ? updated : r)))
+                        }
+                      />
+                    )}
                     {adminSessionActions(w).map((action) => (
                       <button
                         key={action}
@@ -1821,5 +1830,59 @@ function PageButton({
     >
       {children}
     </button>
+  );
+}
+
+/* The audience ceiling for one webinar (AudienceCapOverride). "Usual" is the plan's cap and
+ * the 300 every webinar is held to; a number replaces both and becomes the attendee limit. The
+ * video box placement counts a webinar by this number, so raising one past 300 reserves box
+ * capacity for it. */
+const AUDIENCE_CAP_CHOICES = [100, 200, 300, 400, 500, 750, 1000] as const;
+
+function AudienceCapSelect({
+  webinar,
+  onSaved,
+}: {
+  webinar: Webinar;
+  onSaved: (w: Webinar) => void;
+}) {
+  const { notify } = useToast();
+  const [saving, setSaving] = useState(false);
+  const current = webinar.audienceCapOverride ?? 0;
+  const choices: number[] = [...AUDIENCE_CAP_CHOICES];
+  if (current > 0 && !choices.includes(current)) choices.push(current);
+  choices.sort((a, b) => a - b);
+  return (
+    <select
+      aria-label={`Audience ceiling for ${webinar.topic}`}
+      title={`${webinar.attendeeLimit} seats now. An admin ceiling replaces the usual ${MaxWebinarAudience} and the plan's cap.`}
+      value={current > 0 ? String(current) : ""}
+      disabled={saving}
+      onChange={(e) => {
+        const next = e.target.value === "" ? null : Number(e.target.value);
+        setSaving(true);
+        api
+          .adminSetAudienceCap(webinar.id, next)
+          .then((updated) => {
+            onSaved(updated);
+            notify(
+              next === null
+                ? `Back to the usual ceiling: ${updated.attendeeLimit} seats.`
+                : `${updated.attendeeLimit} seats for this webinar.`,
+              "ok",
+            );
+          })
+          .catch((err: unknown) => notify(err instanceof Error ? err.message : "That didn't work.", "error"))
+          .finally(() => setSaving(false));
+      }}
+      className="rounded-md border border-line bg-surface-0 px-2 py-1 text-[12px] text-ink-1 outline-none focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
+    >
+      <option value="">Seats: usual ({webinar.attendeeLimit})</option>
+      {choices.map((n) => (
+        <option key={n} value={n}>
+          Seats: {n.toLocaleString()}
+        </option>
+      ))}
+    </select>
   );
 }
