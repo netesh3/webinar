@@ -72,6 +72,11 @@ func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.
 	if req.Model == "" {
 		req.Model = s.aiModelFor(feature)
 	}
+	if req.ModelFor == nil {
+		if m := s.aiGroqModelFor(feature); m != "" {
+			req.ModelFor = map[string]string{"groq": m}
+		}
+	}
 
 	reply, callErr := s.ai.Complete(ctx, req)
 	usage := store.AIUsage{Feature: feature, HostID: hostID, OK: callErr == nil}
@@ -96,6 +101,20 @@ func (s *Server) aiModelFor(feature string) string {
 		return s.cfg.AIModelHighlights
 	}
 	return ""
+}
+
+/* aiGroqModelFor is the Groq model for a feature, when Groq answers: the quality tier for
+ * what a host reads and keeps, the fast tier for the short, frequent calls inside a live
+ * session (config.AIGroqModelQuality and AIGroqModelFast say which is which, and why). A
+ * feature not listed here gets the fast tier: cheap is the safe default for something new. */
+func (s *Server) aiGroqModelFor(feature string) string {
+	switch feature {
+	case types.AIFeatureRecap, types.AIFeatureFollowups, types.AIFeatureRepurpose,
+		types.AIFeatureHighlights, types.AIFeatureReels, types.AIFeatureClipPosts,
+		types.AIFeatureLeads, types.AIFeatureWebinarSetup, types.AIFeatureQACluster:
+		return s.cfg.AIGroqModelQuality
+	}
+	return s.cfg.AIGroqModelFast
 }
 
 // aiCapCheck is errAILimit when the instance or the host has spent its month's allowance.

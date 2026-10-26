@@ -197,6 +197,17 @@ export default function PrivacyPage() {
         These providers process data on our behalf under their terms and only as
         needed to provide the Service. We do not sell your personal information.
       </p>
+      <p>
+        <strong>AI features.</strong> When a host uses an AI feature (session
+        recaps, follow-ups, Q&amp;A help, highlights and repurposed posts, lead
+        notes, or the sales assistant on our site), the text it needs, such as a
+        session transcript, chat or questions, is sent to{" "}
+        <strong>Groq</strong> to generate the result, with{" "}
+        <strong>OpenAI</strong> as a fallback when Groq is unavailable. OpenAI
+        also creates the search embeddings for a host&apos;s AI knowledge base.
+        AI suggestions are drafts for the host to review; the host remains
+        responsible for what is sent to their audience.
+      </p>
 
       <h2>7. Cookies and similar technologies</h2>
       <p>

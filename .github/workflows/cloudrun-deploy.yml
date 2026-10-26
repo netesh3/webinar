@@ -69,6 +69,11 @@
 #     AI_HOST_MONTHLY_USD (default 2), repo Variables, cap the estimated monthly spend.
 #     AI_MODEL_HIGHLIGHTS, optional repo Variable: the OpenAI model the clip features use
 #     (highlights, reels, hook titles, post text); gpt-5-mini when unset.
+#     AI_PROVIDER, optional repo Variable: groq or openai, which is tried first. Unset means
+#     groq when GROQ_API_KEY is set (2026-10-27): Groq answers, OpenAI is the fallback on a
+#     Groq 429/5xx, and OpenAI still does the embeddings (OPENAI_API_KEY stays required for
+#     the AI knowledge). AI_GROQ_MODEL_QUALITY / AI_GROQ_MODEL_FAST, optional Variables: the
+#     Groq model per kind of task (openai/gpt-oss-120b / openai/gpt-oss-20b when unset).
 #   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET — self-serve plans (Buy on /pricing).
 #     Both or neither. RAZORPAY_WEBHOOK_SECRET signs POST /api/webhooks/razorpay.
 #     BILLING_GST_PERCENT (repo Variable, default 18) is added to INR prices.
@@ -286,6 +291,9 @@ jobs:
       CLOUDFLARE_AI_MODEL: ${{ vars.CLOUDFLARE_AI_MODEL }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+      AI_PROVIDER: ${{ vars.AI_PROVIDER }}
+      AI_GROQ_MODEL_QUALITY: ${{ vars.AI_GROQ_MODEL_QUALITY }}
+      AI_GROQ_MODEL_FAST: ${{ vars.AI_GROQ_MODEL_FAST }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
       RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}

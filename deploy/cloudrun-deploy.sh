@@ -264,6 +264,8 @@ done
 # unset means the chat hands every visitor to a person. Tried in order — OpenAI first,
 # then the free tiers — falling to the next when one fails or runs out. The two caps
 # bound the estimated monthly spend (defaults 20 and 2 US dollars).
+# AI_PROVIDER (groq|openai) puts one first; unset means groq when GROQ_API_KEY is set
+# (2026-10-27), with OpenAI behind it as the fallback and for the embeddings.
 [[ -n "${AI_PROVIDERS:-}" ]] && ENV_VARS+=("AI_PROVIDERS=${AI_PROVIDERS}")
 [[ -n "${OPENAI_API_KEY:-}" ]] && ENV_VARS+=("OPENAI_API_KEY=${OPENAI_API_KEY}")
 [[ -n "${OPENAI_MODEL:-}" ]] && ENV_VARS+=("OPENAI_MODEL=${OPENAI_MODEL}")
@@ -276,6 +278,9 @@ done
 [[ -n "${CLOUDFLARE_AI_MODEL:-}" ]] && ENV_VARS+=("CLOUDFLARE_AI_MODEL=${CLOUDFLARE_AI_MODEL}")
 [[ -n "${GROQ_API_KEY:-}" ]] && ENV_VARS+=("GROQ_API_KEY=${GROQ_API_KEY}")
 [[ -n "${GROQ_MODEL:-}" ]] && ENV_VARS+=("GROQ_MODEL=${GROQ_MODEL}")
+[[ -n "${AI_PROVIDER:-}" ]] && ENV_VARS+=("AI_PROVIDER=${AI_PROVIDER}")
+[[ -n "${AI_GROQ_MODEL_QUALITY:-}" ]] && ENV_VARS+=("AI_GROQ_MODEL_QUALITY=${AI_GROQ_MODEL_QUALITY}")
+[[ -n "${AI_GROQ_MODEL_FAST:-}" ]] && ENV_VARS+=("AI_GROQ_MODEL_FAST=${AI_GROQ_MODEL_FAST}")
 [[ -n "${OPENROUTER_API_KEY:-}" ]] && ENV_VARS+=("OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
 [[ -n "${OPENROUTER_MODEL:-}" ]] && ENV_VARS+=("OPENROUTER_MODEL=${OPENROUTER_MODEL}")
 # Razorpay — self-serve plans. Key id and secret together or neither (config.go

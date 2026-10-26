@@ -1,0 +1,72 @@
+# AI provider smoke test (manual). One tiny recap-style call on Groq with a strict
+# json_schema, the way api/internal/ai asks gpt-oss (reasoning_effort low, reasoning left
+# out of the reply), and one embedding on OpenAI (text-embedding-3-small, 1536 dimensions,
+# what the AI knowledge stores). Prints status, model, whether the JSON parsed, and a short
+# sample; never a key, never a full reply. Uses the repo secrets GROQ_API_KEY and
+# OPENAI_API_KEY (2026-10-27).
+name: AI provider smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      groq_model:
+        description: "Groq model"
+        type: string
+        default: openai/gpt-oss-120b
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Groq, recap-style JSON
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MODEL: ${{ inputs.groq_model }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GROQ_API_KEY:-}" ]; then echo "GROQ_API_KEY is not set"; exit 1; fi
+          body=$(jq -n --arg m "$MODEL" '{
+            model: $m, temperature: 0.3, max_completion_tokens: 1400,
+            reasoning_effort: "low", include_reasoning: false, stream: false,
+            messages: [
+              {role: "system", content: "You write a short recap of a webinar for its host. You are not the coach; write as a neutral assistant."},
+              {role: "user", content: "Transcript: The host explained index funds, why low fees matter over 20 years, and answered a question about SIPs."}
+            ],
+            response_format: {type: "json_schema", json_schema: {name: "recap", strict: true, schema: {
+              type: "object", additionalProperties: false, required: ["summary", "topics"],
+              properties: {summary: {type: "string"}, topics: {type: "array", items: {type: "string"}}}
+            }}}
+          }')
+          code=$(curl -sS -o /tmp/groq.json -w '%{http_code}' https://api.groq.com/openai/v1/chat/completions \
+            -H "Authorization: Bearer ${GROQ_API_KEY}" -H 'Content-Type: application/json' -d "$body")
+          echo "status: $code"
+          echo "model: $(jq -r '.model // "-"' /tmp/groq.json)"
+          echo "tokens in/out: $(jq -r '"\(.usage.prompt_tokens // 0)/\(.usage.completion_tokens // 0)"' /tmp/groq.json)"
+          content=$(jq -r '.choices[0].message.content // ""' /tmp/groq.json)
+          if echo "$content" | jq -e 'has("summary") and has("topics")' >/dev/null 2>&1; then
+            echo "json: parsed and matches"
+            echo "sample: $(echo "$content" | jq -r '.summary' | cut -c1-80)"
+          else
+            echo "json: did not parse or match"
+            jq -r '.error.message // empty' /tmp/groq.json | cut -c1-200
+            exit 1
+          fi
+          [ "$code" = 200 ]
+
+      - name: OpenAI, embedding
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then echo "OPENAI_API_KEY is not set (the AI knowledge needs it)"; exit 1; fi
+          code=$(curl -sS -o /tmp/emb.json -w '%{http_code}' https://api.openai.com/v1/embeddings \
+            -H "Authorization: Bearer ${OPENAI_API_KEY}" -H 'Content-Type: application/json' \
+            -d '{"model":"text-embedding-3-small","input":"What is a SIP?"}')
+          echo "status: $code"
+          echo "model: $(jq -r '.model // "-"' /tmp/emb.json)"
+          echo "dimensions: $(jq -r '.data[0].embedding | length' /tmp/emb.json 2>/dev/null || echo 0)"
+          [ "$code" = 200 ] && [ "$(jq -r '.data[0].embedding | length' /tmp/emb.json)" = 1536 ]

@@ -34,6 +34,12 @@ import (
  * monthly caps (AI_MONTHLY_USD, AI_HOST_MONTHLY_USD, see Config) bound what it can
  * spend. The free chain behind it answers when OpenAI is down or refuses.
  *
+ * AI_PROVIDER=groq|openai moves one of the two to the front (2026-10-27). Unset, it is
+ * groq when GROQ_API_KEY is set, else openai, so production with both keys answers on
+ * Groq's gpt-oss models (cheaper than gpt-5-mini, about as cheap as gpt-5-nano, much
+ * faster) and OpenAI becomes the fallback the chain falls to on a Groq 429 or 5xx. Only
+ * the order changes: embeddings stay on OpenAI whatever this says (embeddingsProvider).
+ *
  * Request style. OpenAI's reasoning models (gpt-5*, o1/o3/o4) take a different body
  * (max_completion_tokens, no temperature, reasoning_effort). A provider on
  * api.openai.com with such a model gets that style automatically; any other provider
@@ -63,8 +69,8 @@ type AIProvider struct {
 	APIKey   string `json:"apiKey,omitempty"`
 	Model    string `json:"model"`
 	Disabled bool   `json:"disabled,omitempty"`
-	// Style is "" / "chat" or "openai-reasoning" (internal/ai). Empty is decided
-	// from the endpoint and model; see normaliseAIProviders.
+	// Style is "" / "chat", "openai-reasoning" or "groq-reasoning" (internal/ai). Empty is
+	// decided from the endpoint and model; see normaliseAIProviders.
 	Style string `json:"style,omitempty"`
 	// StructuredOutput: the provider honours response_format json_schema.
 	StructuredOutput bool `json:"structuredOutput,omitempty"`
@@ -72,9 +78,15 @@ type AIProvider struct {
 
 // The request styles, as internal/ai names them.
 const (
-	aiStyleChat      = "chat"
-	aiStyleReasoning = "openai-reasoning"
+	aiStyleChat          = "chat"
+	aiStyleReasoning     = "openai-reasoning"
+	aiStyleGroqReasoning = "groq-reasoning"
 )
+
+// IsGroqGPTOSS is one of OpenAI's open-weight gpt-oss models as Groq names them.
+func IsGroqGPTOSS(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "openai/gpt-oss-")
+}
 
 /* Default models, chosen for a short, factual sales answer at the lowest cost.
  *
@@ -151,7 +163,42 @@ func loadAIProviders() ([]AIProvider, error) {
 			Model: env("OLLAMA_MODEL", defaultOllamaModel),
 		})
 	}
-	return normaliseAIProviders(list), nil
+	preferred, err := preferredAIProvider(env("AI_PROVIDER", ""), env("GROQ_API_KEY", "") != "")
+	if err != nil {
+		return nil, err
+	}
+	return normaliseAIProviders(moveToFront(list, preferred)), nil
+}
+
+/* preferredAIProvider is the provider AI_PROVIDER puts first: "groq" or "openai", and when
+ * it is unset, groq if there is a Groq key (else openai, which is the order already). */
+func preferredAIProvider(v string, haveGroq bool) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "":
+		if haveGroq {
+			return "groq", nil
+		}
+		return "openai", nil
+	case "groq":
+		return "groq", nil
+	case "openai":
+		return "openai", nil
+	}
+	return "", fmt.Errorf("AI_PROVIDER must be groq or openai, not %q", v)
+}
+
+// moveToFront is list with the provider id first and the rest in their order. Unchanged
+// when it is not in the list (AI_PROVIDER=groq without a key: the chain is what is set).
+func moveToFront(list []AIProvider, id string) []AIProvider {
+	for i, p := range list {
+		if p.ID == id && i > 0 {
+			out := make([]AIProvider, 0, len(list))
+			out = append(out, p)
+			out = append(out, list[:i]...)
+			return append(out, list[i+1:]...)
+		}
+	}
+	return list
 }
 
 func normaliseAIProviders(list []AIProvider) []AIProvider {
@@ -166,6 +213,15 @@ func normaliseAIProviders(list []AIProvider) []AIProvider {
 			p.StructuredOutput = true
 			if p.Style == "" && isOpenAIReasoningModel(p.Model) {
 				p.Style = aiStyleReasoning
+			}
+		}
+		/* Groq's gpt-oss models take response_format json_schema strict:true (Groq's
+		 * Structured Outputs page lists gpt-oss-20b and gpt-oss-120b for strict mode) and
+		 * reason before they answer, so they get the Groq reasoning body (internal/ai). */
+		if u, err := url.Parse(p.BaseURL); err == nil && strings.EqualFold(u.Hostname(), "api.groq.com") && IsGroqGPTOSS(p.Model) {
+			p.StructuredOutput = true
+			if p.Style == "" {
+				p.Style = aiStyleGroqReasoning
 			}
 		}
 		out = append(out, p)
@@ -226,8 +282,8 @@ func validateAIProviders(list []AIProvider, dev bool) error {
 		if p.Model == "" {
 			errs = append(errs, fmt.Errorf("%s: model is required", where))
 		}
-		if p.Style != "" && p.Style != aiStyleChat && p.Style != aiStyleReasoning {
-			errs = append(errs, fmt.Errorf("%s: style must be %q or %q", where, aiStyleChat, aiStyleReasoning))
+		if p.Style != "" && p.Style != aiStyleChat && p.Style != aiStyleReasoning && p.Style != aiStyleGroqReasoning {
+			errs = append(errs, fmt.Errorf("%s: style must be %q, %q or %q", where, aiStyleChat, aiStyleReasoning, aiStyleGroqReasoning))
 		}
 		u, err := url.Parse(p.BaseURL)
 		switch {
