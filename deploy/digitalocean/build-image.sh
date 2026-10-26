@@ -61,7 +61,9 @@ docker build -t webinarliv-mixrec:local mixrec
 docker build -t webinarliv-caddy-l4:local caddy-l4
 # The Deepgram caption worker (docker-compose.captions-worker.yml; ~400 MB, no models), so a
 # box with captions on does not build it at first boot.
-docker build -f Dockerfile.light -t webinarliv-captions-worker:local "${src}/deploy/captions"
+# -f is relative to the working directory, not the build context: give the full path
+# (the first snapshot after #758 failed with "open Dockerfile.light: no such file").
+docker build -f "${src}/deploy/captions/Dockerfile.light" -t webinarliv-captions-worker:local "${src}/deploy/captions"
 
 install -m 755 "${src}/deploy/digitalocean/sfu-boot.sh" /usr/local/sbin/webinarliv-sfu-boot.sh
 
