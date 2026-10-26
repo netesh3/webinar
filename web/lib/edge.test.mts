@@ -11,9 +11,11 @@ import {
   PlaybackStats,
   STALL_WINDOW_MS,
   TARGET_SECONDS,
+  TARGET_DECAY,
   MAX_LATENCY_SECONDS,
   bufferedAhead,
   catchUp,
+  decayedTarget,
   seekToTarget,
   edgeHlsConfig,
   latencyLabel,
@@ -55,6 +57,39 @@ import { clockOffset, formatClock } from "./server-clock.ts";
   assert.equal("liveMaxLatencyDurationCount" in c, false);
   // Still waits out an origin that 404s while the mix boots.
   assert.ok(c.manifestLoadingMaxRetry >= 60);
+}
+
+// The stall creep comes back down (2026-10-27): a quarter second per 30s without a stall,
+// timed from the last stall or the last step, never below the target, never while it is at it.
+{
+  const base = { floor: TARGET_SECONDS, lastStallAt: null, lastStepAt: null, startedAt: 0 };
+  const q = TARGET_DECAY.quietMs;
+  // At the target, or no target yet: nothing to do.
+  assert.equal(decayedTarget({ ...base, current: TARGET_SECONDS, now: 10 * q }), null);
+  assert.equal(decayedTarget({ ...base, current: null, now: 10 * q }), null);
+  // Crept to 4s: not inside the quiet spell, then one step at a time.
+  assert.equal(decayedTarget({ ...base, current: 4, lastStallAt: 1000, now: 1000 + q - 1 }), null);
+  assert.equal(decayedTarget({ ...base, current: 4, lastStallAt: 1000, now: 1000 + q }), 3.75);
+  // The spell restarts from the last step, so one step per spell.
+  assert.equal(decayedTarget({ ...base, current: 3.75, lastStallAt: 1000, lastStepAt: 1000 + q, now: 1000 + q + 1 }), null);
+  assert.equal(decayedTarget({ ...base, current: 3.75, lastStallAt: 1000, lastStepAt: 1000 + q, now: 1000 + 2 * q }), 3.5);
+  // A stall after a step restarts the spell.
+  assert.equal(decayedTarget({ ...base, current: 3.75, lastStallAt: 5000 + q, lastStepAt: 1000 + q, now: 5000 + q + 10 }), null);
+  // Never below the target, even from just above it, and free of float noise.
+  assert.equal(decayedTarget({ ...base, current: 3.1, now: q }), TARGET_SECONDS);
+  assert.equal(decayedTarget({ ...base, current: 3.3000000000000003, now: q }), 3.05);
+  // Timed from the start too: a player that just started does not step straight away.
+  assert.equal(decayedTarget({ ...base, current: 4, startedAt: 2000, now: 2000 + q - 1 }), null);
+  // From hls.js's cap (one TARGETDURATION, 2s, above the target) back to 3s in 8 spells: ~4 min.
+  let t = TARGET_SECONDS + 2;
+  let steps = 0;
+  for (let now = q; t > TARGET_SECONDS; now += q) {
+    const n = decayedTarget({ ...base, current: t, lastStepAt: now - q, now });
+    assert.ok(n !== null);
+    t = n;
+    steps++;
+  }
+  assert.equal(steps, 8);
 }
 
 // Keeping near live: only a jump, and only when well past the target.

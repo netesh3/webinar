@@ -63,9 +63,9 @@ export function edgeHlsConfig(): EdgeHlsConfig {
      * which listeners hear as speech warbling and music "cutting out" (2026-10-20). Drift is
      * corrected by skipping forward inside the buffer instead (CATCH_UP.jumpAbove). */
     maxLiveSyncPlaybackRate: 1,
-    // hls.js adds this to its target for every stall and never takes it back; a quarter second
-    // a stall lets a connection that keeps stalling settle a little further back, slowly,
-    // without a 3s target drifting to 6s within a few stalls.
+    // hls.js adds this to its target for every stall; a quarter second a stall lets a
+    // connection that keeps stalling settle a little further back, slowly. hls.js never takes
+    // it back by itself; decayedTarget below does, once the connection has been quiet.
     liveSyncOnStallIncrease: 0.25,
     enableWorker: true,
     // The origin 404s for the first seconds of a broadcast while the egress boots.
@@ -77,6 +77,34 @@ export function edgeHlsConfig(): EdgeHlsConfig {
     fragLoadingMaxRetry: 60,
     fragLoadingRetryDelay: 1000,
   };
+}
+
+/* The stall creep, undone (2026-10-27).
+ *
+ * hls.js adds liveSyncOnStallIncrease (0.25s) to its target for every stall, up to one
+ * TARGETDURATION (2s here), and never takes it back: one bad minute leaves a viewer up to 2s
+ * further behind for the rest of the session. The browser load test of 2026-10-26 measured the
+ * player 3.2–4.2s behind live against a 3s target. So after each stall-free spell the target
+ * steps back down a quarter second at a time, to TARGET_SECONDS and no lower. Setting
+ * hls.targetLatency resets hls.js's stall count and makes the value the new base, so a stall
+ * after a step still adds its quarter second on top, as before. */
+export const TARGET_DECAY = { quietMs: 30_000, stepSeconds: 0.25 };
+
+/** The target to set now, or null to leave it. `current` is hls.targetLatency; the spell is
+ *  timed from the last stall or the last step, whichever is later. */
+export function decayedTarget(o: {
+  current: number | null;
+  floor: number;
+  lastStallAt: number | null;
+  lastStepAt: number | null;
+  startedAt: number;
+  now: number;
+}): number | null {
+  if (o.current === null || !Number.isFinite(o.current)) return null;
+  if (o.current <= o.floor + 0.001) return null;
+  const quietSince = Math.max(o.startedAt, o.lastStallAt ?? 0, o.lastStepAt ?? 0);
+  if (o.now - quietSince < TARGET_DECAY.quietMs) return null;
+  return Math.max(o.floor, Math.round((o.current - TARGET_DECAY.stepSeconds) * 100) / 100);
 }
 
 /** Stalls inside this window are what edge_latency reports. */
