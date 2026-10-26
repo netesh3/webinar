@@ -1,0 +1,9 @@
+# Decisions
+
+Dated records of decisions that shape how Webinar Liv works: what was decided, why, the
+evidence, and when to look at it again. Newest first. A later record that changes an earlier
+one says so; the earlier one stays as it was written.
+
+| Date | Decision |
+|---|---|
+| 2026-10-26 | [Audience delivery: plain HLS, by where the viewer is, with capacity limits](2026-10-26-audience-delivery.md) |

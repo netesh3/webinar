@@ -15,7 +15,7 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
                                                 │ RTMP
                                                 ▼
                                     MediaMTX on the SFU box: plain HLS
-                                    (fMP4, 2s segments, no parts, no blocking reload)
+                                    (fMP4, 1s segments, no parts, no blocking reload)
                                                 │  /live/<slug>/index.m3u8
                                                 ▼
                      direct (near the box) or Bunny pull zone (CDN) ──▶ hls.js player
@@ -29,7 +29,7 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
 | | Standard | Edge |
 |---|---|---|
 | Host, panelists, promoted attendees | WebRTC stage | WebRTC stage (unchanged) |
-| Audience picture | SFU | Plain HLS (~6s behind) from the box or a CDN, by where the viewer is |
+| Audience picture | SFU | Plain HLS (~3s behind) from the box or a CDN, by where the viewer is |
 | Audience chat/polls/controls | LiveKit data channel and room metadata | `GET /api/webinars/{slug}/events` (SSE) |
 | Audience on the SFU | Yes (full or data-only peers) | **No.** Not a participant, not counted against the room size |
 | Attendee limit | Live SFU participant count | Open edge visits: a viewer's browser beats every 30 s (`POST /events/beat`) and says goodbye on leave (`POST /events/leave`); a visit with no beat for 150 s ends at its last beat. The stream connecting or ending is not trusted for attendance. |
@@ -120,9 +120,12 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
   requests a minute. The HLS spec asks CDNs to hold duplicate blocking requests and deliver
   them from the pending fill (RFC 8216bis, Appendix B); in practice the shared fill is a single
   point of failure for everyone behind an edge. Plain HLS is about one request a second per
-  viewer, every one cacheable, and nothing is held open. The cost is delay: ~6s behind live
-  (5–8s glass to glass) instead of ~2s, which a webinar does not feel — the stage talks over
-  WebRTC, and chat, polls and Q&A have their own channel.
+  viewer, every one cacheable, and nothing is held open. The cost is delay: at first 2s
+  segments and ~6s behind live; since 2026-10-26 1s segments and ~3s behind (~3–4s glass to
+  glass) instead of LL-HLS's ~2s, which a webinar does not feel — the stage talks over WebRTC,
+  and chat, polls and Q&A have their own channel. The trade-off of the shorter cushion: a weak
+  network has ~3s to ride out instead of ~6s, so it stalls a little more readily; the browser
+  test measures it. Every decision and its evidence: [decisions/2026-10-26-audience-delivery.md](decisions/2026-10-26-audience-delivery.md).
 - **Which path a viewer gets.** With `EDGE_NEAR_COUNTRIES` set (e.g. `IN`), a viewer in one of
   those countries, or of unknown country, plays the box directly (the project's
   `broadcastHlsBase`), and everyone else plays the CDN (`edgePlaybackBase`, else
@@ -131,10 +134,12 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
   The join returns `deliveryPath` (`direct`|`cdn`) and the other path as `fallbackPlaybackUrl`
   (`config.EdgePlaybackChoiceFor`). Unset, everyone plays `edgePlaybackBase` as before.
 - **Player.** `EdgePlayer` uses hls.js with one setting for everyone (`lib/edge-hls.ts`):
-  `lowLatencyMode` off, `liveSyncDuration` 6s (`TARGET_SECONDS`), a 12s buffer, playback
+  `lowLatencyMode` off, `liveSyncDuration` 3s (`TARGET_SECONDS`), `liveMaxLatencyDuration` 10s
+  as hls.js's own backstop, a buffer cap of 8s, a quarter second added to the target per stall,
+  playback
   speed never changed (`maxLiveSyncPlaybackRate: 1`: time-stretched audio warbled, 2026-10-20).
   - **Keeping near live.** Each stall adds to hls.js's distance from live and nothing wins it
-    back, so once the player is more than 6s past its target it skips forward, landing no
+    back, so once the player is more than 3s past its target (6s behind) it skips forward, landing no
     further than 1s short of what is buffered so the skip never waits on a black frame
     (`catchUp` / `seekToTarget`). Skips are at least 15s apart (`JUMP_COOLDOWN_MS`).
   - A stall or a recovery never shows black: the last frame is held on a canvas, and a
@@ -143,7 +148,7 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
     `fallbackPlaybackUrl` (`shouldUseFallback`), and reports `edge_fallback`. Media errors use
     hls.js's recovery.
   - Safari plays the playlist natively.
-  - **Back to live** appears past 20s behind (`BEHIND_LIVE_SECONDS`). `edge_latency`
+  - **Back to live** appears past 12s behind (`BEHIND_LIVE_SECONDS`). `edge_latency`
     telemetry every 30s carries the latency, the delivery path (`delivery`: `direct`|`cdn`),
     the stall count and the median time to first byte.
 - **Layout.** Edge webinars' egress loads the composite at `<template>/edge`. While someone
@@ -304,10 +309,12 @@ after its 3 s grace waits for a keyframe (a few hundred ms of the avatar tile). 
 recordings that use this template at 1080p get the same mapping: a 2x2 grid's 540 px tiles
 take the medium layer there too.
 
-**LL-HLS and captions.** MediaMTX splits parts on frame boundaries: a 250 ms part at 25 fps is
-about six frames, at 500 ms about twelve, and segments (1 s) still each start on the 1 s
-keyframe. The mix recorder (mixrec) copies the stream, so recordings become 25 fps with no
-other change. Caption sync uses the player's measured delay, not the frame rate.
+**Segments and captions.** MediaMTX cuts a segment only on a keyframe, and the edge mix pins a
+1 s keyframe interval (`broadcastEncodingOptions`, `api/internal/lk/lk.go`), so each 1 s segment
+is one GOP; with keyframes further apart, segments would silently grow to match. The mix recorder
+(mixrec) copies the stream, so recordings become 25 fps with no other change. Caption sync uses
+the player's measured delay (`setEdgeVideoDelay`), not a constant, so it follows the shorter
+delay on its own.
 
 ## Test it side by side
 
@@ -332,8 +339,9 @@ On a Hetzner project (on GCP/DO there is no Standard webinar to compare against)
 6. Compare SFU load in Grafana (CPU, packets/s) with N viewers on the edge webinar against
    the same N on the standard one.
 
-Expected delay: about 6s behind the origin's live edge, 5–8s glass to glass, the same on both
-paths.
+Expected delay: about 3s behind the origin's live edge, ~3–4s glass to glass from the box. Through
+the CDN up to a second more: Bunny keeps a playlist for a second (Caddy's `s-maxage=1`), so a new
+1s segment can reach a CDN viewer a second late.
 
 ## Phase 2
 

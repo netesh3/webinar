@@ -1,9 +1,12 @@
 /* hls.js settings and playback policy for the Edge-delivery audience player
  * (components/room/edge-player.tsx).
  *
- * Plain HLS only: whole ~2s fMP4 segments, no parts, no blocking playlist reloads, about six
- * seconds behind live. Few requests (about one a second per viewer), every one of them
- * cacheable, so it plays the same from the box and through a CDN.
+ * Plain HLS only: whole 1s fMP4 segments, no parts, no blocking playlist reloads, about three
+ * seconds behind live (~3–4s glass to glass). Few requests (two or three a second per viewer),
+ * every one of them cacheable, so it plays the same from the box and through a CDN. Until
+ * 2026-10-26 the segments were 2s and the target 6s; the shorter cushion is closer to live and
+ * stalls a little more readily on a weak network, which the browser test measures
+ * (docs/decisions/2026-10-26-audience-delivery.md).
  *
  * Until 2026-10-25 this was LL-HLS (250–500ms parts, blocking reloads, ~2s behind) with a
  * standard-HLS fallback. Through Bunny the blocking reloads failed under a real audience:
@@ -16,13 +19,14 @@
  * webinar nothing: the stage talks over WebRTC, and chat, polls and Q&A have their own channel.
  *
  * The delay is set here (liveSyncDuration), not left to hls.js's 3 × TARGETDURATION: MediaMTX's
- * 2s segments run a little over, TARGETDURATION rounds that up to 3, and 9s is more than it
- * needs to be. */
+ * segments run a little over their 1s, TARGETDURATION rounds that up to 2, and 6s is twice what
+ * it needs to be. */
 
 export type EdgeHlsConfig = {
   lowLatencyMode: boolean;
   liveDurationInfinity: boolean;
   liveSyncDuration: number;
+  liveMaxLatencyDuration: number;
   maxBufferLength: number;
   backBufferLength: number;
   maxLiveSyncPlaybackRate: number;
@@ -37,24 +41,32 @@ export type EdgeHlsConfig = {
   fragLoadingRetryDelay: number;
 };
 
-/** How far behind live the player sits, in seconds: three segments of ~2s. */
-export const TARGET_SECONDS = 6;
+/** How far behind live the player sits, in seconds: three segments of 1s. */
+export const TARGET_SECONDS = 3;
+
+/** hls.js's own backstop: past this behind live it seeks back to TARGET_SECONDS by itself.
+ * Beyond our buffer-aware catch-up jump (TARGET_SECONDS + CATCH_UP.jumpAbove, 6s), so it only
+ * acts when that one could not, e.g. a tab the browser had throttled. */
+export const MAX_LATENCY_SECONDS = 10;
 
 export function edgeHlsConfig(): EdgeHlsConfig {
   return {
     lowLatencyMode: false,
     liveDurationInfinity: true,
     liveSyncDuration: TARGET_SECONDS,
-    // Room for the whole target and a segment or two more, so a slow request is absorbed.
-    maxBufferLength: 12,
+    liveMaxLatencyDuration: MAX_LATENCY_SECONDS,
+    /* A cap, not what it holds: a live player can only buffer up to the live edge, ~3s ahead.
+     * Room for that and a few segments more, should it fall back and have catching up to do. */
+    maxBufferLength: 8,
     backBufferLength: 10,
     /* 1: hls.js never changes the playback speed. A changing rate is time-stretched audio,
      * which listeners hear as speech warbling and music "cutting out" (2026-10-20). Drift is
      * corrected by skipping forward inside the buffer instead (CATCH_UP.jumpAbove). */
     maxLiveSyncPlaybackRate: 1,
-    // hls.js adds this to its target for every stall and never takes it back; half a second a
-    // stall lets a connection that keeps stalling settle a little further back, slowly.
-    liveSyncOnStallIncrease: 0.5,
+    // hls.js adds this to its target for every stall and never takes it back; a quarter second
+    // a stall lets a connection that keeps stalling settle a little further back, slowly,
+    // without a 3s target drifting to 6s within a few stalls.
+    liveSyncOnStallIncrease: 0.25,
     enableWorker: true,
     // The origin 404s for the first seconds of a broadcast while the egress boots.
     manifestLoadingMaxRetry: 120,
@@ -125,9 +137,9 @@ export function shouldUseFallback(o: { fatalNetworkErrors: number; fallbackUrl: 
  * skips forward, inside what is already buffered (seekToTarget), no more often than
  * JUMP_COOLDOWN_MS. Never by playing faster (see maxLiveSyncPlaybackRate). */
 export const CATCH_UP = {
-  /** Seconds past the target latency before skipping forward. Generous: a stall or two of
-   * ordinary jitter is not worth a jump in the picture. */
-  jumpAbove: 6,
+  /** Seconds past the target latency before skipping forward (so at 6s behind). Generous for
+   * a 3s target: a stall or two of ordinary jitter is not worth a jump in the picture. */
+  jumpAbove: 3,
 } as const;
 
 export type CatchUp = "stay" | "jump";
@@ -169,9 +181,10 @@ export function retryDelayMs(attempt: number): number {
 
 /* How far behind live counts as "behind" enough to offer Back to live, in seconds.
  *
- * Well clear of the target (TARGET_SECONDS, 6) and of where the catch-up jumps (12): somebody
- * who paused, or came back to a tab the browser had throttled, is the case a button is for. */
-export const BEHIND_LIVE_SECONDS = 20;
+ * Well clear of the target (TARGET_SECONDS, 3), of where the catch-up jumps (6) and of hls.js's
+ * own backstop (MAX_LATENCY_SECONDS, 10): somebody who paused, or came back to a tab the
+ * browser had throttled, is the case a button is for. */
+export const BEHIND_LIVE_SECONDS = 12;
 
 /** The latency readout: one decimal under ten seconds, whole seconds above. */
 export function latencyLabel(seconds: number | null | undefined): string {

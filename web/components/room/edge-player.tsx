@@ -3,7 +3,7 @@
 /* The Edge-delivery audience player: the stage mix as plain HLS, from the box or a CDN pull
  * zone in front of it, whichever the join chose for this viewer (docs/edge-delivery.md).
  *
- * One mode, about six seconds behind live (lib/edge-hls.ts says why it is no longer LL-HLS).
+ * One mode, about three seconds behind live (lib/edge-hls.ts says why it is no longer LL-HLS).
  * A stall or a recovery never leaves the picture black: the last frame is held on a canvas
  * over the video, with a small "Reconnecting" badge if it stays stuck. Fatal network errors
  * retry with backoff, and after several in a row on the same URL the player moves, once, to

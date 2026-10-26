@@ -47,13 +47,16 @@ hlsAlwaysRemux: false
 # failed under a real audience: request coalescing tied every viewer waiting for the next part
 # to one origin request, and those got stuck (89 viewers at one edge on one request; see
 # web/lib/edge-hls.ts). Plain HLS is about one request a second per viewer, all of it
-# cacheable, at ~6s behind live instead of ~2s.
+# cacheable. Since 2026-10-26 the segments are 1s and the player sits ~3s back (~3–4s behind
+# live), not 2s and ~6s: closer to live, still plain HLS (docs/decisions/2026-10-26-audience-delivery.md).
 hlsVariant: fmp4
-# Seven segments of ~2s: the player sits three back (web/lib/edge-hls.ts TARGET_SECONDS), and
-# the rest is room for a viewer who stalled to catch up inside the window. A segment is cut
-# on a keyframe, which the egress sends every second, so 2s is two GOPs.
-hlsSegmentCount: 7
-hlsSegmentDuration: 2s
+# Ten segments of 1s: the player sits three back (web/lib/edge-hls.ts TARGET_SECONDS), and the
+# rest is room for a viewer who stalled to catch up inside the ~10s window. A segment is cut on
+# a keyframe, and the edge mix pins a 1s keyframe interval (broadcastEncodingOptions in
+# api/internal/lk/lk.go), so every segment is one GOP. Were keyframes 2s apart, MediaMTX would
+# silently make 2s segments whatever this says.
+hlsSegmentCount: 10
+hlsSegmentDuration: 1s
 hlsMuxerCloseAfter: 60s
 # Every HLS request reaches MediaMTX through Caddy, which sets this as
 # `Authorization: Bearer` (see the Caddyfile). Without it MediaMTX treats each
