@@ -277,6 +277,11 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	 * webinars (warm-up)"): the on-demand video server needs a few minutes' warning
 	 * (sfu_box.go), so "go live now" is an admin's per-host choice, used for testing. */
 	meeting := in.Kind == types.KindMeeting
+	region, regionOK := s.sessionRegion(in.SFURegion)
+	if !regionOK {
+		httpx.Fields(w, map[string]string{"sfuRegion": "Choose one of the listed regions."})
+		return types.Webinar{}, false
+	}
 	// What kind of session this account may create at all (Admin -> Accounts).
 	if meeting && !s.requireHostFeature(w, r, user.ID, types.FeatureMeetings) {
 		return types.Webinar{}, false
@@ -386,6 +391,10 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 		s.fail(w, r, "create webinar: zoom save", err)
 		return types.Webinar{}, false
 	}
+	if err := s.saveSessionRegion(r.Context(), &wb, region); err != nil {
+		s.fail(w, r, "create webinar: region", err)
+		return types.Webinar{}, false
+	}
 	if delivery != types.DeliveryStandard {
 		var err error
 		if wb.SeriesID != "" {
@@ -450,6 +459,11 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	var in types.WebinarInput
 	if err := httpx.DecodeJSON(w, r, &in); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	region, regionOK := s.sessionRegion(in.SFURegion)
+	if !regionOK {
+		httpx.Fields(w, map[string]string{"sfuRegion": "Choose one of the listed regions."})
 		return
 	}
 	/* The start already stored, so an edit that does not move it is not asked to
@@ -686,6 +700,10 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		s.fail(w, r, "update webinar", err)
+		return
+	}
+	if err := s.saveSessionRegion(r.Context(), &wb, region); err != nil {
+		s.fail(w, r, "update webinar: region", err)
 		return
 	}
 

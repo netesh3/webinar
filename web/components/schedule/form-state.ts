@@ -88,6 +88,8 @@ export type FormState = {
   streamKey: string;
   streamWatchUrl: string;
   venue: "app" | "zoom_meeting" | "zoom_webinar";
+  /** The area of the video servers (AppConfig.boxRegions; "" is the default, lib/box-regions.ts). */
+  sfuRegion: string;
   /** How the audience receives the session (docs/edge-delivery.md). On GCP and DigitalOcean
    *  (production) it is always edge; on any other server with a live origin it is the host's
    *  choice, for a webinar or series in this app (lib/delivery-policy.ts). */
@@ -173,6 +175,7 @@ export function initialState(
       approval: webinar.approval,
       attendeeLimit: webinar.attendeeLimit,
       audienceCapOverride: webinar.audienceCapOverride ?? 0,
+      sfuRegion: webinar.sfuRegion ?? "",
       passcode: webinar.passcode ?? "",
       // The panel as saved, so the save sends it back rather than an empty box.
       panelistEmails: panelistBox(webinar.panelistEmails),
@@ -221,6 +224,7 @@ export function initialState(
         ? Math.min(DEFAULT_ATTENDEE_LIMIT, maxAttendees)
         : DEFAULT_ATTENDEE_LIMIT,
     audienceCapOverride: 0,
+    sfuRegion: "",
     passcode: "",
     panelistEmails: "",
     takeaways: "",

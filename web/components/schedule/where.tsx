@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { FeatureZoom, type DeliveryPolicy } from "@/lib/api-types";
+import { offersRegions, regionLabel, shownRegion } from "@/lib/box-regions";
 import { deliveryOffer, EDGE_ONLY_NOTE } from "@/lib/delivery-policy";
-import { useSession } from "../providers";
+import { useAppConfig, useSession } from "../providers";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
 
@@ -41,6 +42,7 @@ export function WhereSection({
   deliveryPolicy: DeliveryPolicy | null;
 }) {
   const { account, status } = useSession();
+  const { boxRegions } = useAppConfig();
   const zoomAllowed =
     status === "signed-in" && (account?.features ?? []).includes(FeatureZoom);
   const [zoomConnected, setZoomConnected] = useState<boolean | null>(null);
@@ -141,6 +143,9 @@ export function WhereSection({
           <p className="mt-2 text-[12px] font-medium text-live">{fields.venue}</p>
         )}
       </FormSection>
+      {offersRegions(boxRegions) && (appOnly || form.venue === "app") && (
+        <RegionSection form={form} set={set} regions={boxRegions} error={fields.sfuRegion} />
+      )}
       {offer === "choice" && (
         <DeliverySection form={form} set={set} error={fields.delivery} />
       )}
@@ -205,6 +210,44 @@ function DeliverySection({
           );
         })}
       </div>
+      {error && <p className="mt-2 text-[12px] font-medium text-live">{error}</p>}
+    </FormSection>
+  );
+}
+
+/** Where the video server runs (lib/box-regions.ts): near the presenters, so their call stays
+ *  quick. The audience abroad watches through the CDN either way. Offered only with two or more
+ *  regions; a session keeps its region once it is placed (15 minutes before it starts). */
+function RegionSection({
+  form,
+  set,
+  regions,
+  error,
+}: {
+  form: FormState;
+  set: SetForm;
+  regions: string[];
+  error?: string;
+}) {
+  const current = shownRegion(form.sfuRegion, regions);
+  return (
+    <FormSection
+      title="Video server region"
+      description="Pick where you and your panelists are presenting from. Viewers in other countries still watch smoothly through the CDN."
+    >
+      <select
+        id="sfuRegion"
+        aria-label="Video server region"
+        value={current}
+        onChange={(e) => set("sfuRegion", e.target.value)}
+        className="rounded-md border border-line bg-surface-0 px-3 py-2 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+      >
+        {regions.map((r) => (
+          <option key={r} value={r}>
+            {regionLabel(r)}
+          </option>
+        ))}
+      </select>
       {error && <p className="mt-2 text-[12px] font-medium text-live">{error}</p>}
     </FormSection>
   );

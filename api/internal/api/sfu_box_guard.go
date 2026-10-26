@@ -49,10 +49,11 @@ type boxPool struct {
 
 func (p boxPool) Get(id string) (RoomManager, error) {
 	rm, err := p.SFUPool.Get(id)
-	if err != nil || rm == nil || !p.s.managesProject(id) {
+	b := p.s.boxFor(id)
+	if err != nil || rm == nil || b == nil {
 		return rm, err
 	}
-	return boxRoom{RoomManager: rm, s: p.s}, nil
+	return boxRoom{RoomManager: rm, s: p.s, b: b}, nil
 }
 
 // unwrapRoom is the room manager behind the edge tap and the box guard.
@@ -72,12 +73,12 @@ func unwrapRoom(rm RoomManager) RoomManager {
 // boxReachable is whether the box's LiveKit is up (ready, or draining and still serving).
 // A state that cannot be read counts as reachable (the call
 // is still bounded by boxCallTimeout).
-func (s *Server) boxReachable(ctx context.Context, what string) bool {
-	if s.box == nil {
+func (s *Server) boxReachable(ctx context.Context, b *boxManager, what string) bool {
+	if b == nil {
 		return true
 	}
 	sctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	st, err := s.boxState(sctx)
+	st, err := s.boxState(sctx, b)
 	cancel()
 	if err != nil {
 		return true
@@ -86,7 +87,6 @@ func (s *Server) boxReachable(ctx context.Context, what string) bool {
 	case store.BoxReady, store.BoxDraining:
 		return true
 	}
-	b := s.box
 	b.mu.Lock()
 	quiet := time.Since(b.lastSkipLog) < boxSkipLogEvery
 	if !quiet {
@@ -100,15 +100,16 @@ func (s *Server) boxReachable(ctx context.Context, what string) bool {
 	return false
 }
 
-// boxRoom is the box project's room manager behind the guard.
+// boxRoom is a box project's room manager behind the guard; b is that box.
 type boxRoom struct {
 	RoomManager
 	s *Server
+	b *boxManager
 }
 
 // call is the guard for one quick call: a bounded context, or errBoxNotReady.
 func (r boxRoom) call(ctx context.Context, what string) (context.Context, context.CancelFunc, error) {
-	if !r.s.boxReachable(ctx, what) {
+	if !r.s.boxReachable(ctx, r.b, what) {
 		return nil, nil, errBoxNotReady
 	}
 	c, cancel := context.WithTimeout(ctx, boxCallTimeout)
@@ -117,7 +118,7 @@ func (r boxRoom) call(ctx context.Context, what string) (context.Context, contex
 
 // bulk is the guard for a long call: skipped while unreachable, the caller's context otherwise.
 func (r boxRoom) bulk(ctx context.Context, what string) error {
-	if !r.s.boxReachable(ctx, what) {
+	if !r.s.boxReachable(ctx, r.b, what) {
 		return errBoxNotReady
 	}
 	return nil

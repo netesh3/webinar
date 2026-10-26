@@ -49,6 +49,7 @@ const CONFIG_FALLBACK: AppConfig = {
   av1Publish: "off",
   // 180 minutes = 3 hours, matches the server default.
   defaultMaxMeetingMin: 180,
+  boxRegions: [],
   /* Empty rather than a copy of the server's list. The catalogue is what the
    * admin screen renders switches from, and a hardcoded one here would offer a
    * switch this build's API does not know about — better no switches for the

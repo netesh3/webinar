@@ -113,7 +113,7 @@ flowchart TD
 
 Required GitHub **secrets** (Cloud Run): `GCP_SA_KEY`, `DATABASE_URL`, `SESSION_SECRET`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (or `LIVEKIT_PROJECTS`).  
 Required (Cloudflare Workers): `CLOUDFLARE_API_TOKEN`.  
-Required (DigitalOcean video box): `DO_SSH_HOST`, `DO_SSH_PRIVATE_KEY`, `DO_API_TOKEN` (the API creates and deletes the droplet), repo variable `SFU_BOX_PROJECT`. The Hetzner secrets (`HETZNER_SSH_HOST`, `HETZNER_SSH_PRIVATE_KEY`) are no longer read by any workflow.  
+Required (DigitalOcean video box): `DO_SSH_HOST`, `DO_SSH_PRIVATE_KEY`, `DO_API_TOKEN` (the API creates and deletes the droplet), repo variable `SFU_BOX_PROJECT`. Optional: repo variables `SFU_BOX_SLOTS`, `SFU_BOX_AREA`, `SFU_BOX_CAPACITY` and `SFU_BOX_POINTS` make it a pool of several boxes, placed by region and capacity points (`deploy/digitalocean/README.md` "More video servers"). The Hetzner secrets (`HETZNER_SSH_HOST`, `HETZNER_SSH_PRIVATE_KEY`) are no longer read by any workflow.  
 Optional: `CORS_ORIGINS`, `WEB_BASE_URL`, `ADMIN_EMAILS` / `ADMIN_PASSWORD` (bootstrap production admin on fresh DB).  
 Repo **variables**: `GCP_PROJECT`, `GCP_REGION` (= `asia-south1`), `CLOUDFLARE_ACCOUNT_ID`.
 

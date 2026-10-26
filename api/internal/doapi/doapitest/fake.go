@@ -6,6 +6,7 @@ package doapitest
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -62,6 +63,23 @@ func New(snapshotTag, volume, region, ip string) *Fake {
 	f.Volumes = []*doapi.Volume{v}
 	f.Srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	return f
+}
+
+// AddVolume adds a data volume in region (another slot's), and returns its id.
+func (f *Fake) AddVolume(name, region string) string {
+	f.Mu.Lock()
+	defer f.Mu.Unlock()
+	v := &doapi.Volume{ID: fmt.Sprintf("vol-%d", len(f.Volumes)+1), Name: name}
+	v.Region.Slug = region
+	f.Volumes = append(f.Volumes, v)
+	return v.ID
+}
+
+// AddReservedIP adds an unassigned reserved IP (another slot's).
+func (f *Fake) AddReservedIP(ip string) {
+	f.Mu.Lock()
+	defer f.Mu.Unlock()
+	f.ReservedIPs[ip] = 0
 }
 
 // Close stops the server.

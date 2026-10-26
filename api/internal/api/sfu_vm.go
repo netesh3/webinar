@@ -87,7 +87,7 @@ func (s *Server) sfuVMFor(ctx context.Context, projectID string) (*egresspool.Po
 func (s *Server) sfuReady(ctx context.Context, projectID string) error {
 	// The on-demand DigitalOcean box (sfu_box.go): created and deleted, not started and stopped.
 	if s.managesProject(projectID) {
-		return s.boxReady(ctx)
+		return s.boxReady(ctx, s.boxFor(projectID))
 	}
 	pool, name := s.sfuVMFor(ctx, projectID)
 	if pool == nil {

@@ -1,5 +1,6 @@
 import type {
   AdminSFUBox,
+  AdminSFUPool,
   BrandVoice,
   RepurposeEditRequest,
   RepurposeRequest,
@@ -1698,6 +1699,7 @@ export const api = {
     post<RecordingPurgeStatus>("/api/admin/recordings/purge", { confirm }),
   /** The on-demand video server: its state, recent droplets and hours in the last 30 days. */
   adminSfuBox: () => request<AdminSFUBox>("/api/admin/sfu-box", fresh),
+  adminSfuPool: () => request<AdminSFUPool>("/api/admin/sfu-pool", fresh),
   /** The report's ignore list (test and staff accounts), with rules worth adding. */
   costIgnoreList: () => request<CostIgnoreList>("/api/admin/costs/ignore", fresh),
   addCostIgnoreRule: (rule: CostIgnoreRuleInput) => post<CostIgnoreRule>("/api/admin/costs/ignore", rule),
