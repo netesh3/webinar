@@ -26,6 +26,16 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from livekit import rtc
+
+# Registered here, at import, on the process's main thread. livekit-agents only lets a plugin
+# register on the main thread, and importing it lazily from a room's job thread (provider.py,
+# the VAD) raised "Plugins must be registered on the main thread", so no Deepgram room ever
+# started (first load test after #758, 2026-10-26). Optional: the full Whisper image may not
+# ship it.
+try:
+    from livekit.plugins import silero as _silero  # noqa: F401
+except ImportError:  # pragma: no cover
+    _silero = None
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, JobProcess, JobRequest, WorkerPermissions, cli
 
 from .config import Config, job_skips_final, room_load
