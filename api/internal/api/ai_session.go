@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/lk"
@@ -126,12 +125,12 @@ func (s *Server) syncCaptionAgent(ctx context.Context, wb types.Webinar, sfu Roo
 		return false
 	}
 	room := lk.RoomName(slug)
-	md := map[string]string{"slug": slug, "room": room}
+	var extra map[string]string
 	if !display {
-		md["mode"] = "transcript"
+		extra = map[string]string{"mode": "transcript"}
 	}
-	meta, _ := json.Marshal(md)
-	if _, err := d.DispatchAgent(ctx, room, s.captionAgentName(), string(meta)); err != nil {
+	meta := s.captionAgentMeta(ctx, slug, extra)
+	if _, err := d.DispatchAgent(ctx, room, s.captionAgentName(), meta); err != nil {
 		// The browsers caption instead: they do whenever the agent is not live.
 		s.log.Warn("server captions unavailable, captions run on-device",
 			"slug", slug, "reason", "dispatch_failed", "mode", mode,

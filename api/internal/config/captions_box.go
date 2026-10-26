@@ -21,7 +21,7 @@ type CaptionsBox struct {
 	On bool
 	// Name of the droplet (CAPTIONS_BOX_NAME, default captions-blr-1).
 	Name string
-	// Size is the droplet size (CAPTIONS_BOX_SIZE, default s-2vcpu-4gb).
+	// Size is the droplet size (CAPTIONS_BOX_SIZE, default s-4vcpu-8gb).
 	Size string
 	// SnapshotTag picks the image: the newest snapshot tagged CAPTIONS_BOX_IMAGE (default
 	// webinar-captions-image, built by .github/workflows/sfu-snapshot.yml), else named "<tag>-…".
@@ -34,7 +34,7 @@ type CaptionsBox struct {
 	// CPUs is the agent's CPU cap and decoder threads (CAPTIONS_BOX_CPUS, default the size's vCPUs).
 	CPUs int
 	// MaxRooms is how many rooms the agent takes at once (CAPTIONS_BOX_MAX_ROOMS, default
-	// 2 per vCPU); a room beyond it keeps on-device captions.
+	// one per 2 vCPUs, at least 1); a room beyond it keeps on-device captions.
 	MaxRooms int
 	// Model is the live model (CAPTIONS_BOX_MODEL, default base.en).
 	Model string
@@ -71,17 +71,34 @@ func SizeVCPUs(size string) int {
 	return 0
 }
 
-/* CaptionsRoomsPerVCPU is the default capacity: base.en is ~0.3–0.4 of a core per active
- * transcribed speaker, at most two per room, ~0 in silence (the energy gate). So 2 rooms a vCPU
- * is the typical-load figure; rooms with two people talking at once all the time fit about one
- * a vCPU, and the agent's CPU guard steps those down (one speaker, stale windows skipped). */
-const CaptionsRoomsPerVCPU = 2
+/* CaptionsVCPUsPerRoom is the default capacity: one room for every two vCPUs (2 → 1, 4 → 2,
+ * 8 → 4), at least one.
+ *
+ * It was 2 rooms a vCPU, from base.en at ~0.3–0.4 of a core per active speaker. Measured on
+ * 2026-10-26 (browser load test, Grafana): ONE room of continuous speech held the captions
+ * container at 1.2–1.6 cores on an s-2vcpu-4gb (60–83% of the box) and caption delay p90 went
+ * to 7.8–8.7 s, because the live model, the partials and the speaker's VAD all share the CPU.
+ * A real presenter pauses, but two such rooms on two vCPUs are already over. One room per two
+ * vCPUs keeps a room's decode on its own cores, with room for the after-session pass to run
+ * niced in the gaps (docs/decisions/2026-10-27-captions-box-size.md). */
+const CaptionsVCPUsPerRoom = 2
+
+// CaptionsRoomsFor is the default room limit for a box with vcpus vCPUs.
+func CaptionsRoomsFor(vcpus int) int {
+	if vcpus <= 0 {
+		return 0
+	}
+	if r := vcpus / CaptionsVCPUsPerRoom; r > 0 {
+		return r
+	}
+	return 1
+}
 
 func loadCaptionsBox() CaptionsBox {
 	b := CaptionsBox{
 		On:          envBool("CAPTIONS_BOX_ENABLED", false),
 		Name:        strings.TrimSpace(env("CAPTIONS_BOX_NAME", "captions-blr-1")),
-		Size:        strings.TrimSpace(env("CAPTIONS_BOX_SIZE", "s-2vcpu-4gb")),
+		Size:        strings.TrimSpace(env("CAPTIONS_BOX_SIZE", "s-4vcpu-8gb")),
 		SnapshotTag: strings.TrimSpace(env("CAPTIONS_BOX_IMAGE", "webinar-captions-image")),
 		Tags:        splitAndTrim(env("CAPTIONS_BOX_TAGS", "webinar-captions")),
 		ManagedTag:  captionsBoxManagedTag,
@@ -102,7 +119,7 @@ func (b CaptionsBox) withDefaults() CaptionsBox {
 		b.CPUs = vcpus
 	}
 	if b.MaxRooms == 0 && b.CPUs > 0 {
-		b.MaxRooms = CaptionsRoomsPerVCPU * b.CPUs
+		b.MaxRooms = CaptionsRoomsFor(b.CPUs)
 	}
 	if b.ManagedTag == "" {
 		b.ManagedTag = captionsBoxManagedTag

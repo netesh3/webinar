@@ -157,16 +157,16 @@ Asserts / Application Observability recording rules (`asserts:*`, `traces_spanme
 The on-demand captions droplet runs the video box's Alloy (same compose file and image) with a
 trimmed config: no LiveKit or MediaMTX, the agent's worker metrics instead. Every series carries
 `box="<hostname>"` (`captions-blr-1`) and `role="captions"`; the video box's carry `role="video"`.
-On the default `s-2vcpu-4gb`, while it runs:
+On the default `s-4vcpu-8gb`, while it runs:
 
 | What | Series | |
 |---|---|---|
-| `node_cpu_seconds_total` | 16 | 2 vCPUs × 8 modes (guest modes dropped; `nice` kept: the agent runs niced) |
+| `node_cpu_seconds_total` | 32 | 4 vCPUs × 8 modes (guest modes dropped; `nice` kept: the agent runs niced) |
 | Other host (`node`: memory, load, filesystem, disk, 2 NICs, netstat, pressure, uname, boot time) | ~65 | the video box's keep-list |
 | Containers (`cadvisor`: `captions`, `alloy`) | ~16 | 8 metrics each |
 | Agent (`job="captions"`: `lk_agents_*`, process CPU/RSS/fds) | ~8 | no per-room labels |
 | `up` and `scrape_*`, 3 targets | 15 | |
-| **Total** | **~120** | 0 when no captions box runs (the series age out of the active window) |
+| **Total** | **~136** | 0 when no captions box runs (the series age out of the active window) |
 
 A bigger size adds 8 CPU series per vCPU (`c-4`: ~140). Adding `role` to the video box's
 labels starts each of its series afresh once (the old ones go stale after 5 minutes and leave

@@ -277,5 +277,20 @@ class ApiClient:
     def status_json(self, room: str, state: str) -> tuple[int, dict[str, Any]]:
         return self.post_json("/api/internal/captions/status", status_payload(room, state))
 
+    def transcript_wanted(self, room: str) -> str:
+        """Before an after-session pass: "wanted", "skip" (a load test), "gone" (the webinar
+        no longer exists) or "unknown" (the API was unreachable, errored, or is too old to
+        have POST /api/internal/transcripts/wanted). Only "skip" and "gone" may drop the
+        room's audio, and "gone" needs the API's own {"gone": true}: a plain 404 from an API
+        without the route must not read as gone."""
+        status, body = self.post_json("/api/internal/transcripts/wanted", {"room": room}, retries=1)
+        if status == 200 and body.get("wanted") is True:
+            return "wanted"
+        if status == 200 and body.get("wanted") is False and body.get("reason") == "load_test":
+            return "skip"
+        if status == 404 and body.get("gone") is True:
+            return "gone"
+        return "unknown"
+
     def transcript(self, room: str, model: str, lines: Sequence[TranscriptLine]) -> int:
         return self.post("/api/internal/transcripts", transcript_payload(room, model, lines), retries=3)

@@ -253,6 +253,15 @@ class Finalizer:
         if not room or not self.cfg.final_enabled:
             spool.remove(d)
             return True
+        # Ask first: the pass is minutes of the big model. A load test's transcript is never
+        # read, and a deleted webinar's would be refused (404). On 2026-10-26 one such pass
+        # held the captions box at 91% for twenty minutes before its post got a 404.
+        # "unknown" (the API unreachable or too old) carries on as before.
+        wanted = self.api.transcript_wanted(room)
+        if wanted in ("skip", "gone"):
+            log.info("final transcript for %s: not needed (%s); dropping its audio", room, wanted)
+            spool.remove(d)
+            return True
         if not spool.read_index(d):
             # Still posted, with no lines: the API's AI recap is waiting for this transcript,
             # and without it would sit "processing" for its whole wait (30 min).

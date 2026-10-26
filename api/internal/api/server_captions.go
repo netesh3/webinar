@@ -138,8 +138,8 @@ func (s *Server) handleHostServerCaptions(w http.ResponseWriter, r *http.Request
 			s.fail(w, r, "server captions: save", err)
 			return
 		}
-		meta, _ := json.Marshal(map[string]string{"slug": slug, "room": room})
-		if _, err := dispatcher.DispatchAgent(r.Context(), room, s.captionAgentName(), string(meta)); err != nil {
+		meta := s.captionAgentMeta(r.Context(), slug, nil)
+		if _, err := dispatcher.DispatchAgent(r.Context(), room, s.captionAgentName(), meta); err != nil {
 			s.log.Warn("server captions: dispatch failed", "slug", slug, "error", err)
 			_ = s.store.SetServerCaptions(r.Context(), slug, false)
 			httpx.Error(w, http.StatusBadGateway, "dispatch_failed",
@@ -216,7 +216,61 @@ func (s *Server) mountCaptionsInternal(r chi.Router) {
 		r.Post("/internal/captions", s.handleInternalCaption)
 		r.Post("/internal/captions/status", s.handleInternalCaptionStatus)
 		r.Post("/internal/transcripts", s.handleInternalTranscript)
+		r.Post("/internal/transcripts/wanted", s.handleInternalTranscriptWanted)
 	})
+}
+
+/* captionAgentMeta is the metadata a caption agent's dispatch carries (the agent reads it
+ * from its job): the slug and room, plus "final":"skip" for a webinar an admin marked as a
+ * load test (admin_loadtest.go). The after-session pass runs the big model over the whole
+ * session's audio, and a load test's transcript is never read: on 2026-10-26 one such pass
+ * held a 2-vCPU captions box at 91% for twenty minutes, then got a 404 because the kit had
+ * already deleted the webinar. A failed lookup leaves the pass on (a real session must never
+ * lose its transcript to a database blip). RedispatchIdle copies the metadata as it is. */
+func (s *Server) captionAgentMeta(ctx context.Context, slug string, extra map[string]string) string {
+	md := map[string]string{"slug": slug, "room": lk.RoomName(slug)}
+	for k, v := range extra {
+		md[k] = v
+	}
+	if _, ok, err := s.store.LoadTestViewers(ctx, slug); err == nil && ok {
+		md["final"] = "skip"
+	}
+	meta, _ := json.Marshal(md)
+	return string(meta)
+}
+
+/* handleInternalTranscriptWanted answers the captions worker before it starts (or resumes)
+ * an after-session pass: is a transcript for this room still wanted? 200 {"wanted":true};
+ * 200 {"wanted":false,"reason":"load_test"} for a load test; 404 {"gone":true} when the
+ * webinar no longer exists. The worker deletes the room's audio only on the last two, and
+ * only when the body says so (an API without this route answers a plain 404, which must not
+ * read as "gone"). The pass itself is minutes of the big model; this is one indexed query. */
+func (s *Server) handleInternalTranscriptWanted(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Room string `json:"room"`
+		Slug string `json:"slug"`
+	}
+	if err := decodeAgentJSON(w, r, 1<<14, &req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	slug := agentSlug(req.Room, req.Slug)
+	if slug == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "room is required.")
+		return
+	}
+	if _, err := s.store.WebinarBySlug(r.Context(), slug); errors.Is(err, store.ErrNotFound) {
+		httpx.JSON(w, http.StatusNotFound, map[string]any{"wanted": false, "gone": true})
+		return
+	} else if err != nil {
+		s.fail(w, r, "internal transcript wanted: webinar", err)
+		return
+	}
+	if _, ok, err := s.store.LoadTestViewers(r.Context(), slug); err == nil && ok {
+		httpx.JSON(w, http.StatusOK, map[string]any{"wanted": false, "reason": "load_test"})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"wanted": true})
 }
 
 /* decodeAgentJSON reads an agent body. Unknown fields are allowed, unlike the browser

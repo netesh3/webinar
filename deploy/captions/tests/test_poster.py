@@ -99,3 +99,19 @@ def test_client_unreachable_returns_zero(monkeypatch):
     monkeypatch.setattr("webcaptions.poster.time.sleep", lambda s: None)
     client = ApiClient("http://127.0.0.1:9", SECRET, timeout=0.5)
     assert client.status("webinar_a", "live") == 0
+
+
+def test_transcript_wanted_reads_only_the_apis_own_answers(monkeypatch):
+    from webcaptions.poster import ApiClient
+
+    api = ApiClient("https://x.test", "s" * 40)
+    answers = {
+        (200, '{"wanted": true}'): "wanted",
+        (200, '{"wanted": false, "reason": "load_test"}'): "skip",
+        (404, '{"wanted": false, "gone": true}'): "gone",
+        (404, "404 page not found"): "unknown",  # an API without the route: never "gone"
+        (500, ""): "unknown",
+    }
+    for (status, body), want in answers.items():
+        monkeypatch.setattr(api, "_once", lambda path, b, s=status, d=body: (s, d.encode()))
+        assert api.transcript_wanted("webinar_abc") == want, (status, body)

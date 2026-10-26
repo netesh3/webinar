@@ -21,16 +21,26 @@ func TestCaptionsBoxDefaultsAndValidation(t *testing.T) {
 		t.Setenv(k, "")
 	}
 	b := loadCaptionsBox()
-	if b.On || b.Size != "s-2vcpu-4gb" || b.CPUs != 2 || b.MaxRooms != 4 || b.Model != "base.en" ||
+	if b.On || b.Size != "s-4vcpu-8gb" || b.CPUs != 4 || b.MaxRooms != 2 || b.Model != "base.en" ||
 		b.SnapshotTag != "webinar-captions-image" || strings.Join(b.Tags, ",") != "webinar-captions" ||
 		b.ManagedTag != "webinar-captions-ondemand" || b.APIURL != "https://webinarliv.com" {
 		t.Fatalf("defaults = %+v", b)
 	}
 	// Capacity follows the size unless set.
-	t.Setenv("CAPTIONS_BOX_SIZE", "c-4")
-	if b := loadCaptionsBox(); b.CPUs != 4 || b.MaxRooms != 8 {
-		t.Fatalf("c-4: cpus %d rooms %d, want 4 and 8", b.CPUs, b.MaxRooms)
+	t.Setenv("CAPTIONS_BOX_SIZE", "s-2vcpu-4gb")
+	if b := loadCaptionsBox(); b.CPUs != 2 || b.MaxRooms != 1 {
+		t.Fatalf("s-2vcpu-4gb: cpus %d rooms %d, want 2 and 1", b.CPUs, b.MaxRooms)
 	}
+	t.Setenv("CAPTIONS_BOX_SIZE", "s-8vcpu-16gb")
+	if b := loadCaptionsBox(); b.CPUs != 8 || b.MaxRooms != 4 {
+		t.Fatalf("s-8vcpu-16gb: cpus %d rooms %d, want 8 and 4", b.CPUs, b.MaxRooms)
+	}
+	t.Setenv("CAPTIONS_BOX_SIZE", "c-4")
+	t.Setenv("CAPTIONS_BOX_CPUS", "3")
+	if b := loadCaptionsBox(); b.CPUs != 3 || b.MaxRooms != 1 {
+		t.Fatalf("c-4 with CPUS=3: cpus %d rooms %d, want 3 and 1", b.CPUs, b.MaxRooms)
+	}
+	t.Setenv("CAPTIONS_BOX_CPUS", "")
 	t.Setenv("CAPTIONS_BOX_MAX_ROOMS", "3")
 	if b := loadCaptionsBox(); b.MaxRooms != 3 {
 		t.Fatalf("override rooms = %d", b.MaxRooms)
@@ -72,6 +82,14 @@ func TestCaptionsBoxDefaultsAndValidation(t *testing.T) {
 		mutate(&c)
 		if errs := c.validateSFUBox(); len(errs) == 0 {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestCaptionsRoomsFor(t *testing.T) {
+	for vcpus, want := range map[int]int{0: 0, -1: 0, 1: 1, 2: 1, 3: 1, 4: 2, 6: 3, 8: 4} {
+		if got := CaptionsRoomsFor(vcpus); got != want {
+			t.Fatalf("CaptionsRoomsFor(%d) = %d, want %d", vcpus, got, want)
 		}
 	}
 }

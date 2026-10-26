@@ -88,7 +88,7 @@ func TestCaptionsBoxMadeAndDeletedWithTheVideoBox(t *testing.T) {
 	}
 	for _, want := range []string{"captions-boot.sh", "LIVEKIT_URL=wss://lk.test", "LIVEKIT_API_KEY=APIboxkey",
 		"LIVEKIT_API_SECRET=boxsecret123", "CAPTIONS_SECRET=" + testCaptionsSecret, "CAPTIONS_MODEL=base.en",
-		"CAPTIONS_CPUS=2", "CAPTIONS_MAX_ROOMS=4", "CAPTIONS_API_URL=https://webinarliv.test", "<<'WEBINARLIV_CAPTIONS'"} {
+		"CAPTIONS_CPUS=2", "CAPTIONS_MAX_ROOMS=1", "CAPTIONS_API_URL=https://webinarliv.test", "<<'WEBINARLIV_CAPTIONS'"} {
 		if !strings.Contains(capCreate.UserData, want) {
 			t.Errorf("captions user data lacks %q", want)
 		}
