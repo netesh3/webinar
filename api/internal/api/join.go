@@ -749,7 +749,7 @@ func (s *Server) ensureRoom(
 	 * not answering: tell the caller to wait, and let the next look re-read its state. */
 	if s.managesProject(project) {
 		s.log.Warn("on-demand video server refused a room; not failing over", "slug", wb.ID, "project", project, "error", err)
-		s.box.invalidate()
+		s.boxFor(project).invalidate()
 		return nil, 0, false, errSFUStarting
 	}
 	for _, next := range s.sfu.Candidates() {

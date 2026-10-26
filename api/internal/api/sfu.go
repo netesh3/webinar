@@ -203,6 +203,19 @@ func (s *Server) sfuForSlug(ctx context.Context, slug string) (RoomManager, erro
  * A lookup failure is the default order rather than an error: a join must not fail because
  * a preference could not be read. */
 func (s *Server) firstChoice(ctx context.Context, wb types.Webinar, candidates []string) string {
+	choice := s.firstChoiceProject(ctx, wb, candidates)
+	/* A choice of an on-demand box is a choice of the pool: which of its boxes is the box pool's
+	 * call, by region and room left (sfu_pool.go). With one box it is that box. */
+	if len(s.boxes) > 1 && s.managesProject(choice) {
+		if placed := s.poolChoice(ctx, wb, candidates); placed != "" {
+			return placed
+		}
+	}
+	return choice
+}
+
+// firstChoiceProject is firstChoice before the box pool: the host's project or the first candidate.
+func (s *Server) firstChoiceProject(ctx context.Context, wb types.Webinar, candidates []string) string {
 	assigned, err := s.store.HostSFUProject(ctx, wb.Host.ID)
 	if err != nil {
 		s.log.Warn("sfu: could not read the host's assigned project", "host", wb.Host.ID, "error", err)

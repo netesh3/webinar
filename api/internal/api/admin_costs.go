@@ -567,6 +567,17 @@ func (s *Server) costBoxHours(ctx context.Context, r *costReport) error {
 		r.platform.BoxHours = map[string]float64{}
 	}
 	r.platform.BoxHours[prov] += hours
+	/* The pool's other boxes (SFU_BOX_SLOTS) were on demand from their first droplet, so only
+	 * their measured hours count: there is no around-the-clock era before them to add. */
+	for _, b := range s.boxes[1:] {
+		h, _, ok, err := s.store.SFUBoxHours(ctx, b.cfg.Project, r.rangeStart, r.rangeEnd)
+		if err != nil {
+			return err
+		}
+		if ok {
+			r.platform.BoxHours[s.costProviderOf(b.cfg.Project)] += h
+		}
+	}
 	return nil
 }
 

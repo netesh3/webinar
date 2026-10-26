@@ -173,7 +173,7 @@ func SetBox(s *Server, cloud *doapi.Client, probe func(context.Context) error,
 }
 
 // BoxStep is one step of the on-demand box's state machine.
-func BoxStep(s *Server, ctx context.Context) { s.boxStep(ctx) }
+func BoxStep(s *Server, ctx context.Context) { s.boxStep(ctx, s.box) }
 
 // ForgetBoxCache drops the box state a join would trust for a few seconds, and the probe throttle.
 func ForgetBoxCache(s *Server) {
@@ -205,4 +205,31 @@ func SetEdgeStreamTiming(heartbeat, refresh, grace time.Duration) func() {
 	oh, or, og := edgeHeartbeat, edgeIdleRefresh, edgeIdleGrace
 	edgeHeartbeat, edgeIdleRefresh, edgeIdleGrace = heartbeat, refresh, grace
 	return func() { edgeHeartbeat, edgeIdleRefresh, edgeIdleGrace = oh, or, og }
+}
+
+// SetPoolBox is SetBox for one box of the pool (SFU_BOX_SLOTS), by its project.
+func SetPoolBox(s *Server, project string, cloud *doapi.Client, probe func(context.Context) error,
+	activity func(context.Context) (lk.Activity, error), now func() time.Time) {
+	b := s.boxFor(project)
+	if b == nil {
+		panic("SetPoolBox: no box for " + project)
+	}
+	b.cloud, b.probe, b.activity, b.now = cloud, probe, activity, now
+	b.invalidate()
+}
+
+// SweepBoxes is the tick's box lane: upcoming sessions placed, then every box's step.
+func SweepBoxes(s *Server, ctx context.Context) {
+	s.sweepSFUBox(ctx)
+	for _, b := range s.pool() {
+		b.invalidate()
+		b.mu.Lock()
+		b.lastProbe = time.Time{}
+		b.mu.Unlock()
+	}
+}
+
+// PoolPoints is what a session costs its box (sfu_pool.go).
+func PoolPoints(s *Server, ctx context.Context, wb types.Webinar) int {
+	return s.sessionPoints(ctx, wb)
 }

@@ -5,6 +5,7 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recha
 import { api } from "@/lib/api";
 import type { AdminDayCount, AdminStats, AdminWebinarGlance } from "@/lib/api-types";
 import { formatCount, formatDay, formatTimeRange, tzLabel } from "@/lib/format";
+import { AdminBoxPoolPanel } from "./admin-box-pool";
 import { AdminWhatsAppUsagePanel } from "./admin-whatsapp-usage";
 import { AdminAudienceDevicesPanel } from "./audience-devices";
 import { Alert } from "./controls";
@@ -193,6 +194,8 @@ export function AdminDashboard({
           onSeeAll={() => onWebinars("ended")}
         />
       </div>
+
+      <AdminBoxPoolPanel />
 
       <AdminAudienceDevicesPanel />
 

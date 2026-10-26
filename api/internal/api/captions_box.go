@@ -58,6 +58,7 @@ const captionsStepReserve = 5 * time.Second
 
 // captionsOn is whether a captions box is wanted at all.
 func (s *Server) captionsOn() bool {
+	// CAPTIONS_BOX_ENABLED is one switch for the whole pool; every box's captions follow it.
 	return s.box != nil && s.box.cfg.Captions.On && s.serverCaptionsConfigured()
 }
 
@@ -74,8 +75,7 @@ func (s *Server) captionsBoxWanted(video store.SFUBoxState) bool {
 }
 
 // captionsBoxStep moves the captions droplet one step, after the video box's step.
-func (s *Server) captionsBoxStep(ctx context.Context, holder string, video store.SFUBoxState) {
-	b := s.box
+func (s *Server) captionsBoxStep(ctx context.Context, b *boxManager, holder string, video store.SFUBoxState) {
 	if dl, ok := ctx.Deadline(); ok && time.Until(dl) < captionsStepReserve {
 		return
 	}
@@ -87,13 +87,13 @@ func (s *Server) captionsBoxStep(ctx context.Context, holder string, video store
 	}
 	if !b.cfg.Captions.On && cb.Actual == store.BoxDown && cb.DropletID == 0 && cb.Failures == 0 {
 		// Never switched on (or long off): only the occasional check for a stray droplet.
-		s.captionsSweepStray(ctx, &cb, b.now())
+		s.captionsSweepStray(ctx, b, &cb, b.now())
 		if cb.Actual == store.BoxDown {
 			return
 		}
 	} else {
 		before := cb.Actual
-		s.captionsBoxAct(ctx, &cb, video, b.now())
+		s.captionsBoxAct(ctx, b, &cb, video, b.now())
 		if cb.Actual != before {
 			s.log.Info("captions box: state", "project", project, "from", before, "to", cb.Actual,
 				"droplet", cb.DropletID, "error", cb.LastError)
@@ -111,8 +111,7 @@ func (s *Server) setCaptionsActual(cb *store.CaptionsBoxState, actual string, no
 	}
 }
 
-func (s *Server) captionsBoxAct(ctx context.Context, cb *store.CaptionsBoxState, video store.SFUBoxState, now time.Time) {
-	b := s.box
+func (s *Server) captionsBoxAct(ctx context.Context, b *boxManager, cb *store.CaptionsBoxState, video store.SFUBoxState, now time.Time) {
 	cc := b.cfg.Captions
 	wanted := s.captionsBoxWanted(video)
 	switch cb.Actual {
@@ -121,7 +120,7 @@ func (s *Server) captionsBoxAct(ctx context.Context, cb *store.CaptionsBoxState,
 			if !s.captionsOn() {
 				cb.Failures, cb.NextAttemptAt, cb.AlertedAt, cb.LastError = 0, nil, nil, ""
 			}
-			s.captionsSweepStray(ctx, cb, now)
+			s.captionsSweepStray(ctx, b, cb, now)
 			return
 		}
 		if cb.NextAttemptAt != nil && now.Before(*cb.NextAttemptAt) {
@@ -129,7 +128,7 @@ func (s *Server) captionsBoxAct(ctx context.Context, cb *store.CaptionsBoxState,
 		}
 		list, err := b.cloud.DropletsByTag(ctx, cc.ManagedTag)
 		if err != nil {
-			s.captionsFailure(ctx, cb, now, "list droplets", err)
+			s.captionsFailure(ctx, b, cb, now, "list droplets", err)
 			return
 		}
 		if live := liveDroplets(list); len(live) > 0 {
@@ -137,31 +136,31 @@ func (s *Server) captionsBoxAct(ctx context.Context, cb *store.CaptionsBoxState,
 			d := live[0]
 			s.log.Info("captions box: adopting existing droplet", "project", b.cfg.Project, "droplet", d.ID, "status", d.Status)
 			for _, extra := range live[1:] {
-				s.captionsDeleteDroplet(ctx, cb, extra.ID)
+				s.captionsDeleteDroplet(ctx, b, cb, extra.ID)
 			}
 			cb.DropletID = d.ID
-			s.captionsStartRun(ctx, d)
+			s.captionsStartRun(ctx, b, d)
 			s.setCaptionsActual(cb, store.BoxCreating, now)
 			return
 		}
-		d, err := s.captionsBoxCreate(ctx)
+		d, err := s.captionsBoxCreate(ctx, b)
 		if err != nil {
-			s.captionsFailure(ctx, cb, now, "create", err)
+			s.captionsFailure(ctx, b, cb, now, "create", err)
 			return
 		}
 		cb.DropletID, cb.LastError = d.ID, ""
-		s.captionsStartRun(ctx, d)
+		s.captionsStartRun(ctx, b, d)
 		s.setCaptionsActual(cb, store.BoxCreating, now)
 
 	case store.BoxCreating:
 		if !wanted {
-			s.captionsDeleteAll(ctx, cb, now)
+			s.captionsDeleteAll(ctx, b, cb, now)
 			return
 		}
 		d, err := b.cloud.Droplet(ctx, cb.DropletID)
 		if doapi.IsNotFound(err) {
-			s.captionsGone(ctx, cb, now)
-			s.captionsFailure(ctx, cb, now, "create", errors.New("the new droplet disappeared"))
+			s.captionsGone(ctx, b, cb, now)
+			s.captionsFailure(ctx, b, cb, now, "create", errors.New("the new droplet disappeared"))
 			return
 		}
 		if err != nil {
@@ -177,24 +176,24 @@ func (s *Server) captionsBoxAct(ctx context.Context, cb *store.CaptionsBoxState,
 			return
 		}
 		if waited := now.Sub(maxTime(d.Created(), cb.Since)); waited > cc.BootTimeout {
-			s.captionsDeleteAll(ctx, cb, now)
-			s.captionsFailure(ctx, cb, now, "boot",
+			s.captionsDeleteAll(ctx, b, cb, now)
+			s.captionsFailure(ctx, b, cb, now, "boot",
 				fmt.Errorf("droplet %d not active %s after create (status %s)", d.ID, waited.Round(time.Second), d.Status))
 		}
 
 	case store.BoxReady:
 		if !wanted {
-			s.captionsDeleteAll(ctx, cb, now)
+			s.captionsDeleteAll(ctx, b, cb, now)
 			return
 		}
 		if _, err := b.cloud.Droplet(ctx, cb.DropletID); doapi.IsNotFound(err) {
 			s.log.Error("captions box: droplet disappeared while wanted; making a new one",
 				"project", b.cfg.Project, "droplet", cb.DropletID)
-			s.captionsGone(ctx, cb, now)
+			s.captionsGone(ctx, b, cb, now)
 			return
 		}
 		if video.Actual == store.BoxReady || video.Actual == store.BoxDraining {
-			s.captionsRedispatch(ctx)
+			s.captionsRedispatch(ctx, b)
 		}
 
 	case store.BoxDeleting:
@@ -205,12 +204,12 @@ func (s *Server) captionsBoxAct(ctx context.Context, cb *store.CaptionsBoxState,
 		}
 		live := liveDroplets(list)
 		if len(live) == 0 {
-			s.captionsGone(ctx, cb, now)
+			s.captionsGone(ctx, b, cb, now)
 			return
 		}
 		if now.Sub(cb.Since) > boxDeleteResend {
 			for _, d := range live {
-				s.captionsDeleteDroplet(ctx, cb, d.ID)
+				s.captionsDeleteDroplet(ctx, b, cb, d.ID)
 			}
 		}
 	}
@@ -230,8 +229,7 @@ func liveDroplets(list []doapi.Droplet) []doapi.Droplet {
 /* captionsSweepStray is the check a box that is down and not wanted makes every few minutes:
  * a tagged droplet here is one nobody tracks (the switch turned off mid-run, a create whose
  * answer was lost), and is deleted. */
-func (s *Server) captionsSweepStray(ctx context.Context, cb *store.CaptionsBoxState, now time.Time) {
-	b := s.box
+func (s *Server) captionsSweepStray(ctx context.Context, b *boxManager, cb *store.CaptionsBoxState, now time.Time) {
 	b.mu.Lock()
 	due := time.Since(b.lastCaptionsSweep) >= boxParkCheckEvery
 	if due {
@@ -253,14 +251,13 @@ func (s *Server) captionsSweepStray(ctx context.Context, cb *store.CaptionsBoxSt
 	s.log.Warn("captions box: deleting a captions droplet nothing needs", "project", b.cfg.Project, "droplets", len(live))
 	cb.DropletID = live[0].ID
 	for _, d := range live {
-		s.captionsDeleteDroplet(ctx, cb, d.ID)
+		s.captionsDeleteDroplet(ctx, b, cb, d.ID)
 	}
 	s.setCaptionsActual(cb, store.BoxDeleting, now)
 }
 
 // captionsDeleteAll sends a delete for the tracked droplet and every tagged one.
-func (s *Server) captionsDeleteAll(ctx context.Context, cb *store.CaptionsBoxState, now time.Time) {
-	b := s.box
+func (s *Server) captionsDeleteAll(ctx context.Context, b *boxManager, cb *store.CaptionsBoxState, now time.Time) {
 	ids := map[int64]bool{}
 	if cb.DropletID != 0 {
 		ids[cb.DropletID] = true
@@ -273,7 +270,7 @@ func (s *Server) captionsDeleteAll(ctx context.Context, cb *store.CaptionsBoxSta
 		cb.LastError = "list droplets: " + err.Error()
 	}
 	for id := range ids {
-		s.captionsDeleteDroplet(ctx, cb, id)
+		s.captionsDeleteDroplet(ctx, b, cb, id)
 	}
 	if len(ids) == 0 {
 		s.setCaptionsActual(cb, store.BoxDown, now)
@@ -284,17 +281,17 @@ func (s *Server) captionsDeleteAll(ctx context.Context, cb *store.CaptionsBoxSta
 	s.setCaptionsActual(cb, store.BoxDeleting, now)
 }
 
-func (s *Server) captionsDeleteDroplet(ctx context.Context, cb *store.CaptionsBoxState, id int64) {
-	if err := s.box.cloud.DeleteDroplet(ctx, id); err != nil && !doapi.IsNotFound(err) {
+func (s *Server) captionsDeleteDroplet(ctx context.Context, b *boxManager, cb *store.CaptionsBoxState, id int64) {
+	if err := b.cloud.DeleteDroplet(ctx, id); err != nil && !doapi.IsNotFound(err) {
 		cb.LastError = "delete droplet: " + err.Error()
 		s.log.Warn("captions box: delete droplet", "droplet", id, "error", err)
 	}
 }
 
 // captionsGone records the droplet deleted and the box down.
-func (s *Server) captionsGone(ctx context.Context, cb *store.CaptionsBoxState, now time.Time) {
+func (s *Server) captionsGone(ctx context.Context, b *boxManager, cb *store.CaptionsBoxState, now time.Time) {
 	if cb.DropletID != 0 {
-		if err := s.store.EndSFUBoxRun(ctx, store.CaptionsRunProject(s.box.cfg.Project), cb.DropletID); err != nil {
+		if err := s.store.EndSFUBoxRun(ctx, store.CaptionsRunProject(b.cfg.Project), cb.DropletID); err != nil {
 			s.log.Error("captions box: record end", "error", err)
 		}
 	}
@@ -302,35 +299,35 @@ func (s *Server) captionsGone(ctx context.Context, cb *store.CaptionsBoxState, n
 	s.setCaptionsActual(cb, store.BoxDown, now)
 }
 
-func (s *Server) captionsStartRun(ctx context.Context, d doapi.Droplet) {
-	if err := s.store.StartSFUBoxRun(ctx, store.CaptionsRunProject(s.box.cfg.Project), d.ID, d.Created()); err != nil {
+func (s *Server) captionsStartRun(ctx context.Context, b *boxManager, d doapi.Droplet) {
+	if err := s.store.StartSFUBoxRun(ctx, store.CaptionsRunProject(b.cfg.Project), d.ID, d.Created()); err != nil {
 		s.log.Error("captions box: record run", "error", err)
 	}
 }
 
 // captionsFailure counts a failed attempt, backs off, and emails the ops list once at MaxFailures.
-func (s *Server) captionsFailure(ctx context.Context, cb *store.CaptionsBoxState, now time.Time, what string, err error) {
+func (s *Server) captionsFailure(ctx context.Context, b *boxManager, cb *store.CaptionsBoxState, now time.Time, what string, err error) {
 	cb.Failures++
 	next := now.Add(boxBackoff(cb.Failures))
 	cb.NextAttemptAt = &next
 	cb.LastError = what + ": " + err.Error()
-	s.log.Error("captions box: attempt failed", "project", s.box.cfg.Project, "what", what,
+	s.log.Error("captions box: attempt failed", "project", b.cfg.Project, "what", what,
 		"failures", cb.Failures, "error", err)
-	if cb.Failures < s.box.cfg.MaxFailures || cb.AlertedAt != nil {
+	if cb.Failures < b.cfg.MaxFailures || cb.AlertedAt != nil {
 		return
 	}
 	cb.AlertedAt = &now
-	s.alertOps(ctx, "captions-box:"+s.box.cfg.Project, "ALERT: captions server could not be started",
+	s.alertOps(ctx, "captions-box:"+b.cfg.Project, "ALERT: captions server could not be started",
 		fmt.Sprintf("The captions droplet for %s failed %d times in a row (%s).\n\nLast error: %s\n\n"+
 			"Video is not affected: rooms caption on each speaker's device until it is up. It keeps retrying "+
 			"every few minutes. To run captions on the video server again, set CAPTIONS_BOX_ENABLED=false "+
 			"(takes effect for the next video server). See deploy/digitalocean/README.md, \"Captions box\".",
-			s.box.cfg.Project, cb.Failures, what, cb.LastError))
+			b.cfg.Project, cb.Failures, what, cb.LastError))
 }
 
 // captionsBoxCreate creates the droplet: newest captions snapshot, the tags and the boot script.
-func (s *Server) captionsBoxCreate(ctx context.Context) (doapi.Droplet, error) {
-	c := s.box.cfg
+func (s *Server) captionsBoxCreate(ctx context.Context, b *boxManager) (doapi.Droplet, error) {
+	c := b.cfg
 	cc := c.Captions
 	proj, ok := s.cfg.LiveKitProjectByID(c.Project)
 	if !ok {
@@ -340,7 +337,7 @@ func (s *Server) captionsBoxCreate(ctx context.Context) (doapi.Droplet, error) {
 	if err != nil {
 		return doapi.Droplet{}, err
 	}
-	img, err := s.box.cloud.LatestSnapshot(ctx, cc.SnapshotTag, cc.SnapshotTag+"-", c.Region)
+	img, err := b.cloud.LatestSnapshot(ctx, cc.SnapshotTag, cc.SnapshotTag+"-", c.Region)
 	if err != nil {
 		return doapi.Droplet{}, fmt.Errorf("snapshot %q: %w", cc.SnapshotTag, err)
 	}
@@ -348,7 +345,7 @@ func (s *Server) captionsBoxCreate(ctx context.Context) (doapi.Droplet, error) {
 	tags = append(tags, cc.ManagedTag)
 	s.log.Info("captions box: creating droplet", "project", c.Project, "image", img.Name, "size", cc.Size,
 		"region", c.Region, "maxRooms", cc.MaxRooms)
-	return s.box.cloud.CreateDroplet(ctx, doapi.CreateDroplet{
+	return b.cloud.CreateDroplet(ctx, doapi.CreateDroplet{
 		Name: cc.Name, Region: c.Region, Size: cc.Size, Image: img.ID,
 		SSHKeys: c.SSHKeys, Monitoring: true, Tags: tags, UserData: userData, VPCUUID: c.VPCUUID,
 	})
@@ -442,8 +439,7 @@ func captionsGrafana(g config.BoxGrafana) string {
 
 /* captionsRedispatch re-creates the dispatch of every live room on the box still waiting for
  * the agent whose dispatch has no job (see RedispatchIdle), now that the captions box is up. */
-func (s *Server) captionsRedispatch(ctx context.Context) {
-	b := s.box
+func (s *Server) captionsRedispatch(ctx context.Context, b *boxManager) {
 	waiting, err := s.store.CaptionsAwaitingAgent(ctx, b.cfg.Project, s.defaultCostProject())
 	if err != nil {
 		s.log.Warn("captions box: rooms waiting for the agent", "error", err)

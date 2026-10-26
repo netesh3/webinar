@@ -123,7 +123,7 @@ func TestCaptionsBoxCreateNeverLogsTheGrafanaToken(t *testing.T) {
 		log: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		box: &boxManager{cfg: c, cloud: cloud},
 	}
-	if _, err := s.captionsBoxCreate(context.Background()); err != nil {
+	if _, err := s.captionsBoxCreate(context.Background(), s.box); err != nil {
 		t.Fatal(err)
 	}
 	if len(cloud.created) != 1 || !strings.Contains(cloud.created[0].UserData, "GRAFANA_CLOUD_TOKEN="+capGrafanaToken) {

@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -72,6 +74,167 @@ type SFUBox struct {
 
 	// Captions is the captions droplet made and deleted with this box (captions_box.go).
 	Captions CaptionsBox
+
+	/* Area is the part of the world the box serves (SFU_BOX_AREA, default "in"): a session's
+	 * region picks among the boxes of its area (api/internal/api/sfu_pool.go). Capacity is
+	 * how many points of sessions it carries (SFU_BOX_CAPACITY, default 100 for a c-4,
+	 * headroom included; BoxPoints says what a session costs). */
+	Area     string
+	Capacity int
+
+	/* Slots are the further boxes of the pool (SFU_BOX_SLOTS, a JSON list; empty is the one box
+	 * above, as before). Each is declared ahead, with its own droplet name, data volume and
+	 * reserved IP, which the operator provisions (deploy/digitalocean/README.md "More video
+	 * servers"): the API only ever creates and deletes the droplet of a declared slot, never a
+	 * volume, an IP or anything else that bills. Only the primary carries Slots. */
+	Slots []SFUBox
+
+	// Points is what each kind of session costs a box (SFU_BOX_POINTS); only the primary's is read.
+	Points BoxPoints
+}
+
+/* BoxPoints is the capacity model of the box pool: what a session costs a box, against
+ * SFUBox.Capacity. One place, on purpose. These are ESTIMATES from the 24 Oct 2026 load test
+ * (one c-4: a camera mix ~0.5–1 core, up to ~1.8 with a share and a recording; ~0.6 core per
+ * 100 viewers served from the box; ~8–10 ten-person meetings) and must be calibrated against
+ * the real-browser test before anyone relies on them. SFU_BOX_POINTS overrides any of them:
+ * {"mix":20,"extra":10,"viewersPerPoint":10,"meetingBase":4,"meetingBaseSize":10,"meetingPeoplePerPoint":2,"simulive":0}. */
+type BoxPoints struct {
+	// Mix is a webinar's composite (the egress Chrome).
+	Mix int `json:"mix"`
+	/* Extra is a webinar's screen share or recording on top of the mix. Whether a share will
+	 * happen cannot be known ahead, so every webinar is charged it. */
+	Extra int `json:"extra"`
+	// ViewersPerPoint: a webinar costs one point per this many seats (its max attendees).
+	ViewersPerPoint int `json:"viewersPerPoint"`
+	// MeetingBase covers a meeting of up to MeetingBaseSize people; each MeetingPeoplePerPoint more add one.
+	MeetingBase           int `json:"meetingBase"`
+	MeetingBaseSize       int `json:"meetingBaseSize"`
+	MeetingPeoplePerPoint int `json:"meetingPeoplePerPoint"`
+	/* Simulive is a simulive's cost. Its audience plays the recording file, not the box, and
+	 * nothing is mixed, so the default is 0; the room the host team drops into is negligible. */
+	Simulive int `json:"simulive"`
+}
+
+// DefaultBoxPoints is BoxPoints before SFU_BOX_POINTS.
+func DefaultBoxPoints() BoxPoints {
+	return BoxPoints{Mix: 20, Extra: 10, ViewersPerPoint: 10, MeetingBase: 4, MeetingBaseSize: 10,
+		MeetingPeoplePerPoint: 2, Simulive: 0}
+}
+
+// Webinar is the points of a webinar of seats max attendees.
+func (p BoxPoints) Webinar(seats int) int {
+	return p.Mix + p.Extra + ceilDiv(max(0, seats), max(1, p.ViewersPerPoint))
+}
+
+// Meeting is the points of a meeting of up to size people.
+func (p BoxPoints) Meeting(size int) int {
+	return p.MeetingBase + ceilDiv(max(0, size-p.MeetingBaseSize), max(1, p.MeetingPeoplePerPoint))
+}
+
+func ceilDiv(a, b int) int { return int(math.Ceil(float64(a) / float64(b))) }
+
+// DefaultBoxArea is a box's area, and a session's region, when none is set.
+const DefaultBoxArea = "in"
+
+// boxSlotSpec is one entry of SFU_BOX_SLOTS. Unset fields take the primary's value, except the
+// ones that make a box itself (project, name, volume, reserved IP), which are required.
+type boxSlotSpec struct {
+	Project      string `json:"project"`
+	Name         string `json:"name"`
+	Area         string `json:"area"`
+	Region       string `json:"region"`
+	Size         string `json:"size"`
+	Volume       string `json:"volume"`
+	ReservedIP   string `json:"reservedIp"`
+	Capacity     int    `json:"capacity"`
+	SnapshotTag  string `json:"snapshotTag"`
+	ParkDroplet  string `json:"parkDroplet"`
+	TurnHost     string `json:"turnHost"`
+	VPCUUID      string `json:"vpcUuid"`
+	CaptionsName string `json:"captionsName"`
+}
+
+/* parseBoxSlots reads SFU_BOX_SLOTS against the primary. A slot's droplets carry a managed tag
+ * of their own ("<primary tag>-<name>"), as do its captions droplets: each manager adopts and
+ * deletes only droplets with its tag, so two slots never take each other's. The primary keeps
+ * today's tags, so a pool of one is exactly the box as it was. */
+func parseBoxSlots(raw string, primary SFUBox) ([]SFUBox, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var specs []boxSlotSpec
+	if err := json.Unmarshal([]byte(raw), &specs); err != nil {
+		return nil, fmt.Errorf("SFU_BOX_SLOTS is not a JSON list of slots: %w", err)
+	}
+	out := make([]SFUBox, 0, len(specs))
+	for _, sp := range specs {
+		b := primary
+		b.Slots, b.Points = nil, BoxPoints{}
+		b.Project = strings.TrimSpace(sp.Project)
+		b.Name = strings.TrimSpace(sp.Name)
+		b.Volume = strings.TrimSpace(sp.Volume)
+		b.ReservedIP = strings.TrimSpace(sp.ReservedIP)
+		b.ManagedTag = primary.ManagedTag + "-" + b.Name
+		b.ParkDroplet = strings.TrimSpace(sp.ParkDroplet)
+		b.TurnHost = strings.TrimSpace(sp.TurnHost)
+		pick := func(v, def string) string {
+			if v = strings.TrimSpace(v); v != "" {
+				return v
+			}
+			return def
+		}
+		b.Area = strings.ToLower(pick(sp.Area, primary.Area))
+		b.Region = pick(sp.Region, primary.Region)
+		b.Size = pick(sp.Size, primary.Size)
+		b.SnapshotTag = pick(sp.SnapshotTag, primary.SnapshotTag)
+		// The primary's VPC only exists in the primary's region.
+		b.VPCUUID = strings.TrimSpace(sp.VPCUUID)
+		if b.VPCUUID == "" && b.Region == primary.Region {
+			b.VPCUUID = primary.VPCUUID
+		}
+		if sp.Capacity > 0 {
+			b.Capacity = sp.Capacity
+		}
+		c := primary.Captions
+		c.Name = pick(sp.CaptionsName, "captions-"+b.Name)
+		c.ManagedTag = primary.Captions.ManagedTag + "-" + b.Name
+		c.LiveKitURL = "" // the slot's own LiveKit (its project's URL)
+		b.Captions = c
+		out = append(out, b)
+	}
+	return out, nil
+}
+
+// SFUBoxes is the pool: the primary box first, then its slots. Empty when the box is off.
+func (c Config) SFUBoxes() []SFUBox {
+	if !c.SFUBox.Enabled() {
+		return nil
+	}
+	out := []SFUBox{c.SFUBox}
+	for _, s := range c.SFUBox.Slots {
+		s.Token = c.SFUBox.Token
+		out = append(out, s)
+	}
+	return out
+}
+
+// BoxAreas is the areas the pool serves, the primary's first. Empty when the box is off.
+func (c Config) BoxAreas() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, b := range c.SFUBoxes() {
+		a := b.Area
+		if a == "" {
+			a = DefaultBoxArea
+		}
+		if !seen[a] {
+			seen[a] = true
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 /* BoxGrafana is GRAFANA_CLOUD_PROM_URL, _PROM_USER, _LOKI_URL, _LOKI_USER (repo variables) and
@@ -152,9 +315,22 @@ func loadSFUBox() SFUBox {
 			Token:    strings.TrimSpace(env("GRAFANA_CLOUD_TOKEN", "")),
 		},
 		Captions: loadCaptionsBox(),
+		Area:     strings.ToLower(strings.TrimSpace(env("SFU_BOX_AREA", DefaultBoxArea))),
+		Capacity: envInt("SFU_BOX_CAPACITY", 100),
+		Points:   DefaultBoxPoints(),
 	}
+	if raw := strings.TrimSpace(env("SFU_BOX_POINTS", "")); raw != "" {
+		// Unknown or bad JSON keeps the defaults; validateSFUBox reports it.
+		_ = json.Unmarshal([]byte(raw), &b.Points)
+	}
+	slots, err := parseBoxSlots(env("SFU_BOX_SLOTS", ""), b)
+	boxSlotsErr = err
+	b.Slots = slots
 	return b
 }
+
+// boxSlotsErr is SFU_BOX_SLOTS failing to parse, reported by validateSFUBox.
+var boxSlotsErr error
 
 /* validate is all five GRAFANA_CLOUD_* or none, each a plain value. The messages name the
  * variable, never the value (the token is a secret). */
@@ -203,5 +379,62 @@ func (c Config) validateSFUBox() []error {
 		errs = append(errs, fmt.Errorf("SFU_BOX_MAX_FAILURES must be >= 1"))
 	}
 	errs = append(errs, b.Grafana.validate()...)
+	errs = append(errs, c.validateBoxPool()...)
 	return errs
 }
+
+// validateBoxPool reports slots that would collide with each other or are not configured.
+func (c Config) validateBoxPool() []error {
+	var errs []error
+	if boxSlotsErr != nil {
+		errs = append(errs, boxSlotsErr)
+	}
+	if raw := strings.TrimSpace(env("SFU_BOX_POINTS", "")); raw != "" {
+		var p BoxPoints
+		if err := json.Unmarshal([]byte(raw), &p); err != nil {
+			errs = append(errs, fmt.Errorf("SFU_BOX_POINTS is not valid JSON: %w", err))
+		}
+	}
+	seen := map[string]string{}
+	claim := func(kind, v, slot string) {
+		if v == "" {
+			return
+		}
+		key := kind + "=" + v
+		if other, ok := seen[key]; ok {
+			errs = append(errs, fmt.Errorf("video servers %s and %s share the %s %s", other, slot, kind, v))
+			return
+		}
+		seen[key] = slot
+	}
+	for i, b := range c.SFUBoxes() {
+		slot := b.Name
+		if slot == "" {
+			slot = fmt.Sprintf("#%d", i+1)
+		}
+		if i > 0 {
+			if b.Project == "" || b.Name == "" || b.Volume == "" || b.ReservedIP == "" {
+				errs = append(errs, fmt.Errorf("SFU_BOX_SLOTS entry %d needs project, name, volume and reservedIp", i))
+				continue
+			}
+			if !boxSafe.MatchString(b.Name) {
+				errs = append(errs, fmt.Errorf("SFU_BOX_SLOTS name %q must be a plain name", b.Name))
+			}
+			if _, ok := c.LiveKitProjectByID(b.Project); !ok {
+				errs = append(errs, fmt.Errorf("SFU_BOX_SLOTS project %s is not in LIVEKIT_PROJECTS", b.Project))
+			}
+		}
+		if b.Capacity < 1 {
+			errs = append(errs, fmt.Errorf("video server %s needs a capacity of at least 1 (SFU_BOX_CAPACITY or the slot's capacity)", slot))
+		}
+		claim("project", b.Project, slot)
+		claim("droplet name", b.Name, slot)
+		claim("volume", b.Volume, slot)
+		claim("reserved IP", b.ReservedIP, slot)
+		claim("captions droplet name", b.Captions.Name, slot)
+	}
+	return errs
+}
+
+// boxSafe is a value safe in a droplet name or shell line.
+var boxSafe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)

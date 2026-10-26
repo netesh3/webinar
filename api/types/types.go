@@ -1031,6 +1031,9 @@ type Webinar struct {
 	 * somebody has to think about again later.
 	 */
 	SFUProject string `json:"sfuProject,omitempty"`
+	/* SFURegion is the area of the box pool the session's video server is in ("in", "us";
+	 * AppConfig.BoxRegions lists them). Empty is the pool's default area. */
+	SFURegion string `json:"sfuRegion,omitempty"`
 
 	/* Venue is where people join: app (LiveKit, the default), zoom_meeting,
 	 * or zoom_webinar. ZoomID is the meeting or webinar id on the host's
@@ -1168,7 +1171,10 @@ type WebinarInput struct {
 	// No GuestJoinAllowed here. This is the request type for creating a webinar, and the flag
 	// is derived from Approval on read — a settable copy would let a caller ask for a door the
 	// approval mode forbids.
-	AttendeeLimit   int              `json:"attendeeLimit"`
+	AttendeeLimit int `json:"attendeeLimit"`
+	/* SFURegion picks the area of the video servers (AppConfig.BoxRegions). Empty keeps the
+	 * session's area as it is (the default area for a new session). */
+	SFURegion       string           `json:"sfuRegion,omitempty"`
 	Passcode        string           `json:"passcode"`
 	Agenda          []AgendaItem     `json:"agenda"`
 	Takeaways       []string         `json:"takeaways"`
@@ -4767,6 +4773,10 @@ type AppConfig struct {
 	SignupOpen   bool   `json:"signupOpen"`
 	// DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h).
 	DefaultMaxMeetingMin int `json:"defaultMaxMeetingMin"`
+	/* BoxRegions is the areas of the video server pool a session can be placed in (e.g. "in",
+	 * "us"), the default first. The schedule form offers the choice only when there are two or
+	 * more; empty when the on-demand video server is off. */
+	BoxRegions []string `json:"boxRegions"`
 	// GoogleClientID and GoogleAPIKey turn on the Google Drive source in the
 	// share-a-file picker. Both are public values — see config.Config — and both
 	// are empty unless an operator sets them, which the picker reports as "not

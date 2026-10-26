@@ -392,6 +392,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/audience-devices.test.mts
 	# The host's "N / limit" seats readout, and when it turns to nearly full and full.
 	cd web && node --experimental-strip-types --no-warnings lib/audience-seats.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/box-regions.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/box-pool.test.mts
 	# The host home's list filters in the URL: tab, search and dates survive a refresh or
 	# the back button, defaults stay out of the address, bad dates read as unset.
 	cd web && node --experimental-strip-types --no-warnings lib/host-list-url.test.mts

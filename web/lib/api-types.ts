@@ -3548,6 +3548,55 @@ export interface AdminSFUBox {
   hoursLast30d: number /* float64 */;
   runs: AdminSFUBoxRun[];
 }
+/**
+ *  AdminSFUPool is GET /api/admin/sfu-pool: every on-demand video server of the pool (the primary
+ *  * and SFU_BOX_SLOTS), its state, its load in points against its capacity, and the sessions that
+ *  * hold those points (api/internal/api/sfu_pool.go). The points are estimates, to be calibrated.
+ */
+export interface AdminSFUPool {
+  enabled: boolean;
+  points: AdminPoolPoints;
+  boxes: AdminPoolBox[];
+}
+/**
+ * AdminPoolPoints is the capacity model in force (config.BoxPoints).
+ */
+export interface AdminPoolPoints {
+  mix: number /* int */;
+  extra: number /* int */;
+  viewersPerPoint: number /* int */;
+  meetingBase: number /* int */;
+  meetingBaseSize: number /* int */;
+  meetingPeoplePerPoint: number /* int */;
+  simulive: number /* int */;
+}
+/**
+ * AdminPoolBox is one video server of the pool.
+ */
+export interface AdminPoolBox {
+  project: string;
+  name: string;
+  area: string;
+  region: string;
+  size: string;
+  desired: string;
+  actual: string;
+  dropletId: number /* int64 */;
+  capacity: number /* int */;
+  used: number /* int */;
+  sessions: AdminPoolSession[];
+}
+/**
+ * AdminPoolSession is a session holding points on a box.
+ */
+export interface AdminPoolSession {
+  slug: string;
+  topic: string;
+  kind: string;
+  status: string;
+  startsAt: string;
+  points: number /* int */;
+}
 
 //////////
 // source: slots.go
@@ -5255,6 +5304,11 @@ export interface Webinar {
    */
   sfuProject?: string;
   /**
+   *  SFURegion is the area of the box pool the session's video server is in ("in", "us";
+   * 	 * AppConfig.BoxRegions lists them). Empty is the pool's default area.
+   */
+  sfuRegion?: string;
+  /**
    *  Venue is where people join: app (LiveKit, the default), zoom_meeting,
    * 	 * or zoom_webinar. ZoomID is the meeting or webinar id on the host's
    * 	 * Zoom account. The host start link is not on this type.
@@ -5414,6 +5468,11 @@ export interface WebinarInput {
    * approval mode forbids.
    */
   attendeeLimit: number /* int */;
+  /**
+   *  SFURegion picks the area of the video servers (AppConfig.BoxRegions). Empty keeps the
+   * 	 * session's area as it is (the default area for a new session).
+   */
+  sfuRegion?: string;
   passcode: string;
   agenda: AgendaItem[];
   takeaways: string[];
@@ -9635,6 +9694,12 @@ export interface AppConfig {
    * DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h).
    */
   defaultMaxMeetingMin: number /* int */;
+  /**
+   *  BoxRegions is the areas of the video server pool a session can be placed in (e.g. "in",
+   * 	 * "us"), the default first. The schedule form offers the choice only when there are two or
+   * 	 * more; empty when the on-demand video server is off.
+   */
+  boxRegions: string[];
   /**
    * GoogleClientID and GoogleAPIKey turn on the Google Drive source in the
    * share-a-file picker. Both are public values — see config.Config — and both

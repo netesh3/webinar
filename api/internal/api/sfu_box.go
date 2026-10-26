@@ -120,12 +120,18 @@ func (b *boxManager) invalidate() {
 	b.mu.Unlock()
 }
 
-// newBoxManager wires the box for cfg.SFUBox, or nil when it is off.
-func (s *Server) newBoxManager() *boxManager {
-	bc := s.cfg.SFUBox
-	if !bc.Enabled() {
-		return nil
+// newBoxManagers wires one manager per box of the pool (cfg.SFUBoxes), the primary first;
+// none when the box is off.
+func (s *Server) newBoxManagers() []*boxManager {
+	var out []*boxManager
+	for _, bc := range s.cfg.SFUBoxes() {
+		out = append(out, s.newBoxManagerFor(bc))
 	}
+	return out
+}
+
+// newBoxManagerFor wires the manager of one box.
+func (s *Server) newBoxManagerFor(bc config.SFUBox) *boxManager {
 	// The defaults of config.loadSFUBox, for a config built by hand (tests).
 	if bc.ManagedTag == "" {
 		bc.ManagedTag = "webinar-sfu-ondemand"
@@ -142,17 +148,42 @@ func (s *Server) newBoxManager() *boxManager {
 	if bc.MaxFailures < 1 {
 		bc.MaxFailures = 3
 	}
+	if bc.Area == "" {
+		bc.Area = config.DefaultBoxArea
+	}
+	if bc.Capacity <= 0 {
+		bc.Capacity = 100
+	}
 	bc.Captions = bc.Captions.WithDefaults()
 	b := &boxManager{cfg: bc, cloud: doapi.New(bc.Token), now: time.Now}
-	b.probe = s.boxProbe
-	b.activity = s.boxLiveKitActivity
+	b.probe = func(ctx context.Context) error { return s.boxProbe(ctx, b) }
+	b.activity = func(ctx context.Context) (lk.Activity, error) { return s.boxLiveKitActivity(ctx, b) }
 	return b
 }
 
-// managesProject is whether project's server is the on-demand box.
-func (s *Server) managesProject(project string) bool {
-	return s.box != nil && project != "" && project == s.box.cfg.Project
+// boxFor is the manager of project's box, or nil when project is not an on-demand box.
+func (s *Server) boxFor(project string) *boxManager {
+	if project == "" {
+		return nil
+	}
+	for _, b := range s.pool() {
+		if b.cfg.Project == project {
+			return b
+		}
+	}
+	return nil
 }
+
+// pool is every box, the primary first (just the primary for a Server built without the pool).
+func (s *Server) pool() []*boxManager {
+	if len(s.boxes) == 0 && s.box != nil {
+		return []*boxManager{s.box}
+	}
+	return s.boxes
+}
+
+// managesProject is whether project's server is one of the on-demand boxes.
+func (s *Server) managesProject(project string) bool { return s.boxFor(project) != nil }
 
 // ---------------------------------------------------------------- the decision
 
@@ -242,18 +273,33 @@ func boxBackoff(failures int) time.Duration {
  * expired context, and the reserved IP that would have made the box reachable was never
  * moved (24 Oct 2026). */
 func (s *Server) sweepSFUBox(ctx context.Context) {
-	if s.box == nil {
+	if len(s.boxes) == 0 {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, boxStepBudget)
 	defer cancel()
-	s.boxStep(ctx)
+	// Upcoming sessions get their box first, so the step below already counts them (sfu_pool.go).
+	s.placeUpcoming(ctx)
+	if len(s.boxes) == 1 {
+		s.boxStep(ctx, s.boxes[0])
+		return
+	}
+	/* One step per box, side by side: each under its own row lease, so a box that is slow to
+	 * answer (a create, a stuck IP) never holds up another's. */
+	var wg sync.WaitGroup
+	for _, b := range s.boxes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.boxStep(ctx, b)
+		}()
+	}
+	wg.Wait()
 }
 
 /* boxStep is one step of the state machine, under the row lease. A step that cannot take the
  * lease does nothing: whoever holds it is stepping. */
-func (s *Server) boxStep(ctx context.Context) {
-	b := s.box
+func (s *Server) boxStep(ctx context.Context, b *boxManager) {
 	project := b.cfg.Project
 	holder, st, ok, err := s.store.TakeSFUBoxLease(ctx, project, boxLeaseTTL)
 	if err != nil {
@@ -313,7 +359,7 @@ func (s *Server) boxStep(ctx context.Context) {
 	st.Desired = dec.Desired
 
 	before := st.Actual
-	s.boxAct(ctx, &st, in, act, actErr)
+	s.boxAct(ctx, b, &st, in, act, actErr)
 	if st.Actual != before {
 		s.log.Info("sfu box: state", "project", project, "from", before, "to", st.Actual,
 			"droplet", st.DropletID, "reason", dec.Reason, "error", st.LastError)
@@ -322,7 +368,7 @@ func (s *Server) boxStep(ctx context.Context) {
 	// Not ready when a session should already have begun: tell the admins, once.
 	if st.Desired == "up" && st.Actual != store.BoxReady && dem.NextStart != nil &&
 		now.After(*dem.NextStart) && st.AlertedAt == nil {
-		s.boxAlert(ctx, &st, "ALERT: video server not ready at a session's start",
+		s.boxAlert(ctx, b, &st, "ALERT: video server not ready at a session's start",
 			fmt.Sprintf("A session on %s was due to start at %s and the video server is %s (droplet %d). Last error: %s\n\n"+
 				"Hosts and attendees see \"Starting servers…\" until it is up. There is no fallback server.",
 				project, dem.NextStart.UTC().Format(time.RFC3339), st.Actual, st.DropletID, orNone(st.LastError)))
@@ -333,7 +379,7 @@ func (s *Server) boxStep(ctx context.Context) {
 		return
 	}
 	// The captions droplet follows, once the video box's step is saved (captions_box.go).
-	s.captionsBoxStep(ctx, holder, st)
+	s.captionsBoxStep(ctx, b, holder, st)
 }
 
 func orNone(s string) string {
@@ -351,8 +397,7 @@ func (s *Server) setBoxActual(st *store.SFUBoxState, actual string, now time.Tim
 }
 
 // boxAct moves the box one step towards st.Desired.
-func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs, act lk.Activity, actErr error) {
-	b := s.box
+func (s *Server) boxAct(ctx context.Context, b *boxManager, st *store.SFUBoxState, in boxInputs, act lk.Activity, actErr error) {
 	now := in.Now
 	switch st.Actual {
 	case store.BoxDown, store.BoxFailed:
@@ -363,8 +408,8 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 			}
 			// A managed droplet nobody knows about (a delete or create whose answer was lost):
 			// take it back so the normal path deletes it.
-			if d, ok := s.boxFindManaged(ctx); ok {
-				s.boxAdopt(ctx, st, d, now)
+			if d, ok := s.boxFindManaged(ctx, b); ok {
+				s.boxAdopt(ctx, b, st, d, now)
 				return
 			}
 			// The IP goes back to the park droplet when the box goes; a park that failed (an
@@ -376,20 +421,20 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 			}
 			b.mu.Unlock()
 			if due {
-				s.boxParkIP(ctx)
+				s.boxParkIP(ctx, b)
 			}
 			return
 		}
 		if st.NextAttemptAt != nil && now.Before(*st.NextAttemptAt) {
 			return
 		}
-		if d, ok := s.boxFindManaged(ctx); ok {
-			s.boxAdopt(ctx, st, d, now)
+		if d, ok := s.boxFindManaged(ctx, b); ok {
+			s.boxAdopt(ctx, b, st, d, now)
 			return
 		}
-		d, err := s.boxCreate(ctx)
+		d, err := s.boxCreate(ctx, b)
 		if err != nil {
-			s.boxFailure(ctx, st, now, "create", err)
+			s.boxFailure(ctx, b, st, now, "create", err)
 			return
 		}
 		st.DropletID = d.ID
@@ -402,8 +447,8 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 	case store.BoxCreating:
 		d, err := b.cloud.Droplet(ctx, st.DropletID)
 		if doapi.IsNotFound(err) {
-			s.boxGone(ctx, st, now)
-			s.boxFailure(ctx, st, now, "create", errors.New("the new droplet disappeared"))
+			s.boxGone(ctx, b, st, now)
+			s.boxFailure(ctx, b, st, now, "create", errors.New("the new droplet disappeared"))
 			return
 		}
 		if err != nil {
@@ -412,13 +457,13 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 		}
 		if st.Desired == "down" {
 			// Nobody can be on a server that never came up.
-			s.boxDelete(ctx, st, now)
+			s.boxDelete(ctx, b, st, now)
 			return
 		}
 		if d.Status == "active" {
-			if err := s.boxAssignIP(ctx, d.ID); err != nil {
+			if err := s.boxAssignIP(ctx, b, d.ID); err != nil {
 				st.LastError = "assign reserved IP: " + err.Error()
-				s.boxIPStuck(ctx, st, d, now, err)
+				s.boxIPStuck(ctx, b, st, d, now, err)
 				// Not the boot deadline: the droplet is up and a new one would wait for the
 				// same IP. The next step (a minute) assigns again.
 				return
@@ -427,7 +472,7 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 			s.setBoxActual(st, store.BoxBooting, now)
 			return
 		}
-		s.boxBootDeadline(ctx, st, d, now)
+		s.boxBootDeadline(ctx, b, st, d, now)
 
 	case store.BoxBooting:
 		perr := b.probe(ctx)
@@ -446,21 +491,21 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 			if a, aerr := b.activity(ctx); aerr == nil && a.Busy() {
 				return
 			}
-			s.boxDelete(ctx, st, now)
+			s.boxDelete(ctx, b, st, now)
 			return
 		}
 		d, err := b.cloud.Droplet(ctx, st.DropletID)
 		if doapi.IsNotFound(err) {
-			s.boxGone(ctx, st, now)
-			s.boxFailure(ctx, st, now, "boot", errors.New("the droplet disappeared while booting"))
+			s.boxGone(ctx, b, st, now)
+			s.boxFailure(ctx, b, st, now, "boot", errors.New("the droplet disappeared while booting"))
 			return
 		}
 		if err == nil {
 			// The IP is assigned on the way into booting; an adopted droplet may not have it.
-			if ipErr := s.boxAssignIP(ctx, d.ID); ipErr != nil {
+			if ipErr := s.boxAssignIP(ctx, b, d.ID); ipErr != nil {
 				st.LastError = "assign reserved IP: " + ipErr.Error()
 			}
-			s.boxBootDeadline(ctx, st, d, now)
+			s.boxBootDeadline(ctx, b, st, d, now)
 		}
 
 	case store.BoxReady, store.BoxDraining:
@@ -468,31 +513,31 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 			s.setBoxActual(st, store.BoxReady, now)
 			_, err := b.cloud.Droplet(ctx, st.DropletID)
 			if doapi.IsNotFound(err) {
-				s.boxGone(ctx, st, now)
-				s.boxAlert(ctx, st, "ALERT: video server droplet disappeared",
+				s.boxGone(ctx, b, st, now)
+				s.boxAlert(ctx, b, st, "ALERT: video server droplet disappeared",
 					fmt.Sprintf("Droplet %d of %s was deleted outside the API while it was wanted. A new one is being created.",
 						st.DropletID, b.cfg.Project))
 				return
 			}
 			if err == nil {
 				// The reserved IP is what everybody connects to: put it back if it moved.
-				s.boxKeepIP(ctx, st)
+				s.boxKeepIP(ctx, b, st)
 			}
 			return
 		}
-		if busy, why := s.boxBusy(ctx, in, act, actErr); busy {
+		if busy, why := s.boxBusy(ctx, b, in, act, actErr); busy {
 			if st.Actual != store.BoxDraining {
 				s.log.Info("sfu box: idle but still busy, draining", "project", b.cfg.Project, "why", why)
 			}
 			s.setBoxActual(st, store.BoxDraining, now)
 			return
 		}
-		s.boxDelete(ctx, st, now)
+		s.boxDelete(ctx, b, st, now)
 
 	case store.BoxDeleting:
 		_, err := b.cloud.Droplet(ctx, st.DropletID)
 		if doapi.IsNotFound(err) {
-			s.boxGone(ctx, st, now)
+			s.boxGone(ctx, b, st, now)
 			return
 		}
 		if err == nil && now.Sub(st.Since) > boxDeleteResend {
@@ -506,7 +551,7 @@ func (s *Server) boxAct(ctx context.Context, st *store.SFUBoxState, in boxInputs
 /* boxBusy is the drain check before a delete: never while anything is live, finalizing,
  * recording or uploading, or LiveKit has people or egress on it. LiveKit not answering counts
  * as busy unless the box fails its health check too (then nothing can be using it). */
-func (s *Server) boxBusy(ctx context.Context, in boxInputs, act lk.Activity, actErr error) (bool, string) {
+func (s *Server) boxBusy(ctx context.Context, b *boxManager, in boxInputs, act lk.Activity, actErr error) (bool, string) {
 	switch {
 	case in.Live > 0, in.Finalizing > 0, in.Recordings > 0, in.Soon > 0:
 		return true, "sessions"
@@ -515,7 +560,7 @@ func (s *Server) boxBusy(ctx context.Context, in boxInputs, act lk.Activity, act
 	case actErr == nil && act.Busy():
 		return true, fmt.Sprintf("%d participants, %d egress", act.Participants, act.Egresses)
 	case actErr != nil:
-		if s.box.probe(ctx) == nil {
+		if b.probe(ctx) == nil {
 			return true, "livekit did not say what is running: " + actErr.Error()
 		}
 	}
@@ -523,82 +568,82 @@ func (s *Server) boxBusy(ctx context.Context, in boxInputs, act lk.Activity, act
 }
 
 // boxBootDeadline fails a droplet that has not come up within BootTimeout.
-func (s *Server) boxBootDeadline(ctx context.Context, st *store.SFUBoxState, d doapi.Droplet, now time.Time) {
+func (s *Server) boxBootDeadline(ctx context.Context, b *boxManager, st *store.SFUBoxState, d doapi.Droplet, now time.Time) {
 	// The later of the droplet's birth and entering this state: an adopted droplet (days old,
 	// say) gets the full timeout from when it was adopted, not an instant failure.
 	created := maxTime(d.Created(), st.Since)
-	if now.Sub(created) <= s.box.cfg.BootTimeout {
+	if now.Sub(created) <= b.cfg.BootTimeout {
 		return
 	}
 	reason := fmt.Errorf("droplet %d not ready %s after create (status %s; %s)",
 		d.ID, now.Sub(created).Round(time.Second), d.Status, orNone(st.LastError))
 	// Failing the check but with people on it (an adopted box whose TURN certificate lapsed,
 	// say): never pull it from under them. Tell the admins instead.
-	if a, aerr := s.box.activity(ctx); aerr == nil && a.Busy() {
+	if a, aerr := b.activity(ctx); aerr == nil && a.Busy() {
 		if st.AlertedAt == nil {
-			s.boxAlert(ctx, st, "ALERT: video server failing its health check while in use",
+			s.boxAlert(ctx, b, st, "ALERT: video server failing its health check while in use",
 				fmt.Sprintf("%v\n\nLiveKit reports %d participants and %d egress on it, so it is left running.",
 					reason, a.Participants, a.Egresses))
 		}
 		return
 	}
-	s.boxDelete(ctx, st, now)
-	s.boxFailure(ctx, st, now, "boot", reason)
+	s.boxDelete(ctx, b, st, now)
+	s.boxFailure(ctx, b, st, now, "boot", reason)
 }
 
 // boxFailure counts a failed attempt, schedules the next and alerts at MaxFailures.
-func (s *Server) boxFailure(ctx context.Context, st *store.SFUBoxState, now time.Time, what string, err error) {
+func (s *Server) boxFailure(ctx context.Context, b *boxManager, st *store.SFUBoxState, now time.Time, what string, err error) {
 	st.Failures++
 	next := now.Add(boxBackoff(st.Failures))
 	st.NextAttemptAt = &next
 	st.LastError = what + ": " + err.Error()
-	s.log.Error("sfu box: attempt failed", "project", s.box.cfg.Project, "what", what,
+	s.log.Error("sfu box: attempt failed", "project", b.cfg.Project, "what", what,
 		"failures", st.Failures, "error", err)
-	if st.Failures < s.box.cfg.MaxFailures {
+	if st.Failures < b.cfg.MaxFailures {
 		return
 	}
 	if st.Actual == store.BoxDown {
 		s.setBoxActual(st, store.BoxFailed, now)
 	}
 	if st.AlertedAt == nil {
-		s.boxAlert(ctx, st, "ALERT: video server could not be started",
+		s.boxAlert(ctx, b, st, "ALERT: video server could not be started",
 			fmt.Sprintf("The on-demand video server for %s failed %d times in a row (%s).\n\nLast error: %s\n\n"+
 				"It keeps retrying every few minutes. Hosts see \"The video server could not be started\" with a Try again "+
 				"button; there is no fallback server. To keep it up by hand set SFU_BOX_ALWAYS_ON=true on the API, "+
 				"or see deploy/digitalocean/README.md.",
-				s.box.cfg.Project, st.Failures, what, st.LastError))
+				b.cfg.Project, st.Failures, what, st.LastError))
 	}
 }
 
 // boxGone records the droplet as deleted and the box down.
-func (s *Server) boxGone(ctx context.Context, st *store.SFUBoxState, now time.Time) {
+func (s *Server) boxGone(ctx context.Context, b *boxManager, st *store.SFUBoxState, now time.Time) {
 	if st.DropletID != 0 {
-		if err := s.store.EndSFUBoxRun(ctx, s.box.cfg.Project, st.DropletID); err != nil {
+		if err := s.store.EndSFUBoxRun(ctx, b.cfg.Project, st.DropletID); err != nil {
 			s.log.Error("sfu box: record end", "error", err)
 		}
 	}
 	st.DropletID = 0
 	s.setBoxActual(st, store.BoxDown, now)
-	s.boxParkIP(ctx)
+	s.boxParkIP(ctx, b)
 }
 
 // boxDelete sends the delete.
-func (s *Server) boxDelete(ctx context.Context, st *store.SFUBoxState, now time.Time) {
+func (s *Server) boxDelete(ctx context.Context, b *boxManager, st *store.SFUBoxState, now time.Time) {
 	if st.DropletID == 0 {
 		s.setBoxActual(st, store.BoxDown, now)
 		return
 	}
-	if err := s.box.cloud.DeleteDroplet(ctx, st.DropletID); err != nil {
+	if err := b.cloud.DeleteDroplet(ctx, st.DropletID); err != nil {
 		st.LastError = "delete droplet: " + err.Error()
 		return
 	}
-	s.log.Info("sfu box: deleting droplet", "project", s.box.cfg.Project, "droplet", st.DropletID)
+	s.log.Info("sfu box: deleting droplet", "project", b.cfg.Project, "droplet", st.DropletID)
 	s.setBoxActual(st, store.BoxDeleting, now)
 }
 
 // boxFindManaged is a droplet carrying the managed tag, if there is one.
-func (s *Server) boxFindManaged(ctx context.Context) (doapi.Droplet, bool) {
-	list, err := s.box.cloud.DropletsByTag(ctx, s.box.cfg.ManagedTag)
+func (s *Server) boxFindManaged(ctx context.Context, b *boxManager) (doapi.Droplet, bool) {
+	list, err := b.cloud.DropletsByTag(ctx, b.cfg.ManagedTag)
 	if err != nil {
 		s.log.Warn("sfu box: list droplets", "error", err)
 		return doapi.Droplet{}, false
@@ -612,10 +657,10 @@ func (s *Server) boxFindManaged(ctx context.Context) (doapi.Droplet, bool) {
 }
 
 // boxAdopt takes an existing managed droplet as this box's.
-func (s *Server) boxAdopt(ctx context.Context, st *store.SFUBoxState, d doapi.Droplet, now time.Time) {
-	s.log.Info("sfu box: adopting existing droplet", "project", s.box.cfg.Project, "droplet", d.ID, "status", d.Status)
+func (s *Server) boxAdopt(ctx context.Context, b *boxManager, st *store.SFUBoxState, d doapi.Droplet, now time.Time) {
+	s.log.Info("sfu box: adopting existing droplet", "project", b.cfg.Project, "droplet", d.ID, "status", d.Status)
 	st.DropletID = d.ID
-	if err := s.store.StartSFUBoxRun(ctx, s.box.cfg.Project, d.ID, d.Created()); err != nil {
+	if err := s.store.StartSFUBoxRun(ctx, b.cfg.Project, d.ID, d.Created()); err != nil {
 		s.log.Error("sfu box: record run", "error", err)
 	}
 	if d.Status == "active" {
@@ -626,13 +671,13 @@ func (s *Server) boxAdopt(ctx context.Context, st *store.SFUBoxState, d doapi.Dr
 }
 
 // boxCreate creates the droplet: newest snapshot, the volume, the tags and the boot script.
-func (s *Server) boxCreate(ctx context.Context) (doapi.Droplet, error) {
-	c := s.box.cfg
-	img, err := s.box.cloud.LatestSnapshot(ctx, c.SnapshotTag, c.SnapshotTag+"-", c.Region)
+func (s *Server) boxCreate(ctx context.Context, b *boxManager) (doapi.Droplet, error) {
+	c := b.cfg
+	img, err := b.cloud.LatestSnapshot(ctx, c.SnapshotTag, c.SnapshotTag+"-", c.Region)
 	if err != nil {
 		return doapi.Droplet{}, fmt.Errorf("snapshot %q: %w", c.SnapshotTag, err)
 	}
-	vol, err := s.box.cloud.VolumeByName(ctx, c.Volume, c.Region)
+	vol, err := b.cloud.VolumeByName(ctx, c.Volume, c.Region)
 	if err != nil {
 		return doapi.Droplet{}, fmt.Errorf("volume %q: %w", c.Volume, err)
 	}
@@ -646,7 +691,7 @@ func (s *Server) boxCreate(ctx context.Context) (doapi.Droplet, error) {
 	tags := append([]string{}, c.Tags...)
 	tags = append(tags, c.ManagedTag)
 	s.log.Info("sfu box: creating droplet", "project", c.Project, "image", img.Name, "size", c.Size, "region", c.Region)
-	return s.box.cloud.CreateDroplet(ctx, doapi.CreateDroplet{
+	return b.cloud.CreateDroplet(ctx, doapi.CreateDroplet{
 		Name: c.Name, Region: c.Region, Size: c.Size, Image: img.ID,
 		SSHKeys: c.SSHKeys, Monitoring: true, Tags: tags, UserData: userData,
 		Volumes: []string{vol.ID}, VPCUUID: c.VPCUUID,
@@ -654,16 +699,16 @@ func (s *Server) boxCreate(ctx context.Context) (doapi.Droplet, error) {
 }
 
 // boxAssignIP points the reserved IP at the droplet, unless it already is.
-func (s *Server) boxAssignIP(ctx context.Context, dropletID int64) error {
-	ip := s.box.cfg.ReservedIP
-	cur, err := s.box.cloud.ReservedIPDroplet(ctx, ip)
+func (s *Server) boxAssignIP(ctx context.Context, b *boxManager, dropletID int64) error {
+	ip := b.cfg.ReservedIP
+	cur, err := b.cloud.ReservedIPDroplet(ctx, ip)
 	if err != nil {
 		return err
 	}
 	if cur == dropletID {
 		return nil
 	}
-	aerr := s.box.cloud.AssignReservedIP(ctx, ip, dropletID)
+	aerr := b.cloud.AssignReservedIP(ctx, ip, dropletID)
 	if aerr == nil {
 		s.log.Info("sfu box: reserved IP assigned", "ip", ip, "droplet", dropletID, "from", cur)
 		return nil
@@ -671,56 +716,56 @@ func (s *Server) boxAssignIP(ctx context.Context, dropletID int64) error {
 	/* DigitalOcean refuses an assign the IP already has (422 "already assigned"), and its read
 	 * can lag an assign made a moment ago (by an operator, or by the step before). Ask again:
 	 * on the droplet now is success, not a failure to count. */
-	if again, err := s.box.cloud.ReservedIPDroplet(ctx, ip); err == nil && again == dropletID {
+	if again, err := b.cloud.ReservedIPDroplet(ctx, ip); err == nil && again == dropletID {
 		return nil
 	}
 	return aerr
 }
 
 // boxKeepIP checks a ready box still has the reserved IP and assigns it again if not.
-func (s *Server) boxKeepIP(ctx context.Context, st *store.SFUBoxState) {
-	ip := s.box.cfg.ReservedIP
-	cur, err := s.box.cloud.ReservedIPDroplet(ctx, ip)
+func (s *Server) boxKeepIP(ctx context.Context, b *boxManager, st *store.SFUBoxState) {
+	ip := b.cfg.ReservedIP
+	cur, err := b.cloud.ReservedIPDroplet(ctx, ip)
 	if err != nil || cur == st.DropletID {
 		return
 	}
 	s.log.Error("sfu box: reserved IP is not on the ready box, assigning it again",
-		"project", s.box.cfg.Project, "ip", ip, "droplet", st.DropletID, "ipOn", cur)
-	if err := s.boxAssignIP(ctx, st.DropletID); err != nil {
+		"project", b.cfg.Project, "ip", ip, "droplet", st.DropletID, "ipOn", cur)
+	if err := s.boxAssignIP(ctx, b, st.DropletID); err != nil {
 		st.LastError = "assign reserved IP: " + err.Error()
-		s.log.Error("sfu box: assign reserved IP", "project", s.box.cfg.Project, "droplet", st.DropletID, "error", err)
+		s.log.Error("sfu box: assign reserved IP", "project", b.cfg.Project, "droplet", st.DropletID, "error", err)
 	}
 }
 
 /* boxIPStuck is an active droplet whose reserved IP would not move: logged loudly every
  * step, and after boxIPStuckAlert the admins are told (once). The step keeps assigning. */
-func (s *Server) boxIPStuck(ctx context.Context, st *store.SFUBoxState, d doapi.Droplet, now time.Time, err error) {
+func (s *Server) boxIPStuck(ctx context.Context, b *boxManager, st *store.SFUBoxState, d doapi.Droplet, now time.Time, err error) {
 	waiting := now.Sub(maxTime(d.Created(), st.Since))
 	s.log.Error("sfu box: could not assign the reserved IP to the active droplet",
-		"project", s.box.cfg.Project, "ip", s.box.cfg.ReservedIP, "droplet", d.ID,
+		"project", b.cfg.Project, "ip", b.cfg.ReservedIP, "droplet", d.ID,
 		"waiting", waiting.Round(time.Second), "error", err)
 	if waiting < boxIPStuckAlert || st.AlertedAt != nil {
 		return
 	}
-	s.boxAlert(ctx, st, "ALERT: video server waiting for its reserved IP",
+	s.boxAlert(ctx, b, st, "ALERT: video server waiting for its reserved IP",
 		fmt.Sprintf("Droplet %d of %s is active but reserved IP %s could not be moved onto it for %s.\n\nLast error: %v\n\n"+
 			"It keeps trying every minute. Nobody can reach the video server until the IP is on it; "+
 			"assign it by hand in DigitalOcean (Networking > Reserved IPs) if this does not clear.",
-			d.ID, s.box.cfg.Project, s.box.cfg.ReservedIP, waiting.Round(time.Second), err))
+			d.ID, b.cfg.Project, b.cfg.ReservedIP, waiting.Round(time.Second), err))
 }
 
 // boxParkIP moves the reserved IP to the park droplet (an unassigned one bills $5/month).
-func (s *Server) boxParkIP(ctx context.Context) {
-	name := s.box.cfg.ParkDroplet
+func (s *Server) boxParkIP(ctx context.Context, b *boxManager) {
+	name := b.cfg.ParkDroplet
 	if name == "" {
 		return
 	}
-	list, err := s.box.cloud.DropletsByName(ctx, name)
+	list, err := b.cloud.DropletsByName(ctx, name)
 	if err != nil || len(list) == 0 {
 		s.log.Warn("sfu box: park droplet not found; the reserved IP stays unassigned", "name", name, "error", err)
 		return
 	}
-	if err := s.boxAssignIP(ctx, list[0].ID); err != nil {
+	if err := s.boxAssignIP(ctx, b, list[0].ID); err != nil {
 		s.log.Warn("sfu box: could not park the reserved IP", "name", name, "error", err)
 	}
 }
@@ -778,8 +823,8 @@ exec "$boot" >>/var/log/webinarliv-boot.log 2>&1
 /* boxProbe is the readiness check: LiveKit answers over HTTPS through Caddy (so the
  * certificate is there), the HLS origin answers (not a 5xx from Caddy), and TURN over TLS on
  * 443 presents a valid certificate for its name. */
-func (s *Server) boxProbe(ctx context.Context) error {
-	proj, ok := s.cfg.LiveKitProjectByID(s.box.cfg.Project)
+func (s *Server) boxProbe(ctx context.Context, b *boxManager) error {
+	proj, ok := s.cfg.LiveKitProjectByID(b.cfg.Project)
 	if !ok {
 		return errors.New("project not configured")
 	}
@@ -795,14 +840,14 @@ func (s *Server) boxProbe(ctx context.Context) error {
 			return fmt.Errorf("hls: %w", err)
 		}
 	}
-	turn := s.box.cfg.TurnHost
+	turn := b.cfg.TurnHost
 	if turn == "" {
 		if u, err := url.Parse(base); err == nil && u.Hostname() != "" && net.ParseIP(u.Hostname()) == nil {
 			turn = "turn." + u.Hostname()
 		}
 	}
 	if turn != "" && turn != "-" {
-		if err := probeTLS(ctx, s.box.cfg.ReservedIP, turn); err != nil {
+		if err := probeTLS(ctx, b.cfg.ReservedIP, turn); err != nil {
 			return fmt.Errorf("turn: %w", err)
 		}
 	}
@@ -843,8 +888,8 @@ func probeTLS(ctx context.Context, ip, host string) error {
 }
 
 // boxLiveKitActivity asks the box's LiveKit what is running.
-func (s *Server) boxLiveKitActivity(ctx context.Context) (lk.Activity, error) {
-	room, err := s.sfu.Get(s.box.cfg.Project)
+func (s *Server) boxLiveKitActivity(ctx context.Context, b *boxManager) (lk.Activity, error) {
+	room, err := s.sfu.Get(b.cfg.Project)
 	if err != nil {
 		return lk.Activity{}, err
 	}
@@ -860,8 +905,7 @@ func (s *Server) boxLiveKitActivity(ctx context.Context) (lk.Activity, error) {
 // ---------------------------------------------------------------- joins
 
 // boxState is the row, cached for boxStateCache.
-func (s *Server) boxState(ctx context.Context) (store.SFUBoxState, error) {
-	b := s.box
+func (s *Server) boxState(ctx context.Context, b *boxManager) (store.SFUBoxState, error) {
 	b.mu.Lock()
 	if !b.cachedAt.IsZero() && time.Since(b.cachedAt) < boxStateCache {
 		st := b.cached
@@ -883,48 +927,48 @@ func (s *Server) boxState(ctx context.Context) (store.SFUBoxState, error) {
 }
 
 // boxRequest keeps the box wanted for boxRequestHold (skipped when it already is for long).
-func (s *Server) boxRequest(ctx context.Context, st store.SFUBoxState) {
-	now := s.box.now()
+func (s *Server) boxRequest(ctx context.Context, b *boxManager, st store.SFUBoxState) {
+	now := b.now()
 	if st.RequestedUntil != nil && st.RequestedUntil.After(now.Add(boxRequestHold/2)) {
 		return
 	}
-	if err := s.store.RequestSFUBox(ctx, s.box.cfg.Project, now.Add(boxRequestHold)); err != nil {
+	if err := s.store.RequestSFUBox(ctx, b.cfg.Project, now.Add(boxRequestHold)); err != nil {
 		s.log.Warn("sfu box: request", "error", err)
 	}
-	s.box.invalidate()
+	b.invalidate()
 }
 
 /* boxReady is sfuReady for the on-demand box: nil when it is up, errSFUStarting while it is
  * being created or booting (and asks for it), errSFUFailed once it has failed MaxFailures
  * times. A join that finds it down steps the manager itself, so the droplet is created now
  * rather than at the next tick. */
-func (s *Server) boxReady(ctx context.Context) error {
-	st, err := s.boxState(ctx)
+func (s *Server) boxReady(ctx context.Context, b *boxManager) error {
+	st, err := s.boxState(ctx, b)
 	if err != nil {
 		return err
 	}
 	switch st.Actual {
 	case store.BoxReady:
-		s.boxRequest(ctx, st)
+		s.boxRequest(ctx, b, st)
 		return nil
 	case store.BoxDraining:
 		// Still serving; wanted again. The next step takes it back to ready.
-		s.boxRequest(ctx, st)
+		s.boxRequest(ctx, b, st)
 		return nil
 	case store.BoxBooting:
-		s.boxRequest(ctx, st)
-		if s.boxProbeNow(ctx, st) {
+		s.boxRequest(ctx, b, st)
+		if s.boxProbeNow(ctx, b, st) {
 			return nil
 		}
 		return errSFUStarting
 	case store.BoxFailed:
-		s.boxRequest(ctx, st)
+		s.boxRequest(ctx, b, st)
 		return errSFUFailed
 	default: // down, creating, deleting
-		s.boxRequest(ctx, st)
+		s.boxRequest(ctx, b, st)
 		if st.Actual == store.BoxDown {
 			sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), boxJoinStepBudget)
-			s.boxStep(sctx)
+			s.boxStep(sctx, b)
 			cancel()
 		}
 		return errSFUStarting
@@ -932,8 +976,7 @@ func (s *Server) boxReady(ctx context.Context) error {
 }
 
 // boxProbeNow is a join's own readiness check while booting, at most every boxProbeEvery.
-func (s *Server) boxProbeNow(ctx context.Context, st store.SFUBoxState) bool {
-	b := s.box
+func (s *Server) boxProbeNow(ctx context.Context, b *boxManager, st store.SFUBoxState) bool {
 	b.mu.Lock()
 	if time.Since(b.lastProbe) < boxProbeEvery {
 		b.mu.Unlock()
@@ -970,17 +1013,18 @@ func (s *Server) boxProjectFor(ctx context.Context, wb types.Webinar) string {
 
 // boxWarmFor asks for the box ahead of a session that will need it (an instant session).
 func (s *Server) boxWarmFor(ctx context.Context, wb types.Webinar) {
-	if s.box == nil || !s.managesProject(s.boxProjectFor(ctx, wb)) {
+	b := s.boxFor(s.boxProjectFor(ctx, wb))
+	if b == nil {
 		return
 	}
-	st, err := s.boxState(ctx)
+	st, err := s.boxState(ctx, b)
 	if err != nil {
 		return
 	}
-	s.boxRequest(ctx, st)
+	s.boxRequest(ctx, b, st)
 	if st.Actual == store.BoxDown || st.Actual == store.BoxFailed {
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), boxJoinStepBudget)
-		s.boxStep(sctx)
+		s.boxStep(sctx, b)
 		cancel()
 	}
 }
@@ -989,10 +1033,15 @@ func (s *Server) boxWarmFor(ctx context.Context, wb types.Webinar) {
 
 /* boxAlert tells the admins: email (alertOps, throttled per subject), the bell and a push.
  * Stamps st.AlertedAt so one outage is one alert; it clears when the box is ready. */
-func (s *Server) boxAlert(ctx context.Context, st *store.SFUBoxState, subject, body string) {
-	now := s.box.now()
+func (s *Server) boxAlert(ctx context.Context, b *boxManager, st *store.SFUBoxState, subject, body string) {
+	now := b.now()
 	st.AlertedAt = &now
-	s.alertOps(ctx, "sfu-box:"+s.box.cfg.Project+":"+subject, subject, body)
+	s.alertOps(ctx, "sfu-box:"+b.cfg.Project+":"+subject, subject, body)
+	s.alertAdminBells(ctx, subject, body)
+}
+
+// alertAdminBells puts an ops alert on every admin's bell and sends it as a push.
+func (s *Server) alertAdminBells(ctx context.Context, subject, body string) {
 	ids, err := s.store.AdminUserIDs(ctx)
 	if err != nil {
 		s.log.Error("sfu box: admin ids", "error", err)
@@ -1015,10 +1064,11 @@ func (s *Server) boxAlert(ctx context.Context, st *store.SFUBoxState, subject, b
 
 // videoServerStatus is what the waiting screen shows for a webinar.
 func (s *Server) videoServerStatus(ctx context.Context, wb types.Webinar) (types.VideoServerStatus, error) {
-	if !s.managesProject(s.boxProjectFor(ctx, wb)) {
+	b := s.boxFor(s.boxProjectFor(ctx, wb))
+	if b == nil {
 		return types.VideoServerStatus{State: types.VideoServerNone, Message: "Ready."}, nil
 	}
-	st, err := s.boxState(ctx)
+	st, err := s.boxState(ctx, b)
 	if err != nil {
 		return types.VideoServerStatus{}, err
 	}
@@ -1066,18 +1116,18 @@ func (s *Server) handleRetryVideoServer(w http.ResponseWriter, r *http.Request) 
 		s.fail(w, r, "retry video server", err)
 		return
 	}
-	if s.managesProject(s.boxProjectFor(r.Context(), wb)) {
-		if err := s.store.RetrySFUBox(r.Context(), s.box.cfg.Project); err != nil {
+	if b := s.boxFor(s.boxProjectFor(r.Context(), wb)); b != nil {
+		if err := s.store.RetrySFUBox(r.Context(), b.cfg.Project); err != nil {
 			s.fail(w, r, "retry video server", err)
 			return
 		}
-		s.box.invalidate()
-		st, err := s.boxState(r.Context())
+		b.invalidate()
+		st, err := s.boxState(r.Context(), b)
 		if err == nil {
-			s.boxRequest(r.Context(), st)
+			s.boxRequest(r.Context(), b, st)
 		}
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), boxJoinStepBudget)
-		s.boxStep(sctx)
+		s.boxStep(sctx, b)
 		cancel()
 	}
 	out, err := s.videoServerStatus(r.Context(), wb)
@@ -1101,7 +1151,7 @@ func (s *Server) handleAdminSFUBox(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, types.AdminSFUBox{Runs: []types.AdminSFUBoxRun{}})
 		return
 	}
-	c := s.box.cfg
+	c := s.box.cfg // the primary box; GET /api/admin/sfu-pool has every box
 	st, err := s.store.SFUBox(r.Context(), c.Project)
 	if errors.Is(err, store.ErrNotFound) {
 		st, err = store.SFUBoxState{Project: c.Project, Desired: "down", Actual: store.BoxDown}, nil
@@ -1156,18 +1206,17 @@ type boxLiveStatus struct {
 
 func (s *Server) boxLiveStatuses(ctx context.Context) map[string]boxLiveStatus {
 	out := map[string]boxLiveStatus{}
-	if s.box == nil {
-		return out
+	for _, b := range s.boxes {
+		st, err := s.store.SFUBox(ctx, b.cfg.Project)
+		if errors.Is(err, store.ErrNotFound) {
+			out[b.cfg.Project] = boxLiveStatus{Desired: "down", Actual: store.BoxDown}
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		out[b.cfg.Project] = boxLiveStatus{Desired: st.Desired, Actual: st.Actual, DropletID: st.DropletID,
+			Since: st.Since.UTC().Format(time.RFC3339)}
 	}
-	st, err := s.store.SFUBox(ctx, s.box.cfg.Project)
-	if errors.Is(err, store.ErrNotFound) {
-		out[s.box.cfg.Project] = boxLiveStatus{Desired: "down", Actual: store.BoxDown}
-		return out
-	}
-	if err != nil {
-		return out
-	}
-	out[s.box.cfg.Project] = boxLiveStatus{Desired: st.Desired, Actual: st.Actual, DropletID: st.DropletID,
-		Since: st.Since.UTC().Format(time.RFC3339)}
 	return out
 }

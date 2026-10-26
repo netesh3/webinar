@@ -169,8 +169,12 @@ type Server struct {
 	maintenanceHook func(context.Context)
 
 	/* box is the on-demand DigitalOcean video server's manager (sfu_box.go), nil unless
-	 * SFU_BOX_PROJECT and DO_API_TOKEN are set. */
-	box *boxManager
+	 * SFU_BOX_PROJECT and DO_API_TOKEN are set: the primary of the pool. boxes is the whole
+	 * pool, box first (SFU_BOX_SLOTS, sfu_pool.go); just box when no slot is declared. */
+	box   *boxManager
+	boxes []*boxManager
+	// poolMem is the pool's placement cache and alert throttle (sfu_pool.go).
+	poolMem poolMemory
 
 	/* ai answers the AI features through the configured providers, falling to the next
 	 * one when a free allowance runs out. Never nil; with no providers configured it is
@@ -287,7 +291,10 @@ func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store,
 	}
 	srv.initEngagement()
 	newPushSender(srv)
-	srv.box = srv.newBoxManager()
+	srv.boxes = srv.newBoxManagers()
+	if len(srv.boxes) > 0 {
+		srv.box = srv.boxes[0]
+	}
 
 	/* Edge delivery's event bus. With a store it fans out across instances through Postgres
 	 * LISTEN/NOTIFY; the LISTEN connection opens only when this instance gets its first edge
@@ -645,6 +652,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/costs", s.handleAdminCosts)
 			// The on-demand video server's state and hours (sfu_box.go).
 			r.Get("/sfu-box", s.handleAdminSFUBox)
+			r.Get("/sfu-pool", s.handleAdminSFUPool)
 			// "Make it now": start the on-demand video server for the waiting clips (clip_jobs.go).
 			r.Post("/clips/make-now", s.handleAdminClipsMakeNow)
 			// "Delete all recordings", every host's (recording_purge.go).
@@ -1007,6 +1015,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		MaxAttendees:            s.cfg.MaxAttendees,
 		SignupOpen:              s.cfg.SignupOpen,
 		DefaultMaxMeetingMin:    s.cfg.DefaultMaxMeetingMin,
+		BoxRegions:              s.boxRegions(),
 		GoogleClientID:          s.cfg.GoogleClientID,
 		GoogleAPIKey:            s.cfg.GoogleAPIKey,
 		YouTubeOAuth:            s.cfg.YouTubeOAuthEnabled(),

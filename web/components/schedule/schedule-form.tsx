@@ -640,6 +640,7 @@ function ScheduleFormBody({
       registrationRequired: openJoin ? form.registrationRequired : true,
       approval: form.approval,
       attendeeLimit: form.attendeeLimit,
+      ...(form.sfuRegion ? { sfuRegion: form.sfuRegion } : {}),
       passcode: form.passcode.trim(),
       agenda: form.agenda,
       takeaways: form.takeaways

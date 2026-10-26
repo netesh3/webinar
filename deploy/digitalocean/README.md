@@ -518,6 +518,59 @@ with `relayProtocol: tls` (the ICE server `turns:turn.152.42.156.192.sslip.io:44
 To turn it off: delete the `TURN_TLS_443` line from `/opt/livekit/.env` and run `redeploy.sh`
 (back to the stock Caddy image and the previous `livekit.yaml`).
 
+## More video servers (a pool, optional)
+
+Since 2026-10-26 the box can be a **pool**: the primary above plus further boxes declared ahead in
+`SFU_BOX_SLOTS`, each its own droplet with its own data volume, reserved IP, LiveKit project and
+CDN zone (`api/internal/api/sfu_pool.go`). Unset, there is one box and nothing changes.
+
+**How sessions are placed.** Every session costs points against a box's capacity (100 for a c-4,
+headroom included):
+
+| Session | Points (defaults, `SFU_BOX_POINTS`) |
+|---|---|
+| Webinar | 20 for the mix + 10 for a share or recording (always charged: a share cannot be known ahead) + 1 per 10 seats (its max attendees) |
+| Meeting | 4 up to 10 people, +1 per 2 more (its meeting size) |
+| Simulive | 0 (the audience plays the recording file) |
+
+These are **estimates** from the 24 Oct 2026 load test, to be calibrated against the real-browser
+test. A session is placed when its box is first chosen: 15 minutes before its start (inside the
+warm lead) or at Go live, an instant start or a meeting's first join. It goes on a box of its
+**region** (the schedule form's "Video server region", shown once there are two regions) that is
+already up and has room; else on the first box of the region with room, which then comes up; else,
+every box of the region full, on the least loaded one, and the admins get an alert (email and
+bell, once an hour per region). A host is never refused. A region with no box falls back to the
+primary's. Admin → Dashboard → **Video servers** shows each box, its points and its sessions.
+
+**What to provision per slot** (the API never creates anything but the slot's droplet):
+
+1. **A data volume** in the slot's DigitalOcean region, prepared like `sfu-data` (One-time setup
+   steps 1–2, on a builder droplet): its own LiveKit keys (`livekit/.env.keys`), its own Caddy
+   data, and `.env` with the slot's domain (its reserved IP's `sslip.io` name). *Billable: ~$2.50/month.*
+2. **A reserved IP** in that region. *Billable: free while assigned, $5/month while unassigned
+   unless `parkDroplet` names a droplet in that region to park it on.*
+3. **A `LIVEKIT_PROJECTS` entry** for the slot (the secret): its URL (`wss://<ip>.sslip.io`), the
+   key and secret from its volume, `broadcastHlsBase` (the box, `https://<ip>.sslip.io/live`) and
+   `edgePlaybackBase` (its own Bunny pull zone whose origin is that IP: a zone has one origin).
+4. **The snapshot in that region.** Snapshots are per region; for a slot outside `blr1` (e.g.
+   `nyc3`), copy the newest `webinar-sfu-image-*` there (`doctl compute image-action transfer`),
+   and the captions image too if captions are on.
+5. **The slot in `SFU_BOX_SLOTS`** (repo variable, JSON), then Deploy API:
+   ```json
+   [{"project":"do-blr-2","name":"sfu-blr-2","volume":"sfu-data-2","reservedIp":"<ip>"},
+    {"project":"do-us","name":"sfu-nyc-1","area":"us","region":"nyc3","volume":"sfu-data-us","reservedIp":"<ip>","capacity":100}]
+   ```
+   Unset fields take the primary's (size, snapshot tag, area, capacity, SSH keys, repo, timings).
+   Each slot's droplets carry their own managed tag (`webinar-sfu-ondemand-<name>`) and its captions
+   droplet is `captions-<name>`, so no two managers ever adopt or delete each other's droplets.
+   The API refuses to start with two slots sharing a name, volume, reserved IP or project.
+
+**Limits.** "Deploy LiveKit (DigitalOcean)" deploys to the primary's IP only; a slot boots from
+the newest snapshot and fetches the deploy files from `SFU_BOX_REF` at every create, so it is
+current each time it comes up, but a slot that is up when the deploy runs keeps its old stack until
+its next create. Clips are made on the primary only. A session keeps its box once placed: changing
+its region after that (from 15 minutes before its start) does not move it.
+
 ## When to grow (not needed yet)
 
 Decided 2026-10-22: one c-4 SFU here, the API stays on Cloud Run. Revisit when usage or the
@@ -530,7 +583,8 @@ which is more than one c-4 does comfortably. One box is also one failure: a cras
 every live room on it. Options: resize to **c-8** ($168/month, same capacity as two c-4s, no
 redundancy), or a **second c-4** registered as its own `LIVEKIT_PROJECTS` entry (redundancy:
 half the rooms on each, new rooms go to the healthy one). Trigger: overlapping evening sessions
-from paying coaches, or the CPU alert firing.
+from paying coaches, or the CPU alert firing. The second box is now a slot of the pool (see "More
+video servers" above), placed by points.
 
 **The API on DigitalOcean.** Cloud Run is cheaper today (~$9–13/month, 148 instance-hours in the
 30 days to 2026-10-22) because it scales to zero. It flips with edge viewers: each holds the event

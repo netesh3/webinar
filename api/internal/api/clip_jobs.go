@@ -201,7 +201,7 @@ func (s *Server) clipServer(ctx context.Context) types.ClipServer {
 		}
 		return ready
 	}
-	st, err := s.boxState(ctx)
+	st, err := s.boxState(ctx, s.box) // clips are made on the primary box
 	if err != nil {
 		return types.ClipServer{State: types.ClipServerWaiting, Text: "Waiting for the video server."}
 	}
@@ -700,7 +700,7 @@ func (s *Server) handleAdminClipsMakeNow(w http.ResponseWriter, r *http.Request)
 		}
 		s.box.invalidate()
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), boxJoinStepBudget)
-		s.boxStep(sctx)
+		s.boxStep(sctx, s.box)
 		cancel()
 		out.Text = "Starting the video server to make the waiting clips (a few minutes to start). It goes off again once they're made and nothing else needs it."
 	}
