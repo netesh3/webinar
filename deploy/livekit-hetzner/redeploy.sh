@@ -79,10 +79,11 @@ fi
 env_value() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true; }
 EGRESS_REMOTE="$(env_value EGRESS_REMOTE)"
 EGRESS_VPC_CIDR="$(env_value EGRESS_VPC_CIDR)"
-# LL-HLS part length, per box (see mediamtx.yml.template). A Go duration MediaMTX accepts.
-HLS_PART_DURATION="$(env_value HLS_PART_DURATION)"
-HLS_PART_DURATION="${HLS_PART_DURATION:-500ms}"
-[[ "$HLS_PART_DURATION" =~ ^[0-9]+ms$ ]] || { echo "HLS_PART_DURATION must look like 250ms, got $HLS_PART_DURATION" >&2; exit 1; }
+# HLS_PART_DURATION was the LL-HLS part length. The audience is on plain HLS now (no parts;
+# mediamtx.yml.template), so a value left in an old box's .env is ignored, not an error.
+if [[ -n "$(env_value HLS_PART_DURATION)" ]]; then
+  echo "note: HLS_PART_DURATION in .env is no longer used (plain HLS); it can be removed" >&2
+fi
 REDIS_BIND="127.0.0.1 -::1"
 REDIS_PASSWORD_VALUE=""
 PUBLISH_IPS='["127.0.0.1", "::1"]'
@@ -208,7 +209,6 @@ sysctl -q -p /etc/sysctl.d/90-webinarliv-origin.conf || echo "sysctl: could not 
 if [[ -f mediamtx.yml.template ]]; then
   sed -e "s|__PUBLISH_IPS__|${PUBLISH_IPS}|g" \
       -e "s/__RTMP_ADDRESS__/${RTMP_ADDRESS}/g" \
-      -e "s/__HLS_PART_DURATION__/${HLS_PART_DURATION}/g" \
       mediamtx.yml.template > mediamtx.yml
 fi
 

@@ -14,11 +14,11 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
  host, co-hosts, promoted ──WebRTC──▶ SFU ──▶ Egress (room composite, 1s GOP)
                                                 │ RTMP
                                                 ▼
-                                    MediaMTX on the SFU box: LL-HLS
-                                    (1s segments, 250–500ms parts, blocking reload)
+                                    MediaMTX on the SFU box: plain HLS
+                                    (fMP4, 2s segments, no parts, no blocking reload)
                                                 │  /live/<slug>/index.m3u8
                                                 ▼
-                                    Phase 2: Bunny pull zone (CDN) ──▶ hls.js player
+                     direct (near the box) or Bunny pull zone (CDN) ──▶ hls.js player
  Chat, Q&A, polls, raised hands, controls, stage invites:
    API ──SendData/SetMetadata──▶ LiveKit (stage)       ┐ same packets,
    API ──NOTIFY──▶ every instance ──SSE──▶ edge viewers ┘ same recipient lists
@@ -29,7 +29,7 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
 | | Standard | Edge |
 |---|---|---|
 | Host, panelists, promoted attendees | WebRTC stage | WebRTC stage (unchanged) |
-| Audience picture | SFU | LL-HLS from the origin or a CDN |
+| Audience picture | SFU | Plain HLS (~6s behind) from the box or a CDN, by where the viewer is |
 | Audience chat/polls/controls | LiveKit data channel and room metadata | `GET /api/webinars/{slug}/events` (SSE) |
 | Audience on the SFU | Yes (full or data-only peers) | **No.** Not a participant, not counted against the room size |
 | Attendee limit | Live SFU participant count | Open edge visits: a viewer's browser beats every 30 s (`POST /events/beat`) and says goodbye on leave (`POST /events/leave`); a visit with no beat for 150 s ends at its last beat. The stream connecting or ending is not trusted for attendance. |
@@ -109,39 +109,43 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
   replays the SSE events onto that Room's emitter as `DataReceived`, `RoomMetadataChanged`
   and `Connected`. Every shared hook (chat, Q&A, polls, hands, controls, surveys) runs
   unchanged.
-- **Player.** `EdgePlayer` uses hls.js and adapts to the viewer's connection
-  (`lib/edge-hls.ts`, `ModeDecider`):
-  - **Smooth (standard HLS)** by default: whole 1s segments, about 3s behind, few requests.
-    Measured from India against the Germany origin, every request takes ~0.4–0.5s to first
-    byte and a 200ms part ~0.9s, so LL-HLS cannot keep up there: it fell behind to 6–8s,
-    jumped back to ~2s, stuttered and went black.
-  - **Low latency (LL-HLS)** when the join response says `lowLatency: true`
-    (`EDGE_PLAYBACK_LOW_LATENCY`, set it once the playback base is a CDN close to viewers),
-    or when the player measures a median fragment time-to-first-byte under 120ms over its
-    first 6 fragments. It moves up once. If LL then stalls more than twice in 30s it drops
-    back to smooth for the rest of the session — no flapping.
-  - The mode is switched with `hls.lowLatencyMode` on the one instance. Neither mode sets
-    `liveSyncDurationCount` / `liveMaxLatencyDurationCount` / `liveSyncDuration`: hls.js reads
-    those from the constructor config and, when set, ignores the playlist's `PART-HOLD-BACK`
-    (see 6ffc2e2). Smooth mode lands on hls.js's default 3 × target duration.
-  - **Catching up.** The playback speed is never changed: hls.js's own speed-up is off
-    (`maxLiveSyncPlaybackRate: 1`) and our catch-up rate is 1 too, because time-stretched
-    audio warbled and "cut out" (2026-10-20). Instead the player measures its distance behind
-    live every second against a target — `STANDARD_TARGET_SECONDS` (4s) in smooth mode,
-    `hls.targetLatency` (at least 1.5s, `LL_MIN_TARGET_SECONDS`) in low latency — and once it
-    is more than 2s past the target it skips forward to the target, landing no further than
-    1s short of what is already buffered so the skip never waits on a black frame
-    (`catchUp` / `seekToTarget` in `lib/edge-hls.ts`). Skips are at least 15s apart
-    (`JUMP_COOLDOWN_MS`). In low latency, 15s after startup the target is also reset (hls.js
-    raises it by `liveSyncOnStallIncrease`, 0.25s, per stall) and the player skips once back
-    to it (`settle` in `components/room/edge-player.tsx`).
-  - A stall or a recovery never shows black: the last frame is held on a canvas with a
-    "Reconnecting…" badge until playback resumes. Fatal network errors retry with backoff
-    (1, 2, 4, 8, 10s); media errors use hls.js's recovery.
-  - Safari plays the playlist natively (no mode switch).
-  - The readout shows how far behind live and the mode (*2.9s behind · Smooth*). **Back to
-    live** appears past 10s behind in either mode (`BEHIND_LIVE_SECONDS`). `edge_latency`
-    telemetry every 30s carries the latency, mode, stall count and median TTFB.
+- **Why plain HLS, not LL-HLS (2026-10-25).** The audience played LL-HLS (1s segments,
+  250–500ms parts, blocking playlist reloads, ~2s behind) until a customer webinar froze in
+  waves through Bunny. Bunny's request log showed why: request coalescing ties every viewer
+  waiting for the next part to one origin request, and those shared requests got stuck. For
+  `video1_stream.m3u8?_HLS_msn=1585&_HLS_part=0`, 89 viewers at the Singapore edge waited until
+  they gave up (`499`), 1–6s, while the origin was healthy and answered the same request for
+  another edge at once; the next wave (`1592` part 1) was 86 viewers, and moving the zone to
+  Bunny's Standard tier (Mumbai, Delhi edges) did not change it. ~130 viewers made 60–80k
+  requests a minute. The HLS spec asks CDNs to hold duplicate blocking requests and deliver
+  them from the pending fill (RFC 8216bis, Appendix B); in practice the shared fill is a single
+  point of failure for everyone behind an edge. Plain HLS is about one request a second per
+  viewer, every one cacheable, and nothing is held open. The cost is delay: ~6s behind live
+  (5–8s glass to glass) instead of ~2s, which a webinar does not feel — the stage talks over
+  WebRTC, and chat, polls and Q&A have their own channel.
+- **Which path a viewer gets.** With `EDGE_NEAR_COUNTRIES` set (e.g. `IN`), a viewer in one of
+  those countries, or of unknown country, plays the box directly (the project's
+  `broadcastHlsBase`), and everyone else plays the CDN (`edgePlaybackBase`, else
+  `EDGE_PLAYBACK_BASE`), which serves them from an edge near them. The country is Cloudflare's:
+  the site's Worker sends it as `X-Viewer-Country` (it drops the client's own CF-* headers).
+  The join returns `deliveryPath` (`direct`|`cdn`) and the other path as `fallbackPlaybackUrl`
+  (`config.EdgePlaybackChoiceFor`). Unset, everyone plays `edgePlaybackBase` as before.
+- **Player.** `EdgePlayer` uses hls.js with one setting for everyone (`lib/edge-hls.ts`):
+  `lowLatencyMode` off, `liveSyncDuration` 6s (`TARGET_SECONDS`), a 12s buffer, playback
+  speed never changed (`maxLiveSyncPlaybackRate: 1`: time-stretched audio warbled, 2026-10-20).
+  - **Keeping near live.** Each stall adds to hls.js's distance from live and nothing wins it
+    back, so once the player is more than 6s past its target it skips forward, landing no
+    further than 1s short of what is buffered so the skip never waits on a black frame
+    (`catchUp` / `seekToTarget`). Skips are at least 15s apart (`JUMP_COOLDOWN_MS`).
+  - A stall or a recovery never shows black: the last frame is held on a canvas, and a
+    "Reconnecting…" badge appears if it stays stuck for 4s. Fatal network errors retry with
+    backoff (1, 2, 4, 8, 10s); after 4 in a row with no playback the player moves, once, to
+    `fallbackPlaybackUrl` (`shouldUseFallback`), and reports `edge_fallback`. Media errors use
+    hls.js's recovery.
+  - Safari plays the playlist natively.
+  - **Back to live** appears past 20s behind (`BEHIND_LIVE_SECONDS`). `edge_latency`
+    telemetry every 30s carries the latency, the delivery path (`delivery`: `direct`|`cdn`),
+    the stall count and the median time to first byte.
 - **Layout.** Edge webinars' egress loads the composite at `<template>/edge`. While someone
   shares their screen the share fills the **whole frame** and up to three camera tiles sit
   small over the bottom-right corner (`lib/composite-layouts.ts`), for cameras that are on only:
@@ -184,7 +188,7 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `HLS_PART_DURATION` | `500ms` | LL-HLS part length. `500ms` for an origin far from its viewers (Hetzner → India); `250ms` where viewers are close (the Mumbai box behind Bunny's India edge): ~2.5s glass-to-glass, no stalls. |
+| `HLS_PART_DURATION` | — | No longer used (LL-HLS parts). Ignored if still in an old box's `.env`. |
 | `EGRESS_REMOTE` / `EGRESS_VPC_CIDR` | unset | Remote-egress mode: composites run on egress worker VMs (`deploy/egress-worker`), not on the box. |
 
 ## Environment
@@ -193,7 +197,7 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
 |---|---|---|
 | `EDGE_PLAYBACK_BASE` | empty | Where viewers play `<base>/<slug>/index.m3u8`. Empty means the origin's own `/live` (per-project `broadcastHlsBase`, else `BROADCAST_HLS_BASE`). Point it at a Bunny pull zone hostname that mirrors the origin's `/live/` path. That is the only switch: no code change. |
 | `BROADCAST_RTMP_BASE` | (existing) | Required. The egress pushes the mix here. Without it, edge cannot be chosen. |
-| `EDGE_PLAYBACK_LOW_LATENCY` | `false` | Tells viewers the playback base is close to them, so the player starts in LL-HLS. Set it **only** once `EDGE_PLAYBACK_BASE` points at a CDN pull zone; against the distant origin, LL-HLS stutters (see Player). Off, players still move up to LL-HLS on their own when they measure fast requests. |
+| `EDGE_NEAR_COUNTRIES` | empty | ISO country codes (`IN`, or `IN,LK`) whose viewers play the box directly; everyone else plays the CDN, each with the other as a fallback (see "Which path a viewer gets"). Empty: everyone plays the CDN base as before. (`EDGE_PLAYBACK_LOW_LATENCY` is gone with LL-HLS; it is ignored if still set.) |
 | `EDGE_DEBUG_CLOCK` | `false` | Latency aid. Edge webinars' egress loads the composite at `<RECORDINGS_EGRESS_TEMPLATE_URL>/edge/clock`, which draws a server-synced clock (ms) in the corner. The edge player shows its own synced clock beside the latency readout. Glass-to-glass latency is one clock minus the other on a single screenshot. Both sync to `GET /api/time`. |
 | `EDGE_ENCODING_WIDTH` / `EDGE_ENCODING_HEIGHT` | `1280` / `720` | Edge mix resolution (even, 320–3840 × 180–2160). |
 | `EDGE_ENCODING_FPS` | `25` | 10–60. The keyframe interval stays 1 s (25 frames at 25 fps). |
@@ -328,12 +332,16 @@ On a Hetzner project (on GCP/DO there is no Standard webinar to compare against)
 6. Compare SFU load in Grafana (CPU, packets/s) with N viewers on the edge webinar against
    the same N on the standard one.
 
-Expected delay: in smooth mode about 3–4s, steady. In low-latency mode about 1.5–3s, but only
-where requests are fast — next to the origin, or through a CDN pull zone close to the viewer.
+Expected delay: about 6s behind the origin's live edge, 5–8s glass to glass, the same on both
+paths.
 
 ## Phase 2
 
-**Bunny pull zone → MediaMTX LL-HLS origin.** Bunny Stream has no live ingest ("RTMP streams
+**Bunny pull zone → MediaMTX HLS origin.** (Written for LL-HLS; since 2026-10-25 the origin is
+plain HLS, so the `_HLS_msn` / `_HLS_part` notes below no longer apply. What a pull zone needs
+now: origin `Cache-Control` respected (Caddy sends 1s for playlists, 300s for segments), error
+responses not cached, request coalescing on for segments. While any viewer may still be on an
+LL-HLS player, add an Edge Rule **Disable Request Coalescing** for `*.m3u8` under `/live/`.) Bunny Stream has no live ingest ("RTMP streams
 are currently not supported"), so instead of pushing a second RTMP copy, a Bunny pull zone
 mirrors the existing origin, and viewers fetch from the edge.
 

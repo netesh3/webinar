@@ -18,7 +18,7 @@ becomes the `instance` label, `service.name` the `job` label.
 
 | OTel name | Prometheus name | Attributes | What it counts | Across instances |
 |---|---|---|---|---|
-| `webinarliv.edge_viewers` | `webinarliv_edge_viewers` | none | Edge (LL-HLS) event streams open on **this** instance (`/api/webinars/{slug}/events`, the in-process hub) | **sum** |
+| `webinarliv.edge_viewers` | `webinarliv_edge_viewers` | none | Edge (HLS) event streams open on **this** instance (`/api/webinars/{slug}/events`, the in-process hub) | **sum** |
 | `webinarliv.edge_viewers_cluster` | `webinarliv_edge_viewers_cluster` | `scope="cluster"` | Edge viewers whose browser beat in the last 150 s, every live webinar (Postgres `attendance_visits`; the number behind the host's badge and `GET /api/host/webinars/{slug}/edge`'s `viewers`) | **max** |
 | `webinarliv.live_sessions` | `webinarliv_live_sessions` | `scope="cluster"`, `kind` = `webinar` \| `meeting` \| `simulive` | Sessions with status live (a recurring session counts as `webinar`) | **max by (kind)** |
 | `webinarliv.webrtc_participants` | `webinarliv_webrtc_participants` | `scope="cluster"` | People in the video server's rooms of live sessions: open visits kept by LiveKit's participant_joined/left webhooks, hosts and attendees only (no recorder, caption agent or egress; no Zoom-venue sessions) | **max** |
@@ -40,10 +40,20 @@ stays right whichever instances are up. The same holds for the other two cluster
 The database read behind the cluster gauges is one query, cached for 15 seconds per instance.
 A failed read drops the cluster series for that export rather than reporting zero.
 
+### Player telemetry (`edge_latency`, Cloud Logging)
+
+Every edge player sends `edge_latency` every 30s (`web/components/room/edge-player.tsx`), logged by
+the API's telemetry sink: `latencySec`, `targetSec`, `stalls` (in the last 30s), `medianTtfbMs`,
+`bandwidthKbps`, and `delivery` — `direct` (the box) or `cdn`, after any fallback — so a stall
+wave can be split by path. `mode` is always `standard` since the move to plain HLS (2026-10-25).
+A player that gives up on its path sends `edge_fallback` (`from`, `to`). Which Bunny edge served
+a viewer is not in it: the player cannot read Bunny's `Server` header unless the pull zone adds
+`Access-Control-Expose-Headers: Server`; Bunny's own request log has the edge per request.
+
 ## PromQL for the dashboard
 
 ```promql
-# Edge (LL-HLS) viewers right now: the host-visible number (recommended headline)
+# Edge (HLS) viewers right now: the host-visible number (recommended headline)
 max(webinarliv_edge_viewers_cluster)
 
 # Edge event streams connected, summed over instances (and per instance, for balance)

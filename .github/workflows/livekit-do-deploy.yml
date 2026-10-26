@@ -21,7 +21,7 @@
 #   (deploy/livekit-hetzner/README.md, "Grafana Cloud")
 #
 # Until both SSH secrets are set the job SKIPS with a notice rather than failing, so a merge to
-# main is not red while the box is being set up. Box settings (HLS_PART_DURATION, MIXREC_*, …)
+# main is not red while the box is being set up. Box settings (MIXREC_*, …)
 # live in /opt/livekit/.env on the box and are never overwritten, nor are .env.keys and the
 # generated livekit.yaml.
 #

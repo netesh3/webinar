@@ -283,6 +283,56 @@ func TestEdgePlaybackBaseOverridesTheOrigin(t *testing.T) {
 	}
 }
 
+/* Delivery by where the viewer is (EDGE_NEAR_COUNTRIES): the country the Worker passes as
+ * X-Viewer-Country sends a viewer near the box to it, and anyone else to the CDN, each told
+ * the other path as the fallback. */
+func TestEdgeJoinChoosesThePathByCountry(t *testing.T) {
+	const cdn = "https://webinarliv.b-cdn.net/live"
+	h := newHarness(t, edgeConfig, func(c *config.Config) {
+		c.EdgePlaybackBase = cdn
+		c.EdgeNearCountries = []string{"IN"}
+	})
+	edgeHost(t, h, "edge-geo@test.dev")
+	wb := edgeWebinar(h, "Edge by country")
+	box := "https://live.test/live/" + wb.ID + "/index.m3u8"
+	viaCDN := cdn + "/" + wb.ID + "/index.m3u8"
+
+	join := func(email, country string) types.JoinResponse {
+		reg := h.registerAsGuest(wb.ID, email)
+		body, _ := json.Marshal(types.JoinRequest{JoinKey: reg.JoinKey})
+		req, _ := http.NewRequest(http.MethodPost, h.srv.URL+"/api/webinars/"+wb.ID+"/join", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if country != "" {
+			req.Header.Set("X-Viewer-Country", country)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, _ := io.ReadAll(res.Body)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("join from %q: %d %s", country, res.StatusCode, raw)
+		}
+		var out types.JoinResponse
+		h.decode(raw, &out)
+		return out
+	}
+
+	near := join("geo-in@test.dev", "IN")
+	if near.PlaybackURL != box || near.DeliveryPath != "direct" || near.FallbackPlaybackURL != viaCDN {
+		t.Fatalf("India: playback %q path %q fallback %q", near.PlaybackURL, near.DeliveryPath, near.FallbackPlaybackURL)
+	}
+	far := join("geo-us@test.dev", "US")
+	if far.PlaybackURL != viaCDN || far.DeliveryPath != "cdn" || far.FallbackPlaybackURL != box {
+		t.Fatalf("US: playback %q path %q fallback %q", far.PlaybackURL, far.DeliveryPath, far.FallbackPlaybackURL)
+	}
+	unknown := join("geo-none@test.dev", "")
+	if unknown.PlaybackURL != box || unknown.DeliveryPath != "direct" {
+		t.Fatalf("no country: playback %q path %q", unknown.PlaybackURL, unknown.DeliveryPath)
+	}
+}
+
 func TestEdgeEventsCarryChatAndTargetedInvites(t *testing.T) {
 	h := newHarness(t, edgeConfig)
 	edgeHost(t, h, "edge-events@test.dev")

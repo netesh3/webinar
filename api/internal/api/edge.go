@@ -1,6 +1,6 @@
 package api
 
-/* Edge delivery: the audience watches LL-HLS and never connects to LiveKit.
+/* Edge delivery: the audience watches HLS and never connects to LiveKit.
  *
  * Everything in this file is reached only for a webinar whose delivery is "edge"
  * (types.DeliveryEdge). Standard webinars, including CDN-broadcast (WHEP) ones, take exactly
@@ -321,6 +321,21 @@ func (s *Server) edgeAudience(ctx context.Context, wb types.Webinar, onStage boo
 	return u, u != ""
 }
 
+/* viewerCountry is the ISO country code Cloudflare puts on the request, "" when there is none.
+ *
+ * The site's Worker (web/worker.ts) drops the client's own CF-* headers before it calls this
+ * API and sends Cloudflare's country as X-Viewer-Country instead. CF-IPCountry is read too, for
+ * a request that reached Cloud Run through Cloudflare some other way. Not a credential: all a
+ * forged value can do is send that viewer down the other delivery path. */
+func viewerCountry(r *http.Request) string {
+	for _, h := range []string{"X-Viewer-Country", "CF-IPCountry"} {
+		if v := strings.ToUpper(strings.TrimSpace(r.Header.Get(h))); len(v) == 2 {
+			return v
+		}
+	}
+	return ""
+}
+
 const (
 	// eventsIssuer keeps an events token from ever passing as a session or a rejoin token,
 	// which are signed with the same secret.
@@ -387,24 +402,34 @@ func (s *Server) issueEdgeAudience(w http.ResponseWriter, r *http.Request, wb ty
 		s.fail(w, r, "edge: sign events token", err)
 		return false
 	}
-	s.log.Info("edge audience joined", "slug", wb.ID, "identity", identity)
+	/* Which way this viewer gets the stream: the box, or the CDN for someone far from it
+	 * (EDGE_NEAR_COUNTRIES; config.EdgePlaybackChoiceFor). playback, the old rule's URL, is
+	 * the answer whenever the choice has none. */
+	country := viewerCountry(r)
+	choice := s.cfg.EdgePlaybackChoiceFor(s.pinnedProject(r.Context(), wb), wb.ID, country)
+	if choice.URL == "" {
+		choice = config.EdgePlaybackChoice{URL: playback}
+	}
+	s.log.Info("edge audience joined", "slug", wb.ID, "identity", identity,
+		"country", country, "path", choice.Path)
 	httpx.JSON(w, http.StatusOK, types.JoinResponse{
-		Room:           lk.RoomName(wb.ID),
-		Role:           types.RoleAttendee,
-		Identity:       identity,
-		DisplayName:    name,
-		Controls:       wb.Controls,
-		Topic:          wb.Topic,
-		StartedAt:      wb.StartedAt,
-		EndedAt:        wb.EndedAt,
-		Hidden:         lk.HiddenFor(types.RoleAttendee, wb.Controls.HideAttendees),
-		JoinKey:        joinKeyFromIdentity(identity),
-		MaxDurationMin: wb.MaxDurationMin,
-		Delivery:       types.DeliveryEdge,
-		PlaybackURL:    playback,
-		EventsToken:    tok,
-		DebugClock:     s.cfg.EdgeDebugClock,
-		LowLatency:     s.cfg.EdgePlaybackLowLatency,
+		Room:                lk.RoomName(wb.ID),
+		Role:                types.RoleAttendee,
+		Identity:            identity,
+		DisplayName:         name,
+		Controls:            wb.Controls,
+		Topic:               wb.Topic,
+		StartedAt:           wb.StartedAt,
+		EndedAt:             wb.EndedAt,
+		Hidden:              lk.HiddenFor(types.RoleAttendee, wb.Controls.HideAttendees),
+		JoinKey:             joinKeyFromIdentity(identity),
+		MaxDurationMin:      wb.MaxDurationMin,
+		Delivery:            types.DeliveryEdge,
+		PlaybackURL:         choice.URL,
+		DeliveryPath:        choice.Path,
+		FallbackPlaybackURL: choice.Fallback,
+		EventsToken:         tok,
+		DebugClock:          s.cfg.EdgeDebugClock,
 	})
 	return true
 }

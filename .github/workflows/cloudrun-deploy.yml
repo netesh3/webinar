@@ -99,7 +99,7 @@
 #   DATABASE_POOL_MODE / DB_MAX_CONNS / DB_CONNECT_TIMEOUT / DB_POOLER_POOL_SIZE — database pool
 #     knobs (api/internal/store/dbconfig.go). DATABASE_POOL_MODE=transaction with a Supabase
 #     :5432 DATABASE_URL moves queries to :6543 without touching the secret.
-#   EDGE_PLAYBACK_BASE / EDGE_PLAYBACK_LOW_LATENCY / EDGE_DEBUG_CLOCK /
+#   EDGE_PLAYBACK_BASE / EDGE_NEAR_COUNTRIES / EDGE_DEBUG_CLOCK /
 #     EDGE_ENCODING_WIDTH / EDGE_ENCODING_HEIGHT / EDGE_ENCODING_FPS /
 #     EDGE_VIDEO_BITRATE_KBPS / EDGE_AUDIO_BITRATE_KBPS / EDGE_H264_PROFILE — Edge delivery playback and
 #     egress encoding; each unset keeps its default. See docs/edge-delivery.md.
@@ -242,7 +242,7 @@ jobs:
       # Edge delivery (docs/edge-delivery.md). Unset keeps the API's defaults.
       EDGE_PLAYBACK_BASE: ${{ vars.EDGE_PLAYBACK_BASE }}
       OPS_ALERT_EMAILS: ${{ vars.OPS_ALERT_EMAILS }}
-      EDGE_PLAYBACK_LOW_LATENCY: ${{ vars.EDGE_PLAYBACK_LOW_LATENCY }}
+      EDGE_NEAR_COUNTRIES: ${{ vars.EDGE_NEAR_COUNTRIES }}
       EDGE_DEBUG_CLOCK: ${{ vars.EDGE_DEBUG_CLOCK }}
       DEBUG_GOROUTINES: ${{ vars.DEBUG_GOROUTINES }}
       EDGE_ENCODING_WIDTH: ${{ vars.EDGE_ENCODING_WIDTH }}

@@ -1,41 +1,32 @@
 "use client";
 
-/* The Edge-delivery audience player: the stage mix as HLS, from the live origin or a CDN pull
- * zone in front of it (docs/edge-delivery.md).
+/* The Edge-delivery audience player: the stage mix as plain HLS, from the box or a CDN pull
+ * zone in front of it, whichever the join chose for this viewer (docs/edge-delivery.md).
  *
- * Adaptive: it starts in standard (smooth) HLS unless the server says the playback URL is a
- * CDN close to the viewer, measures its own fragment requests, and moves up to LL-HLS only
- * when they are fast — dropping back for good if LL-HLS then stalls. The policy is
- * lib/edge-hls.ts (ModeDecider); this file only wires it to hls.js. The mode is switched with
- * hls.lowLatencyMode on the one instance, never by rebuilding the player, because rebuilding
- * detaches the video and that is a black frame.
+ * One mode, about six seconds behind live (lib/edge-hls.ts says why it is no longer LL-HLS).
+ * A stall or a recovery never leaves the picture black: the last frame is held on a canvas
+ * over the video, with a small "Reconnecting" badge if it stays stuck. Fatal network errors
+ * retry with backoff, and after several in a row on the same URL the player moves, once, to
+ * the other one the join offered (fallbackPlaybackUrl). Media errors go through hls.js's own
+ * recovery.
  *
- * A stall or a recovery never leaves the picture black either: the last frame is held on a
- * canvas over the video with a small "Reconnecting" badge until playback resumes. Fatal
- * network errors retry with backoff; media errors go through hls.js's own recovery.
- *
- * Safari plays the playlist natively (no mode switch there). On top of the shared player
- * chrome this adds a LIVE badge, Back to live when far behind, an edge_latency telemetry
- * sample, and, with the debug clock on, the server-synced clock the composite draws too. */
+ * Safari plays the playlist natively. On top of the shared player chrome this adds Back to
+ * live when far behind, an edge_latency telemetry sample, and, with the debug clock on, the
+ * server-synced clock the composite draws too. */
 
 import Hls from "hls.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BEHIND_LIVE_SECONDS,
-  MODE_BUFFER,
-  ModeDecider,
+  PlaybackStats,
+  TARGET_SECONDS,
   bufferedAhead,
   catchUp,
-  LL_MIN_TARGET_SECONDS,
-  STANDARD_TARGET_SECONDS,
   JUMP_COOLDOWN_MS,
   edgeHlsConfig,
-  liveTarget,
   retryDelayMs,
   seekToTarget,
-  SEEK_MARGIN_SECONDS,
-  STARTUP_GRACE_MS,
-  type PlaybackMode,
+  shouldUseFallback,
 } from "@/lib/edge-hls";
 import { setEdgeVideoDelay } from "@/lib/caption-sync";
 import { jumpToLiveOnReturn } from "@/lib/background-return";
@@ -48,30 +39,32 @@ import { EdgeClock } from "./edge-clock";
 import { EdgeSpeakerSplit } from "./edge-speaker-split";
 
 const TELEMETRY_EVERY_MS = 30_000;
-/* A wait shorter than this is a hiccup, not worth a badge. Low latency keeps only 1–2s
- * buffered, so a one-second blip on the viewer's network or at the CDN edge stalls the
- * picture and plays on by itself; at 800ms every such blip read as "Reconnecting"
- * (instant-webinar-2050, 2026-10-24). */
+/* A wait shorter than this is a hiccup, not worth a badge: a blip on the viewer's network or
+ * at the CDN edge stalls the picture and plays on by itself, and at 800ms every such blip read
+ * as "Reconnecting" (instant-webinar-2050, 2026-10-24). */
 const RECONNECTING_AFTER_MS = 4000;
 
 export function EdgePlayer({
   playbackUrl,
+  fallbackUrl,
+  deliveryPath,
   coverUrl,
   identity,
   slug,
   debugClock,
   clockOffsetMs,
-  lowLatency = false,
   speakerView = false,
 }: {
   playbackUrl: string;
+  /** The other path, for when playbackUrl keeps failing (JoinResponse.fallbackPlaybackUrl). */
+  fallbackUrl?: string;
+  /** Which path playbackUrl is, "direct" (the box) or "cdn", for telemetry. */
+  deliveryPath?: string;
   coverUrl?: string;
   identity: string;
   slug: string;
   debugClock?: boolean;
   clockOffsetMs: number;
-  /** The playback URL is a CDN close to viewers: start in LL-HLS (JoinResponse.lowLatency). */
-  lowLatency?: boolean;
   /** The host's layout may put the mix in speaker view: phones split it (EdgeSpeakerSplit). */
   speakerView?: boolean;
 }) {
@@ -81,7 +74,7 @@ export function EdgePlayer({
   // The viewer muted it themselves: never unmute behind their back.
   const userMutedRef = useRef(false);
   const lastJumpRef = useRef(0);
-  const deciderRef = useRef<ModeDecider | null>(null);
+  const statsRef = useRef<PlaybackStats | null>(null);
   // Playback has started. Until then currentTime is 0, hls.latency reads as the whole
   // window, and the catch-up jumped past the buffer: a black start (edge test, 2026-10-19).
   const playingRef = useRef(false);
@@ -90,7 +83,8 @@ export function EdgePlayer({
   const [isMuted, setIsMuted] = useState(true);
   const [latency, setLatency] = useState<number | null>(null);
   const [native, setNative] = useState(false);
-  const [mode, setMode] = useState<PlaybackMode>(lowLatency ? "low-latency" : "standard");
+  // Which path is playing: the join's choice, or the other one after a fallback.
+  const [path, setPath] = useState(deliveryPath ?? "");
   const [reconnecting, setReconnecting] = useState(false);
   const [frozen, setFrozen] = useState(false);
   const { telemetryEnabled } = useAppConfig();
@@ -111,13 +105,13 @@ export function EdgePlayer({
     playingRef.current = false;
     let netAttempts = 0;
     let mediaRecoveries = 0;
-    let llTargetSet = false;
-    let settleTimer: ReturnType<typeof setTimeout> | undefined;
-    let llTarget = LL_MIN_TARGET_SECONDS;
+    // The URL being played, and whether it is already the fallback (never switched back).
+    let source = playbackUrl;
+    let switched = false;
+    setPath(deliveryPath ?? "");
 
-    const decider = new ModeDecider({ cdn: lowLatency, now: Date.now() });
-    deciderRef.current = decider;
-    setMode(decider.mode);
+    const stats = new PlaybackStats();
+    statsRef.current = stats;
 
     /* Sound if the browser allows it, muted if not. Browsers block autoplay WITH sound until
      * the person has interacted with the page — but an attendee has usually just clicked Join
@@ -193,37 +187,21 @@ export function EdgePlayer({
         // Nothing to hold; the badge still shows.
       }
     };
-    const applyMode = (next: PlaybackMode) => {
-      if (!hls) return;
-      hls.lowLatencyMode = next === "low-latency";
-      hls.config.maxBufferLength = MODE_BUFFER[next];
-      // The low-latency floor below is a liveSyncDuration; standard mode must not keep it.
-      if (llTargetSet) hls.targetLatency = next === "low-latency" ? llTarget : STANDARD_TARGET_SECONDS;
-      setMode(next);
-    };
-
-    /* After startup, settle. hls.js adds liveSyncOnStallIncrease to its target for every stall
-     * and keeps it, and a fresh stream stalls a few times while it fills (our own fallback
-     * ignores those: STARTUP_GRACE_MS). Five of them left a viewer at a 2.75s target and 3.6s
-     * behind for the whole session, against the 1.5s it was set to (2026-10-20). So when the
-     * grace ends: put the target back (the setter also clears hls.js's stall count), and skip
-     * once to it, inside the buffer so it is a jump in the picture and not a wait. */
-    const settle = () => {
-      if (!hls || !hls.lowLatencyMode || !llTargetSet) return;
-      hls.targetLatency = llTarget;
-      const ahead = bufferedAhead(video.buffered, video.currentTime);
-      if (Number.isFinite(hls.latency) && hls.latency > llTarget + 0.5 && ahead > SEEK_MARGIN_SECONDS) {
-        video.currentTime = seekToTarget({
-          currentTime: video.currentTime,
-          latency: hls.latency,
-          target: llTarget,
-          bufferedEnd: video.currentTime + ahead,
-        });
+    /* The other path, once: the box for a CDN viewer, the CDN for a box viewer. Reported, so a
+     * path that keeps sending people away shows in telemetry. */
+    const moveToFallback = (): boolean => {
+      if (!shouldUseFallback({ fatalNetworkErrors: netAttempts, fallbackUrl, switched })) return false;
+      switched = true;
+      source = fallbackUrl as string;
+      const next = deliveryPath === "cdn" ? "direct" : deliveryPath === "direct" ? "cdn" : "fallback";
+      setPath(next);
+      netAttempts = 0;
+      if (telemetryEnabled) {
+        trackEvent("edge_fallback", { userId: identity, roomName: slug }, { from: deliveryPath ?? null, to: next });
       }
+      return true;
     };
     const onPlaying = () => {
-      if (!played) settleTimer = setTimeout(settle, STARTUP_GRACE_MS);
-      decider.played(Date.now());
       played = true;
       playingRef.current = true;
       resumed();
@@ -244,16 +222,10 @@ export function EdgePlayer({
     };
 
     if (Hls.isSupported()) {
-      hls = new Hls(edgeHlsConfig(decider.mode));
+      hls = new Hls(edgeHlsConfig());
       hlsRef.current = hls;
-      hls.loadSource(playbackUrl);
+      hls.loadSource(source);
       hls.attachMedia(video);
-      hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-        if (llTargetSet || !hls?.lowLatencyMode || !data.details.live) return;
-        llTargetSet = true;
-        llTarget = Math.max(LL_MIN_TARGET_SECONDS, data.details.partHoldBack ?? 0);
-        hls.targetLatency = llTarget;
-      });
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         ready();
         tryPlay();
@@ -264,24 +236,13 @@ export function EdgePlayer({
         if (!video.paused) resumed();
       });
       hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
-        const t = (data.part ?? data.frag).stats.loading;
+        const t = data.frag.stats.loading;
         if (!t || !t.first || !t.start) return;
-        const next = decider.fragmentLoaded(t.first - t.start, Date.now());
-        if (next) applyMode(next);
-        // Back up to low latency after a quiet spell in standard; settle once it has parts.
-        const back = decider.tick(Date.now());
-        if (back) {
-          applyMode(back);
-          clearTimeout(settleTimer);
-          settleTimer = setTimeout(settle, 5000);
-        }
+        stats.fragmentLoaded(t.first - t.start);
       });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) {
-          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
-            const next = decider.stalled(Date.now());
-            if (next) applyMode(next);
-          }
+          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) stats.stalled(Date.now());
           return;
         }
         if (played) {
@@ -307,18 +268,20 @@ export function EdgePlayer({
          * the manifest from loadSource, and it does not retry a 404 on its own. So the first
          * viewer, arriving while MediaMTX starts the muxer, sat on black until a refresh. */
         /* startLoad resumes a stream that paused; after two that did not bring it back (a mix
-         * restarted under a new muxer, the low-latency playlist lost), reload it from the top,
-         * which is what a refresh did whenever a viewer sat on "Reconnecting" for good. */
-        const reload = !hls?.levels?.length || netAttempts >= 2;
-        retry = setTimeout(() => {
-          if (reload) hls?.loadSource(playbackUrl);
-          else hls?.startLoad();
-        }, retryDelayMs(netAttempts));
+         * restarted under a new muxer, the playlist lost), reload it from the top, which is
+         * what a refresh did whenever a viewer sat on "Reconnecting" for good. Past
+         * FALLBACK_AFTER_ERRORS in a row, the reload is of the other path. */
         netAttempts += 1;
+        const moved = moveToFallback();
+        const reload = moved || !hls?.levels?.length || netAttempts >= 2;
+        retry = setTimeout(() => {
+          if (reload) hls?.loadSource(source);
+          else hls?.startLoad();
+        }, moved ? 0 : retryDelayMs(netAttempts - 1));
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       setNative(true);
-      video.src = playbackUrl;
+      video.src = source;
       const onMeta = () => {
         ready();
         tryPlay();
@@ -331,12 +294,13 @@ export function EdgePlayer({
           setError("The stream is starting, usually in under a minute…");
         }
         clearTimeout(retry);
+        netAttempts += 1;
+        const moved = moveToFallback();
         retry = setTimeout(() => {
-          video.src = playbackUrl;
+          video.src = source;
           video.load();
           tryPlay();
-        }, retryDelayMs(netAttempts));
-        netAttempts += 1;
+        }, moved ? 0 : retryDelayMs(netAttempts - 1));
       };
       video.addEventListener("loadedmetadata", onMeta);
       video.addEventListener("error", onErr);
@@ -356,14 +320,16 @@ export function EdgePlayer({
 
     return () => {
       for (const g of gestures) document.removeEventListener(g, unmuteOnGesture, true);
-      clearTimeout(settleTimer);
       clearTimeout(retry);
       clearTimeout(waitTimer);
       detachVideo();
       hls?.destroy();
       hlsRef.current = null;
     };
-  }, [playbackUrl, lowLatency]);
+    // telemetryEnabled, identity and slug are read for the fallback event only; a change to
+    // them must not rebuild the player.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playbackUrl, fallbackUrl, deliveryPath]);
 
   // The caption overlay holds each line by this much, so captions land with the video they
   // caption rather than seconds ahead of it (lib/caption-sync.ts).
@@ -373,16 +339,15 @@ export function EdgePlayer({
   useEffect(() => () => setEdgeVideoDelay(null), []);
 
   const latencyRef = useRef(latency);
-  const modeRef = useRef(mode);
+  const pathRef = useRef(path);
   useEffect(() => {
     latencyRef.current = latency;
-    modeRef.current = mode;
-  }, [latency, mode]);
+    pathRef.current = path;
+  }, [latency, path]);
 
   /* Latency: hls.js knows it; natively it is the distance to the end of the seekable range.
-   * The same tick keeps hls.js near live (lib/edge-hls.ts liveTarget): it only does that itself in low-latency mode, so
-   * standard mode plays slightly faster while behind, and either mode jumps when far behind
-   * (lib/edge-hls.ts catchUp). Safari's native player keeps its own distance. */
+   * The same tick keeps hls.js near live: well past its target, it skips forward inside the
+   * buffer (lib/edge-hls.ts catchUp). Safari's native player keeps its own distance. */
   useEffect(() => {
     let lastTime = -1;
     const timer = setInterval(() => {
@@ -399,14 +364,9 @@ export function EdgePlayer({
       }
       if (hls && Number.isFinite(hls.latency) && hls.latency > 0) {
         setLatency(hls.latency);
-        const target = liveTarget(modeRef.current, hls.targetLatency);
-        if (video && !video.paused && playingRef.current && target != null) {
-          const next = catchUp({
-            latency: hls.latency,
-            target,
-            bufferAhead: bufferedAhead(video.buffered, video.currentTime),
-            rate: video.playbackRate,
-          });
+        const target = TARGET_SECONDS;
+        if (video && !video.paused && playingRef.current) {
+          const next = catchUp({ latency: hls.latency, target });
           if (next === "jump" && Date.now() - lastJumpRef.current >= JUMP_COOLDOWN_MS) {
             lastJumpRef.current = Date.now();
             video.currentTime = seekToTarget({
@@ -415,9 +375,6 @@ export function EdgePlayer({
               target,
               bufferedEnd: video.currentTime + bufferedAhead(video.buffered, video.currentTime),
             });
-            video.playbackRate = 1;
-          } else if (next !== "jump" && modeRef.current === "standard" && video.playbackRate !== next.rate) {
-            video.playbackRate = next.rate;
           }
         }
       } else if (video && video.seekable.length > 0) {
@@ -433,14 +390,17 @@ export function EdgePlayer({
       const value = latencyRef.current;
       if (value == null) return;
       const hls = hlsRef.current;
-      const decider = deciderRef.current;
-      const ttfb = decider?.medianTtfb();
+      const stats = statsRef.current;
+      const ttfb = stats?.medianTtfb();
       trackEvent("edge_latency", { userId: identity, roomName: slug }, {
         latencySec: Math.round(value * 100) / 100,
         targetSec: hls?.targetLatency ?? null,
         native,
-        mode: modeRef.current,
-        stalls: decider?.stallCount(Date.now()) ?? 0,
+        // "standard" since there is one mode; kept so old and new samples compare in queries.
+        mode: "standard",
+        // "direct" (the box) or "cdn", after any fallback; "" when the join did not say.
+        delivery: pathRef.current,
+        stalls: stats?.stallCount(Date.now()) ?? 0,
         medianTtfbMs: ttfb == null ? null : Math.round(ttfb),
         bandwidthKbps: hls ? Math.round(hls.bandwidthEstimate / 1000) : null,
       });
@@ -452,9 +412,8 @@ export function EdgePlayer({
     const video = videoRef.current;
     if (!video) return;
     const hls = hlsRef.current;
-    const target = hls ? liveTarget(modeRef.current, hls.targetLatency) : null;
-    const edge = hls && target != null && Number.isFinite(hls.latency) && hls.latency > 0
-      ? seekToTarget({ currentTime: video.currentTime, latency: hls.latency, target })
+    const edge = hls && Number.isFinite(hls.latency) && hls.latency > 0
+      ? seekToTarget({ currentTime: video.currentTime, latency: hls.latency, target: TARGET_SECONDS })
       : video.seekable.length > 0 ? video.seekable.end(video.seekable.length - 1) - 1 : null;
     if (edge != null && Number.isFinite(edge)) video.currentTime = edge;
     void video.play().catch(() => {});
@@ -475,7 +434,7 @@ export function EdgePlayer({
         : video.seekable.length > 0
           ? video.seekable.end(video.seekable.length - 1) - video.currentTime
           : null;
-    if (jumpToLiveOnReturn({ latencySec: latency, behindSec: BEHIND_LIVE_SECONDS[modeRef.current] })) {
+    if (jumpToLiveOnReturn({ latencySec: latency, behindSec: BEHIND_LIVE_SECONDS })) {
       // The catch-up tick must not jump again straight after this one.
       lastJumpRef.current = Date.now();
       jumpToLive();
@@ -485,7 +444,7 @@ export function EdgePlayer({
   }, [jumpToLive]);
   const quiet = useReturnQuiet(onReturn);
 
-  const behind = latency != null && latency > BEHIND_LIVE_SECONDS[mode];
+  const behind = latency != null && latency > BEHIND_LIVE_SECONDS;
 
   return (
     <div className="relative h-full w-full">
