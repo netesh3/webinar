@@ -3,6 +3,7 @@
 import { Component, Suspense, useEffect, useState, useMemo, useRef, useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { EdgeClock } from "@/components/room/edge-clock";
+import { CLOCK_CELLS, CLOCK_CELL_H, CLOCK_CELL_W, encodeClock } from "@/lib/clock-strip";
 import { useServerClockOffset } from "@/lib/edge-events";
 import {
   audienceLayoutFromMetadata,
@@ -730,12 +731,44 @@ function MutedMicIcon({ className }: { className?: string }) {
   );
 }
 
-/** The server-synced clock in the composite's corner, for reading glass-to-glass latency. */
+/** The server-synced clock in the composite's corner, for reading glass-to-glass latency,
+ *  and the same time as a strip of cells bottom left, for a program to read (lib/clock-strip). */
 function CompositeClock() {
   const offset = useServerClockOffset(true);
   return (
-    <div className="pointer-events-none fixed bottom-3 right-3 z-50">
-      <EdgeClock offsetMs={offset} />
-    </div>
+    <>
+      <div className="pointer-events-none fixed bottom-3 right-3 z-50">
+        <EdgeClock offsetMs={offset} />
+      </div>
+      <ClockStrip offsetMs={offset} />
+    </>
   );
+}
+
+/* One canvas redrawn every frame: 42 cells are cheaper painted than laid out as elements, on
+ * the one Chrome on the box that has no CPU to spare. */
+function ClockStrip({ offsetMs }: { offsetMs: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    let frame = 0;
+    const draw = () => {
+      const w = Math.round(window.innerWidth * CLOCK_CELL_W);
+      const h = Math.round(window.innerHeight * CLOCK_CELL_H);
+      if (canvas.width !== w * CLOCK_CELLS || canvas.height !== h) {
+        canvas.width = w * CLOCK_CELLS;
+        canvas.height = h;
+      }
+      encodeClock(Date.now() + offsetMs).forEach((white, i) => {
+        ctx.fillStyle = white ? "#ffffff" : "#000000";
+        ctx.fillRect(i * w, 0, w, h);
+      });
+      frame = requestAnimationFrame(draw);
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, [offsetMs]);
+  return <canvas ref={ref} aria-hidden className="pointer-events-none fixed bottom-0 left-0 z-50" />;
 }

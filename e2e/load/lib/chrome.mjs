@@ -127,6 +127,23 @@ export async function attach(wsUrl, label, { init } = {}) {
   return { label, call, evaluate, navigate, waitFor, close: () => ws.close() };
 }
 
+/* newWindow(browser, port) -> a fresh target in its OWN window: its DevTools WebSocket URL.
+ * `browser` is attach()ed to the browser target (/json/version). A background tab is
+ * "hidden", and Chrome keeps a hidden page's autoplaying video paused: with tabs, one viewer per
+ * Chrome played and the rest sat still (measured 2026-10-26, browser-viewers.mjs). A window of
+ * its own is "visible", as a person watching is. */
+export async function newWindow(browser, port, url = "about:blank") {
+  const res = await browser.call("Target.createTarget", { url, newWindow: true });
+  const id = res?.result?.targetId;
+  if (!id) throw new Error("Chrome did not open a window");
+  return `ws://127.0.0.1:${port}/devtools/page/${id}`;
+}
+
+/** The browser target's DevTools WebSocket URL (for Target.* calls). */
+export async function browserWsUrl(port) {
+  return (await (await fetch(`http://127.0.0.1:${port}/json/version`)).json()).webSocketDebuggerUrl;
+}
+
 /** newTab(port) -> a fresh target's DevTools WebSocket URL. */
 export async function newTab(port, url = "about:blank") {
   const res = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: "PUT" });

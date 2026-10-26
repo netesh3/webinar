@@ -33,6 +33,7 @@ import { jumpToLiveOnReturn } from "@/lib/background-return";
 import { useReturnQuiet } from "@/lib/use-return-quiet";
 import { deviceSummary } from "@/lib/device";
 import { trackEvent } from "@/lib/telemetry";
+import { loadProbe, reportLoadProbe, startingPath } from "@/lib/load-probe";
 import { useAppConfig } from "../providers";
 import { StagePlayerChrome } from "./cdn-attendee-room";
 import { EdgeClock } from "./edge-clock";
@@ -75,6 +76,9 @@ export function EdgePlayer({
   const userMutedRef = useRef(false);
   const lastJumpRef = useRef(0);
   const statsRef = useRef<PlaybackStats | null>(null);
+  // For the load-test kit's read-out (lib/load-probe.ts): the URL playing and the fallbacks.
+  const sourceRef = useRef("");
+  const fallbacksRef = useRef(0);
   // Playback has started. Until then currentTime is 0, hls.latency reads as the whole
   // window, and the catch-up jumped past the buffer: a black start (edge test, 2026-10-19).
   const playingRef = useRef(false);
@@ -106,9 +110,12 @@ export function EdgePlayer({
     let netAttempts = 0;
     let mediaRecoveries = 0;
     // The URL being played, and whether it is already the fallback (never switched back).
-    let source = playbackUrl;
+    // The load-test kit may start a viewer on the other path (lib/load-probe.ts).
+    const start = startingPath(playbackUrl, fallbackUrl, deliveryPath, loadProbe()?.preferPath);
+    let source = start.url;
     let switched = false;
-    setPath(deliveryPath ?? "");
+    setPath(start.path);
+    sourceRef.current = source;
 
     const stats = new PlaybackStats();
     statsRef.current = stats;
@@ -190,14 +197,16 @@ export function EdgePlayer({
     /* The other path, once: the box for a CDN viewer, the CDN for a box viewer. Reported, so a
      * path that keeps sending people away shows in telemetry. */
     const moveToFallback = (): boolean => {
-      if (!shouldUseFallback({ fatalNetworkErrors: netAttempts, fallbackUrl, switched })) return false;
+      if (!shouldUseFallback({ fatalNetworkErrors: netAttempts, fallbackUrl: start.fallback, switched })) return false;
       switched = true;
-      source = fallbackUrl as string;
-      const next = deliveryPath === "cdn" ? "direct" : deliveryPath === "direct" ? "cdn" : "fallback";
+      source = start.fallback as string;
+      sourceRef.current = source;
+      fallbacksRef.current += 1;
+      const next = start.path === "cdn" ? "direct" : start.path === "direct" ? "cdn" : "fallback";
       setPath(next);
       netAttempts = 0;
       if (telemetryEnabled) {
-        trackEvent("edge_fallback", { userId: identity, roomName: slug }, { from: deliveryPath ?? null, to: next });
+        trackEvent("edge_fallback", { userId: identity, roomName: slug }, { from: start.path || null, to: next });
       }
       return true;
     };
@@ -340,10 +349,12 @@ export function EdgePlayer({
 
   const latencyRef = useRef(latency);
   const pathRef = useRef(path);
+  const reconnectingRef = useRef(reconnecting);
   useEffect(() => {
     latencyRef.current = latency;
     pathRef.current = path;
-  }, [latency, path]);
+    reconnectingRef.current = reconnecting;
+  }, [latency, path, reconnecting]);
 
   /* Latency: hls.js knows it; natively it is the distance to the end of the seekable range.
    * The same tick keeps hls.js near live: well past its target, it skips forward inside the
@@ -380,6 +391,13 @@ export function EdgePlayer({
       } else if (video && video.seekable.length > 0) {
         setLatency(Math.max(0, video.seekable.end(video.seekable.length - 1) - video.currentTime));
       }
+      reportLoadProbe({
+        latencySec: latencyRef.current,
+        path: pathRef.current,
+        url: sourceRef.current,
+        reconnecting: reconnectingRef.current,
+        fallbacks: fallbacksRef.current,
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, []);

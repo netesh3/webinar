@@ -10,7 +10,13 @@
  * video is made once with ffmpeg (testsrc2 + a 440 Hz tone, MJPEG + WAV, ~10 s, looped by
  * Chrome's --use-file-for-fake-video-capture); without ffmpeg, Chrome's built-in fake camera is
  * used. --screen-share also presses Share (headless Chrome shares its virtual screen); this
- * path depends on the room's UI and is best effort. */
+ * path depends on the room's UI and is best effort.
+ *
+ * run.mjs's content phases (--viewers browser) drive the host presenter through its handle:
+ * startScreenShare() / stopShare() / shareVideoFile(path), the same buttons a host presses
+ * (Share; More -> "Share a video file" -> "Share this video"; "Stop sharing"). What is shared
+ * is synthetic: the virtual screen of a headless Chrome (the presenter's own room page), and a
+ * generated video with motion and a tone (makeShareVideo). */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +29,26 @@ import { apiBase, assertSafeTarget } from "./lib/client.mjs";
 import { BOX_WAIT_MS, boxProgress, videoServerStatus } from "./lib/box.mjs";
 
 const SELF = fileURLToPath(import.meta.url);
+
+/* The video a presenter shares in the "video" phase: ~seconds of constant motion (Conway's life
+ * on a coloured field, hard on the encoder) and a tone that steps every second, 720p25 H.264 +
+ * AAC with the index up front, as a host's MP4 would be. Made once; null without ffmpeg. */
+export function makeShareVideo(seconds = 420) {
+  const out = join(tmpdir(), "webinarliv-load-media", `share-${seconds}s.mp4`);
+  try {
+    mkdirSync(join(tmpdir(), "webinarliv-load-media"), { recursive: true });
+    if (!existsSync(out)) {
+      execFileSync("ffmpeg", ["-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "life=s=1280x720:mold=10:r=25:ratio=0.1:life_color=#ffcc00:death_color=#1d3557",
+        "-f", "lavfi", "-i", "aevalsrc=0.3*sin(2*PI*(300+100*mod(floor(t),4))*t):s=48000",
+        "-t", String(seconds), "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", out], { stdio: "ignore" });
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
 
 /** Makes (once) the looping test media; returns Chrome flags, or [] for the built-in fake. */
 export function testMediaFlags({ size = "1280x720", fps = 30, seconds = 10 } = {}) {
@@ -129,8 +155,41 @@ export async function startPresenter(o) {
       log(`${stamp()} presenter ${label}: screen share ${clicked ? "pressed" : "button not found"}`);
     }
     let prev = null;
+    // The page's file input for "Share a video file": a DOM node id the protocol can fill.
+    const fileInput = async () => {
+      const doc = await page.call("DOM.getDocument", { depth: -1, pierce: true });
+      const q = await page.call("DOM.querySelector", { nodeId: doc?.result?.root?.nodeId, selector: 'input[type=file][accept*="video"]' });
+      return q?.result?.nodeId || null;
+    };
     return {
       label,
+      /** Share: the virtual screen, picked automatically (--auto-select-desktop-capture-source). */
+      async startScreenShare() {
+        const clicked = await page.waitFor(clickButton("^share$|share screen"), 10000);
+        if (clicked) await page.waitFor(clickButton("screen|entire"), 5000);
+        return !!clicked;
+      },
+      /** Stop sharing, whichever share is on. */
+      async stopShare() {
+        return !!(await page.waitFor(clickButton("^stop sharing$"), 10000));
+      },
+      /* More -> "Share a video file" -> the file -> "Share this video". Resolves true once the
+       * dialog took the file and Share this video was pressed. */
+      async shareVideoFile(path) {
+        if (!(await page.evaluate(clickButton("share a video file")))) {
+          await page.waitFor(clickButton("^more( tools)?$"), 10000);
+          if (!(await page.waitFor(clickButton("share a video file"), 10000))) return false;
+        }
+        let node = null;
+        for (let i = 0; i < 20 && !node; i++) {
+          node = await fileInput().catch(() => null);
+          if (!node) await sleep(500);
+        }
+        if (!node) return false;
+        await page.call("DOM.setFileInputFiles", { files: [path], nodeId: node });
+        // "Share this video" enables once the file is loaded into the dialog's preview.
+        return !!(await page.waitFor(clickButton("^share this video$"), 30000, 1000));
+      },
       async status() {
         const s = await page.evaluate(OUTBOUND);
         if (!s) return null;

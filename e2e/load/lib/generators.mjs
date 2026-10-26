@@ -180,11 +180,14 @@ export function ssh(host, cmd, { input, keep = false, onLine, signal } = {}) {
 
 /* startGenerators(o) -> Promise<[{ host, ok, result?, error? }]>, resolved when every generator
  * has finished. o: { gens: generatorPlan(), kitDir (this e2e/load), remoteKit (optional), run,
- * keysFile, viewerArgs: [...] (shared hls-viewers flags), startAt, log, signal }.
+ * keysFile, viewerArgs: [...] (shared viewer flags), startAt, log, signal, tool (the viewer
+ * script, default hls-viewers.mjs; browser-viewers.mjs for real browsers), genArgs(g, i) (this
+ * generator's own flags, e.g. its --region) }.
  * Preparation (kit, keys) happens before `ready` resolves, so the caller can wait for it
  * before the shared start time. */
 export function startGenerators(o) {
   const log = o.log ?? console.log;
+  const tool = o.tool ?? "hls-viewers.mjs";
   const keys = readFileSync(o.keysFile);
   // Per generator, so one host listed twice (a big box running two slices) does not collide.
   const where = o.gens.map((g, i) => {
@@ -200,7 +203,7 @@ export function startGenerators(o) {
         stdio: ["ignore", "pipe", "inherit"],
         env: { ...process.env, COPYFILE_DISABLE: "1" },
       });
-      const r = await ssh(g.host, `rm -rf ${shq(base)} && mkdir -p ${shq(kit)} && tar -xzf - -C ${shq(kit)} 2>/dev/null; test -f ${shq(`${kit}/hls-viewers.mjs`)}`, { input: tar.stdout });
+      const r = await ssh(g.host, `rm -rf ${shq(base)} && mkdir -p ${shq(kit)} && tar -xzf - -C ${shq(kit)} 2>/dev/null; test -f ${shq(`${kit}/${tool}`)}`, { input: tar.stdout });
       if (r.code !== 0) throw new Error(`${g.host}: could not copy the kit (ssh exit ${r.code})`);
     }
     const k = await ssh(g.host, `cat > ${shq(`${kit}/keys-extra-${tag}.json`)} && node -v`, { input: keys, keep: true });
@@ -218,8 +221,8 @@ export function startGenerators(o) {
         if (s.status === "rejected") return { host: g.host, ok: false, error: s.reason?.message ?? String(s.reason) };
         const out = `${kit}/gen-${tag}.json`;
         const cmd =
-          `cd ${shq(kit)} && { ulimit -n 1048576 2>/dev/null || true; } && exec node hls-viewers.mjs ` +
-          [...o.viewerArgs, "--keys", `keys-extra-${tag}.json`, "--from", String(g.from), "--steps", g.steps.join(","), "--generator", g.host,
+          `cd ${shq(kit)} && { ulimit -n 1048576 2>/dev/null || true; } && exec node ${tool} ` +
+          [...o.viewerArgs, ...(o.genArgs?.(g, i) ?? []), "--keys", `keys-extra-${tag}.json`, "--from", String(g.from), "--steps", g.steps.join(","), "--generator", g.host,
             "--max-viewers", String(g.count), "--start-at", String(o.startAt), "--out", out].map(shq).join(" ");
         const r = await ssh(g.host, cmd, { onLine: (l) => l.trim() && log(`[${g.host}] ${l}`), signal: o.signal });
         // Interrupted: closing ssh does not reliably stop the remote node; this does.

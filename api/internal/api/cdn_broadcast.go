@@ -93,9 +93,9 @@ func (s *Server) startBroadcastIfEnabled(ctx context.Context, wb types.Webinar, 
 	var err error
 	if wb.Delivery == types.DeliveryEdge {
 		// Edge webinars' mix encoding is configurable (EDGE_ENCODING_*): 720p25 by default.
-		info, err = sfu.StartBroadcastEgressEncoded(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), s.edgeEncoding(), startURL, nil)
+		info, err = sfu.StartBroadcastEgressEncoded(ctx, lk.RoomName(wb.ID), s.mixTemplateURLFor(ctx, wb), s.edgeEncoding(), startURL, nil)
 	} else {
-		info, err = sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb), preset, startURL, nil)
+		info, err = sfu.StartBroadcastEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURLFor(ctx, wb), preset, startURL, nil)
 	}
 	if err != nil {
 		s.log.Warn("cdn broadcast: could not start egress", "slug", wb.ID, "error", redactErr(err, startURL))
@@ -268,7 +268,7 @@ func (s *Server) startEgressRecording(
 		/* No mix yet, but the room has somewhere to push — the host set up YouTube before
 		 * pressing Record, or an edge mix that has not come up. One compositor for both, on
 		 * the mix's own template, so the picture is the one the audience would get anyway. */
-		info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURL(wb),
+		info, err = sfu.StartCombinedEgress(ctx, lk.RoomName(wb.ID), s.mixTemplateURLFor(ctx, wb),
 			livekit.EncodingOptionsPreset_H264_720P_30, startURL, storageKey, s3Opts, nil)
 		if err != nil {
 			return nil, false, err

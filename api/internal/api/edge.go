@@ -764,6 +764,22 @@ func (s *Server) mixTemplateURL(wb types.Webinar) string {
 	return s.compositeTemplateURL(wb, s.cfg.EdgeDebugClock)
 }
 
+/* mixTemplateURLFor is the mix's page for this webinar: mixTemplateURL, with the latency clock
+ * also on for a webinar an admin marked as a load test (admin_loadtest.go). The load-test kit's
+ * browser viewers read the clock's time strip off the picture they are shown, which is the
+ * true delay to the viewer (e2e/load/lib/browser-viewer.mjs). Never a customer's webinar: the
+ * mark needs a .invalid host, and EDGE_DEBUG_CLOCK stays the only way to show it to everyone.
+ * A failed lookup means no clock, never a failed mix. */
+func (s *Server) mixTemplateURLFor(ctx context.Context, wb types.Webinar) string {
+	clock := s.cfg.EdgeDebugClock
+	if !clock {
+		if _, ok, err := s.store.LoadTestViewers(ctx, wb.ID); err == nil && ok {
+			clock = true
+		}
+	}
+	return s.compositeTemplateURL(wb, clock)
+}
+
 /* recordingTemplateURL is the page a recording egress renders: the mix's own page (so an edge
  * webinar's recording is laid out as its audience sees it, never the other way round), minus
  * the latency clock, which is a debugging aid and has no place in a file. The host's layout
