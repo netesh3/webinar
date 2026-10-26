@@ -45,7 +45,29 @@ type CaptionsBox struct {
 	LiveKitURL string
 	// BootTimeout: a droplet not active this long after create is replaced (CAPTIONS_BOX_BOOT_TIMEOUT, 10m).
 	BootTimeout time.Duration
+
+	/* Provider is who transcribes live (CAPTIONS_PROVIDER: local, the box's Whisper models;
+	 * deepgram, Deepgram's streaming API, deploy/captions/webcaptions/provider.py). Default
+	 * local. With deepgram, DeepgramKey (DEEPGRAM_API_KEY) goes to the box in its env file like
+	 * the LiveKit secret, and FallbackLocal (CAPTIONS_FALLBACK_LOCAL, default true) keeps the
+	 * local models loaded to take over a room when Deepgram keeps failing. */
+	Provider         string
+	DeepgramKey      string
+	DeepgramModel    string // CAPTIONS_DEEPGRAM_MODEL, default nova-3
+	DeepgramLanguage string // CAPTIONS_DEEPGRAM_LANGUAGE, default multi (English + Hindi code-switching)
+	FallbackLocal    bool
 }
+
+// CaptionsProviderDeepgram is CAPTIONS_PROVIDER for Deepgram's streaming live captions.
+const CaptionsProviderDeepgram = "deepgram"
+
+/* Deepgram does the transcribing, so without the local fallback the box only moves audio: a
+ * 1-vCPU box carries many rooms (the socket per speaker is the cost, not CPU). With the
+ * fallback loaded, the box keeps its local size so it can take a room over. */
+const (
+	captionsDeepgramSize         = "s-1vcpu-2gb"
+	captionsDeepgramRoomsPerVCPU = 8
+)
 
 // captionsBoxManagedTag marks the droplets the captions manager owns.
 const captionsBoxManagedTag = "webinar-captions-ondemand"
@@ -95,10 +117,16 @@ func CaptionsRoomsFor(vcpus int) int {
 }
 
 func loadCaptionsBox() CaptionsBox {
+	provider := strings.ToLower(strings.TrimSpace(env("CAPTIONS_PROVIDER", "local")))
+	fallback := envBool("CAPTIONS_FALLBACK_LOCAL", true)
+	defaultSize := "s-4vcpu-8gb"
+	if provider == CaptionsProviderDeepgram && !fallback {
+		defaultSize = captionsDeepgramSize
+	}
 	b := CaptionsBox{
 		On:          envBool("CAPTIONS_BOX_ENABLED", false),
 		Name:        strings.TrimSpace(env("CAPTIONS_BOX_NAME", "captions-blr-1")),
-		Size:        strings.TrimSpace(env("CAPTIONS_BOX_SIZE", "s-4vcpu-8gb")),
+		Size:        strings.TrimSpace(env("CAPTIONS_BOX_SIZE", defaultSize)),
 		SnapshotTag: strings.TrimSpace(env("CAPTIONS_BOX_IMAGE", "webinar-captions-image")),
 		Tags:        splitAndTrim(env("CAPTIONS_BOX_TAGS", "webinar-captions")),
 		ManagedTag:  captionsBoxManagedTag,
@@ -108,6 +136,12 @@ func loadCaptionsBox() CaptionsBox {
 		APIURL:      strings.TrimRight(strings.TrimSpace(env("CAPTIONS_BOX_API_URL", "https://webinarliv.com")), "/"),
 		LiveKitURL:  strings.TrimSpace(env("CAPTIONS_BOX_LIVEKIT_URL", "")),
 		BootTimeout: envDuration("CAPTIONS_BOX_BOOT_TIMEOUT", 10*time.Minute),
+
+		Provider:         provider,
+		DeepgramKey:      strings.TrimSpace(env("DEEPGRAM_API_KEY", "")),
+		DeepgramModel:    strings.TrimSpace(env("CAPTIONS_DEEPGRAM_MODEL", "nova-3")),
+		DeepgramLanguage: strings.TrimSpace(env("CAPTIONS_DEEPGRAM_LANGUAGE", "multi")),
+		FallbackLocal:    fallback,
 	}
 	return b.withDefaults()
 }
@@ -119,7 +153,14 @@ func (b CaptionsBox) withDefaults() CaptionsBox {
 		b.CPUs = vcpus
 	}
 	if b.MaxRooms == 0 && b.CPUs > 0 {
-		b.MaxRooms = CaptionsRoomsFor(b.CPUs)
+		if b.Provider == CaptionsProviderDeepgram && !b.FallbackLocal {
+			b.MaxRooms = captionsDeepgramRoomsPerVCPU * b.CPUs
+		} else {
+			b.MaxRooms = CaptionsRoomsFor(b.CPUs)
+		}
+	}
+	if b.Provider == "" {
+		b.Provider = "local"
 	}
 	if b.ManagedTag == "" {
 		b.ManagedTag = captionsBoxManagedTag
@@ -132,6 +173,9 @@ func (b CaptionsBox) withDefaults() CaptionsBox {
 
 // WithDefaults is withDefaults for a config built by hand (tests).
 func (b CaptionsBox) WithDefaults() CaptionsBox { return b.withDefaults() }
+
+// captionsDeepgramKey is what a Deepgram API key looks like: a plain token, safe in the env file.
+var captionsDeepgramKey = regexp.MustCompile(`^[A-Za-z0-9_-]{20,128}$`)
 
 // captionsBoxPlain is a name or value written into the droplet's user data and .env.
 var captionsBoxPlain = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -160,6 +204,21 @@ func (c Config) validateCaptionsBox() []error {
 	}
 	if b.MaxRooms < 1 || b.MaxRooms > 100 {
 		errs = append(errs, fmt.Errorf("CAPTIONS_BOX_MAX_ROOMS must be 1-100"))
+	}
+	switch b.Provider {
+	case "local":
+	case CaptionsProviderDeepgram:
+		// The key goes into the box's env file: it must be a plain token (never echoed here).
+		if !captionsDeepgramKey.MatchString(b.DeepgramKey) {
+			errs = append(errs, fmt.Errorf("CAPTIONS_PROVIDER=deepgram needs DEEPGRAM_API_KEY (a plain token)"))
+		}
+		for _, kv := range [][2]string{{"CAPTIONS_DEEPGRAM_MODEL", b.DeepgramModel}, {"CAPTIONS_DEEPGRAM_LANGUAGE", b.DeepgramLanguage}} {
+			if !captionsBoxPlain.MatchString(kv[1]) {
+				errs = append(errs, fmt.Errorf("%s must be a plain name, got %q", kv[0], kv[1]))
+			}
+		}
+	default:
+		errs = append(errs, fmt.Errorf("CAPTIONS_PROVIDER must be local or deepgram, got %q", b.Provider))
 	}
 	if u, err := url.Parse(b.APIURL); err != nil || u.Scheme != "https" || u.Host == "" || !boxGrafanaSafe.MatchString(b.APIURL) {
 		errs = append(errs, fmt.Errorf("CAPTIONS_BOX_API_URL must be an https:// URL, got %q", b.APIURL))

@@ -172,6 +172,11 @@ A bigger size adds 8 CPU series per vCPU (`c-4`: ~140). Adding `role` to the vid
 labels starts each of its series afresh once (the old ones go stale after 5 minutes and leave
 the active-series count within a few hours); no query that selects by `box` changes.
 
+With `CAPTIONS_PROVIDER=deepgram` the box's CPU should fall to a few percent per room (it only
+moves audio); compare the agent's `captions.latency` lines (`e2e p50/p90`, Loki
+`{box=~"captions.*"} |= "caption latency"`) before and after, and watch for
+`deepgram: stream … lost` and `switched to the local models` lines.
+
 Captions box panels (all also work with `box=~"captions-.*"` in place of `role="captions"`):
 
 ```promql
