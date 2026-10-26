@@ -33,11 +33,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
+      # Lifecycle rules are bucket configuration: R2 refuses them (403) to the app's
+      # object-scoped key. R2_ADMIN_* is an "Admin Read & Write" R2 token used only here,
+      # so the API itself never holds bucket-admin rights (2026-10-26).
       RECORDINGS_S3_BUCKET: ${{ secrets.RECORDINGS_S3_BUCKET }}
       RECORDINGS_S3_ENDPOINT: ${{ secrets.RECORDINGS_S3_ENDPOINT }}
       RECORDINGS_S3_REGION: ${{ secrets.RECORDINGS_S3_REGION }}
-      RECORDINGS_S3_ACCESS_KEY: ${{ secrets.RECORDINGS_S3_ACCESS_KEY }}
-      RECORDINGS_S3_SECRET_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
+      RECORDINGS_S3_ACCESS_KEY: ${{ secrets.R2_ADMIN_ACCESS_KEY || secrets.RECORDINGS_S3_ACCESS_KEY }}
+      RECORDINGS_S3_SECRET_KEY: ${{ secrets.R2_ADMIN_SECRET_KEY || secrets.RECORDINGS_S3_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
 

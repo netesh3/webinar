@@ -77,6 +77,8 @@ Standard $0.015/GB-month, Infrequent Access **$0.010**, a **30-day minimum** per
 **Saving:** a third off everything over a month old. At ~300 GB of month-old recordings that's
 ~$1.50/month ($4.50 → $3.00), growing with the library.
 
+**Credentials:** lifecycle rules are bucket configuration, which R2 refuses (403) to the app's object-scoped key. Create an R2 API token with **Admin Read & Write** (Cloudflare → R2 → Manage API tokens) and store it as the repo secrets `R2_ADMIN_ACCESS_KEY` / `R2_ADMIN_SECRET_KEY`; only this workflow reads them, and without them it falls back to the recordings key and fails on the first call.
+
 **Applying or changing the rules:** run **Actions → Apply R2 lifecycle**. It's a dry run by
 default, which prints the rules and changes nothing; untick it to apply. The tool reads the
 bucket's rules and keeps every rule it didn't write, including R2's default multipart-abort
