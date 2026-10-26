@@ -76,3 +76,11 @@ assert.equal(starting.action, "none");
 const failed = attendeeJoinRefusal("sfu_failed", "The video server could not be started.");
 assert.equal(failed.title, "The video server couldn't start");
 assert.equal(failed.action, "none");
+
+// Past the attendee limit: the title says full, the body carries the limit and who can raise it.
+const full = attendeeJoinRefusal(
+  "room_full",
+  "This webinar is full (50 attendees). Ask the host to raise the limit.",
+);
+assert.equal(full.title, "The webinar is full");
+assert.equal(full.body, "This webinar is full (50 attendees). Ask the host to raise the limit.");

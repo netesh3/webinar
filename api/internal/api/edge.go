@@ -638,9 +638,17 @@ func (s *Server) handleHostEdgeStatus(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "edge status: load webinar", err)
 		return
 	}
-	out := types.EdgeStatus{Delivery: wb.Delivery}
+	out := types.EdgeStatus{Delivery: wb.Delivery, AudienceLimit: s.audienceLimit(r.Context(), wb)}
 	if out.Delivery == "" {
 		out.Delivery = types.DeliveryStandard
+	}
+	// The count the join check uses, so "N / limit" in the room is the number that turns people away.
+	if wb.Status == types.StatusLive {
+		if seats, err := s.store.AudienceAdmission(r.Context(), slug, ""); err != nil {
+			s.log.Warn("edge status: audience", "slug", slug, "error", err)
+		} else {
+			out.Audience = seats.Count
+		}
 	}
 	if wb.Delivery == types.DeliveryEdge {
 		out.PlaybackURL = s.cfg.EdgePlaybackURLFor(s.pinnedProject(r.Context(), wb), wb.ID)

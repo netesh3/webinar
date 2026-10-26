@@ -50,11 +50,12 @@ func TestPlanSetsTheAttendeeCeiling(t *testing.T) {
 	}
 	var raised types.Webinar
 	h.decode(raw, &raised)
-	if raised.AttendeeLimit != 500 {
-		t.Fatalf("attendeeLimit on enterprise = %d, want 500", raised.AttendeeLimit)
+	// Enterprise allows 500, but no webinar admits more than one video box serves.
+	if raised.AttendeeLimit != types.MaxWebinarAudience {
+		t.Fatalf("attendeeLimit on enterprise = %d, want %d", raised.AttendeeLimit, types.MaxWebinarAudience)
 	}
 
-	// Downgraded after scheduling: the stored 500 no longer admits 500.
+	// Downgraded after scheduling: the stored 300 no longer admits 300.
 	h.login("neeraj@acme.dev")
 	if acct := setPlan("", http.StatusOK); acct.Plan != "" || acct.AttendeeCap != types.PlanLaunchAttendees {
 		t.Fatalf("after removing the plan: plan %q cap %d", acct.Plan, acct.AttendeeCap)
@@ -62,8 +63,9 @@ func TestPlanSetsTheAttendeeCeiling(t *testing.T) {
 	h.login("plan-coach@test.dev")
 	h.goLive(wb.ID)
 	reg := h.registerAs(wb.ID, "plan-attendee@test.dev")
+	// The room the launch cap makes (cap plus stage headroom), already full.
 	h.rooms.mu.Lock()
-	h.rooms.count = types.PlanLaunchAttendees
+	h.rooms.count = types.PlanLaunchAttendees + 5
 	h.rooms.mu.Unlock()
 	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/join", types.JoinRequest{JoinKey: reg.JoinKey})
 	if res.StatusCode != http.StatusConflict {

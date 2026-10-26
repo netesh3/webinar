@@ -159,6 +159,7 @@ import type {
   KeepRecordingLinkResponse,
   SetUserRecordingStorageRequest,
   AdminWebinarStatus,
+  SetAudienceCapRequest,
 } from "./api-types";
 import { toSearchParams, type AttendeeQuery } from "./engagement/query";
 import { captionsURL } from "./caption-track";
@@ -1876,6 +1877,11 @@ export const api = {
    *  refuses every other move with 409 and a reason. */
   adminSetWebinarStatus: (slug: string, status: AdminWebinarStatus["status"]) =>
     patch<Webinar>(`/api/admin/webinars/${seg(slug)}/status`, { status } satisfies AdminWebinarStatus),
+
+  /** Sets one webinar's audience ceiling past the usual 300 (or under it), up to 1000;
+   *  it becomes the webinar's attendee limit. Null goes back to the usual ceiling. */
+  adminSetAudienceCap: (slug: string, audienceCap: number | null) =>
+    patch<Webinar>(`/api/admin/webinars/${seg(slug)}/audience-cap`, { audienceCap: audienceCap ?? undefined } satisfies SetAudienceCapRequest),
 
   // ---------------------------------------------------------- sales chat (admin)
 

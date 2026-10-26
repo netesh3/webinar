@@ -16,6 +16,7 @@ import {
 } from "@/lib/registration-questions";
 import { Boxed, FormGroup, FormSection, Text } from "./chrome";
 import { limitOptions, type FormState, type SetForm } from "./form-state";
+import { MaxWebinarAudience } from "@/lib/api-types";
 
 export function RegistrationSection({
   form,
@@ -31,7 +32,20 @@ export function RegistrationSection({
   // The plan's cap applies under the server's; the API clamps to the same number.
   const planCap = account?.attendeeCap ?? 0;
   const planCapped = planCap > 0 && (!config.maxAttendees || planCap < config.maxAttendees);
-  const seatCeiling = planCapped ? planCap : config.maxAttendees;
+  /* Never above MaxWebinarAudience, what one video box serves straight to its audience; the
+   * API clamps to the same number (attendeeCeiling). An admin's override for this webinar
+   * replaces the whole rule. */
+  const serverCeiling = Math.min(
+    (planCapped ? planCap : config.maxAttendees) || MaxWebinarAudience,
+    MaxWebinarAudience,
+  );
+  const overridden = form.audienceCapOverride > 0;
+  const seatCeiling = overridden ? form.audienceCapOverride : serverCeiling;
+  const seatHint = overridden
+    ? `An admin set this webinar's ceiling to ${seatCeiling.toLocaleString()} attendees.`
+    : planCapped && planCap < MaxWebinarAudience
+      ? `Your plan allows up to ${seatCeiling.toLocaleString()} attendees at once. Registrations stop at this number too.`
+      : `Up to ${seatCeiling.toLocaleString()} attendees at once per webinar. Registrations stop at this number too.`;
   /* Off for every account until an admin turns it on, and paused for everyone
    * (OfferJoinWithoutRegistration, lib/join-without-registration.ts). Hiding the switch
    * is the courtesy; the server still refuses a save that turns registration off. */
@@ -72,16 +86,10 @@ export function RegistrationSection({
 
             <Select
               id="limit"
-              label="Attendee limit"
+              label="Max attendees"
               value={String(form.attendeeLimit)}
               onChange={(v) => set("attendeeLimit", Number(v))}
-              hint={
-                seatCeiling
-                  ? planCapped
-                    ? `Your plan allows up to ${seatCeiling.toLocaleString()} concurrent attendees.`
-                    : `This server is sized for up to ${seatCeiling.toLocaleString()} concurrent attendees.`
-                  : undefined
-              }
+              hint={seatHint}
             >
               {limitOptions(seatCeiling, form.attendeeLimit).map(
                 (n) => (

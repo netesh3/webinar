@@ -5,6 +5,7 @@ import {
   useParticipants,
   useRoomContext,
 } from "@livekit/components-react";
+import { AudienceSeats } from "./audience-seats";
 import { RoomEvent, Track, type Participant, type Room } from "livekit-client";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
@@ -491,6 +492,7 @@ function HostRoster() {
           </button>
           )}
         </div>
+        {!meeting && !replaying && <AudienceSeats slug={slug} />}
 
         {/* The queue, and the one action that clears it.
 

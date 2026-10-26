@@ -5189,6 +5189,13 @@ export interface Webinar {
    */
   guestJoinAllowed: boolean;
   attendeeLimit: number /* int */;
+  /**
+   *  AudienceCapOverride is an admin's per-webinar ceiling (1..MaxAudienceOverride) in place
+   * 	 * of the usual MaxWebinarAudience and plan cap; 0 when none is set. Only an admin sets it
+   * 	 * (PATCH /api/admin/webinars/{slug}/audience-cap), and the host's own limit may then go
+   * 	 * up to it.
+   */
+  audienceCapOverride?: number /* int */;
   registrantCount: number /* int */;
   priceUsd?: number /* int */;
   customQuestions: CustomQuestion[];
@@ -8856,6 +8863,14 @@ export interface DeliveryPolicy {
 export interface EdgeStatus {
   delivery: string;
   viewers: number /* int */;
+  /**
+   *  Audience is the attendees counted against the limit right now, on either delivery:
+   * 	 * open visits by attendees not on the stage, plus anyone admitted in the last minute and
+   * 	 * a half whose visit has not opened yet (store.AudienceAdmission). AudienceLimit is the
+   * 	 * limit itself (ExpectedAudience), so the host can see "N / limit".
+   */
+  audience: number /* int */;
+  audienceLimit: number /* int */;
   playbackUrl?: string;
   /**
    *  AudienceStream is, while an Edge webinar is live, whether its audience has a picture:
@@ -8902,6 +8917,23 @@ export const PlanEnterprise: Plan = "enterprise";
  * PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
  */
 export const PlanLaunchAttendees = 200;
+/**
+ *  MaxWebinarAudience is the most attendees one webinar admits, whatever the plan: what one
+ *  * video box serves straight to its audience alongside other sessions (2026-10-25: 130 viewers
+ *  * through the CDN froze in waves, while the box itself served every test cleanly). An admin
+ *  * can raise one webinar past it, up to MaxAudienceOverride (AudienceCapOverride).
+ */
+export const MaxWebinarAudience = 300;
+/**
+ * MaxAudienceOverride is the largest per-webinar ceiling an admin may set.
+ */
+export const MaxAudienceOverride = 1000;
+/**
+ * SetAudienceCapRequest is PATCH /api/admin/webinars/{slug}/audience-cap. Null removes it.
+ */
+export interface SetAudienceCapRequest {
+  audienceCap?: number /* int */;
+}
 /**
  *  WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
  *  * page needs to decide whether to ask a signed-in person for their phone and for
