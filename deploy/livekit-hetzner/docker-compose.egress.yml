@@ -1,4 +1,4 @@
-# LiveKit Egress, Redis, and MediaMTX (the Edge LL-HLS origin).
+# LiveKit Egress, Redis, and MediaMTX (the Edge HLS origin).
 # Extends the base livekit-hetzner deployment.
 #
 # Usage:
@@ -17,7 +17,7 @@ services:
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
 
-  # Live origin for Edge delivery: RTMP ingest from egress, LL-HLS out through Caddy.
+  # Live origin for Edge delivery: RTMP ingest from egress, plain HLS out through Caddy.
   # Host network like everything else here so egress can push rtmp://127.0.0.1.
   # The plain image: the -ffmpeg variant was for the WHEP audio transcode, now gone.
   mediamtx:

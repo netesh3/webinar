@@ -5,7 +5,7 @@
  * Same room as CdnAttendeeRoom — header, control bar, side panel, chat, Q&A, polls, raised
  * hands, surveys — with two differences, both the point of edge delivery:
  *
- *   - the picture is the stage mix as LL-HLS (EdgePlayer), from the origin or a CDN in front
+ *   - the picture is the stage mix as plain HLS (EdgePlayer), from the origin or a CDN in front
  *     of it, not WHEP from the video server;
  *   - nothing connects to LiveKit. The Room below never connects; useEdgeEvents feeds it the
  *     session's events from the SSE stream, so every shared hook works on it unchanged.
@@ -348,7 +348,8 @@ export function EdgeAudienceRoom({
                           slug={slug}
                           debugClock={Boolean(join.debugClock)}
                           clockOffsetMs={clockOffset}
-                          lowLatency={Boolean(join.lowLatency)}
+                          fallbackUrl={join.fallbackPlaybackUrl}
+                          deliveryPath={join.deliveryPath}
                           speakerView={mayBeSpeakerView(controls.audienceLayout)}
                         />
                         {/* Reactions float over the player here as they do over the stage — this room

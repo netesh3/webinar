@@ -3996,10 +3996,13 @@ type JoinResponse struct {
 	EventsToken string `json:"eventsToken,omitempty"`
 	// DebugClock asks the edge player to show its server-synced clock (EDGE_DEBUG_CLOCK).
 	DebugClock bool `json:"debugClock,omitempty"`
-	/* LowLatency says the playback URL is served close to viewers (a CDN pull zone), so the
-	 * player may use LL-HLS from the first second. Without it the player starts on standard
-	 * HLS and only moves to LL-HLS if it measures fast requests (EDGE_PLAYBACK_LOW_LATENCY). */
-	LowLatency bool `json:"lowLatency,omitempty"`
+	/* DeliveryPath is which way PlaybackURL reaches this viewer: "direct" (the video box) or
+	 * "cdn" (a pull zone), chosen by where they are (EDGE_NEAR_COUNTRIES). Empty when the
+	 * server does not choose per viewer. For telemetry; the player does not branch on it. */
+	DeliveryPath string `json:"deliveryPath,omitempty"`
+	/* FallbackPlaybackURL is the other path, for a player whose PlaybackURL keeps failing:
+	 * the CDN for a direct viewer, the box for a CDN one. Empty when there is only one. */
+	FallbackPlaybackURL string `json:"fallbackPlaybackUrl,omitempty"`
 	// EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
 	// viewer's browser knows that demotion returns them to the feed, not to the SFU.
 	EdgeWebinar bool `json:"edgeWebinar,omitempty"`

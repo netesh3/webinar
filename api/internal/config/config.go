@@ -188,11 +188,13 @@ type Config struct {
 	/* DebugGoroutines turns on GET /api/admin/debug/goroutines, this instance's goroutine
 	 * profile for an admin (api/debug_goroutines.go). Off by default (DEBUG_GOROUTINES). */
 	DebugGoroutines bool
-	/* EdgePlaybackLowLatency tells edge players the playback base is close to them (a CDN
-	 * pull zone in front of the origin), so LL-HLS can be used from the start. Off: players
-	 * start on standard HLS and only switch to LL-HLS when they measure fast requests, because
-	 * LL-HLS against a distant origin (India to Germany, ~0.4s a request) cannot keep up. */
-	EdgePlaybackLowLatency bool
+	/* EdgeNearCountries turns on delivery by where the viewer is (EDGE_NEAR_COUNTRIES, ISO
+	 * country codes, e.g. "IN"). A viewer in one of them, or of unknown country, plays the
+	 * box itself (the project's broadcastHlsBase, else BROADCAST_HLS_BASE); everyone else plays
+	 * the CDN pull zone (edgePlaybackBase, else EDGE_PLAYBACK_BASE), which serves them from an
+	 * edge near them. Each is offered the other as a fallback (EdgePlaybackChoiceFor). Empty
+	 * keeps the old rule: the CDN when there is one, for everybody. */
+	EdgeNearCountries []string
 	/* EdgeEncoding is the mix encoding for edge webinars' egress only: EDGE_ENCODING_WIDTH /
 	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (DefaultEdgeEncodingFPS, 25),
 	 * EDGE_VIDEO_BITRATE_KBPS (DefaultEdgeVideoBitrateKbps, 1500), EDGE_AUDIO_BITRATE_KBPS
@@ -597,7 +599,7 @@ func Load() (Config, error) {
 		OpsAlertEmails:              splitAndTrim(env("OPS_ALERT_EMAILS", "")),
 		EdgeDebugClock:              strings.EqualFold(strings.TrimSpace(env("EDGE_DEBUG_CLOCK", "")), "true"),
 		DebugGoroutines:             strings.EqualFold(strings.TrimSpace(env("DEBUG_GOROUTINES", "")), "true"),
-		EdgePlaybackLowLatency:      strings.EqualFold(strings.TrimSpace(env("EDGE_PLAYBACK_LOW_LATENCY", "")), "true"),
+		EdgeNearCountries:           countryList(env("EDGE_NEAR_COUNTRIES", "")),
 		EdgeEncodingWidth:           envIntStrict("EDGE_ENCODING_WIDTH", 1280),
 		EdgeEncodingHeight:          envIntStrict("EDGE_ENCODING_HEIGHT", 720),
 		EdgeEncodingFPS:             envIntStrict("EDGE_ENCODING_FPS", DefaultEdgeEncodingFPS),
@@ -1057,7 +1059,8 @@ func (c Config) BroadcastRTMPURL(slug string) string {
 	return c.BroadcastRTMPBase + "/" + strings.TrimSpace(slug)
 }
 
-/* EdgePlaybackURLFor is the LL-HLS playlist an Edge-delivery audience plays.
+/* EdgePlaybackURLFor is the HLS playlist an Edge-delivery audience plays under the old rule
+ * (the CDN when there is one); EdgePlaybackChoiceFor chooses per viewer.
  *
  * Empty when there is no live origin (no BROADCAST_RTMP_BASE): the egress has nowhere to
  * push, so there is nothing to play, and join keeps the audience on standard delivery. */
@@ -1082,6 +1085,80 @@ func (c Config) EdgePlaybackURLFor(projectID, slug string) string {
 		return ""
 	}
 	return base + "/" + slug + "/index.m3u8"
+}
+
+/* The two ways a viewer can get the stream, in the order EdgePlaybackChoiceFor uses them. */
+const (
+	EdgePathDirect = "direct"
+	EdgePathCDN    = "cdn"
+)
+
+/* EdgePlaybackChoice is the playlist one viewer plays, which path that is (EdgePathDirect,
+ * EdgePathCDN, or "" under the old rule), and the other path to fall back to, if any. */
+type EdgePlaybackChoice struct {
+	URL      string
+	Path     string
+	Fallback string
+}
+
+/* EdgePlaybackChoiceFor picks the playlist for a viewer in country (ISO code from the edge,
+ * "" when unknown).
+ *
+ * With EDGE_NEAR_COUNTRIES set and both a box origin and a CDN base configured, a viewer near
+ * the box (or of unknown country) plays it directly and everyone else plays the CDN, each with
+ * the other as Fallback. The box is where the stream has always played cleanly; the CDN is
+ * where a viewer far from it gets an edge near them (2026-10-25: the audience moved to plain
+ * HLS, which a CDN serves from cache). Anything else is the old rule, EdgePlaybackURLFor. */
+func (c Config) EdgePlaybackChoiceFor(projectID, slug, country string) EdgePlaybackChoice {
+	legacy := c.EdgePlaybackURLFor(projectID, slug)
+	if legacy == "" || len(c.EdgeNearCountries) == 0 {
+		return EdgePlaybackChoice{URL: legacy}
+	}
+	direct := ""
+	if p, ok := c.liveKitProject(projectID); ok && p.BroadcastHLSBase != "" {
+		direct = p.BroadcastHLSBase
+	} else {
+		direct = c.BroadcastHLSBase
+	}
+	if direct == "" {
+		return EdgePlaybackChoice{URL: legacy}
+	}
+	directURL := direct + "/" + strings.TrimSpace(slug) + "/index.m3u8"
+	if directURL == legacy {
+		// No CDN in front: there is only the one path.
+		return EdgePlaybackChoice{URL: legacy, Path: EdgePathDirect}
+	}
+	if c.nearCountry(country) {
+		return EdgePlaybackChoice{URL: directURL, Path: EdgePathDirect, Fallback: legacy}
+	}
+	return EdgePlaybackChoice{URL: legacy, Path: EdgePathCDN, Fallback: directURL}
+}
+
+/* nearCountry reports whether a viewer in country plays the box directly. Unknown counts as
+ * near: the box is the path that has always worked, and Cloudflare's own markers for "no
+ * country" (XX) and Tor (T1) say nothing about distance. */
+func (c Config) nearCountry(country string) bool {
+	country = strings.ToUpper(strings.TrimSpace(country))
+	if country == "" || country == "XX" || country == "T1" {
+		return true
+	}
+	for _, n := range c.EdgeNearCountries {
+		if n == country {
+			return true
+		}
+	}
+	return false
+}
+
+// countryList parses EDGE_NEAR_COUNTRIES: comma- or space-separated codes, upper-cased.
+func countryList(v string) []string {
+	var out []string
+	for _, f := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' }) {
+		if f = strings.ToUpper(strings.TrimSpace(f)); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // LiveKitProjectByID is the configured project with that id.

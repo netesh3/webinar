@@ -1,5 +1,6 @@
-# Live origin in front of MediaMTX: its LL-HLS on /live/*, for Edge viewers and the CDN pull
-# zone. flush_interval -1 so LL-HLS parts never sit in a proxy buffer.
+# Live origin in front of MediaMTX: its plain HLS on /live/*, for Edge viewers, played
+# directly or through the CDN pull zone. flush_interval -1 so a segment streams out as
+# MediaMTX writes it rather than sitting in a proxy buffer.
 #
 # No CORS headers here. MediaMTX already sends them; a second
 # Access-Control-Allow-Origin makes browsers reject the response.
@@ -19,9 +20,14 @@
 		# "private, no-cache" instead of being sent beside it. With both, the CDN pull zone
 		# honoured the private one and cached nothing: every viewer went to the origin.
 		#
-		# Successful responses only. A part asked for before it exists, or a blocking reload
-		# too far ahead, is a 404/400 from MediaMTX; cached for a minute at the CDN that would
-		# be a hole in the stream for every viewer behind that PoP. Errors are never stored.
+		# Successful responses only. A segment asked for before it exists is a 404 from
+		# MediaMTX; cached at the CDN that would be a hole in the stream for every viewer
+		# behind that edge. Errors are never stored (below).
+		#
+		# Playlists change every segment (~2s): a second at the CDN shares one fetch between
+		# everyone at an edge and still has them see each new segment within a second.
+		# Segments and the init segment never change once written and their names are unique
+		# to the muxer, so they can be kept as long as anyone could ask for them.
 		@playlist path *.m3u8
 		header @playlist {
 			Cache-Control "max-age=1, s-maxage=1, public"
@@ -29,9 +35,9 @@
 				status 2xx
 			}
 		}
-		@part path *.m4s *.mp4 *.ts
-		header @part {
-			Cache-Control "public, max-age=30, s-maxage=60"
+		@segment path *.mp4 *.m4s *.ts
+		header @segment {
+			Cache-Control "public, max-age=300, s-maxage=300, immutable"
 			match {
 				status 2xx
 			}

@@ -198,8 +198,6 @@ doctl compute firewall create --name sfu-media --tag-names webinar-sfu --inbound
 rsync -az deploy/livekit-hetzner/ root@152.42.156.192:/opt/livekit/
 ssh root@152.42.156.192 \
   'DOMAIN=152.42.156.192.sslip.io ACME_EMAIL=<email> bash /opt/livekit/install.sh'
-# Viewers are in India, so short LL-HLS parts, as on the Mumbai box:
-ssh root@152.42.156.192 'echo HLS_PART_DURATION=250ms >> /opt/livekit/.env && /opt/livekit/redeploy.sh'
 ```
 
 Keys are in `/opt/livekit/.env.keys` on the box (not in git). `docker compose ps` there needs
@@ -231,9 +229,23 @@ project's `edgePlaybackBase` wins over the API's `EDGE_PLAYBACK_BASE`, so settin
 changes nothing. Until then every viewer is on the box: the 2026-10-24 load test ("via the CDN
 playback URL") was in fact all origin, ~1 % of a core and ~1.2-1.4 Mbit/s of the box per viewer, the
 4 vCPUs full at ~300-500 viewers. Pull zone settings: origin this box's `https://<ip>.sslip.io`,
-Origin Shield on (nearest the box), request coalescing on (LL-HLS: every viewer asks for the
-same next part at the same moment), query strings part of the cache key for `*.m3u8`
-(`_HLS_msn`/`_HLS_part`), origin `Cache-Control` respected, error responses not cached. Then re-run **Deploy API (Cloud Run)**. See [ADDING-AN-SFU.md](../../docs/ADDING-AN-SFU.md).
+request coalescing on for segments, origin `Cache-Control` respected, error responses not
+cached. Then re-run **Deploy API (Cloud Run)**. See [ADDING-AN-SFU.md](../../docs/ADDING-AN-SFU.md).
+
+**Plain HLS since 2026-10-25.** The box used to serve LL-HLS (250-500ms parts, blocking playlist
+reloads), and through Bunny those reloads failed under a real audience: request coalescing tied
+every viewer waiting for the next part to one origin request, and those shared requests got
+stuck. In Bunny's log for `video1_stream.m3u8?_HLS_msn=1585&_HLS_part=0`, 89 viewers at the
+Singapore edge waited until they gave up (`499`) while this box was healthy, and the same at the
+Mumbai edges. MediaMTX now writes plain fMP4 HLS (`hlsVariant: fmp4`, 2s segments), about one
+request a second per viewer and all of it cacheable, ~6s behind live. `HLS_PART_DURATION` in an
+old box's `.env` is ignored.
+
+**Delivery by where the viewer is.** With `EDGE_NEAR_COUNTRIES` set on the API (e.g. `IN`), a
+viewer in one of those countries, or of unknown country, plays this box directly
+(`broadcastHlsBase`), and everyone else plays the pull zone (`edgePlaybackBase`); each gets the
+other as `fallbackPlaybackUrl`. Unset, everyone plays `edgePlaybackBase` as before. Both are
+the same plain HLS from the same `/live/*` path, so nothing on the box differs by path.
 
 CI: **Deploy LiveKit (DigitalOcean)** (`.github/workflows/livekit-do-deploy.yml`) syncs
 `deploy/livekit-hetzner/` here and runs `redeploy.sh` on every push to main that changes it, like
