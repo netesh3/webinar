@@ -159,6 +159,13 @@ func (s *Store) Close() { s.pool.Close() }
 
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
+// DatabaseSize is the current database's size on disk in bytes (observe.RegisterDBSizeGauge).
+func (s *Store) DatabaseSize(ctx context.Context) (int64, error) {
+	var n int64
+	err := s.pool.QueryRow(ctx, `SELECT pg_database_size(current_database())`).Scan(&n)
+	return n, err
+}
+
 // migrator is what Migrate needs; both *pgxpool.Pool and *pgx.Conn have it.
 type migrator interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)

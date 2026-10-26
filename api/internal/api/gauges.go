@@ -10,10 +10,15 @@ import (
 )
 
 /* RegisterGauges puts the audience gauges (observe/gauges.go) on mp: edge viewers on this
- * instance from the event-stream hub, and the cluster-wide counts from the database. Pass
- * Telemetry.MeterProvider(); with telemetry off nothing is ever read. */
+ * instance from the event-stream hub, and the cluster-wide counts from the database. Also the
+ * database's size (observe/dbsize.go), which the 300 MB alert watches against the Supabase
+ * Free plan's 500 MB cap. Pass Telemetry.MeterProvider(); with telemetry off nothing is ever
+ * read. */
 func (s *Server) RegisterGauges(mp metric.MeterProvider) error {
-	return observe.RegisterAudienceGauges(mp, audienceSource{s})
+	if err := observe.RegisterAudienceGauges(mp, audienceSource{s}); err != nil {
+		return err
+	}
+	return observe.RegisterDBSizeGauge(mp, s.store.DatabaseSize)
 }
 
 type audienceSource struct{ s *Server }

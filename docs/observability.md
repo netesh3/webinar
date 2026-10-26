@@ -232,3 +232,28 @@ count({job="webcast-api"})                                   # all API series ri
 sort_desc(count by (__name__) ({job="webcast-api"}))         # by metric
 count by (service_instance_id) (http_server_request_duration_seconds_count)  # combos per instance
 ```
+
+## Database size and backups
+
+Supabase's Free plan (production since 2026-10-26) caps Postgres at **500 MB**, read-only
+past it, and keeps **no backups**. Two signals cover that ([BACKUPS.md](BACKUPS.md)):
+
+- **`webinarliv_db_size_bytes{scope="cluster"}`**: the API reads `pg_database_size` at most
+  every 5 minutes per instance (`api/internal/observe/dbsize.go`). Every instance reports the
+  same number, so take `max()`. A failed read reports nothing, not zero.
+- **`webinarliv_db_backup_last_success_seconds`** (Unix time) and
+  **`webinarliv_db_backup_size_bytes`**: pushed over OTLP by `.github/workflows/db-backup.yml`
+  after a backup is stored and read back, with `service_name="db-backup"`.
+
+Alert rules (Grafana Cloud → Alerting → Alert rules → New alert rule, folder `webinarliv`,
+Prometheus data source, evaluate every 5m, notify the same contact point as the other four).
+They are not provisioned from the repo; create them by hand once:
+
+| Alert | Query | Condition | Pending | Summary |
+|---|---|---|---|---|
+| Database over 300 MB | `max(webinarliv_db_size_bytes)` | `> 300e6` | 15m | "Postgres is {{ $value | humanize1024 }}; Supabase Free goes read-only at 500 MB. Upgrade the plan or trim data." |
+| No database backup in 30 h | `time() - max(webinarliv_db_backup_last_success_seconds)` | `> 108000` (30 h) | 0m | "The nightly DB backup has not succeeded for 30 hours. Check Actions → DB backup." |
+
+For the backup alert, set **No data → Alerting** too: before the first push there is no series
+at all, and that is also "no backup". A dashboard stat panel can show the size against the cap
+with the first query and unit `bytes(SI)`.
