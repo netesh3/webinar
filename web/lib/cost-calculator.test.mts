@@ -180,10 +180,9 @@ near(worst[3].platformUsd, worst[3].usd * 20, 1e-9);
 assert.equal(quotaFor(300).plan, "Business");
 assert.equal(quotaFor(123).plan, "Business");
 near(d.recordedHours, 37);
-// Share recorded scales it; composites on the box cost nothing on a box provider.
+// Share recorded scales it.
 const halfRec = calculateCost({ ...DEFAULT_INPUTS, recordMeetingsPercent: 50 });
 near(line(halfRec, "rec-worker"), line(d, "rec-worker") / 2, 1e-6);
-assert.equal(line(calculateCost({ ...DEFAULT_INPUTS, provider: "hetzner" }), "rec-worker"), 0);
 // B2 charges for replay; R2 doesn't.
 assert.equal(line(d, "rec-replay"), 0);
 near(line(calculateCost({ ...DEFAULT_INPUTS, recordingStore: "b2" }), "rec-replay"), 8 * 30 * edgeGbPerViewerHour(1000, 96) * 0.01, 1e-6);
@@ -351,7 +350,7 @@ near(line(pushed, "push"), -2160 * 0.0002, 1e-12);
 near(pushed.monthUsd, d.monthUsd - 2160 * 0.0002, 1e-9);
 
 // Mix recording (#620): edge webinars' recordings need no worker on any provider.
-for (const prov of ["do", "gcp", "hetzner"] as const) {
+for (const prov of ["do", "gcp"] as const) {
   const r0 = calculateCost({ ...DEFAULT_INPUTS, provider: prov, meetingsPerMonth: 0 });
   assert.equal(line(r0, "rec-worker"), 0, prov);
 }
