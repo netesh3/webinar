@@ -689,6 +689,16 @@ export function InstagramIcon(props: IconProps) {
   );
 }
 
+/** X (formerly Twitter): the two crossed strokes of its mark — stroke style. */
+export function XIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 4h4.25L19.5 20h-4.25z" />
+      <path d="M19 4l-6.1 7M11.1 13 5 20" />
+    </Icon>
+  );
+}
+
 /** Facebook's "f" in a rounded square — stroke style, takes the bar's colour. */
 export function FacebookIcon(props: IconProps) {
   return (
