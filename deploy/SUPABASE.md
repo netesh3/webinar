@@ -41,7 +41,11 @@ supabase projects create webcast-in --org-id <ORG_ID> --db-password <STRONG_PASS
 Dashboard alternative: https://supabase.com/dashboard → New project → name `webcast-in`
 (or `webcast`) → region **Mumbai / ap-south-1** → save the database password.
 
-Active managed topology: project **`webcast-in`** (`odptebpbrrixhrzfqtqp`) in `ap-south-1`.  
+Active managed topology: project **`webinarliv`** (`zxkcwibeqdkiuugfilvg`) in `ap-south-1`, on the
+**Free plan since 2026-10-26** (database ~39 MB of the 500 MB cap; Supabase keeps no backups on
+Free, so the nightly `pg_dump` to R2 is the backup, [docs/BACKUPS.md](../docs/BACKUPS.md)). The
+project `webcast-in` (`odptebpbrrixhrzfqtqp`) named in older notes is not what production uses:
+the API's `SUPABASE_PROJECT_URL` on Cloud Run is the source of truth.  
 Deprecated: older `webcast` (`qiakwcylllwwvjymgmtz`) in `us-east-1` — leave until you no longer need a rollback copy.
 
 ## Connection strings
@@ -137,7 +141,8 @@ After any incident where PostgREST was open, **rotate operator passwords**
 ### Connection budget (incident 24 Oct 2026)
 
 The session pooler (`:5432`) allows **pool_size** clients for the whole project (15 on
-24 Oct 2026; raised to 30 since, Dashboard → Database → Connection pooling), and an idle
+24 Oct 2026; raised to 30 since, Dashboard → Database → Connection pooling; re-check it after
+the 2026-10-26 downgrade to Free, whose Nano compute may cap it lower), and an idle
 client still holds one. During a deploy Cloud Run runs the old and the new revision side
 by side, so the worst case is twice `--max-instances` (3):
 
@@ -315,7 +320,7 @@ Supabase Google sign-in.
 
 ### 2. Supabase Dashboard / Management API
 
-Project **webcast-in** (`odptebpbrrixhrzfqtqp`) → Authentication:
+Project **webinarliv** (`zxkcwibeqdkiuugfilvg`) → Authentication:
 
 1. **Providers → Google** → enable → paste Client ID and Client secret → Save.
    (Management API: `PATCH /v1/projects/<ref>/config/auth` with
