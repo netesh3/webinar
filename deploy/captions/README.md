@@ -202,6 +202,11 @@ root, 0600) from the droplet's user data, like the LiveKit secret; it is never l
 Measure: the `captions.latency` lines report `e2e` (end of speech → packet on the SFU) the same
 way for both providers, so a load test compares them directly.
 
+Before switching a provider on, run **Actions → Captions provider smoke test**
+(`.github/workflows/captions-provider-smoke.yml`): it speaks a sentence (espeak-ng), streams it
+to Deepgram live and sends it to Groq with the repo secrets `DEEPGRAM_API_KEY` and
+`GROQ_API_KEY`, and prints only status codes, timings and the transcripts.
+
 ## Latency
 
 Each room logs once a minute (`captions.latency`):
