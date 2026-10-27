@@ -350,6 +350,8 @@ export function EdgeAudienceRoom({
                           clockOffsetMs={clockOffset}
                           fallbackUrl={join.fallbackPlaybackUrl}
                           deliveryPath={join.deliveryPath}
+                          targetLatencySec={join.targetLatencySec}
+                          targetLatencyCdnSec={join.targetLatencyCdnSec}
                           speakerView={mayBeSpeakerView(controls.audienceLayout)}
                         />
                         {/* Reactions float over the player here as they do over the stage — this room

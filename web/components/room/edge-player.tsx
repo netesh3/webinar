@@ -15,11 +15,11 @@
  * server-synced clock the composite draws too. */
 
 import Hls from "hls.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BEHIND_LIVE_SECONDS,
   PlaybackStats,
-  TARGET_SECONDS,
+  cushionFor,
+  targetForPath,
   bufferedAhead,
   catchUp,
   decayedTarget,
@@ -56,12 +56,18 @@ export function EdgePlayer({
   debugClock,
   clockOffsetMs,
   speakerView = false,
+  targetLatencySec,
+  targetLatencyCdnSec,
 }: {
   playbackUrl: string;
   /** The other path, for when playbackUrl keeps failing (JoinResponse.fallbackPlaybackUrl). */
   fallbackUrl?: string;
   /** Which path playbackUrl is, "direct" (the box) or "cdn", for telemetry. */
   deliveryPath?: string;
+  /** Seconds behind live on the box path and on the CDN path (JoinResponse.targetLatencySec /
+   *  targetLatencyCdnSec); missing = TARGET_SECONDS. The thresholds follow (cushionFor). */
+  targetLatencySec?: number;
+  targetLatencyCdnSec?: number;
   coverUrl?: string;
   identity: string;
   slug: string;
@@ -95,6 +101,15 @@ export function EdgePlayer({
   const [native, setNative] = useState(false);
   // Which path is playing: the join's choice, or the other one after a fallback.
   const [path, setPath] = useState(deliveryPath ?? "");
+  // The cushion for the path playing now; read by the tick, Back to live and the return jump.
+  const cushion = useMemo(
+    () => cushionFor(targetForPath(path || deliveryPath, targetLatencySec, targetLatencyCdnSec)),
+    [path, deliveryPath, targetLatencySec, targetLatencyCdnSec],
+  );
+  const cushionRef = useRef(cushion);
+  useEffect(() => {
+    cushionRef.current = cushion;
+  }, [cushion]);
   const [reconnecting, setReconnecting] = useState(false);
   const [frozen, setFrozen] = useState(false);
   const { telemetryEnabled } = useAppConfig();
@@ -210,6 +225,8 @@ export function EdgePlayer({
       fallbacksRef.current += 1;
       const next = start.path === "cdn" ? "direct" : start.path === "direct" ? "cdn" : "fallback";
       setPath(next);
+      // The other path's cushion from here on (a CDN viewer moving to the box sits closer).
+      if (hls) hls.targetLatency = cushionFor(targetForPath(next, targetLatencySec, targetLatencyCdnSec)).target;
       netAttempts = 0;
       if (telemetryEnabled) {
         trackEvent("edge_fallback", { userId: identity, roomName: slug }, { from: start.path || null, to: next });
@@ -237,7 +254,7 @@ export function EdgePlayer({
     };
 
     if (Hls.isSupported()) {
-      hls = new Hls(edgeHlsConfig());
+      hls = new Hls(edgeHlsConfig(cushionFor(targetForPath(start.path, targetLatencySec, targetLatencyCdnSec))));
       hlsRef.current = hls;
       hls.loadSource(source);
       hls.attachMedia(video);
@@ -347,7 +364,7 @@ export function EdgePlayer({
     // telemetryEnabled, identity and slug are read for the fallback event only; a change to
     // them must not rebuild the player.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playbackUrl, fallbackUrl, deliveryPath]);
+  }, [playbackUrl, fallbackUrl, deliveryPath, targetLatencySec, targetLatencyCdnSec]);
 
   // The caption overlay holds each line by this much, so captions land with the video they
   // caption rather than seconds ahead of it (lib/caption-sync.ts).
@@ -385,13 +402,13 @@ export function EdgePlayer({
       }
       if (hls && Number.isFinite(hls.latency) && hls.latency > 0) {
         setLatency(hls.latency);
-        const target = TARGET_SECONDS;
+        const { target, jumpAbove } = cushionRef.current;
         /* A quiet spell takes a quarter second of stall creep back (decayedTarget). Only while
          * playing: a paused or hidden player has no stalls to be quiet about. */
         if (video && !video.paused && playingRef.current) {
           const stepped = decayedTarget({
             current: hls.targetLatency,
-            floor: TARGET_SECONDS,
+            floor: target,
             lastStallAt: lastStallRef.current,
             lastStepAt: lastStepRef.current,
             startedAt: startedRef.current,
@@ -403,7 +420,7 @@ export function EdgePlayer({
           }
         }
         if (video && !video.paused && playingRef.current) {
-          const next = catchUp({ latency: hls.latency, target });
+          const next = catchUp({ latency: hls.latency, target, jumpAbove });
           if (next === "jump" && Date.now() - lastJumpRef.current >= JUMP_COOLDOWN_MS) {
             lastJumpRef.current = Date.now();
             video.currentTime = seekToTarget({
@@ -457,7 +474,7 @@ export function EdgePlayer({
     if (!video) return;
     const hls = hlsRef.current;
     const edge = hls && Number.isFinite(hls.latency) && hls.latency > 0
-      ? seekToTarget({ currentTime: video.currentTime, latency: hls.latency, target: TARGET_SECONDS })
+      ? seekToTarget({ currentTime: video.currentTime, latency: hls.latency, target: cushionRef.current.target })
       : video.seekable.length > 0 ? video.seekable.end(video.seekable.length - 1) - 1 : null;
     if (edge != null && Number.isFinite(edge)) video.currentTime = edge;
     void video.play().catch(() => {});
@@ -478,7 +495,7 @@ export function EdgePlayer({
         : video.seekable.length > 0
           ? video.seekable.end(video.seekable.length - 1) - video.currentTime
           : null;
-    if (jumpToLiveOnReturn({ latencySec: latency, behindSec: BEHIND_LIVE_SECONDS })) {
+    if (jumpToLiveOnReturn({ latencySec: latency, behindSec: cushionRef.current.behindLive })) {
       // The catch-up tick must not jump again straight after this one.
       lastJumpRef.current = Date.now();
       jumpToLive();
@@ -488,7 +505,7 @@ export function EdgePlayer({
   }, [jumpToLive]);
   const quiet = useReturnQuiet(onReturn);
 
-  const behind = latency != null && latency > BEHIND_LIVE_SECONDS;
+  const behind = latency != null && latency > cushion.behindLive;
 
   return (
     <div className="relative h-full w-full">

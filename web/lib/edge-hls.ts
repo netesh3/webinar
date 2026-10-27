@@ -49,15 +49,60 @@ export const TARGET_SECONDS = 3;
  * acts when that one could not, e.g. a tab the browser had throttled. */
 export const MAX_LATENCY_SECONDS = 10;
 
-export function edgeHlsConfig(): EdgeHlsConfig {
+/* The cushion, configurable (2026-10-27): the server sends a target per delivery path in the
+ * join (EDGE_TARGET_LATENCY_SEC / _CDN_SEC: JoinResponse.targetLatencySec / targetLatencyCdnSec),
+ * so it changes without a web deploy. Every threshold derived from the target keeps its ratio
+ * to today's 3s: the catch-up jump at 2× the target (6s), hls.js's backstop at 10/3× (10s),
+ * Back to live at 4× (12s), the buffer cap at the target + 5 with 8s the least. At 3s,
+ * cushionFor() is exactly the constants above and below. */
+export const TARGET_MIN_SECONDS = 1.5;
+export const TARGET_MAX_SECONDS = 6;
+
+export type Cushion = {
+  /** Seconds behind live the player sits (hls.js liveSyncDuration; the decay's floor). */
+  target: number;
+  /** hls.js liveMaxLatencyDuration. */
+  maxLatency: number;
+  /** Seconds past the target before the catch-up jump. */
+  jumpAbove: number;
+  /** Seconds behind live that offer Back to live (and jump by themselves on return). */
+  behindLive: number;
+  /** hls.js maxBufferLength. */
+  maxBuffer: number;
+};
+
+/** The thresholds for a target in seconds; anything missing or out of range is TARGET_SECONDS. */
+export function cushionFor(target?: number | null): Cushion {
+  const t =
+    typeof target === "number" && Number.isFinite(target) && target >= TARGET_MIN_SECONDS && target <= TARGET_MAX_SECONDS
+      ? target
+      : TARGET_SECONDS;
+  const k = t / TARGET_SECONDS;
+  const r = (x: number) => Math.round(x * 100) / 100;
+  return {
+    target: t,
+    maxLatency: r(MAX_LATENCY_SECONDS * k),
+    jumpAbove: r(CATCH_UP.jumpAbove * k),
+    behindLive: r(BEHIND_LIVE_SECONDS * k),
+    maxBuffer: Math.max(8, r(t + 5)),
+  };
+}
+
+/** The join's target for the path being played ("cdn" uses the CDN's, anything else the box's). */
+export function targetForPath(path: string | undefined, direct?: number | null, cdn?: number | null): number | undefined {
+  const v = path === "cdn" ? (cdn ?? direct) : direct;
+  return typeof v === "number" && v > 0 ? v : undefined;
+}
+
+export function edgeHlsConfig(cushion: Cushion = cushionFor()): EdgeHlsConfig {
   return {
     lowLatencyMode: false,
     liveDurationInfinity: true,
-    liveSyncDuration: TARGET_SECONDS,
-    liveMaxLatencyDuration: MAX_LATENCY_SECONDS,
+    liveSyncDuration: cushion.target,
+    liveMaxLatencyDuration: cushion.maxLatency,
     /* A cap, not what it holds: a live player can only buffer up to the live edge, ~3s ahead.
      * Room for that and a few segments more, should it fall back and have catching up to do. */
-    maxBufferLength: 8,
+    maxBufferLength: cushion.maxBuffer,
     backBufferLength: 10,
     /* 1: hls.js never changes the playback speed. A changing rate is time-stretched audio,
      * which listeners hear as speech warbling and music "cutting out" (2026-10-20). Drift is
@@ -189,9 +234,9 @@ export const JUMP_COOLDOWN_MS = 15_000;
 export const SEEK_MARGIN_SECONDS = 1;
 
 /** Whether the distance from live calls for a jump. */
-export function catchUp(o: { latency: number; target: number }): CatchUp {
+export function catchUp(o: { latency: number; target: number; jumpAbove?: number }): CatchUp {
   if (!Number.isFinite(o.latency) || !Number.isFinite(o.target) || o.target <= 0) return "stay";
-  return o.latency - o.target > CATCH_UP.jumpAbove ? "jump" : "stay";
+  return o.latency - o.target > (o.jumpAbove ?? CATCH_UP.jumpAbove) ? "jump" : "stay";
 }
 
 /** Seconds of media buffered ahead of `time`, from a video element's buffered ranges. */

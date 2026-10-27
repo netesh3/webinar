@@ -410,6 +410,7 @@ func (s *Server) issueEdgeAudience(w http.ResponseWriter, r *http.Request, wb ty
 	if choice.URL == "" {
 		choice = config.EdgePlaybackChoice{URL: playback}
 	}
+	directTarget, cdnTarget := s.cfg.EdgeTargetsLatency()
 	s.log.Info("edge audience joined", "slug", wb.ID, "identity", identity,
 		"country", country, "path", choice.Path)
 	httpx.JSON(w, http.StatusOK, types.JoinResponse{
@@ -428,6 +429,8 @@ func (s *Server) issueEdgeAudience(w http.ResponseWriter, r *http.Request, wb ty
 		PlaybackURL:         choice.URL,
 		DeliveryPath:        choice.Path,
 		FallbackPlaybackURL: choice.Fallback,
+		TargetLatencySec:    directTarget,
+		TargetLatencyCDNSec: cdnTarget,
 		EventsToken:         tok,
 		DebugClock:          s.cfg.EdgeDebugClock,
 	})
