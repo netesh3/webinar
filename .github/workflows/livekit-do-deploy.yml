@@ -261,6 +261,33 @@ jobs:
             mv "$tmp" .env'
           echo "Caption worker: ${state} in /opt/livekit/.env"
 
+      - name: Egress image settings (zero-latency x264)
+        if: env.SKIP != 'true'
+        env:
+          EGRESS_IMAGE: ${{ vars.EGRESS_IMAGE }}
+          EGRESS_X264_ZEROLATENCY: ${{ vars.EGRESS_X264_ZEROLATENCY }}
+        run: |
+          # The patched image (deploy/egress-patch) only when the repo variable names it;
+          # both lines removed when unset, so the box goes back to stock Egress.
+          plain='^[A-Za-z0-9._:/@+-]+$'
+          lines=""
+          if [ -n "$EGRESS_IMAGE" ]; then
+            [[ "$EGRESS_IMAGE" =~ $plain ]] || { echo "::error::EGRESS_IMAGE has a character the box's .env cannot carry"; exit 1; }
+            lines="EGRESS_IMAGE=${EGRESS_IMAGE}
+          EGRESS_X264_ZEROLATENCY=${EGRESS_X264_ZEROLATENCY:-false}"
+          fi
+          lines="$(printf '%s\n' "$lines" | sed 's/^ *//')"
+          printf '%s\n' "$lines" | ssh -F "${SSH_CONFIG}" livekit-do '
+            set -eu
+            cd /opt/livekit
+            new="$(cat)"
+            tmp="$(mktemp)"
+            grep -vE "^(EGRESS_IMAGE|EGRESS_X264_ZEROLATENCY)=" .env >"$tmp" || :
+            [ -n "$new" ] && printf "%s\n" "$new" >>"$tmp"
+            chmod 600 "$tmp"
+            mv "$tmp" .env'
+          echo "Egress: ${EGRESS_IMAGE:-stock livekit/egress} (zero-latency ${EGRESS_X264_ZEROLATENCY:-false})"
+
       - name: Regenerate config and restart compose
         if: env.SKIP != 'true'
         env:

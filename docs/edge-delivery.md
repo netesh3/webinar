@@ -353,24 +353,28 @@ to ~0–1 frame.
 **It can't be configured on the stock image.** The only x264 setting egress exposes is
 `video_encoder_threads` (egress.yaml). Fewer frame threads save ~1 frame each (~0.05 s) at a CPU cost,
 so not worth it alone. Neither v1.15.0 nor egress's `main` branch has a tune or option-string setting.
-Zero-latency needs a **patched egress image**: a few lines in `addEncoder`, applied only to stream-only
-egresses (the edge mix), not file or segment outputs:
+Zero-latency needs a **patched egress image**, which lives in [`deploy/egress-patch/`](../deploy/egress-patch/): `x264-zerolatency.patch` (a few lines in `addEncoder`) and `build.sh`, which clones the egress tag, applies the patch and builds with Egress's own `build/egress/Dockerfile` (GStreamer from `.gst-version`, 1.24.13 for v1.15.0):
 
 ```go
-// pkg/pipeline/builder/video.go, addEncoder, after SetArg("speed-preset", "veryfast"):
-if b.conf.GetStreamConfig() != nil && b.conf.GetFileConfig() == nil && b.conf.GetSegmentConfig() == nil {
+// stream-only egresses (RTMP/SRT), when EGRESS_X264_ZEROLATENCY=true
+if os.Getenv("EGRESS_X264_ZEROLATENCY") == "true" &&
+	b.conf.GetStreamConfig() != nil && b.conf.GetFileConfig() == nil && b.conf.GetSegmentConfig() == nil {
 	x264Enc.SetArg("tune", "zerolatency")
 }
 ```
 
-Build it as egress's own `build/egress/Dockerfile` does (`--build-arg GSTVERSION=1.24.13`), tag it
-`livekit/egress:v1.15.0-zl`, and set the image in `deploy/livekit-box/docker-compose.egress.yml`. Then
-rebuild the box snapshot. **Not built yet.**
+`tune` is an x264enc flags property (`stillimage`, `fastdecode`, `zerolatency`). Only egresses with a stream output and **no** file or segment output get it, which covers the edge mix: it pushes RTMP to MediaMTX, and the mix recording (`rec/<slug>`) is taken from MediaMTX, not encoded again, so the **recording shares the mix's encode**. That makes the cost a shared one: zero-latency gives up B-frames and lookahead, ~10–20% compression efficiency at the same bitrate. Keep the bitrate (`EDGE_ENCODING_BITRATE`), and check screen-share text and fast motion in a recording before keeping it. A file or segment egress (a cloud recording made by Egress itself) keeps the stock encoder.
 
-**What zero-latency costs:** no B-frames and no mb-tree cost roughly 10–20% compression efficiency at
-the same bitrate. The mix recorder (`mixrec`) and cloud recordings copy this same encoded stream (no
-second encode), so they lose a little quality per bit too. Keep `EDGE_ENCODING_BITRATE` (1000 kbit/s)
-unless a side-by-side shows screen-share text visibly worse, then raise it ~15%.
+**Build and roll out**:
+
+1. Actions → **Egress image (zero-latency x264)** → Run (egress `v1.15.0`, revision `1`). It checks the patch applies, builds, and pushes `ghcr.io/netesh3/webinar-egress:v1.15.0-zl1` with provenance. Make the GHCR package **public** (Packages → webinar-egress → Package settings → visibility), since the box pulls it without credentials. It contains only Egress plus the patch.
+2. Set the repo variables `EGRESS_IMAGE=ghcr.io/netesh3/webinar-egress:v1.15.0-zl1` and `EGRESS_X264_ZEROLATENCY=true`.
+3. Run **Deploy LiveKit** with the box up. It writes both lines into `/opt/livekit/.env`, which lives on the `sfu-data` volume, so every later on-demand droplet keeps them, and restarts the stack, which pulls the image. The egress log shows `x264enc tune=zerolatency (EGRESS_X264_ZEROLATENCY)` when a mix starts.
+4. Measure with the load kit's time strip (`docs/LOAD-TESTING.md`): glass-to-glass p50/p95 straight from the box, before and after. Expect ~0.75–1 s off the p50, and no change in stalls.
+
+**Roll back**: set `EGRESS_X264_ZEROLATENCY=false` to keep the image with stock encoding, or delete `EGRESS_IMAGE` for stock Egress, then run Deploy LiveKit. No rebuild either way.
+
+**Maintenance**: the patch is pinned to the egress tag in `docker-compose.egress.yml`. When upgrading Egress, run the workflow with the new tag: its `check` job runs `git apply --check` against that tag, and the PR check does the same on every change to `deploy/egress-patch/`. If it no longer applies, rebase the patch (same few lines in `addEncoder`) and bump the revision.
 
 ### The player: the stall creep comes back down
 
