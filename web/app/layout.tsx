@@ -3,6 +3,7 @@ import { Fraunces, Geist, Outfit } from "next/font/google";
 import Script from "next/script";
 import { AppProviders } from "@/components/providers";
 import { PhonePrompt } from "@/components/phone-prompt";
+import { SiteBanner } from "@/components/site-banner";
 import { api } from "@/lib/api";
 import { siteOrigin } from "@/lib/site-origin";
 import type { AppConfig } from "@/lib/api-types";
@@ -140,6 +141,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           />
         </noscript>
         <AppProviders initialConfig={config}>
+          <SiteBanner />
           {children}
           <PhonePrompt />
         </AppProviders>

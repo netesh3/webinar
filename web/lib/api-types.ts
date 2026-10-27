@@ -3599,6 +3599,36 @@ export interface AdminPoolSession {
 }
 
 //////////
+// source: site_banner.go
+
+/**
+ * SiteBannerMaxRunes bounds the message.
+ */
+export const SiteBannerMaxRunes = 280;
+/**
+ * SiteBannerDefaultMessage is shown when the admin turns it on without writing one.
+ */
+export const SiteBannerDefaultMessage = "We're doing scheduled maintenance. Live webinars and meetings may be unavailable for a short while. We're sorry for the inconvenience.";
+/**
+ * SiteBanner is GET /api/site-banner and the admin's PUT answer.
+ */
+export interface SiteBanner {
+  enabled: boolean;
+  message: string;
+  /**
+   * UpdatedAt is RFC 3339; empty before an admin first saves.
+   */
+  updatedAt?: string;
+}
+/**
+ * SetSiteBannerRequest is PUT /api/admin/site-banner. An empty message means the default.
+ */
+export interface SetSiteBannerRequest {
+  enabled: boolean;
+  message: string;
+}
+
+//////////
 // source: slots.go
 
 export const SlotConfirmation = "confirmation";
