@@ -67,15 +67,6 @@ function useViewport(): Size {
   return { w: w || 0, h: h || 0 };
 }
 
-/* Fullscreen is the player's container, which the PiP is not inside: there the mix is shown
- * whole rather than as a share with its speaker cut off. */
-function subscribeFullscreen(onChange: () => void) {
-  document.addEventListener("fullscreenchange", onChange);
-  return () => document.removeEventListener("fullscreenchange", onChange);
-}
-const readFullscreen = () => Boolean(document.fullscreenElement);
-const readFullscreenOnServer = () => false;
-
 /** Whether the frame on screen carries speaker view's beacon. Off whenever `enabled` is. */
 function useBeacon(videoRef: RefObject<HTMLVideoElement | null>, enabled: boolean): boolean {
   const [on, setOn] = useState(false);
@@ -128,8 +119,9 @@ export function EdgeSpeakerSplit({
   enabled: boolean;
 }) {
   const viewport = useViewport();
-  const fullscreen = useSyncExternalStore(subscribeFullscreen, readFullscreen, readFullscreenOnServer);
-  const active = useBeacon(videoRef, enabled && !fullscreen && splitsMix(viewport));
+  // Fullscreen too: the PiP is inside the player's container (StagePlayerChrome children), so
+  // a phone in fullscreen keeps the share full and the speaker floating, in either orientation.
+  const active = useBeacon(videoRef, enabled && splitsMix(viewport));
   const [prefs, setPrefsState] = useState<PipPrefs>(loadPrefs);
   const [swapped, setSwapped] = useState(false);
   const setPrefs = useCallback((next: PipPrefs) => {

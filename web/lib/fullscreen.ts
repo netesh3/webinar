@@ -19,15 +19,15 @@ import { videoInNativeFullscreen } from "./simulive-clock";
  *     unprefixed one.
  *  3. iPhone, where iOS Safari does not implement the Fullscreen API on elements
  *     at all:
- *     - a live stage: `video.webkitEnterFullscreen()`, the native player. Our
- *       overlay is lost there, which is a real downgrade and still better than a
- *       button that does nothing.
- *     - a simulive (`nativeVideo: false`): never the native player — its scrubber
- *       and play button take an attendee off the shared clock. The container goes
+ *     - `nativeVideo: true`: `video.webkitEnterFullscreen()`, the native player.
+ *       Our overlay is lost there.
+ *     - `nativeVideo: false` (the stage players, StagePlayerChrome): never the
+ *       native player — its scrubber takes a simulive off the shared clock, and it
+ *       drops our overlays, the phone speaker split among them. The container goes
  *       pseudo-fullscreen instead (`pseudo`: the caller fixes it over the whole
  *       viewport with CSS), our chrome and all.
  *
- * A simulive also guards against the native player opening without our button:
+ * `nativeVideo: false` also guards against the native player opening without our button:
  * a pinch out on an iOS video, or Android Chrome's rotate-to-fullscreen making the
  * <video> itself the fullscreen element. Either is left at once for pseudo-fullscreen
  * (lib/simulive-clock.ts videoInNativeFullscreen).

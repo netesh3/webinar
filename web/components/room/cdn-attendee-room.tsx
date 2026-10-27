@@ -17,6 +17,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { API_BASE, ApiError, api } from "@/lib/api";
@@ -1248,6 +1249,7 @@ export function StagePlayerChrome({
   toggleMute,
   captionsUrl,
   simulive = false,
+  children,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   loading: boolean;
@@ -1259,9 +1261,11 @@ export function StagePlayerChrome({
   unmute: () => void;
   toggleMute: () => void;
   captionsUrl?: string;
-  /** A simulive: a broadcast on a shared clock. Its fullscreen is only ever our container
-   *  (never the iPhone's native player, which has a scrubber), and seek keys do nothing. */
+  /** A simulive: a broadcast on a shared clock. Seek keys do nothing. */
   simulive?: boolean;
+  /** The player's own overlays (the edge player's speaker PiP, held frame, Back to live).
+   *  Inside the container, so they come along into fullscreen. */
+  children?: ReactNode;
 }) {
   /* Fullscreen belongs to the chrome, not to each player: the players could differ
    * in how they fill the video element and in nothing else, and the two copies
@@ -1269,10 +1273,11 @@ export function StagePlayerChrome({
    * same eight lines twice. */
   const containerRef = useRef<HTMLDivElement>(null);
   const { notify } = useToast();
-  // A simulive never uses the iPhone's native player (its scrubber leaves the shared clock):
-  // where there is no element fullscreen it goes pseudo-fullscreen, fixed over the viewport.
+  // Never the iPhone's native player: its scrubber leaves a simulive's shared clock, and it
+  // drops our overlays, the phone speaker split's PiP among them (27 Oct 2026). Where there
+  // is no element fullscreen the container goes pseudo-fullscreen, fixed over the viewport.
   const { isFullscreen, pseudo, toggle } = useFullscreen(containerRef, videoRef, {
-    nativeVideo: !simulive,
+    nativeVideo: false,
   });
   const shown = playerControls(simulive ? "simulive" : "live");
   // Captions as a native track: they follow the playback position, seeks included.
@@ -1397,7 +1402,7 @@ export function StagePlayerChrome({
       ref={containerRef}
       className={
         pseudo
-          ? // Pseudo-fullscreen (an iPhone in a simulive): the whole viewport, dynamic-height so
+          ? // Pseudo-fullscreen (an iPhone): the whole viewport, dynamic-height so
             // Safari's bars do not crop it, letterboxed by object-contain in either orientation.
             "fixed inset-0 z-[9999] h-[100dvh] w-screen flex items-center justify-center bg-black pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
           : "relative h-full w-full flex items-center justify-center bg-black"
@@ -1491,6 +1496,7 @@ export function StagePlayerChrome({
           )}
         </div>
       )}
+      {children}
     </div>
   );
 }
