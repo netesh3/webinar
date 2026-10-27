@@ -52,8 +52,8 @@ import { clockOffset, formatClock } from "./server-clock.ts";
   assert.ok(c.maxBufferLength <= 10);
   // A stall nudges the target by a quarter second, so a 3s target does not drift to 6s fast.
   assert.equal(c.liveSyncOnStallIncrease, 0.25);
-  // Audio is never time-stretched: no playback-rate catch-up.
-  assert.equal(c.maxLiveSyncPlaybackRate, 1);
+  // Drift is won back by playing a little faster, never so fast the audio warbles (1.5 did).
+  assert.equal(c.maxLiveSyncPlaybackRate, 1.1);
   // Not the segment-count settings: the delay is set in seconds, not 3 × TARGETDURATION.
   assert.equal("liveSyncDurationCount" in c, false);
   assert.equal("liveMaxLatencyDurationCount" in c, false);

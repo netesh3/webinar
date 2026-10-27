@@ -104,10 +104,12 @@ export function edgeHlsConfig(cushion: Cushion = cushionFor()): EdgeHlsConfig {
      * Room for that and a few segments more, should it fall back and have catching up to do. */
     maxBufferLength: cushion.maxBuffer,
     backBufferLength: 10,
-    /* 1: hls.js never changes the playback speed. A changing rate is time-stretched audio,
-     * which listeners hear as speech warbling and music "cutting out" (2026-10-20). Drift is
-     * corrected by skipping forward inside the buffer instead (CATCH_UP.jumpAbove). */
-    maxLiveSyncPlaybackRate: 1,
+    /* Behind its target, hls.js plays a little faster, up to this, inside what is buffered,
+     * and drifts back to live the way Zoom and Teams do (27 Oct 2026). Kept at 1.1: at 1.5
+     * (the old LL-HLS player) the time-stretched audio warbled and music "cut out"
+     * (2026-10-20); browsers keep the pitch, and 10% is hard to hear in speech. 3s of drift
+     * takes 30s to win back. A gap too big for that is skipped (CATCH_UP.jumpAbove). */
+    maxLiveSyncPlaybackRate: 1.1,
     // hls.js adds this to its target for every stall; a quarter second a stall lets a
     // connection that keeps stalling settle a little further back, slowly. hls.js never takes
     // it back by itself; decayedTarget below does, once the connection has been quiet.
@@ -206,9 +208,9 @@ export function shouldUseFallback(o: { fatalNetworkErrors: number; fallbackUrl: 
  *
  * hls.js holds its distance from live when it starts and after a seek, but each stall adds to
  * it and nothing wins that back: a viewer whose wifi dropped for ten seconds would watch ten
- * seconds late for the rest of the session. So once the player is well past its target it
- * skips forward, inside what is already buffered (seekToTarget), no more often than
- * JUMP_COOLDOWN_MS. Never by playing faster (see maxLiveSyncPlaybackRate). */
+ * seconds late for the rest of the session. Small drift is played back at up to 1.1× (maxLiveSyncPlaybackRate);
+ * once the player is well past its target it skips forward, inside what is already buffered
+ * (seekToTarget), no more often than JUMP_COOLDOWN_MS. */
 export const CATCH_UP = {
   /** Seconds past the target latency before skipping forward (so at 6s behind). Generous for
    * a 3s target: a stall or two of ordinary jitter is not worth a jump in the picture. */
