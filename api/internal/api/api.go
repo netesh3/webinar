@@ -113,8 +113,10 @@ func (a sfuPool) KeyProvider() lkauth.KeyProvider { return a.pool }
 func NewSFUPool(p *lk.Pool) SFUPool { return sfuPool{pool: p} }
 
 type Server struct {
-	cfg   config.Config
-	store *store.Store
+	// siteBanner caches the maintenance banner row (site_banner.go).
+	siteBanner siteBannerCache
+	cfg        config.Config
+	store      *store.Store
 	/* sfu is the POOL, not a client. There is no such thing as "the" SFU any more.
 	 *
 	 * Every handler that talks to LiveKit resolves the client for the webinar it is acting
@@ -385,6 +387,7 @@ func (s *Server) Routes() http.Handler {
 		// ---------------- public ----------------
 		publicAPI := r
 		r.Get("/config", s.handleConfig)
+		r.Get("/site-banner", s.handleSiteBanner)
 		r.Post("/webhooks/livekit", s.handleLiveKitWebhook)
 		r.Post("/webhooks/zoom", s.handleZoomWebhook)
 		r.Post("/webhooks/razorpay", s.handleRazorpayWebhook)
@@ -609,6 +612,7 @@ func (s *Server) Routes() http.Handler {
 		 * Nothing in here creates another admin — see ADMIN_EMAILS. */
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(s.requireAdmin)
+			r.Put("/site-banner", s.handleAdminSetSiteBanner)
 
 			r.Get("/debug/goroutines", s.handleDebugGoroutines)
 			r.Get("/stats", s.handleAdminStats)

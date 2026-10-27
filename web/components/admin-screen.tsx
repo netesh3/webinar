@@ -82,6 +82,7 @@ import {
 } from "./controls";
 import { DateRangeField } from "./date-picker";
 import { AdminRecordingPurge } from "./admin-recording-purge";
+import { AdminSiteBanner } from "./admin-site-banner";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 import { AdminSales } from "./admin-sales";
@@ -161,6 +162,7 @@ export function AdminScreen({
       <div className="mt-5">
         {tab === "dashboard" && (
           <>
+            <AdminSiteBanner />
             <AdminDashboard onAccounts={() => setTab("accounts")} onWebinars={openWebinars} />
             <AdminRecordingPurge />
           </>

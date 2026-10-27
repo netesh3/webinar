@@ -1,4 +1,6 @@
 import type {
+  SetSiteBannerRequest,
+  SiteBanner,
   AdminSFUBox,
   AdminSFUPool,
   BrandVoice,
@@ -1693,6 +1695,9 @@ export const api = {
     request<AdminCostHostDetail>(`/api/admin/costs/hosts/${seg(id)}?${costQuery(q)}`, fresh),
   /** What recordings are stored across every host, and the latest "Delete all recordings" run. */
   adminRecordingPurge: () => request<RecordingPurgeStatus>("/api/admin/recordings/purge", fresh),
+  /** The site-wide maintenance banner (api/internal/api/site_banner.go). Polled by every page. */
+  siteBanner: () => request<SiteBanner>("/api/site-banner", fresh),
+  adminSetSiteBanner: (req: SetSiteBannerRequest) => put<SiteBanner>("/api/admin/site-banner", req),
   /** Starts "Delete all recordings", or does the next step of the run in progress. confirm
    *  must be exactly RecordingPurgeConfirm; call again until latest.phase is "done". */
   adminRunRecordingPurge: (confirm: string) =>
