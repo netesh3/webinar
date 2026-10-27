@@ -35,7 +35,10 @@ services:
   # Not started in remote-egress mode: the composite then runs on worker VMs
   # (deploy/egress-worker), never on this box, so a mix cannot take the SFU's CPU.
   egress:
-    image: livekit/egress:v1.15.0
+    # EGRESS_IMAGE (in .env, from the repo variable via Deploy LiveKit) swaps in the patched
+    # image from deploy/egress-patch; unset = stock. EGRESS_X264_ZEROLATENCY=true turns the
+    # patch on (stream-only egresses); the stock image ignores it.
+    image: ${EGRESS_IMAGE:-livekit/egress:v1.15.0}
     profiles: ["local-egress"]
     network_mode: host
     restart: unless-stopped
@@ -45,6 +48,7 @@ services:
       - mediamtx
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
+      EGRESS_X264_ZEROLATENCY: ${EGRESS_X264_ZEROLATENCY:-false}
     cap_add:
       - SYS_ADMIN
     volumes:

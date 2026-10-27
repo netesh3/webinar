@@ -1,0 +1,27 @@
+diff --git a/pkg/pipeline/builder/video.go b/pkg/pipeline/builder/video.go
+index 53b0652..ec6da1c 100644
+--- a/pkg/pipeline/builder/video.go
++++ b/pkg/pipeline/builder/video.go
+@@ -16,6 +16,7 @@ package builder
+ 
+ import (
+ 	"fmt"
++	"os"
+ 	"strings"
+ 	"time"
+ 
+@@ -1013,6 +1014,14 @@ func (b *VideoBin) addEncoder() error {
+ 		if sc := b.conf.GetStreamConfig(); sc != nil && sc.OutputType == types.OutputTypeRTMP {
+ 			options = append(options, "nal-hrd=cbr")
+ 		}
++		// webinarliv patch: zero-latency x264 for stream-only egresses (no B-frames, no
++		// lookahead, sliced threads), switched by EGRESS_X264_ZEROLATENCY=true. File and
++		// segment outputs keep the stock encoder: they gain nothing from lower latency.
++		if os.Getenv("EGRESS_X264_ZEROLATENCY") == "true" &&
++			b.conf.GetStreamConfig() != nil && b.conf.GetFileConfig() == nil && b.conf.GetSegmentConfig() == nil {
++			x264Enc.SetArg("tune", "zerolatency")
++			logger.Infow("x264enc tune=zerolatency (EGRESS_X264_ZEROLATENCY)")
++		}
+ 		if len(options) > 0 {
+ 			optionString := strings.Join(options, ":")
+ 			if err = x264Enc.SetProperty("option-string", optionString); err != nil {

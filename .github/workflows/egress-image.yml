@@ -1,0 +1,62 @@
+# Build and push the patched LiveKit Egress image (zero-latency x264 for the live mix).
+# Manual only. The box uses it when the repo variable EGRESS_IMAGE names it; see
+# deploy/egress-patch/ and docs/edge-delivery.md.
+name: Egress image (zero-latency x264)
+
+on:
+  workflow_dispatch:
+    inputs:
+      egress_version:
+        description: "LiveKit Egress tag to patch (must match deploy/livekit-box/docker-compose.egress.yml)"
+        default: "v1.15.0"
+        required: true
+      revision:
+        description: "Patch revision number (the -zl<n> suffix)"
+        default: "1"
+        required: true
+  pull_request:
+    paths:
+      - "deploy/egress-patch/**"
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch applies to the egress tag
+        run: |
+          set -euo pipefail
+          v="${{ inputs.egress_version || 'v1.15.0' }}"
+          git clone -q --depth 1 --branch "$v" https://github.com/livekit/egress.git /tmp/egress
+          git -C /tmp/egress apply --check "$GITHUB_WORKSPACE/deploy/egress-patch/x264-zerolatency.patch"
+          echo "x264-zerolatency.patch applies cleanly to egress $v"
+
+  build:
+    if: github.event_name == 'workflow_dispatch'
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        env:
+          VERSION: ${{ inputs.egress_version }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          tag="ghcr.io/netesh3/webinar-egress:${VERSION}-zl${REVISION}"
+          deploy/egress-patch/build.sh "$VERSION" "$tag" --push
+          echo "### Pushed \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Set the repo variable EGRESS_IMAGE=$tag and EGRESS_X264_ZEROLATENCY=true, then run Deploy LiveKit." >> "$GITHUB_STEP_SUMMARY"
