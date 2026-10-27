@@ -4014,6 +4014,12 @@ type JoinResponse struct {
 	/* FallbackPlaybackURL is the other path, for a player whose PlaybackURL keeps failing:
 	 * the CDN for a direct viewer, the box for a CDN one. Empty when there is only one. */
 	FallbackPlaybackURL string `json:"fallbackPlaybackUrl,omitempty"`
+	/* TargetLatencySec is how far behind live the player sits on the box path, and
+	 * TargetLatencyCDNSec on the CDN path (EDGE_TARGET_LATENCY_SEC / _CDN_SEC), so the cushion
+	 * changes without a web deploy. The player uses the one for the path it is on, including
+	 * after a fallback, and derives its catch-up jump and Back to live from it. 0 = its default. */
+	TargetLatencySec    float64 `json:"targetLatencySec,omitempty"`
+	TargetLatencyCDNSec float64 `json:"targetLatencyCdnSec,omitempty"`
 	// EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
 	// viewer's browser knows that demotion returns them to the feed, not to the SFU.
 	EdgeWebinar bool `json:"edgeWebinar,omitempty"`

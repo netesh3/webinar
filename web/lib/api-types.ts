@@ -8880,6 +8880,14 @@ export interface JoinResponse {
    */
   fallbackPlaybackUrl?: string;
   /**
+   *  TargetLatencySec is how far behind live the player sits on the box path, and
+   * 	 * TargetLatencyCDNSec on the CDN path (EDGE_TARGET_LATENCY_SEC / _CDN_SEC), so the cushion
+   * 	 * changes without a web deploy. The player uses the one for the path it is on, including
+   * 	 * after a fallback, and derives its catch-up jump and Back to live from it. 0 = its default.
+   */
+  targetLatencySec?: number /* float64 */;
+  targetLatencyCdnSec?: number /* float64 */;
+  /**
    * EdgeWebinar is set on a stage token for an edge-delivery webinar, so a promoted
    * viewer's browser knows that demotion returns them to the feed, not to the SFU.
    */

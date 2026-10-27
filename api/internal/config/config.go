@@ -198,6 +198,17 @@ type Config struct {
 	 * edge near them. Each is offered the other as a fallback (EdgePlaybackChoiceFor). Empty
 	 * keeps the old rule: the CDN when there is one, for everybody. */
 	EdgeNearCountries []string
+	/* EdgeTargetLatencySec is how far behind live the plain-HLS player sits, in seconds
+	 * (EDGE_TARGET_LATENCY_SEC, default 3, allowed 1.5–6). Sent in every edge join
+	 * (JoinResponse.TargetLatencySec), so it changes without a web deploy; the player derives
+	 * its catch-up jump, hls.js backstop and Back to live from it in proportion. Lower is closer
+	 * to live with less cushion against a slow network. */
+	EdgeTargetLatencySec float64
+	/* EdgeTargetLatencyCDNSec is the same for a viewer on the CDN path
+	 * (EDGE_TARGET_LATENCY_CDN_SEC). 0, the default, means "as EdgeTargetLatencySec", which
+	 * keeps today's behaviour; the CDN adds ~1.5 s of its own (playlist cache plus the edge
+	 * fetch), so ~5 is the value to try there (docs/edge-delivery.md). */
+	EdgeTargetLatencyCDNSec float64
 	/* EdgeEncoding is the mix encoding for edge webinars' egress only: EDGE_ENCODING_WIDTH /
 	 * _HEIGHT (default 1280x720), EDGE_ENCODING_FPS (DefaultEdgeEncodingFPS, 25),
 	 * EDGE_VIDEO_BITRATE_KBPS (DefaultEdgeVideoBitrateKbps, 1500), EDGE_AUDIO_BITRATE_KBPS
@@ -619,6 +630,8 @@ func Load() (Config, error) {
 		EdgeDebugClock:              strings.EqualFold(strings.TrimSpace(env("EDGE_DEBUG_CLOCK", "")), "true"),
 		DebugGoroutines:             strings.EqualFold(strings.TrimSpace(env("DEBUG_GOROUTINES", "")), "true"),
 		EdgeNearCountries:           countryList(env("EDGE_NEAR_COUNTRIES", "")),
+		EdgeTargetLatencySec:        envFloatStrict("EDGE_TARGET_LATENCY_SEC", DefaultEdgeTargetLatencySec),
+		EdgeTargetLatencyCDNSec:     envFloatStrict("EDGE_TARGET_LATENCY_CDN_SEC", 0),
 		EdgeEncodingWidth:           envIntStrict("EDGE_ENCODING_WIDTH", 1280),
 		EdgeEncodingHeight:          envIntStrict("EDGE_ENCODING_HEIGHT", 720),
 		EdgeEncodingFPS:             envIntStrict("EDGE_ENCODING_FPS", DefaultEdgeEncodingFPS),
@@ -768,6 +781,12 @@ func (c Config) validate() error {
 	 * coach wondering why nobody can sign up. */
 	if c.DefaultAttendeeLimit < 1 {
 		errs = append(errs, errors.New("DEFAULT_ATTENDEE_LIMIT must be >= 1"))
+	}
+	if c.EdgeTargetLatencySec < MinEdgeTargetLatencySec || c.EdgeTargetLatencySec > MaxEdgeTargetLatencySec {
+		errs = append(errs, fmt.Errorf("EDGE_TARGET_LATENCY_SEC must be a number from %g to %g", MinEdgeTargetLatencySec, MaxEdgeTargetLatencySec))
+	}
+	if c.EdgeTargetLatencyCDNSec != 0 && (c.EdgeTargetLatencyCDNSec < MinEdgeTargetLatencySec || c.EdgeTargetLatencyCDNSec > MaxEdgeTargetLatencySec) {
+		errs = append(errs, fmt.Errorf("EDGE_TARGET_LATENCY_CDN_SEC must be unset, 0, or a number from %g to %g", MinEdgeTargetLatencySec, MaxEdgeTargetLatencySec))
 	}
 	if c.DefaultMaxMeetingMin < 1 {
 		errs = append(errs, errors.New("DEFAULT_MAX_MEETING_MIN must be >= 1"))
@@ -1261,4 +1280,25 @@ func (c Config) String() string {
 	return fmt.Sprintf("env=%s addr=%s livekit=[%s] ai=[%s] maxAttendees=%d recordings=%s emptyRoomClose=%s seed=%v authBypass=%v telemetryEnabled=%v googleAuth=%v whatsAppConnect=%v cors=%v",
 		c.Env, c.Addr, describeLiveKitProjects(c.LiveKitProjects), describeAIProviders(c.AIProviders), c.MaxAttendees, recordings, emptyRoom,
 		c.SeedDev, c.AuthBypass, c.TelemetryEnabled, c.GoogleAuthEnabled(), c.WhatsAppConnectEnabled(), c.CORSOrigins)
+}
+
+// The plain-HLS player's distance behind live, in seconds (EdgeTargetLatencySec).
+const (
+	DefaultEdgeTargetLatencySec = 3.0
+	MinEdgeTargetLatencySec     = 1.5
+	MaxEdgeTargetLatencySec     = 6.0
+)
+
+/* EdgeTargetsLatency is the target for each delivery path, as the join sends it: the box's,
+ * and the CDN's (the box's when EDGE_TARGET_LATENCY_CDN_SEC is unset). */
+func (c Config) EdgeTargetsLatency() (direct, cdn float64) {
+	direct = c.EdgeTargetLatencySec
+	if direct == 0 {
+		direct = DefaultEdgeTargetLatencySec
+	}
+	cdn = c.EdgeTargetLatencyCDNSec
+	if cdn == 0 {
+		cdn = direct
+	}
+	return direct, cdn
 }

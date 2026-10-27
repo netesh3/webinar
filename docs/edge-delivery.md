@@ -384,6 +384,30 @@ after each 30 s without a stall, to 3 s and no lower (`decayedTarget` in `web/li
 from the 1 s tick in `edge-player.tsx`). A viewer at the 2 s cap is back at 3 s after ~4 minutes without
 a stall. The catch-up jump and Back to live are unchanged.
 
+### The cushion, configurable (2026-10-27)
+
+How far behind live the player sits is a server setting now, sent in every edge join, so it changes
+with an API deploy and no web deploy:
+
+| Variable (repo variable → Cloud Run) | Default | Allowed | What it sets |
+|---|---|---|---|
+| `EDGE_TARGET_LATENCY_SEC` | 3 | 1.5–6 | the target on the box path (`JoinResponse.targetLatencySec`) |
+| `EDGE_TARGET_LATENCY_CDN_SEC` | unset (= the box's) | 1.5–6 | the target on the CDN path (`targetLatencyCdnSec`); ~5 is the value to try, since the CDN adds ~1.5 s of its own |
+
+The player (`cushionFor` in `web/lib/edge-hls.ts`) scales every threshold from the target, keeping
+today's ratios: the catch-up jump at 2× the target (6 s at 3), hls.js's backstop at 10/3× (10 s),
+Back to live at 4× (12 s), and a buffer cap of the target + 5 (at least 8). A viewer who falls back to
+the other path takes that path's target. Out-of-range values refuse to boot. At the defaults nothing
+changes.
+
+**To try 2.5 s, then 2 s:** set `EDGE_TARGET_LATENCY_SEC=2.5`, run Deploy API, then run the load kit's
+browser scenario straight from the box, and compare against the 3 s run:
+- glass-to-glass p50/p95 from the time strip (expect ~0.5 s lower per 0.5 s of target)
+- stalls per viewer-minute and stall waves, including the Slow 4G scenario (`--scenario d`), which
+  is where a thinner cushion shows first
+
+Keep the lowest value whose stall numbers still pass.
+
 ### Expected gain, and how to check it
 
 | Change | Expected | Ships with |

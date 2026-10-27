@@ -333,6 +333,33 @@ func TestEdgeJoinChoosesThePathByCountry(t *testing.T) {
 	}
 }
 
+/* The player's cushion travels in the join (EDGE_TARGET_LATENCY_SEC / _CDN_SEC), so it can change
+ * without a web deploy: today's 3 s for both paths when unset, each path's own when set. */
+func TestEdgeJoinSendsTheTargetLatency(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		direct, cdn    float64
+		wantD, wantCDN float64
+	}{
+		{"unset", 0, 0, 3, 3},
+		{"set", 2.5, 5, 2.5, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, edgeConfig, func(c *config.Config) {
+				c.EdgeTargetLatencySec = tc.direct
+				c.EdgeTargetLatencyCDNSec = tc.cdn
+			})
+			edgeHost(t, h, "edge-target-"+tc.name+"@test.dev")
+			wb := edgeWebinar(h, "Edge target "+tc.name)
+			reg := h.registerAsGuest(wb.ID, "target-"+tc.name+"@test.dev")
+			_, j, _ := h.joinAsGuestKey(wb.ID, reg.JoinKey)
+			if j.TargetLatencySec != tc.wantD || j.TargetLatencyCDNSec != tc.wantCDN {
+				t.Fatalf("join targets: direct %v cdn %v, want %v and %v", j.TargetLatencySec, j.TargetLatencyCDNSec, tc.wantD, tc.wantCDN)
+			}
+		})
+	}
+}
+
 func TestEdgeEventsCarryChatAndTargetedInvites(t *testing.T) {
 	h := newHarness(t, edgeConfig)
 	edgeHost(t, h, "edge-events@test.dev")

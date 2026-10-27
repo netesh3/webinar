@@ -15,6 +15,8 @@ import {
   MAX_LATENCY_SECONDS,
   bufferedAhead,
   catchUp,
+  cushionFor,
+  targetForPath,
   decayedTarget,
   seekToTarget,
   edgeHlsConfig,
@@ -195,5 +197,46 @@ for (let n = 1; n < 30; n++) {
   assert.ok(d >= EDGE_RETRY_BASE_MS * 0.75 && d <= EDGE_RETRY_MAX_MS, `attempt ${n}: ${d}`);
 }
 assert.ok(EDGE_MAX_REFRESHES >= 1 && EDGE_MAX_REFRESHES <= 5);
+
+// The configurable cushion: at the default every threshold is exactly today's constant, and
+// they scale with the target; bad input falls back to the default; the path picks its own.
+{
+  const d = cushionFor();
+  assert.deepEqual(d, { target: TARGET_SECONDS, maxLatency: MAX_LATENCY_SECONDS, jumpAbove: CATCH_UP.jumpAbove, behindLive: BEHIND_LIVE_SECONDS, maxBuffer: 8 });
+  assert.deepEqual(cushionFor(3), d);
+  const c = edgeHlsConfig(d);
+  assert.equal(c.liveSyncDuration, 3);
+  assert.equal(c.liveMaxLatencyDuration, 10);
+  assert.equal(c.maxBufferLength, 8);
+  const two = cushionFor(2);
+  assert.equal(two.target, 2);
+  assert.equal(two.jumpAbove, 2); // jump at 4s behind, 2× the target as at 3s
+  assert.equal(two.behindLive, 8);
+  assert.ok(Math.abs(two.maxLatency - 6.67) < 0.01);
+  assert.equal(two.maxBuffer, 8);
+  const five = cushionFor(5);
+  assert.equal(five.jumpAbove, 5);
+  assert.equal(five.behindLive, 20);
+  assert.equal(five.maxBuffer, 10);
+  for (const bad of [undefined, null, 0, 1, 7, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(cushionFor(bad as number | null | undefined).target, TARGET_SECONDS, String(bad));
+  }
+  // Ordering holds at every allowed target: target < jump < backstop < Back to live.
+  for (const t of [1.5, 2, 2.5, 3, 4, 5, 6]) {
+    const x = cushionFor(t);
+    assert.ok(x.target < x.target + x.jumpAbove && x.target + x.jumpAbove < x.maxLatency && x.maxLatency < x.behindLive, `t=${t}`);
+    assert.ok(x.maxBuffer > x.target, `buffer t=${t}`);
+  }
+  // catchUp takes the scaled threshold; without it, today's.
+  assert.equal(catchUp({ latency: 4.5, target: 2, jumpAbove: 2 }), "jump");
+  assert.equal(catchUp({ latency: 4.5, target: 2 }), "stay");
+  // The path's own target; the CDN falls back to the box's; missing is undefined (= default).
+  assert.equal(targetForPath("direct", 2.5, 5), 2.5);
+  assert.equal(targetForPath("cdn", 2.5, 5), 5);
+  assert.equal(targetForPath("cdn", 2.5, undefined), 2.5);
+  assert.equal(targetForPath("", 2.5, 5), 2.5);
+  assert.equal(targetForPath("direct", undefined, undefined), undefined);
+  assert.equal(targetForPath("direct", 0, 0), undefined);
+}
 
 console.log("edge: ok");
