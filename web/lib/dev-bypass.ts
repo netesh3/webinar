@@ -67,6 +67,7 @@ const CONTROLS: SessionControls = {
   raiseHandEnabled: true,
   reactionsEnabled: true,
   captionsEnabled: false,
+  captionsLanguage: "en-IN",
   serverCaptions: false,
   aiEnabled: false,
   aiAvailable: false,

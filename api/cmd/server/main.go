@@ -33,6 +33,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// A webinar without a chosen captions language reads as CAPTIONS_DEFAULT_LANGUAGE.
+	store.SetDefaultCaptionsLanguage(cfg.CaptionsDefaultLanguage)
 
 	// Root context cancelled on SIGINT/SIGTERM so shutdown is orderly.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

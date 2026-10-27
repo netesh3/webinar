@@ -73,6 +73,8 @@ export function meetingInputBase(): Omit<
       raiseHandEnabled: true,
       reactionsEnabled: true,
       captionsEnabled: false,
+      // The server fills it in (the webinar's options, else its default).
+      captionsLanguage: "",
       // Server captions are switched on from the room (POST …/captions/server), not at creation.
       serverCaptions: false,
       aiEnabled: false,

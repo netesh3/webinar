@@ -131,8 +131,10 @@ class Config:
     provider: str = "local"
     deepgram_api_key: str = field(default="", repr=False)
     deepgram_model: str = "nova-3"
-    # "multi" is Nova-3's multilingual code-switching mode (English with Hindi and others in
-    # one stream); "en" is English only and slightly cheaper.
+    # Only the fallback now: each webinar names its captions language (api/types
+    # captions_language.go), sent in the dispatch metadata and the room metadata
+    # (session_language). "multi" is Nova-3's code-switching mode, which covers only English,
+    # Spanish, French, German, Hindi, Russian, Portuguese, Japanese, Italian and Dutch.
     deepgram_language: str = "multi"
     # Silence (ms) before Deepgram ends an utterance, and the gap that sends UtteranceEnd.
     deepgram_endpointing_ms: int = 300
@@ -264,6 +266,33 @@ def room_load(active_jobs: int, max_rooms: int) -> float:
     host CPU (the CPU guard handles that). Below the threshold (agent.py) LiveKit offers the
     worker rooms; at max_rooms it is full."""
     return min(1.0, max(0, active_jobs) / max(1, max_rooms))
+
+
+# The captions languages Deepgram Nova-3 streams (its docs, 2026-10-27), as the API's
+# types.CaptionLanguages codes. Malayalam ("ml") is on the API's list but not here: a room in
+# it gets no Deepgram stream (Deepgram would hear Arabic), until a second provider has it.
+DEEPGRAM_LANGUAGES = frozenset({"en-IN", "hi", "multi", "ta", "te", "kn", "mr", "bn", "gu"})
+
+
+def deepgram_supports(language: str, cfg: Config | None = None) -> bool:
+    """Whether captions in `language` may stream to Deepgram: one of DEEPGRAM_LANGUAGES, or
+    the operator's own CAPTIONS_DEEPGRAM_LANGUAGE (the fallback, "multi" by default)."""
+    if not language:
+        return False
+    return language in DEEPGRAM_LANGUAGES or (cfg is not None and language == cfg.deepgram_language)
+
+
+def job_language(metadata: str | None) -> str | None:
+    """The captions language the API dispatched the job with ("language", a
+    types.CaptionLanguages code). None when absent or unreadable (an older API)."""
+    if not metadata:
+        return None
+    try:
+        md = json.loads(metadata)
+    except ValueError:
+        return None
+    v = md.get("language") if isinstance(md, dict) else None
+    return v.strip() if isinstance(v, str) and v.strip() else None
 
 
 def job_skips_final(metadata: str | None) -> bool:

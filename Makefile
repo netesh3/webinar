@@ -125,6 +125,7 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/network.test.mts
 	# Screen-share encoding: mode, codec, per-codec layer bitrates and the share ladder.
 	cd web && node --experimental-strip-types --no-warnings lib/share-mode.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/captions-language.test.mts
 	# Who publishes AV1: Safari and iPhone/iPad never, whatever they report; the rest only
 	# with an AV1 encoder that MediaCapabilities calls smooth and the cores to run it.
 	cd web && node --experimental-strip-types --no-warnings lib/codec-policy.test.mts

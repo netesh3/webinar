@@ -119,3 +119,31 @@ service-provider list names Deepgram (`web/app/privacy/page.tsx`, updated 2026-1
 - Hindi or Hinglish matters: test `language=multi` on real sessions;
 - Deepgram's prices change, or monthly caption hours pass ~500 (a self-hosted GPU may then be
   cheaper).
+
+## Addendum (2026-10-27): one captions language per webinar
+
+**Why.** We streamed with `language=multi`. Nova-3's code-switching mode covers only English,
+Spanish, French, German, Hindi, Russian, Portuguese, Japanese, Italian and Dutch. A host
+speaking Malayalam got Arabic captions. Deepgram's streaming cannot be limited to a list of
+languages, so the host now says which one it is.
+
+**What.**
+- Each webinar stores a captions language (`options.captionsLanguage`), from
+  `api/types/captions_language.go`. The default is `en-IN`, or the API's
+  `CAPTIONS_DEFAULT_LANGUAGE`.
+- The host picks it when scheduling and can change it in the room.
+- The worker sends it as Deepgram's `language`. `CAPTIONS_DEEPGRAM_LANGUAGE` is now only the
+  fallback.
+- `multi` is offered only as "Hindi + English (mixed)", the mix it handles.
+- The codes are `en-IN`, `hi`, `multi`, `ta`, `te`, `kn`, `mr`, `bn` and `gu` (Deepgram's docs,
+  2026-10-27).
+
+**Malayalam is pending a second provider.** Deepgram Nova-3 has no Malayalam. It is on the list
+so a host can say so, but it is marked not live:
+- the select says captions will be off;
+- the worker opens no Deepgram stream for the room and logs why;
+- no captions are shown, rather than wrong ones.
+
+Revisit when a provider with Malayalam streaming is added (Sarvam, Google Chirp, or
+self-hosted IndicWhisper). Then route `ml` to it in the worker.
+

@@ -1019,6 +1019,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		MaxAttendees:            s.cfg.MaxAttendees,
 		SignupOpen:              s.cfg.SignupOpen,
 		DefaultMaxMeetingMin:    s.cfg.DefaultMaxMeetingMin,
+		CaptionLanguages:        types.CaptionLanguages,
+		DefaultCaptionsLanguage: s.defaultCaptionsLanguage(),
 		BoxRegions:              s.boxRegions(),
 		GoogleClientID:          s.cfg.GoogleClientID,
 		GoogleAPIKey:            s.cfg.GoogleAPIKey,

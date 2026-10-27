@@ -92,6 +92,13 @@ type TranscriptSegment struct {
 
 // SaveSessionTranscript stores one finished transcript for the webinar behind slug.
 func (s *Store) SaveSessionTranscript(ctx context.Context, slug, model string, segments []TranscriptSegment) error {
+	return s.SaveSessionTranscriptIn(ctx, slug, model, "", segments)
+}
+
+/* SaveSessionTranscriptIn is SaveSessionTranscript with the language it was captioned in (a
+ * types.CaptionLanguages code, as the agent last streamed); empty stores the webinar's
+ * captions language as it stands. */
+func (s *Store) SaveSessionTranscriptIn(ctx context.Context, slug, model, language string, segments []TranscriptSegment) error {
 	if segments == nil {
 		segments = []TranscriptSegment{}
 	}
@@ -100,8 +107,9 @@ func (s *Store) SaveSessionTranscript(ctx context.Context, slug, model string, s
 		return err
 	}
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO session_transcripts (webinar_id, segments, model)
-		SELECT w.id, $2::jsonb, $3 FROM webinars w WHERE w.slug = $1`, slug, string(body), model)
+		INSERT INTO session_transcripts (webinar_id, segments, model, language)
+		SELECT w.id, $2::jsonb, $3, coalesce(nullif($4, ''), w.options->>'captionsLanguage', $5)
+		  FROM webinars w WHERE w.slug = $1`, slug, string(body), model, language, DefaultCaptionsLanguage())
 	if err != nil {
 		return err
 	}

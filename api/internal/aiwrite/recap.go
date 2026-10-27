@@ -81,6 +81,8 @@ type RecapInput struct {
 	Meeting     bool
 	HostName    string
 	DurationSec int
+	// Language is what the session was captioned in ("Hindi + English (mixed)"); optional.
+	Language string
 	// Lines is the transcript or captions, oldest first. Empty for engagement_only.
 	Lines     []RecapLine
 	Questions []RecapQuestionIn
@@ -252,6 +254,9 @@ func sessionHeader(in RecapInput) string {
 	}
 	if in.DurationSec > 0 {
 		b.WriteString("Length: " + Clock(in.DurationSec) + "\n")
+	}
+	if l := oneLine(in.Language); l != "" {
+		b.WriteString("Spoken language (as captioned): " + l + "\n")
 	}
 	return b.String()
 }

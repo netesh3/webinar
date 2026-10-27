@@ -121,6 +121,26 @@ def captions_shown(room_metadata: str | None) -> bool | None:
     return controls["captionsEnabled"]
 
 
+def captions_language(room_metadata: str | None) -> str | None:
+    """The room's captions language (types.RoomMeta controls.captionsLanguage, a
+    types.CaptionLanguages code), from the room metadata the API pushes on every change, a
+    host's change of language included. None when it cannot be read (an older API)."""
+    try:
+        meta = json.loads(room_metadata) if room_metadata else None
+    except ValueError:
+        return None
+    controls = meta.get("controls") if isinstance(meta, dict) else None
+    v = controls.get("captionsLanguage") if isinstance(controls, dict) else None
+    return v.strip() if isinstance(v, str) and v.strip() else None
+
+
+def session_language(room_metadata: str | None, dispatched: str | None, fallback: Any) -> str:
+    """The captions language a room streams in: the room metadata's (current, a host's live
+    change included), else the dispatch metadata's, else the fallback Config's
+    CAPTIONS_DEEPGRAM_LANGUAGE."""
+    return captions_language(room_metadata) or dispatched or fallback.deepgram_language
+
+
 def sender_for(identity: str, name: str, metadata: str | None) -> dict[str, str]:
     """The packet's `from`: identity, name and role as the API would label it
     (captionSpeaker). The role is in the participant metadata the API minted
@@ -150,9 +170,11 @@ class TranscriptLine:
     text: str
 
 
-def transcript_payload(room: str, model: str, lines: Sequence[TranscriptLine]) -> dict[str, Any]:
+def transcript_payload(
+    room: str, model: str, lines: Sequence[TranscriptLine], language: str | None = None
+) -> dict[str, Any]:
     ordered = sorted(lines, key=lambda l: (l.start_ms, l.identity))
-    return {
+    body: dict[str, Any] = {
         "room": room,
         "model": model,
         "segments": [
@@ -167,6 +189,9 @@ def transcript_payload(room: str, model: str, lines: Sequence[TranscriptLine]) -
             if l.text.strip()
         ],
     }
+    if language:
+        body["language"] = language  # what it was captioned in; the API stores it with the transcript
+    return body
 
 
 class ApiClient:
@@ -292,5 +317,5 @@ class ApiClient:
             return "gone"
         return "unknown"
 
-    def transcript(self, room: str, model: str, lines: Sequence[TranscriptLine]) -> int:
-        return self.post("/api/internal/transcripts", transcript_payload(room, model, lines), retries=3)
+    def transcript(self, room: str, model: str, lines: Sequence[TranscriptLine], language: str | None = None) -> int:
+        return self.post("/api/internal/transcripts", transcript_payload(room, model, lines, language), retries=3)

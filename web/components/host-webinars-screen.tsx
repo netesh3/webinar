@@ -107,6 +107,8 @@ function instantWebinarInput(
       raiseHandEnabled: true,
       reactionsEnabled: true,
       captionsEnabled: false,
+      // The server fills it in (the webinar's options, else its default).
+      captionsLanguage: "",
       serverCaptions: false,
       aiEnabled: false,
       aiAvailable: false,

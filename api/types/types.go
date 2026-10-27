@@ -279,11 +279,16 @@ type WebinarOptions struct {
 	// during the session, next to chat and Q&A, and a host who ticked a box a week
 	// earlier still had to be able to change their mind. Old rows keep a stray
 	// "polls" key in their options JSON, which unmarshalling ignores.
-	AttendeeChat      bool `json:"attendeeChat"`
-	RaiseHand         bool `json:"raiseHand"`
-	Captions          bool `json:"captions"`
-	Multistream       bool `json:"multistream"`
-	PostWebinarSurvey bool `json:"postWebinarSurvey"`
+	AttendeeChat bool `json:"attendeeChat"`
+	RaiseHand    bool `json:"raiseHand"`
+	Captions     bool `json:"captions"`
+	/* CaptionsLanguage is the language the live captions are in (captions_language.go): one
+	 * code from CaptionLanguages. Empty on webinars from before the setting, which read as
+	 * the server's default (CAPTIONS_DEFAULT_LANGUAGE, en-IN). The room can change it during
+	 * the session (ControlsPatch.CaptionsLanguage), which writes it here too. */
+	CaptionsLanguage  string `json:"captionsLanguage,omitempty"`
+	Multistream       bool   `json:"multistream"`
+	PostWebinarSurvey bool   `json:"postWebinarSurvey"`
 	/* EmailReminders is kept so old rows still resolve. The messages editor no
 	 * longer writes it; ResolveSlots reads it only when this webinar has no
 	 * reminder settings row. Missing means on. */
@@ -374,6 +379,11 @@ type SessionControls struct {
 	// only the person who pressed the button is ever transcribed. Initialised from
 	// the scheduled Options.Captions when the webinar is created.
 	CaptionsEnabled bool `json:"captionsEnabled"`
+	/* CaptionsLanguage is the language the captions are in right now (captions_language.go),
+	 * from WebinarOptions.CaptionsLanguage, or the server default when it was never chosen.
+	 * In the room metadata, so the captions worker on the video box reads it on joining and
+	 * again on every change, and reconnects Deepgram in the new language. */
+	CaptionsLanguage string `json:"captionsLanguage"`
 	/* ServerCaptions says the captions are coming from the server (deploy/captions: a
 	 * LiveKit agent on the egress host transcribing the active speakers), so a speaker's
 	 * browser must NOT run its own on-device Whisper as well. True only while the host has
@@ -522,6 +532,9 @@ type ControlsPatch struct {
 	ReactionsEnabled *bool `json:"reactionsEnabled,omitempty"`
 	PollsEnabled     *bool `json:"pollsEnabled,omitempty"`
 	CaptionsEnabled  *bool `json:"captionsEnabled,omitempty"`
+	// CaptionsLanguage changes the captions language mid-session (or before it): one code
+	// from CaptionLanguages, 422 otherwise.
+	CaptionsLanguage *string `json:"captionsLanguage,omitempty"`
 	// AIEnabled is the room's AI switch (SessionControls.AIEnabled). Refused for an account
 	// without the ai feature.
 	AIEnabled *bool `json:"aiEnabled,omitempty"`
@@ -4779,6 +4792,10 @@ type AppConfig struct {
 	SignupOpen   bool   `json:"signupOpen"`
 	// DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h).
 	DefaultMaxMeetingMin int `json:"defaultMaxMeetingMin"`
+	// CaptionLanguages is the captions language list for the scheduling form and the room;
+	// DefaultCaptionsLanguage is what a new webinar starts with (CAPTIONS_DEFAULT_LANGUAGE).
+	CaptionLanguages        []CaptionLanguage `json:"captionLanguages"`
+	DefaultCaptionsLanguage string            `json:"defaultCaptionsLanguage"`
 	/* BoxRegions is the areas of the video server pool a session can be placed in (e.g. "in",
 	 * "us"), the default first. The schedule form offers the choice only when there are two or
 	 * more; empty when the on-demand video server is off. */

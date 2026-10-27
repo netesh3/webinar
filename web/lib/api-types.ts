@@ -699,6 +699,32 @@ export interface VerifyBillingPaymentResponse {
 }
 
 //////////
+// source: captions_language.go
+
+/**
+ * CaptionLanguage is one entry of the captions language list.
+ */
+export interface CaptionLanguage {
+  /**
+   * Code is what is stored and what the worker sends Deepgram (en-IN, hi, multi, ...).
+   */
+  code: string;
+  /**
+   * Label is what the host sees.
+   */
+  label: string;
+  /**
+   * Live is whether live captions can run in it today. False (Malayalam): the room gets no
+   * captions rather than the wrong language, and the select says so.
+   */
+  live: boolean;
+}
+/**
+ * DefaultCaptionsLanguage is the language when nothing was chosen: English, Indian accent.
+ */
+export const DefaultCaptionsLanguage = "en-IN";
+
+//////////
 // source: clip_jobs.go
 
 /**
@@ -4502,6 +4528,13 @@ export interface WebinarOptions {
   attendeeChat: boolean;
   raiseHand: boolean;
   captions: boolean;
+  /**
+   *  CaptionsLanguage is the language the live captions are in (captions_language.go): one
+   * 	 * code from CaptionLanguages. Empty on webinars from before the setting, which read as
+   * 	 * the server's default (CAPTIONS_DEFAULT_LANGUAGE, en-IN). The room can change it during
+   * 	 * the session (ControlsPatch.CaptionsLanguage), which writes it here too.
+   */
+  captionsLanguage?: string;
   multistream: boolean;
   postWebinarSurvey: boolean;
   /**
@@ -4621,6 +4654,13 @@ export interface SessionControls {
    * the scheduled Options.Captions when the webinar is created.
    */
   captionsEnabled: boolean;
+  /**
+   *  CaptionsLanguage is the language the captions are in right now (captions_language.go),
+   * 	 * from WebinarOptions.CaptionsLanguage, or the server default when it was never chosen.
+   * 	 * In the room metadata, so the captions worker on the video box reads it on joining and
+   * 	 * again on every change, and reconnects Deepgram in the new language.
+   */
+  captionsLanguage: string;
   /**
    *  ServerCaptions says the captions are coming from the server (deploy/captions: a
    * 	 * LiveKit agent on the egress host transcribing the active speakers), so a speaker's
@@ -4750,6 +4790,11 @@ export interface ControlsPatch {
   reactionsEnabled?: boolean;
   pollsEnabled?: boolean;
   captionsEnabled?: boolean;
+  /**
+   * CaptionsLanguage changes the captions language mid-session (or before it): one code
+   * from CaptionLanguages, 422 otherwise.
+   */
+  captionsLanguage?: string;
   /**
    * AIEnabled is the room's AI switch (SessionControls.AIEnabled). Refused for an account
    * without the ai feature.
@@ -9732,6 +9777,12 @@ export interface AppConfig {
    * DefaultMaxMeetingMin is the system default maximum meeting duration in minutes (default 180 = 3h).
    */
   defaultMaxMeetingMin: number /* int */;
+  /**
+   * CaptionLanguages is the captions language list for the scheduling form and the room;
+   * DefaultCaptionsLanguage is what a new webinar starts with (CAPTIONS_DEFAULT_LANGUAGE).
+   */
+  captionLanguages: CaptionLanguage[];
+  defaultCaptionsLanguage: string;
   /**
    *  BoxRegions is the areas of the video server pool a session can be placed in (e.g. "in",
    * 	 * "us"), the default first. The schedule form offers the choice only when there are two or

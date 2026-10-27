@@ -163,6 +163,9 @@ func scanWebinar(row scanner) (types.Webinar, string, error) {
 	if err := json.Unmarshal(options, &w.Options); err != nil {
 		return types.Webinar{}, "", fmt.Errorf("options: %w", err)
 	}
+	// The captions language is a scheduled option the room can change (both write
+	// options.captionsLanguage); rows from before the setting read as the server default.
+	w.Controls.CaptionsLanguage = types.CaptionLanguageOrDefault(w.Options.CaptionsLanguage, DefaultCaptionsLanguage())
 	// Existing webinars never stored this key; missing means on.
 	if !bytes.Contains(options, []byte(`"emailReminders"`)) {
 		w.Options.EmailReminders = true
@@ -1095,11 +1098,16 @@ func (s *Store) UpdateControls(ctx context.Context, slug string, p types.Control
 			ai_off_this_session = CASE WHEN status = 'live' AND $13::boolean IS NOT NULL
 			                           THEN NOT $13::boolean ELSE ai_off_this_session END,
 			audience_layout    = coalesce($14, audience_layout),
+			-- The captions language lives in options with the scheduled choice, so the
+			-- room's change is what the edit form shows next.
+			options            = CASE WHEN $15::text IS NULL THEN options
+			                          ELSE jsonb_set(coalesce(options, '{}'::jsonb), '{captionsLanguage}', to_jsonb($15::text)) END,
 			updated_at         = now()
 		 WHERE slug = $1`,
 		slug, p.HideAttendees, p.MuteOnEntry, p.AllowUnmute, p.ChatEnabled,
 		p.QAEnabled, p.RaiseHandEnabled, p.ReactionsEnabled, p.Locked,
-		chatDestination, p.PollsEnabled, p.CaptionsEnabled, p.AIEnabled, audienceLayout)
+		chatDestination, p.PollsEnabled, p.CaptionsEnabled, p.AIEnabled, audienceLayout,
+		p.CaptionsLanguage)
 	if err != nil {
 		return types.Webinar{}, err
 	}
