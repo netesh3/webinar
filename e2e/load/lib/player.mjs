@@ -4,8 +4,8 @@
  *
  * Playback starts when the first media is appended and runs at real time. If the playhead
  * catches up with the end of the buffer, that is a stall, lasting until the next media
- * arrives (hls.js waits, it does not skip; maxLiveSyncPlaybackRate is 1 in edgeHlsConfig, so it
- * never speeds up to catch up either). */
+ * arrives (hls.js waits, it does not skip). The real player also plays up to 1.1× to win drift back
+ * (maxLiveSyncPlaybackRate in edgeHlsConfig); the model does not, so its latency errs high. */
 export class PlayerModel {
   constructor(now = () => Date.now()) {
     this.now = now;

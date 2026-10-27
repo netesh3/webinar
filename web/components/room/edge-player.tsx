@@ -10,9 +10,11 @@
  * the other one the join offered (fallbackPlaybackUrl). Media errors go through hls.js's own
  * recovery.
  *
- * Safari plays the playlist natively. On top of the shared player chrome this adds Back to
- * live when far behind, an edge_latency telemetry sample, and, with the debug clock on, the
- * server-synced clock the composite draws too. */
+ * Safari plays the playlist natively. On top of the shared player chrome this adds the
+ * speaker split, the held last frame, an edge_latency telemetry sample, and, with the debug
+ * clock on, the server-synced clock the composite draws too. No "Reconnecting…" or "Back to
+ * live" for viewers (27 Oct 2026): they read as something broken, the held frame covers a
+ * gap, and the player wins drift back by itself (lib/edge-hls.ts). */
 
 import Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -41,9 +43,9 @@ import { EdgeClock } from "./edge-clock";
 import { EdgeSpeakerSplit } from "./edge-speaker-split";
 
 const TELEMETRY_EVERY_MS = 30_000;
-/* A wait shorter than this is a hiccup, not worth a badge: a blip on the viewer's network or
- * at the CDN edge stalls the picture and plays on by itself, and at 800ms every such blip read
- * as "Reconnecting" (instant-webinar-2050, 2026-10-24). */
+/* A wait shorter than this is a hiccup: a blip on the viewer's network or at the CDN edge
+ * stalls the picture and plays on by itself (instant-webinar-2050, 2026-10-24). Longer is
+ * "reconnecting" in telemetry; viewers are shown nothing. */
 const RECONNECTING_AFTER_MS = 4000;
 
 export function EdgePlayer({
@@ -101,7 +103,7 @@ export function EdgePlayer({
   const [native, setNative] = useState(false);
   // Which path is playing: the join's choice, or the other one after a fallback.
   const [path, setPath] = useState(deliveryPath ?? "");
-  // The cushion for the path playing now; read by the tick, Back to live and the return jump.
+  // The cushion for the path playing now; read by the tick and the return jump.
   const cushion = useMemo(
     () => cushionFor(targetForPath(path || deliveryPath, targetLatencySec, targetLatencyCdnSec)),
     [path, deliveryPath, targetLatencySec, targetLatencyCdnSec],
@@ -481,10 +483,8 @@ export function EdgePlayer({
   }, []);
 
   /* Back from a locked phone or another app. The phone paused the video while the page was
-   * hidden, so it would carry on from where it stopped — minutes behind everyone else, behind
-   * a Back to live button the person has to notice. Far enough behind to have shown that
-   * button, it jumps to live by itself; otherwise it just plays again. The "Reconnecting…"
-   * badge stays down meanwhile (useReturnQuiet): a stall while catching up is not news. */
+   * hidden, so it would carry on from where it stopped — minutes behind everyone else. Far
+   * enough behind (behindLive), it jumps to live by itself; otherwise it just plays again. */
   const onReturn = useCallback(() => {
     const video = videoRef.current;
     if (!video || !playingRef.current) return;
@@ -503,9 +503,7 @@ export function EdgePlayer({
       void video.play().catch(() => {});
     }
   }, [jumpToLive]);
-  const quiet = useReturnQuiet(onReturn);
-
-  const behind = latency != null && latency > cushion.behindLive;
+  useReturnQuiet(onReturn);
 
   return (
     <div className="relative h-full w-full">
@@ -556,28 +554,12 @@ export function EdgePlayer({
             frozen ? "" : "hidden"
           }`}
         />
-        {reconnecting && !loading && !quiet && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center">
-            <span className="rounded-full bg-black/70 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
-              Reconnecting…
-            </span>
-          </div>
-        )}
-        {!loading && (
+        {/* No delay readout or mode for viewers: those were for tuning, and the delay is still
+            measured (edge_latency telemetry). No LIVE badge here either: StagePlayerChrome
+            already draws one top left, and two read as a glitch. */}
+        {!loading && debugClock && (
           <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-2">
-            {debugClock && <EdgeClock offsetMs={clockOffsetMs} />}
-            {/* No delay readout or mode for viewers: those were for tuning, and the delay is
-                still measured (edge_latency telemetry). No LIVE badge here either:
-                StagePlayerChrome already draws one top left, and two read as a glitch. */}
-            {behind && (
-              <button
-                type="button"
-                onClick={jumpToLive}
-                className="pointer-events-auto rounded-full bg-brand px-3 py-1 text-[11.5px] font-semibold text-white shadow-lg hover:bg-brand-hover"
-              >
-                Back to live
-              </button>
-            )}
+            <EdgeClock offsetMs={clockOffsetMs} />
           </div>
         )}
       </StagePlayerChrome>

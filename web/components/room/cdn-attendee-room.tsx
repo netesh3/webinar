@@ -1263,7 +1263,7 @@ export function StagePlayerChrome({
   captionsUrl?: string;
   /** A simulive: a broadcast on a shared clock. Seek keys do nothing. */
   simulive?: boolean;
-  /** The player's own overlays (the edge player's speaker PiP, held frame, Back to live).
+  /** The player's own overlays (the edge player's speaker PiP, held frame).
    *  Inside the container, so they come along into fullscreen. */
   children?: ReactNode;
 }) {
