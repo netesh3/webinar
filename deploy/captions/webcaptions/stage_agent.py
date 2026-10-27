@@ -30,10 +30,10 @@ from livekit import rtc
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, JobExecutorType, JobProcess, WorkerPermissions, cli
 
 from .agent import DATA_TOPIC, _is_person, on_request
-from .config import Config, job_skips_final, room_load
+from .config import Config, deepgram_supports, job_language, job_skips_final, room_load
 from .cpuguard import Level
 from .live import LiveCaptioner
-from .poster import ApiClient, captions_shown, sender_for
+from .poster import ApiClient, captions_shown, sender_for, session_language
 from .provider import CostStats, DeepgramStream, FailoverTracker, SileroVad, SpeechGate, aiohttp_connect
 from .stage import RoomTranscript, SpeakerTrack, is_stage, post_transcript
 from .transcriber import Result
@@ -92,6 +92,10 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_NONE)
     room = ctx.room
     shown[0] = captions_shown(room.metadata)
+    # The webinar's captions language: the room's (the host can change it live), else what the
+    # job was dispatched with, else CAPTIONS_DEEPGRAM_LANGUAGE. Every stream reads it here.
+    dispatched = job_language(ctx.job.metadata)
+    lang = [session_language(room.metadata, dispatched, cfg)]
 
     def publish(packet: dict) -> bool:
         data = json.dumps(packet, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -129,8 +133,10 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     log.info(
         "captions joined %s (deepgram %s/%s, video box, shown %s)",
-        room_name, cfg.deepgram_model, cfg.deepgram_language, shown[0],
+        room_name, cfg.deepgram_model, lang[0], shown[0],
     )
+    if not deepgram_supports(lang[0], cfg):
+        log.warning("captions: %s is in %r, which Deepgram does not caption; no streams until it changes", room_name, lang[0])
 
     def on_health(ok: bool) -> None:
         if not ok:
@@ -142,6 +148,11 @@ async def entrypoint(ctx: JobContext) -> None:
     @room.on("room_metadata_changed")
     def _on_metadata(_old: str, new: str) -> None:
         shown[0] = captions_shown(new)
+        was, lang[0] = lang[0], session_language(new, dispatched, cfg)
+        if lang[0] != was:
+            log.info("captions: %s language %s -> %s (from the next utterance)", room_name, was, lang[0])
+            for sp in list(tracks.values()):
+                spawn(sp.stream.relanguage())
 
     def wanted(p: rtc.RemoteParticipant, pub: rtc.TrackPublication) -> bool:
         return (
@@ -168,7 +179,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 transcript.add(identity, name, start_ms, end_ms, text)
             deliverer.submit(captioner.deliver, identity, name, text, start_ms, end_ms, partial=(kind == "partial"))
 
-        stream = DeepgramStream(cfg, key, connect, on_event, tracker, cost, on_health)
+        stream = DeepgramStream(cfg, key, connect, on_event, tracker, cost, on_health, language=lambda: lang[0])
         gate = SpeechGate(cfg.vad_preroll_ms, cfg.vad_hangover_s)
         sp = SpeakerTrack(key, SileroVad(session), gate, stream)
         tracks[key] = sp
@@ -246,7 +257,7 @@ async def entrypoint(ctx: JobContext) -> None:
         cost.maybe_log(force=True)
         await asyncio.to_thread(deliverer.shutdown, True)
         await asyncio.to_thread(poster.shutdown, True)
-        await asyncio.to_thread(post_transcript, api, room_name, "deepgram/" + cfg.deepgram_model, transcript, skip)
+        await asyncio.to_thread(post_transcript, api, room_name, "deepgram/" + cfg.deepgram_model, transcript, skip, lang[0])
         await asyncio.to_thread(captioner.report, None, True)
 
     ctx.add_shutdown_callback(on_shutdown)

@@ -5,6 +5,7 @@ import { Badge } from "../ui";
 import { useAppConfig, useSession } from "../providers";
 import { api } from "@/lib/api";
 import { FeatureCloudRecording, type Webinar } from "@/lib/api-types";
+import { CaptionsLanguageSelect } from "../captions-language-select";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
 
@@ -180,6 +181,20 @@ export function RoomSection({
             />
           ))}
         </div>
+        {/* Next to "Live captions": the language spoken, which the captions are made in
+            (a host can change it in the room). Not for a simulive, which is never captioned live. */}
+        {form.kind !== "simulive" && (
+          <div className="mt-3 max-w-sm">
+            <CaptionsLanguageSelect
+              value={form.options.captionsLanguage}
+              onChange={(code) =>
+                set("options", { ...form.options, captionsLanguage: code })
+              }
+              noun={form.kind === "meeting" ? "meeting" : "webinar"}
+              error={fields.captionsLanguage}
+            />
+          </div>
+        )}
         {form.options.multistream && (
           <div className="mt-3 grid gap-2">
             {config.youtubeOAuth && account?.youtube?.connected ? (

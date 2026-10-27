@@ -70,6 +70,9 @@ type Config struct {
 	DefaultAttendeeLimit int
 	// DefaultMaxMeetingMin is the default maximum duration for meetings in minutes (default 180 = 3h).
 	DefaultMaxMeetingMin int
+	// CaptionsDefaultLanguage is the captions language a new webinar starts with
+	// (CAPTIONS_DEFAULT_LANGUAGE, default en-IN; one code from types.CaptionLanguages).
+	CaptionsDefaultLanguage string
 	// EmptyRoomCloseMin ends a live webinar that has had nobody in it for this
 	// many minutes, once its scheduled start has passed. A host who closes the
 	// tab instead of pressing End otherwise leaves the room live, the meeting
@@ -547,25 +550,26 @@ func Load() (Config, error) {
 		RegisterPerMin: envInt("REGISTER_RATE_PER_MIN", 30),
 		// Sized so a full house behind a single NAT can all get in within a
 		// minute, with headroom for reconnects.
-		JoinPerMin:           envInt("JOIN_RATE_PER_MIN", 1200),
-		DefaultAttendeeLimit: envInt("DEFAULT_ATTENDEE_LIMIT", 50),
-		CORSOrigins:          splitAndTrim(env("CORS_ORIGINS", "http://localhost:3000")),
-		AppName:              env("APP_NAME", "Webinar Liv"),
-		SupportEmail:         env("SUPPORT_EMAIL", ""),
-		DefaultMaxMeetingMin: envInt("DEFAULT_MAX_MEETING_MIN", 180),
-		EmptyRoomCloseMin:    envInt("EMPTY_ROOM_CLOSE_MIN", 10),
-		TickSecret:           strings.TrimSpace(env("TICK_SECRET", "")),
-		VAPIDPublicKey:       strings.TrimSpace(env("VAPID_PUBLIC_KEY", "")),
-		VAPIDPrivateKey:      strings.TrimSpace(env("VAPID_PRIVATE_KEY", "")),
-		VAPIDSubject:         strings.TrimSpace(env("VAPID_SUBJECT", "")),
-		CaptionsSecret:       strings.TrimSpace(env("CAPTIONS_SECRET", "")),
-		CaptionsAgentName:    strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
-		CaptionsProvider:     loadCaptionsProvider(),
-		MixRecSecret:         strings.TrimSpace(env("MIXREC_SECRET", "")),
-		MixRecURL:            strings.TrimRight(strings.TrimSpace(env("MIXREC_URL", "")), "/"),
-		AdminEmails:          splitAndTrim(env("ADMIN_EMAILS", "")),
-		AdminPassword:        env("ADMIN_PASSWORD", ""),
-		SMTPHost:             env("SMTP_HOST", ""),
+		JoinPerMin:              envInt("JOIN_RATE_PER_MIN", 1200),
+		DefaultAttendeeLimit:    envInt("DEFAULT_ATTENDEE_LIMIT", 50),
+		CORSOrigins:             splitAndTrim(env("CORS_ORIGINS", "http://localhost:3000")),
+		AppName:                 env("APP_NAME", "Webinar Liv"),
+		SupportEmail:            env("SUPPORT_EMAIL", ""),
+		DefaultMaxMeetingMin:    envInt("DEFAULT_MAX_MEETING_MIN", 180),
+		CaptionsDefaultLanguage: strings.TrimSpace(env("CAPTIONS_DEFAULT_LANGUAGE", types.DefaultCaptionsLanguage)),
+		EmptyRoomCloseMin:       envInt("EMPTY_ROOM_CLOSE_MIN", 10),
+		TickSecret:              strings.TrimSpace(env("TICK_SECRET", "")),
+		VAPIDPublicKey:          strings.TrimSpace(env("VAPID_PUBLIC_KEY", "")),
+		VAPIDPrivateKey:         strings.TrimSpace(env("VAPID_PRIVATE_KEY", "")),
+		VAPIDSubject:            strings.TrimSpace(env("VAPID_SUBJECT", "")),
+		CaptionsSecret:          strings.TrimSpace(env("CAPTIONS_SECRET", "")),
+		CaptionsAgentName:       strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
+		CaptionsProvider:        loadCaptionsProvider(),
+		MixRecSecret:            strings.TrimSpace(env("MIXREC_SECRET", "")),
+		MixRecURL:               strings.TrimRight(strings.TrimSpace(env("MIXREC_URL", "")), "/"),
+		AdminEmails:             splitAndTrim(env("ADMIN_EMAILS", "")),
+		AdminPassword:           env("ADMIN_PASSWORD", ""),
+		SMTPHost:                env("SMTP_HOST", ""),
 		// 587 is submission-with-STARTTLS, which is what a hosted provider expects.
 		SMTPPort:     envInt("SMTP_PORT", 587),
 		SMTPUsername: env("SMTP_USERNAME", ""),
@@ -787,6 +791,9 @@ func (c Config) validate() error {
 	}
 	if c.EdgeTargetLatencyCDNSec != 0 && (c.EdgeTargetLatencyCDNSec < MinEdgeTargetLatencySec || c.EdgeTargetLatencyCDNSec > MaxEdgeTargetLatencySec) {
 		errs = append(errs, fmt.Errorf("EDGE_TARGET_LATENCY_CDN_SEC must be unset, 0, or a number from %g to %g", MinEdgeTargetLatencySec, MaxEdgeTargetLatencySec))
+	}
+	if !types.ValidCaptionLanguage(c.CaptionsDefaultLanguage) {
+		errs = append(errs, fmt.Errorf("CAPTIONS_DEFAULT_LANGUAGE=%q is not a captions language (types.CaptionLanguages)", c.CaptionsDefaultLanguage))
 	}
 	if c.DefaultMaxMeetingMin < 1 {
 		errs = append(errs, errors.New("DEFAULT_MAX_MEETING_MIN must be >= 1"))

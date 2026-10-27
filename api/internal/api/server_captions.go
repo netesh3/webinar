@@ -226,7 +226,8 @@ func (s *Server) mountCaptionsInternal(r chi.Router) {
  * load test (admin_loadtest.go). The after-session pass runs the big model over the whole
  * session's audio, and a load test's transcript is never read: on 2026-10-26 one such pass
  * held a 2-vCPU captions box at 91% for twenty minutes, then got a 404 because the kit had
- * already deleted the webinar. A failed lookup leaves the pass on (a real session must never
+ * already deleted the webinar; and "language", the session's captions language. A failed
+ * lookup leaves the pass on (a real session must never
  * lose its transcript to a database blip). RedispatchIdle copies the metadata as it is. */
 func (s *Server) captionAgentMeta(ctx context.Context, slug string, extra map[string]string) string {
 	md := map[string]string{"slug": slug, "room": lk.RoomName(slug)}
@@ -235,6 +236,14 @@ func (s *Server) captionAgentMeta(ctx context.Context, slug string, extra map[st
 	}
 	if _, ok, err := s.store.LoadTestViewers(ctx, slug); err == nil && ok {
 		md["final"] = "skip"
+	}
+	/* The captions language the agent starts in (a Deepgram code, types.CaptionLanguages).
+	 * A change in the room arrives as room metadata (controls.captionsLanguage), which the
+	 * agent prefers once it has joined. A failed lookup sends the server default. */
+	if lang, err := s.store.CaptionsLanguageOf(ctx, slug); err == nil {
+		md["language"] = lang
+	} else {
+		md["language"] = s.defaultCaptionsLanguage()
 	}
 	meta, _ := json.Marshal(md)
 	return string(meta)
@@ -530,6 +539,7 @@ type internalTranscript struct {
 	Room     string                    `json:"room"`
 	Slug     string                    `json:"slug"`
 	Model    string                    `json:"model"`
+	Language string                    `json:"language"` // the captions language it streamed in; optional
 	Segments []store.TranscriptSegment `json:"segments"`
 }
 
@@ -567,7 +577,12 @@ func (s *Server) handleInternalTranscript(w http.ResponseWriter, r *http.Request
 			Text:     text,
 		})
 	}
-	err := s.store.SaveSessionTranscript(r.Context(), slug, model, segments)
+	// A language the list does not know (an older worker sends none) is the webinar's.
+	language := strings.TrimSpace(req.Language)
+	if !types.ValidCaptionLanguage(language) {
+		language = ""
+	}
+	err := s.store.SaveSessionTranscriptIn(r.Context(), slug, model, language, segments)
 	if errors.Is(err, store.ErrNotFound) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
@@ -576,7 +591,7 @@ func (s *Server) handleInternalTranscript(w http.ResponseWriter, r *http.Request
 		s.fail(w, r, "internal transcript: save", err)
 		return
 	}
-	s.log.Info("session transcript stored", "slug", slug, "model", model, "segments", len(segments))
+	s.log.Info("session transcript stored", "slug", slug, "model", model, "language", language, "segments", len(segments))
 	// The AI recap was waiting for this: make it due, and write it now, in this request
 	// (recapNow) — the tick only runs while somebody is using the site.
 	if err := s.store.NudgeRecap(r.Context(), slug); err != nil {
@@ -585,4 +600,9 @@ func (s *Server) handleInternalTranscript(w http.ResponseWriter, r *http.Request
 		s.recapNow(r.Context(), slug)
 	}
 	httpx.JSON(w, http.StatusCreated, map[string]any{"status": "ok", "segments": len(segments)})
+}
+
+// defaultCaptionsLanguage is CAPTIONS_DEFAULT_LANGUAGE, en-IN when unset (as in a test config).
+func (s *Server) defaultCaptionsLanguage() string {
+	return types.CaptionLanguageOrDefault(s.cfg.CaptionsDefaultLanguage, "")
 }

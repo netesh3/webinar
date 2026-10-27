@@ -40,7 +40,7 @@ from typing import Any, Awaitable, Callable, Protocol
 
 import numpy as np
 
-from .config import Config
+from .config import Config, deepgram_supports
 
 log = logging.getLogger("captions.provider")
 cost_log = logging.getLogger("captions.cost")
@@ -56,12 +56,13 @@ GAP_MS = 60  # a run of sent audio more than this after the last one starts a ne
 VAD_WINDOW = 512  # Silero's window at 16 kHz (32 ms)
 
 
-def listen_url(cfg: Config) -> str:
+def listen_url(cfg: Config, language: str | None = None) -> str:
     """The streaming endpoint with this worker's settings: 16 kHz mono linear16 (what
-    LiveKit's AudioStream gives us), interim results on, punctuation and formatting on."""
+    LiveKit's AudioStream gives us), interim results on, punctuation and formatting on. In the
+    webinar's captions language; CAPTIONS_DEEPGRAM_LANGUAGE when it has none."""
     q: dict[str, Any] = {
         "model": cfg.deepgram_model,
-        "language": cfg.deepgram_language,
+        "language": language or cfg.deepgram_language,
         "encoding": "linear16",
         "sample_rate": SAMPLE_RATE,
         "channels": 1,
@@ -339,8 +340,13 @@ class DeepgramStream:
         tracker: FailoverTracker,
         cost: CostStats | None = None,
         on_health: Callable[[bool], None] = lambda ok: None,
+        language: Callable[[], str] | None = None,
     ) -> None:
         self.cfg = cfg
+        # The room's captions language, read at every connect (relanguage reconnects).
+        self.language = language or (lambda: cfg.deepgram_language)
+        self._lang = ""  # the language the open socket streams in
+        self._refused = ""  # an unsupported language already logged for this track
         self.key = key
         self.connect = connect
         self.on_event = on_event
@@ -367,8 +373,35 @@ class DeepgramStream:
         if self.ws is None:
             self._ensure_connecting()
 
+    async def relanguage(self) -> None:
+        """The room's captions language changed: a socket in another language is closed (its
+        last results still arrive) and, if speech is going on, reopened in the new one. So the
+        change takes effect from the next utterance. Nothing open: the next open uses it."""
+        lang = self.language()
+        if self.ws is None and self._connecting is None:
+            return
+        if lang == self._lang and self._connecting is None:
+            return
+        want = self.want_open
+        log.info("deepgram: %s switches language %s -> %s", self.key, self._lang or "-", lang)
+        await self.close()
+        if want:
+            await self.open()
+
+    def supported(self) -> bool:
+        """Whether the room's language may go to Deepgram. Not (Malayalam): no socket at all,
+        rather than captions in the wrong language; logged once per track and language."""
+        lang = self.language()
+        if deepgram_supports(lang, self.cfg):
+            self._refused = ""
+            return True
+        if self._refused != lang:
+            self._refused = lang
+            log.warning("deepgram: no stream for %s: Deepgram has no %r model; captions are off in this language", self.key, lang)
+        return False
+
     async def send(self, pcm16: bytes, wall_ms: int) -> None:
-        if not self.want_open:
+        if not self.want_open or not self.supported():
             return
         if self.ws is None:
             # Still connecting (or reconnecting): held, sent in order once the socket opens.
@@ -430,11 +463,14 @@ class DeepgramStream:
     def _ensure_connecting(self) -> None:
         if self._connecting is not None or not self.want_open or time.monotonic() < self._retry_at:
             return
+        if not self.supported():
+            return
         self._connecting = asyncio.ensure_future(self._connect())
 
     async def _connect(self) -> None:
         try:
-            ws = await self.connect(listen_url(self.cfg), auth_headers(self.cfg))
+            lang = self.language()
+            ws = await self.connect(listen_url(self.cfg, lang), auth_headers(self.cfg))
         except asyncio.CancelledError:
             raise
         except Exception as err:
@@ -448,6 +484,7 @@ class DeepgramStream:
             await _quiet_close(ws)
             return
         self.ws = ws
+        self._lang = lang
         if self.tracker.success():
             self.on_health(True)
         DeepgramStream._ids += 1
@@ -455,7 +492,7 @@ class DeepgramStream:
         if self.cost is not None:
             self.cost.opened(self._sid)
         self.clock = AudioClock()  # offsets restart on every socket
-        log.info("deepgram: stream open for %s (%s, %s)", self.key, self.cfg.deepgram_model, self.cfg.deepgram_language)
+        log.info("deepgram: stream open for %s (%s, %s)", self.key, self.cfg.deepgram_model, lang)
         self._reader = asyncio.ensure_future(self._read(ws))
         self._keepalive = asyncio.ensure_future(self._keep_alive(ws))
         while self._pending and self.ws is ws:

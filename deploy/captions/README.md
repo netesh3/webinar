@@ -83,6 +83,33 @@ All three internal endpoints check `X-Captions-Secret` against the API's `CAPTIO
 The guard never touches the egress process. Audio is still written to disk while paused
 (cheap) so the final transcript has no holes.
 
+## Captions language
+
+Each webinar has one captions language, chosen when scheduling ("Captions language", next to
+"Live captions") and changeable by the host in the room (Host controls). The list is
+`api/types/captions_language.go`; a new webinar gets the API's `CAPTIONS_DEFAULT_LANGUAGE`
+(`en-IN`). Codes are Deepgram Nova-3's streaming codes:
+
+| Language | Code |
+|---|---|
+| English (India), the default | `en-IN` |
+| Hindi | `hi` |
+| Hindi + English (mixed) | `multi` |
+| Tamil, Telugu, Kannada, Marathi, Bengali, Gujarati | `ta`, `te`, `kn`, `mr`, `bn`, `gu` |
+| Malayalam | `ml`: **not in Deepgram**, no stream (below) |
+
+How the worker gets it (`stage_agent.py`): the room metadata's `controls.captionsLanguage`
+(pushed by the API on every change), else the dispatch metadata's `"language"`
+(`captionAgentMeta`), else `CAPTIONS_DEEPGRAM_LANGUAGE`. A change in the room arrives as
+`room_metadata_changed`: every open Deepgram socket in the old language is closed (its last
+results still come in) and reopened in the new one, so it applies from the next utterance.
+
+A language Deepgram does not stream (`config.DEEPGRAM_LANGUAGES`; today Malayalam) gets no
+socket at all, rather than captions in the wrong language (with `multi`, Malayalam came out as
+Arabic). The worker logs it once per speaker; the select tells the host captions will be off.
+The transcript posted at the end carries the language (`session_transcripts.language`), and
+the AI recap is told it.
+
 ## Environment
 
 Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh` writes
@@ -101,7 +128,7 @@ Agent (container). On the SFU box put these in `/opt/livekit/.env`; `redeploy.sh
 | `CAPTIONS_PROVIDER` | `deepgram` with a key, else `local` | `deepgram`: the video box worker (see "Deepgram on the video box") |
 | `DEEPGRAM_API_KEY` | – | required with `CAPTIONS_PROVIDER=deepgram`; never logged |
 | `CAPTIONS_DEEPGRAM_MODEL` | `nova-3` | Deepgram model |
-| `CAPTIONS_DEEPGRAM_LANGUAGE` | `multi` | `multi` (Nova-3 code-switching, English + Hindi etc.) or `en` |
+| `CAPTIONS_DEEPGRAM_LANGUAGE` | `multi` | only the fallback: each webinar names its language (see "Captions language"), sent in the dispatch and room metadata |
 | `CAPTIONS_DEEPGRAM_ENDPOINTING_MS` | `300` | silence before Deepgram finalises a line |
 | `CAPTIONS_DEEPGRAM_UTTERANCE_END_MS` | `1000` | 0 off, else ≥ 1000 |
 | `CAPTIONS_VAD_PREROLL_MS` | `400` | deepgram: audio before speech that is sent first (100–2000) |

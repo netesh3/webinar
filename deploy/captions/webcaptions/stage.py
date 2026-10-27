@@ -86,7 +86,9 @@ class RoomTranscript:
         return sorted(self.lines, key=lambda l: (l.start_ms, l.identity))
 
 
-def post_transcript(api: Any, room: str, model: str, transcript: RoomTranscript, skip: bool) -> int | None:
+def post_transcript(
+    api: Any, room: str, model: str, transcript: RoomTranscript, skip: bool, language: str | None = None
+) -> int | None:
     """At the room's end: the finals as the session transcript, posted even when empty (the
     AI recap waits for a transcript stored after the end, and starts the moment this lands).
     Not for a load test ("final":"skip"), whose transcript nobody reads."""
@@ -94,6 +96,6 @@ def post_transcript(api: Any, room: str, model: str, transcript: RoomTranscript,
         log.info("captions: %s is a load test; no transcript posted (%d lines)", room, len(transcript.lines))
         return None
     lines = transcript.ordered()
-    status = api.transcript(room, model, lines)
+    status = api.transcript(room, model, lines, language) if language else api.transcript(room, model, lines)
     log.info("session transcript for %s: %d lines from %s, API %d", room, len(lines), model, status)
     return status

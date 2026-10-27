@@ -18,6 +18,7 @@ import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 import { EndWebinarDialog } from "./host-survey";
 import { AudienceLayoutPicker } from "./audience-layout-picker";
+import { CaptionsLanguagePicker } from "./captions-language-picker";
 
 /* The host's in-session control panel.
  *
@@ -287,6 +288,9 @@ export function HostControls() {
 
           {/* What edge viewers and the recording see. Renders nothing without a composite. */}
           <AudienceLayoutPicker />
+
+          {/* The language the captions are made in; a change applies from the next sentence. */}
+          <CaptionsLanguagePicker />
 
           <section>
             <button

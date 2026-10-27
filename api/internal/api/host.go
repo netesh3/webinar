@@ -640,6 +640,10 @@ func (s *Server) handleUpdateWebinar(w http.ResponseWriter, r *http.Request) {
 	if hasPrev && in.Options.Captions != prev.Options.Captions {
 		in.Controls.CaptionsEnabled = in.Options.Captions
 	}
+	// A save that does not name a captions language (an older client) keeps the session's.
+	if hasPrev && in.Options.CaptionsLanguage == "" {
+		in.Options.CaptionsLanguage = prev.Options.CaptionsLanguage
+	}
 
 	/* A save that writes other sessions too (this and following, or a one-off becoming a
 	 * series) gives them this session's panel when the panel was not sent, rather than none:
@@ -1111,6 +1115,16 @@ func localTime(at time.Time, zone string) string { return notify.LocalTime(at, z
  */
 func (s *Server) normalizeWebinarInput(in types.WebinarInput, isCreate bool, prevStartsAt string, ceiling int) (types.WebinarInput, map[string]string) {
 	fields := map[string]string{}
+
+	/* The captions language: one of types.CaptionLanguages, refused rather than coerced (a
+	 * typo must not become English captions for a Tamil session). A new session without one
+	 * gets the server default; an edit without one keeps what it had (handleUpdateWebinar). */
+	in.Options.CaptionsLanguage = strings.TrimSpace(in.Options.CaptionsLanguage)
+	if in.Options.CaptionsLanguage == "" && isCreate {
+		in.Options.CaptionsLanguage = s.defaultCaptionsLanguage()
+	} else if in.Options.CaptionsLanguage != "" && !types.ValidCaptionLanguage(in.Options.CaptionsLanguage) {
+		fields["captionsLanguage"] = "Choose one of the listed languages."
+	}
 
 	in.Topic = strings.TrimSpace(in.Topic)
 	if in.Topic == "" {
@@ -1749,6 +1763,17 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Refused too: a language the worker cannot be told about would caption nothing.
+	if p.CaptionsLanguage != nil && !types.ValidCaptionLanguage(*p.CaptionsLanguage) {
+		httpx.Fields(w, map[string]string{
+			"captionsLanguage": "Choose one of the listed languages.",
+		})
+		return
+	}
+	if p.CaptionsLanguage != nil {
+		v := strings.TrimSpace(*p.CaptionsLanguage)
+		p.CaptionsLanguage = &v
+	}
 	// Refused for the same reason: a typo should not silently become "auto".
 	if p.AudienceLayout != nil && !p.AudienceLayout.Valid() {
 		httpx.Fields(w, map[string]string{
@@ -1795,6 +1820,11 @@ func (s *Server) handleUpdateControls(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, r, "update controls", err)
 		return
+	}
+
+	if p.CaptionsLanguage != nil {
+		l, _ := types.CaptionLanguageByCode(*p.CaptionsLanguage)
+		s.log.Info("captions language changed", "slug", slug, "language", l.Code, "live", l.Live)
 	}
 
 	room := lk.RoomName(slug)

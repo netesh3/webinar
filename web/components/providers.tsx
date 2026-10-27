@@ -14,6 +14,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { dropCache, writeCache } from "@/lib/http";
 import type { Account, AppConfig, ProfilePatch, SignupResponse } from "@/lib/api-types";
+import { DEFAULT_CAPTIONS_LANGUAGE, FALLBACK_CAPTION_LANGUAGES } from "@/lib/captions-language";
 import { DEV_BYPASS_ACCOUNT, isDevAuthBypass } from "@/lib/dev-bypass";
 import {
   isDevAuthBypassActive,
@@ -49,6 +50,9 @@ const CONFIG_FALLBACK: AppConfig = {
   av1Publish: "off",
   // 180 minutes = 3 hours, matches the server default.
   defaultMaxMeetingMin: 180,
+  // The captions languages arrive with the config; English (India) until then.
+  captionLanguages: FALLBACK_CAPTION_LANGUAGES,
+  defaultCaptionsLanguage: DEFAULT_CAPTIONS_LANGUAGE,
   boxRegions: [],
   /* Empty rather than a copy of the server's list. The catalogue is what the
    * admin screen renders switches from, and a hardcoded one here would offer a

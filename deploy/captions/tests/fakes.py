@@ -28,6 +28,7 @@ class FakeApi:
         self.wanted_asked = []
         self.statuses = []
         self.transcripts = []
+        self.transcript_languages = []
         self.caption_status = caption_status
         self.transcript_status = transcript_status
         self.lines = []  # caption_line calls: finals and partials, with their flags
@@ -55,6 +56,7 @@ class FakeApi:
         self.wanted_asked.append(room)
         return self.wanted
 
-    def transcript(self, room, model, lines):
+    def transcript(self, room, model, lines, language=None):
         self.transcripts.append((room, model, list(lines)))
+        self.transcript_languages.append(language)
         return self.transcript_status

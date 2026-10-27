@@ -228,6 +228,8 @@ jobs:
       CAPTIONS_PROVIDER: ${{ vars.CAPTIONS_PROVIDER }}
       CAPTIONS_DEEPGRAM_MODEL: ${{ vars.CAPTIONS_DEEPGRAM_MODEL }}
       CAPTIONS_DEEPGRAM_LANGUAGE: ${{ vars.CAPTIONS_DEEPGRAM_LANGUAGE }}
+      # A new webinar's captions language (api/types/captions_language.go); en-IN when unset.
+      CAPTIONS_DEFAULT_LANGUAGE: ${{ vars.CAPTIONS_DEFAULT_LANGUAGE }}
       DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
       # Grafana Cloud for the box's Alloy, written into each new droplet's user data so it reports
       # from boot (the same repo variables and secret livekit-do-deploy.yml uses). All five or none.

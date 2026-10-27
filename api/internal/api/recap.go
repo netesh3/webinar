@@ -325,6 +325,9 @@ func (s *Server) recapInput(ctx context.Context, wb types.Webinar, wait *time.Ti
 		ended, _ = time.Parse(time.RFC3339, wb.EndedAt)
 	}
 	in = aiwrite.RecapInput{Topic: wb.Topic, Meeting: wb.Kind == types.KindMeeting, HostName: wb.Host.Name}
+	if l, ok := types.CaptionLanguageByCode(wb.Controls.CaptionsLanguage); ok {
+		in.Language = l.Label
+	}
 	if !started.IsZero() && ended.After(started) {
 		in.DurationSec = int(ended.Sub(started).Seconds())
 	}
