@@ -543,43 +543,44 @@ export function EdgePlayer({
           setIsMuted(v.muted);
           if (!v.muted) void v.play();
         }}
-      />
-      {/* Speaker view on a phone: the share full width, the speaker floating over it, both
-          from this one <video>. */}
-      <EdgeSpeakerSplit videoRef={videoRef} enabled={speakerView && !loading && !error} />
-      {/* The last good frame, held while the stream reconnects, so a gap is a still picture
-          and not a black screen. */}
-      <canvas
-        ref={canvasRef}
-        aria-hidden
-        className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain ${
-          frozen ? "" : "hidden"
-        }`}
-      />
-      {reconnecting && !loading && !quiet && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center">
-          <span className="rounded-full bg-black/70 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
-            Reconnecting…
-          </span>
-        </div>
-      )}
-      {!loading && (
-        <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-2">
-          {debugClock && <EdgeClock offsetMs={clockOffsetMs} />}
-          {/* No delay readout or mode for viewers: those were for tuning, and the delay is
-              still measured (edge_latency telemetry). No LIVE badge here either:
-              StagePlayerChrome already draws one top left, and two read as a glitch. */}
-          {behind && (
-            <button
-              type="button"
-              onClick={jumpToLive}
-              className="pointer-events-auto rounded-full bg-brand px-3 py-1 text-[11.5px] font-semibold text-white shadow-lg hover:bg-brand-hover"
-            >
-              Back to live
-            </button>
-          )}
-        </div>
-      )}
+      >
+        {/* Speaker view on a phone: the share full width, the speaker floating over it, both
+            from this one <video>. */}
+        <EdgeSpeakerSplit videoRef={videoRef} enabled={speakerView && !loading && !error} />
+        {/* The last good frame, held while the stream reconnects, so a gap is a still picture
+            and not a black screen. */}
+        <canvas
+          ref={canvasRef}
+          aria-hidden
+          className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain ${
+            frozen ? "" : "hidden"
+          }`}
+        />
+        {reconnecting && !loading && !quiet && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center">
+            <span className="rounded-full bg-black/70 px-3 py-1 text-[12px] font-medium text-white/90 backdrop-blur">
+              Reconnecting…
+            </span>
+          </div>
+        )}
+        {!loading && (
+          <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-2">
+            {debugClock && <EdgeClock offsetMs={clockOffsetMs} />}
+            {/* No delay readout or mode for viewers: those were for tuning, and the delay is
+                still measured (edge_latency telemetry). No LIVE badge here either:
+                StagePlayerChrome already draws one top left, and two read as a glitch. */}
+            {behind && (
+              <button
+                type="button"
+                onClick={jumpToLive}
+                className="pointer-events-auto rounded-full bg-brand px-3 py-1 text-[11.5px] font-semibold text-white shadow-lg hover:bg-brand-hover"
+              >
+                Back to live
+              </button>
+            )}
+          </div>
+        )}
+      </StagePlayerChrome>
     </div>
   );
 }
