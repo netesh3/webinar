@@ -37,9 +37,13 @@ export function LoginForm() {
       ? "Google sign-in was cancelled."
       : googleFail === "signup"
         ? "New accounts are closed on this instance."
-        : googleFail
-          ? "Could not finish Google sign-in. Try again."
-          : null;
+        : googleFail === "unverified"
+          ? "Verify that Google email, then try again."
+          : googleFail === "state"
+            ? "That Google sign-in expired. Try again."
+            : googleFail
+              ? "Could not finish Google sign-in. Try again."
+              : null;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

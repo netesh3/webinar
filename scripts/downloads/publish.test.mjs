@@ -217,6 +217,40 @@ test("desktop publish, android publish, re-run, conflict, rollback against a loc
   await assert.rejects(promoteAndroid({ store, version: "9.9.9", baseUrl: BASE, env: {}, now: LATER, log: quiet }), /not in the bucket/);
 });
 
+test("desktop publish allows macOS-only (no Windows installer or latest.yml)", async () => {
+  const bucket = await mkdtemp(join(tmpdir(), "bucket-mac-"));
+  const store = new DirStore(bucket);
+  const dir = await mkdtemp(join(tmpdir(), "desktop-mac-"));
+  const version = "0.1.0";
+  for (const n of [
+    `WebinarLiv-${version}-mac-arm64.dmg`,
+    `WebinarLiv-${version}-mac-x64.dmg`,
+    `WebinarLiv-${version}-mac-arm64.zip`,
+    `WebinarLiv-${version}-mac-x64.zip`,
+    `WebinarLiv-${version}-mac-arm64.zip.blockmap`,
+  ]) {
+    await writeFile(join(dir, n), n);
+  }
+  await writeFile(join(dir, "latest-mac.yml"), macYml(version));
+  const m = await publishDesktop({
+    store,
+    dir,
+    version,
+    signedMac: true,
+    signedWindows: false,
+    baseUrl: BASE,
+    env: {},
+    now: NOW,
+    log: quiet,
+  });
+  assert.equal(m.desktop.signed.mac, true);
+  assert.equal(m.desktop.signed.windows, false);
+  assert.ok(m.desktop.files["mac-arm64"]);
+  assert.ok(m.desktop.files["mac-x64"]);
+  assert.equal(m.desktop.files["win-x64"], undefined);
+  assert.equal(await store.getText("desktop/latest.yml"), null);
+});
+
 test("dry run writes nothing", async () => {
   const lines = [];
   const store = new DryRunStore(null, (l) => lines.push(l), {

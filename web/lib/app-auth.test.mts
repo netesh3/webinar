@@ -54,6 +54,7 @@ assert.equal(
 // The return page's fragment, and the link back into the app.
 assert.deepEqual(parseReturnFragment("#app=ios&code=abc123"), { code: "abc123", error: "", app: "ios" });
 assert.deepEqual(parseReturnFragment("#error=denied&app=desktop"), { code: "", error: "denied", app: "desktop" });
+assert.deepEqual(parseReturnFragment("?app=desktop&code=abc123"), { code: "abc123", error: "", app: "desktop" });
 assert.deepEqual(parseReturnFragment(""), { code: "", error: "", app: "" });
 assert.equal(appCompleteLink({ code: "abc" }), "webinarliv://auth/complete?code=abc");
 assert.equal(appCompleteLink({ error: "denied" }), "webinarliv://auth/complete?error=denied");

@@ -15,9 +15,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
+import { fileInfo } from "./lib.mjs";
+
 const run = promisify(execFile);
 
-const isNotFound = (err) => /\(404\)|NoSuchKey|Not Found/i.test(`${err?.stderr ?? ""} ${err?.message ?? ""}`);
+const isNotFound = (err) =>
+  /\(404\)|NoSuchKey|Not Found|not found|does not exist/i.test(`${err?.stderr ?? ""} ${err?.message ?? ""}`);
 
 export class AwsStore {
   constructor({ bucket, endpoint, aws = "aws" }) {
@@ -104,6 +107,93 @@ export class AwsStore {
       "REPLACE",
       ...this.#headerArgs(opts),
     ]);
+  }
+}
+
+/** Cloudflare R2 through `wrangler r2 object` (OAuth). Used on this Mac when the S3 API keys
+ *  are not in the environment. Custom object metadata is not available, so `head` hashes the
+ *  downloaded bytes. */
+export class WranglerR2Store {
+  constructor({ bucket }) {
+    if (!bucket) throw new Error("bucket is required");
+    this.bucket = bucket;
+  }
+
+  async #wrangler(args) {
+    try {
+      const { stdout, stderr } = await run("npx", ["--yes", "wrangler@4", ...args, "--remote"], {
+        cwd: tmpdir(),
+        maxBuffer: 32 * 1024 * 1024,
+        env: { ...process.env, CI: "1" },
+      });
+      return { stdout, stderr };
+    } catch (err) {
+      const detail = `${err.stderr ?? ""} ${err.stdout ?? ""} ${err.message ?? ""}`;
+      err.message = detail.trim() || err.message;
+      throw err;
+    }
+  }
+
+  #objectPath(key) {
+    return `${this.bucket}/${key}`;
+  }
+
+  async head(key) {
+    const dir = await mkdtemp(join(tmpdir(), "r2-head-"));
+    const file = join(dir, "object");
+    try {
+      await this.#wrangler(["r2", "object", "get", this.#objectPath(key), "--file", file]);
+      const info = await fileInfo(file);
+      return { size: info.size, metadata: { sha256: info.sha256 } };
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  async getText(key) {
+    const dir = await mkdtemp(join(tmpdir(), "r2-get-"));
+    const file = join(dir, "object");
+    try {
+      await this.#wrangler(["r2", "object", "get", this.#objectPath(key), "--file", file]);
+      return await readFile(file, "utf8");
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  async putFile(key, path, opts = {}) {
+    const args = ["r2", "object", "put", this.#objectPath(key), "--file", path, "-y"];
+    if (opts.contentType) args.push("--content-type", opts.contentType);
+    if (opts.cacheControl) args.push("--cache-control", opts.cacheControl);
+    await this.#wrangler(args);
+  }
+
+  async putText(key, text, opts = {}) {
+    const dir = await mkdtemp(join(tmpdir(), "r2-put-"));
+    const file = join(dir, "body");
+    try {
+      await writeFile(file, text);
+      await this.putFile(key, file, opts);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  async copy(srcKey, dstKey, opts = {}) {
+    const dir = await mkdtemp(join(tmpdir(), "r2-copy-"));
+    const file = join(dir, "object");
+    try {
+      await this.#wrangler(["r2", "object", "get", this.#objectPath(srcKey), "--file", file]);
+      await this.putFile(dstKey, file, opts);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 }
 

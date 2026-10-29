@@ -1,5 +1,4 @@
-/* Web Push and install, the decisions: can this browser get push at all, what should the
- * opt-in show, and is there an install prompt to offer.
+/* Web Push, the decisions: can this browser get push at all, and what should the opt-in show.
  *
  * Pure — everything takes what the browser reported as plain values — so it runs in the node
  * tests next to it (lib/push.test.mts). The browser side that calls these is
@@ -56,7 +55,7 @@ export function pushSupport(env: PushEnv): PushSupport {
 export type OptInState =
   /** Push off on the server, or the browser cannot do it: show nothing. */
   | "hidden"
-  /** iOS in Safari: "Add to Home Screen first". */
+  /** iOS in Safari: web push is not available; point at the native app. */
   | "install"
   /** Not asked yet, or asked and not subscribed: the button. */
   | "ask"
@@ -81,23 +80,6 @@ export function optInState(input: {
   if (input.permission === "denied") return "blocked";
   if (input.permission === "granted" && input.subscribed) return "on";
   return "ask";
-}
-
-/** Which install affordance to offer. */
-export type InstallKind = "none" | "prompt" | "ios";
-
-export function installKind(input: {
-  ua: string;
-  maxTouchPoints?: number;
-  standalone: boolean;
-  /** A beforeinstallprompt event was captured and not yet used. */
-  deferredPrompt: boolean;
-}): InstallKind {
-  if (input.standalone) return "none";
-  if (input.deferredPrompt) return "prompt";
-  // Safari on iOS never fires beforeinstallprompt; Add to Home Screen is in the Share sheet.
-  if (isIOS(input.ua, input.maxTouchPoints ?? 0)) return "ios";
-  return "none";
 }
 
 /** A VAPID public key (base64url) as the bytes PushManager.subscribe wants. */

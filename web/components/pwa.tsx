@@ -1,24 +1,24 @@
 "use client";
 
-/* The installable app and Web Push, as UI.
+/* Web Push, as UI. The site still registers /sw.js for notifications; it does not offer
+ * a PWA. Native Mac/iOS/Android/desktop downloads live at /download ("Get the app").
  *
- *   PwaBoot          registers /sw.js after the page has loaded, and catches Chrome's
- *                    one-time install prompt. Asks for nothing.
- *   InstallAppItem   "Install app" in the account menu: Chrome's prompt where there is one,
- *                    Share → Add to Home Screen instructions on iPhone and iPad.
+ *   PwaBoot          registers /sw.js after the page has loaded, and swallows Chrome's
+ *                    install prompt so the browser does not offer a PWA on its own.
  *   PushOptIn        "Get a notification when it starts?" on the registration confirmation.
  *   NotificationsSection  Settings → Notifications: this device, the toggles, a test.
  *
  * Decisions are lib/push.ts (tested); browser calls are lib/push-client.ts.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MaterialIcon } from "./icons";
-import { Alert, Modal, Spinner, Toggle } from "./controls";
+import { Alert, Spinner, Toggle } from "./controls";
 import { useToast } from "./providers";
 import { Button, Card } from "./ui";
+import { GetAppLink } from "./get-app-link";
 import type { PushKind, PushPreference, PushPreferencesResponse } from "@/lib/api-types";
-import { installKind, optInKey, optInState, type OptInState, type PushSupport } from "@/lib/push";
+import { optInKey, optInState, type OptInState, type PushSupport } from "@/lib/push";
 import {
   PushError,
   captureInstallPrompt,
@@ -27,12 +27,8 @@ import {
   currentSubscription,
   disablePush,
   enablePush,
-  installSnapshot,
-  isStandalone,
-  promptInstall,
   pushApi,
   registerServiceWorker,
-  subscribeInstall,
 } from "@/lib/push-client";
 
 // ------------------------------------------------------------------ boot
@@ -55,95 +51,6 @@ export function PwaBoot() {
     return () => window.removeEventListener("load", run);
   }, []);
   return null;
-}
-
-// ------------------------------------------------------------------ install
-
-const noop = () => () => {};
-
-function useInstall() {
-  // Re-render when the prompt arrives or is used; the snapshot is just a version string.
-  useSyncExternalStore(subscribeInstall, installSnapshot, () => "00");
-  const mounted = useSyncExternalStore(noop, () => true, () => false);
-  if (!mounted) return "none" as const;
-  return installKind({
-    ua: navigator.userAgent,
-    maxTouchPoints: navigator.maxTouchPoints ?? 0,
-    standalone: isStandalone(),
-    deferredPrompt: installSnapshot().startsWith("1"),
-  });
-}
-
-/** Share → Add to Home Screen, the only way in on iOS (and the only way iOS gets push). */
-export function IosInstallModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  return (
-    <Modal open={open} onClose={onClose} title="Install Webinar Liv" size="sm">
-      <ol className="list-decimal space-y-2 pl-5 text-[13.5px] leading-relaxed text-ink-2">
-        <li>
-          In Safari, tap <b>Share</b>{" "}
-          <MaterialIcon name="ios_share" className="!text-[16px] align-[-3px]" /> at the bottom (or top on
-          iPad).
-        </li>
-        <li>
-          Choose <b>Add to Home Screen</b>.
-        </li>
-        <li>Open Webinar Liv from your Home Screen.</li>
-      </ol>
-      <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">
-        On iPhone and iPad, notifications work only in the installed app (iOS 16.4 or later).
-      </p>
-    </Modal>
-  );
-}
-
-/** "Install app" for the account menu. Renders nothing when there is nothing to offer. */
-export function InstallAppItem({
-  className,
-  onDone,
-  icon,
-}: {
-  className: string;
-  onDone?: () => void;
-  icon?: ReactNode;
-}) {
-  const kind = useInstall();
-  const [ios, setIos] = useState(false);
-  if (kind === "none") return null;
-  return (
-    <>
-      <button
-        type="button"
-        className={className}
-        onClick={() => {
-          if (kind === "prompt") {
-            void promptInstall().finally(() => onDone?.());
-          } else {
-            setIos(true);
-          }
-        }}
-      >
-        {icon ?? <MaterialIcon name="install_mobile" className="!text-[16px] text-ink-2" />}
-        Install app
-      </button>
-      <IosInstallModal
-        open={ios}
-        onClose={() => {
-          setIos(false);
-          onDone?.();
-        }}
-      />
-    </>
-  );
-}
-
-/** The same choice, for menus that take items (components/top-nav.tsx). */
-export function useInstallMenuAction(): { action: (() => void) | null; modal: ReactNode } {
-  const kind = useInstall();
-  const [ios, setIos] = useState(false);
-  return {
-    action: kind === "none" ? null : () => (kind === "prompt" ? void promptInstall() : setIos(true)),
-    modal: <IosInstallModal open={ios} onClose={() => setIos(false)} />,
-  };
 }
 
 // ------------------------------------------------------------------ push state
@@ -199,7 +106,6 @@ function usePushState(joinKey?: string) {
 export function PushOptIn({ joinKey, meeting = false }: { joinKey: string; meeting?: boolean }) {
   const { state, setBusy, refresh } = usePushState(joinKey);
   const { notify } = useToast();
-  const [ios, setIos] = useState(false);
   const what = meeting ? "meeting" : "webinar";
 
   if (state === "hidden") return null;
@@ -250,11 +156,8 @@ export function PushOptIn({ joinKey, meeting = false }: { joinKey: string; meeti
         ) : state === "install" ? (
           <>
             <strong className="block text-ink">Get a notification when it starts?</strong>
-            On iPhone and iPad, add Webinar Liv to your Home Screen first.{" "}
-            <button type="button" onClick={() => setIos(true)} className="font-medium text-brand hover:underline">
-              How
-            </button>
-            <IosInstallModal open={ios} onClose={() => setIos(false)} />
+            On iPhone and iPad, notifications work in the app.{" "}
+            <GetAppLink className="font-medium text-brand hover:underline">Get the app</GetAppLink>
           </>
         ) : (
           <>
@@ -292,7 +195,6 @@ export function NotificationsSection({ canHost }: { canHost: boolean }) {
   const { notify } = useToast();
   const [prefs, setPrefs] = useState<PushPreferencesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ios, setIos] = useState(false);
   const [testing, setTesting] = useState(false);
 
   const load = useCallback(() => {
@@ -371,11 +273,8 @@ export function NotificationsSection({ canHost }: { canHost: boolean }) {
               <p className="mt-1 text-[12.5px] text-ink-2">This browser can&apos;t get notifications.</p>
             ) : state === "install" ? (
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
-                On iPhone and iPad, notifications work in the installed app.{" "}
-                <button type="button" onClick={() => setIos(true)} className="font-medium text-brand hover:underline">
-                  Add to Home Screen
-                </button>
-                <IosInstallModal open={ios} onClose={() => setIos(false)} />
+                On iPhone and iPad, notifications work in the app.{" "}
+                <GetAppLink className="font-medium text-brand hover:underline">Get the app</GetAppLink>
               </p>
             ) : state === "blocked" ? (
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
