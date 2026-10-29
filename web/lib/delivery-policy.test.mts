@@ -17,7 +17,8 @@ assert.equal(edgeFits(zoom), false);
 assert.equal(edgeFits(simulive), false);
 assert.equal(edgeFits(meeting), false);
 
-// GCP / DO: no choice, a webinar or series is edge whatever the form holds.
+// GCP / DO, a host an admin put on edge: no choice, a webinar or series is edge whatever the
+// form holds.
 assert.equal(deliveryOffer(edgeOnly, live), "edge-only");
 assert.equal(deliveryOffer(edgeOnly, series), "edge-only");
 assert.equal(deliveryToSend(edgeOnly, live, "standard"), "edge");
@@ -27,6 +28,11 @@ assert.equal(deliveryOffer(edgeOnly, zoom), "none");
 assert.equal(deliveryToSend(edgeOnly, zoom, "edge"), "standard");
 assert.equal(deliveryToSend(edgeOnly, simulive, "edge"), "standard");
 assert.equal(deliveryToSend(edgeOnly, meeting, "edge"), "standard");
+
+// GCP / DO by default (standard, WebRTC; 29 Oct 2026): nothing shown, the field omitted, and
+// the server applies the admin's rule. The same answer as a server with no live origin.
+assert.equal(deliveryOffer(standard, series), "none");
+assert.equal(deliveryToSend(standard, series, "edge"), undefined);
 
 // Another server with a live origin: the choice, for a series too.
 assert.equal(deliveryOffer(choice, live), "choice");

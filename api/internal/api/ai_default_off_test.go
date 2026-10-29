@@ -36,8 +36,9 @@ func needsAI(key string) bool {
 
 func TestEveryAIFeatureIsPerHost(t *testing.T) {
 	for _, f := range types.Features {
-		if want := f.Group == types.FeatureGroupAI || needsAI(f.Key); f.PerHost != want {
-			t.Errorf("%s: PerHost = %v, want %v (AI-backed switches are per host only)", f.Key, f.PerHost, want)
+		// HLS delivery is the one per-host switch that is not AI (29 Oct 2026): an admin's call.
+		if want := f.Group == types.FeatureGroupAI || needsAI(f.Key) || f.Key == types.FeatureHLSDelivery; f.PerHost != want {
+			t.Errorf("%s: PerHost = %v, want %v (AI-backed switches and HLS delivery are per host only)", f.Key, f.PerHost, want)
 		}
 	}
 	for _, k := range []string{types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,

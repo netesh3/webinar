@@ -5395,9 +5395,10 @@ export interface Webinar {
    * 	 * the SFU, or the WHEP mix for CDN-broadcast hosts — today's behaviour) or
    * 	 * DeliveryEdge (the audience watches LL-HLS and gets chat, polls and controls over
    * 	 * the SSE event stream, never connecting to LiveKit). A webinar on a GCP or
-   * 	 * DigitalOcean video server is always edge; on any other server it is the host's
-   * 	 * choice per webinar (DeliveryPolicy). Meetings and simulive are always standard. See
-   * 	 * docs/edge-delivery.md.
+   * 	 * DigitalOcean video server is edge when an admin gave its host FeatureHLSDelivery and
+   * 	 * standard otherwise (29 Oct 2026; it was always edge before); on any other server it is
+   * 	 * the host's choice per webinar (DeliveryPolicy). Meetings and simulive are always
+   * 	 * standard. See docs/edge-delivery.md.
    */
   delivery?: string;
   /**
@@ -5819,6 +5820,18 @@ export const FeatureFollowupSend = "followup_send";
  * 	 * feature_off and the room falls back to on-device captions in the browser.
  */
 export const FeatureCaptions = "captions";
+/**
+ *  FeatureHLSDelivery puts this host's webinars on edge delivery on the GCP and DigitalOcean
+ * 	 * video servers: the audience watches the HLS stream (~2–3 s behind) from the video server
+ * 	 * or the CDN instead of joining the room over WebRTC (~0.3 s). For big or global audiences.
+ * 	 *
+ * 	 * Off for every host, in no plan tier (PerHost): since 29 Oct 2026 webinars there are
+ * 	 * standard (WebRTC) by default, and only an admin moves a host to HLS (Admin -> Accounts).
+ * 	 * Hosts never choose it. Turning it on or off moves the host's webinars and series that
+ * 	 * have not run yet (Server.applyHostDelivery); live and ended sessions keep theirs. A new
+ * 	 * key on purpose: edge_delivery was the old beta switch (migrations/0159, 0160).
+ */
+export const FeatureHLSDelivery = "hls_delivery";
 /**
  * Feature groups: the admin screen's headings (Feature.Group).
  */
@@ -8993,8 +9006,10 @@ export interface ServerTime {
  *  DeliveryPolicy is GET /api/host/delivery[?slug=]: which delivery the schedule form may
  *  * offer this host, for a new webinar or (with slug) for one they own.
  *  *
- *  * EdgeOnly is a webinar on a GCP or DigitalOcean video server (or one not placed yet that
- *  * will be): it is always edge, the form offers no choice and the server ignores the field.
+ *  * On a GCP or DigitalOcean video server (or one not placed yet that will be) the admin
+ *  * decides, not the host (29 Oct 2026): EdgeOnly is a host with FeatureHLSDelivery, whose
+ *  * webinars there are edge; without it both are false and they are standard. Either way the
+ *  * form offers no choice and the server ignores the field.
  *  * EdgeChoice is the Standard / Edge choice, on any other server that has a live origin
  *  * (BROADCAST_RTMP_BASE), for every host. Both false is standard only. Meetings and simulive
  *  * are always standard.

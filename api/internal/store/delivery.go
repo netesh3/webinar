@@ -40,16 +40,25 @@ func (s *Store) SetSeriesDelivery(ctx context.Context, seriesID, delivery string
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-/* BackfillEdgeDelivery moves webinars that have not run yet onto edge when their room is, or
- * will be, on one of edgeProjects (the GCP and DO video servers): pinned there, or unpinned
- * and headed there — the host's assigned project when it is in candidates, else the first
- * candidate, the same order the first join uses (Server.firstChoice). An unpinned webinar
- * with no candidate at all is edge too. Only one-off and recurring webinars in this app, in
- * draft or scheduled: live and ended sessions, meetings, simulive and Zoom are untouched.
- * Returns the slugs it changed. */
-func (s *Store) BackfillEdgeDelivery(ctx context.Context, edgeProjects, candidates []string) ([]string, error) {
-	if edgeProjects == nil {
-		edgeProjects = []string{}
+// DeliveryChange is one webinar ApplyHLSDelivery moved, and the delivery it now has.
+type DeliveryChange struct {
+	Slug     string
+	Delivery string
+}
+
+/* ApplyHLSDelivery applies the admin rule (29 Oct 2026) to webinars that have not run yet
+ * whose room is, or will be, on one of ruleProjects (the GCP and DO video servers): edge when
+ * the host has hls_delivery in effect, standard otherwise. "Will be" is pinned there, or
+ * unpinned and headed there — the host's assigned project when it is in candidates, else the
+ * first candidate, the same order the first join uses (Server.firstChoice); an unpinned
+ * webinar with no candidate at all takes the rule too. Only one-off and recurring webinars
+ * (so every occurrence of a series) in this app, in draft or scheduled: live and ended
+ * sessions, meetings, simulive and Zoom are untouched. hostID narrows it to one host ("" is
+ * everyone). One statement for both directions, and idempotent: a row already right is not
+ * written. Returns what it changed. */
+func (s *Store) ApplyHLSDelivery(ctx context.Context, ruleProjects, candidates []string, hostID string) ([]DeliveryChange, error) {
+	if ruleProjects == nil {
+		ruleProjects = []string{}
 	}
 	if candidates == nil {
 		candidates = []string{}
@@ -60,22 +69,26 @@ func (s *Store) BackfillEdgeDelivery(ctx context.Context, edgeProjects, candidat
 			       CASE WHEN w.sfu_project <> '' THEN w.sfu_project
 			            WHEN u.sfu_project = ANY($2::text[]) THEN u.sfu_project
 			            ELSE COALESCE(($2::text[])[1], '')
-			       END AS project
+			       END AS project,
+			       CASE WHEN 'hls_delivery' = ANY (effective_features(effective_plan(u.id), u.features, u.features_off))
+			            THEN 'edge' ELSE 'standard'
+			       END AS want
 			  FROM webinars w
-			  LEFT JOIN users u ON u.id = w.host_id
-			 WHERE w.delivery <> 'edge'
-			   AND w.status IN ('draft', 'scheduled')
+			  JOIN users u ON u.id = w.host_id
+			 WHERE w.status IN ('draft', 'scheduled')
 			   AND w.kind IN ('live', 'recurring')
 			   AND w.venue = 'app'
+			   AND ($3 = '' OR w.host_id::text = $3)
 		)
-		UPDATE webinars w SET delivery = 'edge', updated_at = now()
+		UPDATE webinars w SET delivery = t.want, updated_at = now()
 		  FROM target t
-		 WHERE w.id = t.id AND (t.project = '' OR t.project = ANY($1::text[]))
-		RETURNING w.slug`, edgeProjects, candidates)
+		 WHERE w.id = t.id AND w.delivery <> t.want
+		   AND (t.project = '' OR t.project = ANY($1::text[]))
+		RETURNING w.slug, w.delivery`, ruleProjects, candidates, hostID)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, pgx.RowTo[string])
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[DeliveryChange])
 }
 
 // WebinarDelivery is the delivery mode alone, for hot paths that must not load a whole webinar.

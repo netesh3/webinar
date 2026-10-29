@@ -91,7 +91,8 @@ export type FormState = {
   /** The area of the video servers (AppConfig.boxRegions; "" is the default, lib/box-regions.ts). */
   sfuRegion: string;
   /** How the audience receives the session (docs/edge-delivery.md). On GCP and DigitalOcean
-   *  (production) it is always edge; on any other server with a live origin it is the host's
+   *  (production) an admin decides per host (standard by default, edge with HLS delivery);
+   *  on any other server with a live origin it is the host's
    *  choice, for a webinar or series in this app (lib/delivery-policy.ts). */
   delivery: "standard" | "edge";
   recurrence: RecurrenceForm;

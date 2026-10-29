@@ -31,8 +31,9 @@ import (
  *
  * Webinars already pinned to a retired project (moveOffRetired):
  *   - draft or scheduled: moved to where a new room would go (the box), at boot
- *     (MoveOffRetiredServers) or at the first join after it, and switched to edge when they
- *     fit, as BackfillEdgeDelivery does. Never while LiveKit still reports somebody in the old
+ *     (MoveOffRetiredServers) or at the first join after it, and given the new server's
+ *     delivery rule when they fit (edge with hls_delivery, else standard; 29 Oct 2026), as
+ *     BackfillEdgeDelivery does. Never while LiveKit still reports somebody in the old
  *     room: a host in the green room on the old server keeps it, and the move happens at a
  *     later join. A server that is gone answers nothing within retiredRoomCheck, which reads as
  *     an empty room.
@@ -171,9 +172,13 @@ func (s *Server) moveOffRetired(ctx context.Context, wb types.Webinar) (project 
 	} else {
 		s.log.Warn("sfu: moved a webinar off a retired video server",
 			"slug", wb.ID, "from", from, "to", to)
-		if webinarFitsEdge(wb) && wb.Delivery != types.DeliveryEdge && s.edgeOnlyProject(to) {
-			if derr := s.saveDelivery(ctx, wb.ID, types.DeliveryEdge); derr != nil {
-				s.log.Warn("sfu: could not switch a moved webinar to edge", "slug", wb.ID, "error", derr)
+		// The admin rule of its new server (hostDelivery): edge with hls_delivery, else standard.
+		if webinarFitsEdge(wb) && s.edgeOnlyProject(to) {
+			if want := s.hostDelivery(ctx, wb.Host.ID); wb.Delivery != want {
+				if derr := s.saveDelivery(ctx, wb.ID, want); derr != nil {
+					s.log.Warn("sfu: could not set a moved webinar's delivery", "slug", wb.ID,
+						"delivery", want, "error", derr)
+				}
 			}
 		}
 	}

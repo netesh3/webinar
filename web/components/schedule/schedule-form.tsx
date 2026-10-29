@@ -674,9 +674,10 @@ function ScheduleFormBody({
       },
       controls: form.controls,
       venue,
-      /* Edge where every webinar is edge (a GCP or DO video server), the host's pick where
-       * they have the choice; a host with neither omits it and the server keeps what is
-       * saved. The server applies the same rule to the save whatever this sends. */
+      /* Edge for a host an admin put on edge (a GCP or DO video server), the host's pick
+       * where they have the choice; a host with neither omits it and the server keeps what is
+       * saved, or applies the admin's rule on GCP/DO. The server applies its rule to the save
+       * whatever this sends. */
       ...(delivery ? { delivery } : {}),
     };
   }

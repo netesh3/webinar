@@ -46,13 +46,16 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
   and following") writes the delivery to each draft or scheduled one it covers
   (`SetSeriesDelivery`); an occurrence that is live or over keeps its own.
 
-## Where edge is the standard (GCP and DigitalOcean)
+## Where an admin decides (GCP and DigitalOcean)
 
-- **Rule.** A webinar (one-off, instant or recurring) in this app whose room is, or will be,
-  on a project whose provider is `gcp` or `do` is saved as edge, whatever the form sent
-  (`resolveDelivery`, `api/internal/api/edge.go`). Meetings and simulive are always standard.
-  Not forced without `BROADCAST_RTMP_BASE` (no origin to push to), and never changed on a
-  webinar that is live or ended.
+- **Rule (29 Oct 2026).** A webinar (one-off, instant or recurring) in this app whose room is,
+  or will be, on a project whose provider is `gcp` or `do` is **standard** (WebRTC, ~0.3 s)
+  unless an admin gave its host **HLS delivery (large audiences)** (`hls_delivery`, Admin →
+  Accounts, per host), which makes it **edge**; whatever the form sent (`resolveDelivery`,
+  `hostDelivery`, `api/internal/api/edge.go`). Hosts have no choice there. Meetings and simulive
+  are always standard. Not applied without `BROADCAST_RTMP_BASE` (no origin to push to), and
+  never changed on a webinar that is live or ended. From 24 to 29 Oct 2026 every webinar here
+  was edge; see `docs/decisions/2026-10-26-audience-delivery.md` section 7.
 - **Provider.** The project's `provider` in `LIVEKIT_PROJECTS`, else guessed from its id and
   label (`do-blr` → do, `india`/Mumbai → gcp, anything else Hetzner; `CostProvider`). A
   Hetzner or disabled project is retired (takes no new rooms while any other project does), so
@@ -60,18 +63,21 @@ Edge choice when it has a live origin; the per-account "Edge delivery (beta)" sw
 - **Before the pin.** A webinar is pinned to a project on its first join. Until then the
   target is what that join would choose: the host's assigned project (Admin → Accounts → Video
   server) when it is enabled and not retired, else `SFU_BOX_PROJECT` (the box), else the first
-  enabled project (`firstChoice`). No enabled project at all counts as edge. An admin who
+  enabled project (`firstChoice`). No enabled project at all takes the rule too. An admin who
   reassigns the host before the first join moves the room; edge works on every provider. A
   webinar not run yet that is still pinned to a retired project is judged by where it will move.
-- **Form.** `GET /api/host/delivery[?slug=]` (`types.DeliveryPolicy`): `edgeOnly` hides the
-  choice and shows "Your audience watches a low-latency stream; speakers join live"; the
-  instant button sends edge with no choice beside it (`web/lib/delivery-policy.ts`).
-- **Existing webinars.** At boot the API moves draft and scheduled webinars (`kind` live or
-  recurring, venue app) pinned to, or headed for, a GCP/DO project onto edge
-  (`BackfillEdgeDelivery`, idempotent; no SQL migration, because the provider lives in config).
+- **Form.** `GET /api/host/delivery[?slug=]` (`types.DeliveryPolicy`): no choice either way;
+  `edgeOnly` (a host with `hls_delivery`) shows "Your audience watches a low-latency stream;
+  speakers join live" and the instant button sends edge (`web/lib/delivery-policy.ts`).
+- **Existing webinars.** At boot the API applies the rule to draft and scheduled webinars
+  (`kind` live or recurring, venue app) pinned to, or headed for, a GCP/DO project, both ways:
+  edge for hosts with `hls_delivery`, standard for everyone else (`BackfillEdgeDelivery`,
+  `store.ApplyHLSDelivery`, one idempotent statement; no SQL migration, because the provider
+  lives in config). An admin turning a host's switch on or off applies it to that host's
+  future webinars and series at once (`admin.go`, logged).
   Live and ended sessions, meetings, simulive and Zoom are untouched. Before it,
   `MoveOffRetiredServers` unassigns hosts from retired projects (Hetzner, or any disabled one)
-  and moves draft and scheduled webinars pinned there to the box (switching them to edge); one
+  and moves draft and scheduled webinars pinned there to the box (applying the rule); one
   with people in its old room moves at a later join instead.
 - **Costs.** The audience is ~2.5 s behind the stage, which shows in Q&A and stage invites.
   Each concurrent webinar runs one composite mix (~1–1.5 cores on the DO c-4, or an egress

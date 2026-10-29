@@ -37,10 +37,11 @@ func TestNewRoomsNeverGoToHetzner(t *testing.T) {
 	h := newHarnessWith(t, []*fakeRooms{india, box}, withBox)
 	acct := h.signup("Box Host", "retired-new@test.dev", true)
 
-	// No assignment: the box, ahead of the GCP project listed before it.
-	wb := h.newWebinar("New", nil)
-	if wb.Delivery != types.DeliveryEdge {
-		t.Fatalf("new webinar delivery = %q, want edge", wb.Delivery)
+	// No assignment: the box, ahead of the GCP project listed before it. Standard (WebRTC)
+	// there without hls_delivery (29 Oct 2026).
+	wb := h.newWebinar("New", func(in *types.WebinarInput) { in.Delivery = types.DeliveryEdge })
+	if wb.Delivery != types.DeliveryStandard {
+		t.Fatalf("new webinar delivery = %q, want standard", wb.Delivery)
 	}
 	if got := h.hostJoinProject(wb.ID); got != "do-blr" {
 		t.Fatalf("new webinar joined %q, want do-blr", got)
@@ -89,7 +90,9 @@ func TestAWebinarPinnedToHetznerMovesAtItsNextJoin(t *testing.T) {
 	h := newHarnessWith(t, []*fakeRooms{newFakeProject("do-blr")}, withBox)
 	// The default "test" project is the harness's own fake (the Hetzner one here).
 	hz := h.rooms
-	h.signup("Moving Host", "retired-join@test.dev", true)
+	acct := h.signup("Moving Host", "retired-join@test.dev", true)
+	// With hls_delivery the box's rule is edge, so the move is seen to set it.
+	grantFeature(t, h, acct.ID, types.FeatureHLSDelivery)
 
 	wb := h.newWebinar("Scheduled on Hetzner", nil)
 	h.exec(`UPDATE webinars SET sfu_project = 'test', delivery = 'standard' WHERE slug = $1`, wb.ID)
@@ -99,7 +102,7 @@ func TestAWebinarPinnedToHetznerMovesAtItsNextJoin(t *testing.T) {
 	if got := h.hostJoinProject(wb.ID); got != "test" {
 		t.Fatalf("with people in the Hetzner room, joined %q, want test", got)
 	}
-	// The room is empty: the next join moves it to the box, and it becomes edge.
+	// The room is empty: the next join moves it to the box, and it becomes edge (the rule there).
 	hz.setRoster()
 	if got := h.hostJoinProject(wb.ID); got != "do-blr" {
 		t.Fatalf("joined %q, want do-blr", got)
@@ -132,6 +135,9 @@ func TestBootMovesFutureWebinarsOffHetzner(t *testing.T) {
 			wb.ID, status)
 		return wb.ID
 	}
+	// Without hls_delivery a move to the box makes a webinar standard, even one saved as edge.
+	wasEdge := pin("Was edge", "scheduled")
+	h.exec(`UPDATE webinars SET delivery = 'edge' WHERE slug = $1`, wasEdge)
 	scheduled := pin("Scheduled", "scheduled")
 	draft := pin("Draft", "draft")
 	ended := pin("Ended", "ended")
@@ -144,8 +150,9 @@ func TestBootMovesFutureWebinarsOffHetzner(t *testing.T) {
 	h.server.MoveOffRetiredServers(context.Background()) // idempotent
 
 	want := map[string][2]string{
-		scheduled: {"do-blr", types.DeliveryEdge},
-		draft:     {"do-blr", types.DeliveryEdge},
+		wasEdge:   {"do-blr", types.DeliveryStandard},
+		scheduled: {"do-blr", types.DeliveryStandard},
+		draft:     {"do-blr", types.DeliveryStandard},
 		meeting:   {"do-blr", types.DeliveryStandard},
 		ended:     {"test", types.DeliveryStandard},
 		live:      {"test", types.DeliveryStandard},

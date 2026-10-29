@@ -469,22 +469,30 @@ Check it on the box: `docker compose -p captions logs alloy` and, in Grafana,
 captions droplet is deleted at the next tick. There is no fallback to an agent on the video box:
 rooms caption on each speaker's device and the host sees "server captions unavailable".
 
-## Webinars here are always edge
+## Webinars here: WebRTC by default, HLS per host
 
-Every webinar (one-off, instant or a recurring series) on this box is **edge**: the stage on
-WebRTC, the audience on plain HLS, from the box or through Bunny (docs/edge-delivery.md). The schedule form offers no Standard / WebRTC
-choice for it and the API stores edge whatever a save sends; there is no account switch (the
-"Edge delivery (beta)" setting was removed with the Hetzner sunset). The
+Since 29 Oct 2026 every webinar (one-off, instant or a recurring series) on this box is
+**standard** by default: the audience joins the room over WebRTC (~0.3 s behind the stage). An
+admin can put one host on **edge** with **HLS delivery (large audiences)** (Admin → Accounts,
+`hls_delivery`): the stage on WebRTC, the audience on plain HLS (~2–3 s), from the box or
+through Bunny (docs/edge-delivery.md). From 24 to 29 Oct every webinar here was edge. The
+schedule form offers hosts no choice and the API stores what the rule says whatever a save
+sends. The
 provider comes from the project's `"provider": "do"` (or the id/label: `do-blr` reads as DO). A
 webinar not opened yet is judged by where it will go: the host's assigned project (Admin →
 Accounts → Video server) when it is taking rooms and not retired, else this box. At boot the API
-moves draft and scheduled webinars still pinned to a retired project here, then moves draft and scheduled
-webinars headed here onto edge; live and ended ones, meetings,
-simulive and Zoom are left alone. Meetings stay on WebRTC. See `docs/edge-delivery.md`.
+moves draft and scheduled webinars still pinned to a retired project here, then applies the rule
+to draft and scheduled webinars headed here (edge for hosts with HLS delivery, standard for the
+rest); live and ended ones, meetings, simulive and Zoom are left alone. Flipping a host's switch
+does the same for that host's future webinars at once. Meetings stay on WebRTC. See
+`docs/edge-delivery.md`.
 
-Capacity: each concurrent webinar runs one composite mix on this c-4 (~1–1.5 cores), so two or
-three at once beside the SFU is the comfortable ceiling. The audience is ~2.5 s behind the stage
-(LL-HLS), which shows in Q&A and "raise your hand" timing.
+Capacity: each concurrent edge webinar runs one composite mix on this c-4 (~1–1.5 cores), so two
+or three at once beside the SFU is the comfortable ceiling. A standard webinar has no mix
+(unless it records or streams out; a recording defaults to 720p), but every viewer is a WebRTC
+subscriber on this box. **How many WebRTC viewers a c-4 carries has not been measured yet**, and
+the box points (`SFU_BOX_POINTS`) are edge estimates: put a host whose webinars are large on HLS
+delivery until it is.
 
 ## Cloud recording of edge webinars (optional, off)
 

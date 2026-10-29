@@ -260,7 +260,7 @@ jobs:
       RECORDINGS_S3_SECRET_KEY: ${{ secrets.RECORDINGS_S3_SECRET_KEY }}
       RECORDINGS_MODE: ${{ secrets.RECORDINGS_MODE || 'egress' }}
       RECORDINGS_EGRESS_TEMPLATE_URL: ${{ secrets.RECORDINGS_EGRESS_TEMPLATE_URL || 'https://webinarliv.com/recorder-template' }}
-      RECORDINGS_EGRESS_PRESET: ${{ secrets.RECORDINGS_EGRESS_PRESET || '1080p' }}
+      RECORDINGS_EGRESS_PRESET: ${{ secrets.RECORDINGS_EGRESS_PRESET || '720p' }}
       RECORDINGS_CDN_BASE_URL: ${{ secrets.RECORDINGS_CDN_BASE_URL || 'https://recordings.webinarliv.com' }}
       # No defaults; both or neither. The live origin fallback for a project without its own
       # broadcastHlsBase (docs/edge-delivery.md). See deploy/livekit-box/README.md.
