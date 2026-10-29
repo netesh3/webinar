@@ -1,0 +1,233 @@
+/* /download (components/marketing/download-page.tsx). Built on landing.css and the
+ * features page's centred hero (plans.css .pl-hero); scoped under `.lp` like both. */
+
+/* hero-dark drops the bottom padding for the home page's room picture; there is none here. */
+.lp .hero.dl-hero {
+  padding-bottom: clamp(56px, 8vw, 104px);
+}
+
+.lp .dl-hero .hero-copy {
+  gap: 18px;
+}
+
+.lp .dl-hero .dl-card-primary,
+.lp .dl-hero .dl-empty,
+.lp .dl-hero .dl-pick {
+  max-width: 640px;
+  margin: clamp(32px, 5vw, 48px) auto 0;
+}
+
+.lp .dl-empty,
+.lp .dl-pick {
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 18px;
+}
+
+.lp .dl-empty b {
+  color: #fff;
+}
+
+.lp .dl-empty .cta-row {
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------ cards */
+
+.lp .dl-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  height: 100%;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  color: var(--ink);
+  text-align: left;
+  align-content: start;
+}
+
+.lp .dl-card-primary {
+  padding: clamp(22px, 4vw, 32px);
+  border-color: transparent;
+  box-shadow: var(--sh-4);
+}
+
+.lp .dl-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.lp .dl-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.lp .dl-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.lp .dl-card-kicker {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.lp .dl-card-title {
+  font-size: 20px;
+  letter-spacing: -0.015em;
+}
+
+.lp .dl-card-primary .dl-card-title {
+  font-size: 24px;
+}
+
+.lp .dl-card-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.lp .dl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* The visitor's own builds stack full width, so a long label ("Apple Silicon (M1–M5)")
+ * wraps only on a narrow phone; the other build's text link sits under them. */
+.lp .dl-card-primary .dl-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.lp .dl-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--h);
+  padding-block: 8px;
+  white-space: normal;
+  text-align: center;
+}
+
+.lp .dl-card-primary .dl-alt {
+  align-self: center;
+}
+
+.lp .dl-size {
+  white-space: nowrap;
+}
+
+.lp .dl-btn .ic {
+  width: 18px;
+  height: 18px;
+}
+
+.lp .dl-btn:hover .ic {
+  transform: translateY(2px);
+}
+
+.lp .dl-size {
+  font-weight: 500;
+  opacity: 0.7;
+  font-size: 0.88em;
+}
+
+.lp .dl-alt {
+  align-self: center;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.lp .dl-soon,
+.lp .dl-note {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.lp .dl-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--mist);
+}
+
+/* ------------------------------------------------------------------ verify */
+
+.lp .dl-verify summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.lp .dl-verify summary:hover {
+  color: var(--accent);
+}
+
+.lp .dl-verify dl {
+  display: grid;
+  gap: 12px;
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.lp .dl-verify dt {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.lp .dl-verify dd {
+  margin: 2px 0 0;
+}
+
+.lp .dl-verify code {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------------------------------ other platforms */
+
+.lp .dl-others {
+  padding-top: clamp(48px, 6vw, 72px);
+}
+
+.lp .dl-others-title {
+  margin-bottom: 24px;
+  font-size: 24px;
+  text-align: center;
+}
+
+.lp .dl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  max-width: 1000px;
+  margin: 0 auto;
+}

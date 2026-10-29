@@ -30,7 +30,7 @@ for (const indexable of [false, true]) {
   }
 
   // The public pages.
-  for (const path of ["/", "/pricing", "/signup", "/blog", "/privacy", "/terms", "/contact", "/integrations/zoom"]) {
+  for (const path of ["/", "/pricing", "/signup", "/blog", "/privacy", "/terms", "/contact", "/integrations/zoom", "/download"]) {
     assert.ok(paths.includes(path), `sitemap is missing ${path}`);
   }
   // Categories with posts, and only those.

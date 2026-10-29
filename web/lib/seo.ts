@@ -20,6 +20,10 @@ export type SitemapEntry = {
 
 /** "Last updated" on the legal pages, as YYYY-MM-DD. The pages show these dates, and
  *  the sitemap reports them, so bump the date here when the text changes. */
+/** When /download's copy last changed (its sitemap date). The builds behind it change
+ *  with the release manifest, not with this. */
+export const DOWNLOAD_UPDATED = "2026-10-29";
+
 /** When /contact last changed (its sitemap date). */
 export const CONTACT_UPDATED = "2026-10-27";
 
@@ -106,6 +110,7 @@ export function sitemapEntries(
         ]
       : []),
     { path: "/signup", lastModified: MARKETING_UPDATED, changeFrequency: "monthly", priority: 0.8 },
+    { path: "/download", lastModified: DOWNLOAD_UPDATED, changeFrequency: "weekly", priority: 0.6 },
     { path: "/blog", lastModified: latest(posts.map(changed)), changeFrequency: "weekly", priority: 0.7 },
     // Only categories that have posts; an empty listing is not worth indexing.
     ...CATEGORY_IDS.filter((c: BlogCategory) => posts.some((p) => p.category === c)).map((c) => ({
