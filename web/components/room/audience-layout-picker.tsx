@@ -6,8 +6,9 @@
  * edge viewers, CDN viewers and the recording get. Saved through PATCH /controls, which pushes
  * room metadata; the egress page is in the room and re-lays the composite live.
  *
- * Shown only while there is a composite to arrange: an edge webinar, or a recording running.
- * A meeting has no edge delivery, so for one it is the recording alone. The thumbnails are each
+ * Shown only while there is a composite to arrange: an edge webinar, or a meeting's or
+ * simulive's recording running. Not in a live WebRTC webinar, where every viewer picks their
+ * own view (29 Oct 2026). The thumbnails are each
  * layout's own place() on a sample stage (lib/composite-layouts.ts), so they cannot drift from
  * what the egress draws. */
 
@@ -49,7 +50,11 @@ export function AudienceLayoutPicker() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isHost || !(recording || (edge && !meeting))) return null;
+  /* A live WebRTC webinar has no picker (29 Oct 2026): each viewer arranges their own stage,
+   * and its recording keeps the layout it has (Auto unless set before). Meetings and simulive
+   * still arrange their recording here. */
+  const simulive = join.simulive === true;
+  if (!isHost || !((edge && !meeting) || (recording && (meeting || simulive)))) return null;
   const current = layoutById(controls.audienceLayout).id;
 
   async function choose(def: CompositeLayoutDef) {
