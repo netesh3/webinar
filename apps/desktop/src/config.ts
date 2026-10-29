@@ -67,14 +67,19 @@ export function isSiteOrigin(origin: string): boolean {
 }
 
 /**
- * Third-party hosts a sign-in, integration or payment flow passes through.
- * They may load inside the app (top-level navigation or a popup) because the
- * flow has to come back to the site with its cookies; anything else leaves
- * for the system browser.
+ * Third-party hosts an integration or payment flow passes through. They may
+ * load inside the app (top-level navigation or a popup) because the flow has
+ * to come back to the site with its cookies; anything else leaves for the
+ * system browser.
  *
- *  - Google sign-in: /api/auth/google/start -> accounts.google.com -> /api/auth/google/callback
+ *  - Connect YouTube, and the Drive picker in a room: Google OAuth on
+ *    accounts.google.com. Google may refuse these in the app now that the user
+ *    agent is Electron's own (main.ts); README.md, Limits.
  *  - Connect Zoom (Settings -> Integrations): zoom.us OAuth
  *  - Razorpay checkout: its 3-D Secure / net-banking popups
+ *
+ * Continue with Google itself no longer passes through here: it runs in the
+ * system browser (isSignInStartUrl) and comes back through webinarliv://auth.
  */
 const FLOW_DOMAINS = ["accounts.google.com", "accounts.youtube.com", "zoom.us", "razorpay.com"];
 
@@ -82,6 +87,19 @@ export function isFlowUrl(url: string): boolean {
   const u = parse(url);
   if (!u || u.protocol !== "https:") return false;
   return FLOW_DOMAINS.some((d) => hostMatches(u.hostname, d));
+}
+
+/** The site's Google sign-in start, the one URL openSignIn hands to the system browser. */
+export function isSignInStartUrl(url: string): boolean {
+  const u = parse(url);
+  return !!u && isSiteUrl(u.toString()) && u.pathname === "/api/auth/google/start" &&
+    u.searchParams.get("app") === "desktop";
+}
+
+/** The page that finishes a sign-in handed back through webinarliv://auth/complete. */
+export function isAuthCompleteUrl(url: string): boolean {
+  const u = parse(url);
+  return !!u && isSiteUrl(u.toString()) && u.pathname === "/auth/complete";
 }
 
 /** Schemes that may be handed to the OS (shell.openExternal). */
@@ -98,7 +116,11 @@ export function isExternalSafe(url: string): boolean {
  *   webinarliv://open?url=https://webinarliv.com/x -> that URL (site URLs only)
  *   webinarliv://open?path=/x                      -> <site>/x
  *   webinarliv://open                              -> <site>/
+ *   webinarliv://auth/complete?code=c              -> <site>/auth/complete?code=c
  *   https://webinarliv.com/...                     -> as is
+ *
+ * auth/complete is the end of Continue with Google (web/lib/app-auth.ts): only
+ * its code or error is carried over, nothing else from the link.
  */
 export function resolveLaunchTarget(arg: string): string | null {
   const u = parse(arg);
@@ -117,6 +139,16 @@ export function resolveLaunchTarget(arg: string): string | null {
     target.search = u.search;
     target.hash = u.hash;
     return isSiteUrl(target.toString()) ? target.toString() : null;
+  }
+  if (action === "auth") {
+    if (u.pathname !== "/complete") return null;
+    const target = new URL("/auth/complete", START_URL.origin);
+    const code = u.searchParams.get("code");
+    const error = u.searchParams.get("error");
+    if (code && /^[A-Za-z0-9_-]{1,128}$/.test(code)) target.searchParams.set("code", code);
+    else if (error && /^[a-z_]{1,32}$/.test(error)) target.searchParams.set("error", error);
+    else return null;
+    return target.toString();
   }
   if (action === "open" || action === "") {
     const nested = u.searchParams.get("url");

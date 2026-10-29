@@ -73,7 +73,7 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Bluetooth headsets for call audio on Android 12+. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- Push (Android 13+ runtime prompt); @capacitor/push-notifications also merges it. -->
+    <!-- Push (Android 13+ runtime prompt); @capacitor-firebase/messaging's FCM library also merges it. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Not required: attendees without a camera can still watch and talk. -->

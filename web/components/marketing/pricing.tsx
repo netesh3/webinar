@@ -10,6 +10,7 @@ import { planCta } from "@/lib/pricing-cta";
 import { CheckoutError, authoriseTrial, formatMoney, payWithRazorpay } from "@/lib/razorpay";
 import { useSession } from "@/components/providers";
 import { SUPPORT_EMAIL } from "@/components/marketing/legal-page";
+import { IOS_APP_PLANS_NOTE, useIOSApp } from "@/components/ios-app";
 
 /* The pricing section, and buying from it.
  *
@@ -23,6 +24,10 @@ import { SUPPORT_EMAIL } from "@/components/marketing/legal-page";
  *
  * Used on the home page and on /pricing. /pricing is outside the middleware's
  * matcher, so a signed-in non-host can open it; the home page redirects them.
+ *
+ * Not in the iOS app (App Store guideline 3.1.1, components/ios-app.tsx): there the
+ * section is one neutral line, no prices, no plan to pick and no checkout, and no ?buy=
+ * coming back from sign-up opens one. (29 Oct 2026)
  */
 
 type Period = "monthly" | "yearly";
@@ -66,6 +71,36 @@ function longDate(iso: string): string {
 }
 
 export function Pricing({ autoBuy }: { autoBuy?: BuyIntent | null }) {
+  const iosApp = useIOSApp();
+  if (iosApp) return <IOSAppPricing known />;
+  /* The server and the first client render cannot know yet; CSS picks one of the two
+   * from <html data-ios-app>, set before paint. */
+  return (
+    <>
+      <IOSAppPricing />
+      <PricingSection autoBuy={autoBuy} />
+    </>
+  );
+}
+
+/** The iOS app's whole pricing section: a plain sentence, nothing to tap. `known`: the
+ *  page has said it is the iOS app; otherwise CSS shows it only there. */
+function IOSAppPricing({ known = false }: { known?: boolean }) {
+  return (
+    <section className={`section pricing ${known ? "" : "ios-app-only"}`} aria-labelledby="pricing-app-title">
+      <div className="wrap">
+        <div className="section-head">
+          <h2 id="pricing-app-title" className="h2">
+            Plans
+          </h2>
+          <p className="lede">{IOS_APP_PLANS_NOTE}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
   const router = useRouter();
   const { status } = useSession();
   const [catalogue, setCatalogue] = useState<BillingCatalogue | null>(null);
@@ -106,7 +141,7 @@ export function Pricing({ autoBuy }: { autoBuy?: BuyIntent | null }) {
   };
 
   return (
-    <section className="section pricing" id="pricing" aria-labelledby="pricing-title">
+    <section className="section pricing ios-app-hidden" id="pricing" aria-labelledby="pricing-title">
       <div className="wrap">
         <div className="section-head reveal">
           <p className="eyebrow">Pricing</p>

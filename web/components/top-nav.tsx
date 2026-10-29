@@ -15,6 +15,7 @@ import { MessagesNavButton } from "@/engage";
 import { EmailNavLink } from "./email/email-nav";
 import { useInstallMenuAction } from "./pwa";
 import { indexable } from "@/lib/plans";
+import { useIOSApp } from "./ios-app";
 
 /* The top bar: the account menu, and one nav entry each way.
  *
@@ -39,7 +40,13 @@ import { indexable } from "@/lib/plans";
  * Contacts went too. Audience is a tab on Your webinars. Messages is its own
  * screen, opened from the chat icon. WhatsApp replies land on the bell. */
 
-function linksFor(signedIn: boolean, canHost: boolean) {
+/* `sells` marks the entries that lead to prices (Pricing, and Features, which carries
+ * them). None of them show in the iOS app, App Store guideline 3.1.1: they are dropped
+ * once the page knows (useIOSApp) and hidden by CSS before that (.ios-app-hidden, set
+ * before paint), see components/ios-app.tsx. (29 Oct 2026) */
+type NavEntry = { href: string; label: string; sells?: boolean };
+
+function linksFor(signedIn: boolean, canHost: boolean, iosApp: boolean): NavEntry[] {
   // A host reaches their registrations through the tab, and /host through the
   // logo (see homeHrefFor) — nothing left for a nav entry to point at that is
   // not already the page they are standing on. An account that cannot host has no Host Webinar page to hold
@@ -48,18 +55,23 @@ function linksFor(signedIn: boolean, canHost: boolean) {
   // label as the tab, since it is the same list; the /my-webinars path stays as it
   // is, because renaming a URL breaks the links already sent out to it.
   if (canHost) return [];
+  const all = linksForVisitor(signedIn);
+  return iosApp ? all.filter((l) => !l.sells) : all;
+}
+
+function linksForVisitor(signedIn: boolean): NavEntry[] {
   // Pricing for everyone who cannot host yet: it is where hosting is bought. Blog for the
   // same people, who are still deciding; a host reaches it from the account menu.
   return signedIn
     ? [
         { href: "/my-webinars", label: "WatchList" },
-        { href: "/pricing", label: "Pricing" },
+        { href: "/pricing", label: "Pricing", sells: true },
         { href: "/blog", label: "Blog" },
       ]
     : [
         // Features carries the proposed prices, so it is linked once they are live (lib/plans.ts).
-        ...(indexable() ? [{ href: "/features", label: "Features" }] : []),
-        { href: "/pricing", label: "Pricing" },
+        ...(indexable() ? [{ href: "/features", label: "Features", sells: true }] : []),
+        { href: "/pricing", label: "Pricing", sells: true },
         { href: "/blog", label: "Blog" },
       ];
 }
@@ -80,7 +92,8 @@ export function TopNav() {
   const { account, status, signOut } = useSession();
   const { registrations } = useRegistrations();
   const [open, setOpen] = useState(false);
-  const links = linksFor(Boolean(account), account?.canHost === true);
+  const iosApp = useIOSApp();
+  const links = linksFor(Boolean(account), account?.canHost === true, iosApp);
   // Nothing for the mobile drawer to reveal without at least one of these — a
   // button that opens onto an empty panel is worse than no button.
   const hasMobileMenu = links.length > 0 || !account;
@@ -121,7 +134,9 @@ export function TopNav() {
           {links.map((l) => (
             <NavLink
               key={l.href}
-              {...l}
+              href={l.href}
+              label={l.label}
+              className={l.sells ? "ios-app-hidden" : ""}
               active={isActive(l.href)}
               badge={l.href === "/my-webinars" ? count : 0}
             />
@@ -220,7 +235,7 @@ export function TopNav() {
                 href={l.href}
                 onClick={() => setOpen(false)}
                 aria-current={isActive(l.href) ? "page" : undefined}
-                className={`flex h-9 items-center justify-between rounded-lg px-3 text-[14px] ${
+                className={`flex h-9 items-center justify-between rounded-lg px-3 text-[14px] ${l.sells ? "ios-app-hidden " : ""}${
                   isActive(l.href)
                     ? "bg-brand-soft font-medium text-brand"
                     : "text-ink-2 hover:bg-surface-2"
@@ -261,17 +276,19 @@ function NavLink({
   label,
   active,
   badge,
+  className = "",
 }: {
   href: string;
   label: string;
   active: boolean;
   badge: number;
+  className?: string;
 }) {
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13.5px] transition-colors ${
+      className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13.5px] transition-colors ${className} ${
         active
           ? "bg-brand-soft font-medium text-brand"
           : "text-ink-2 hover:bg-surface-2 hover:text-ink"

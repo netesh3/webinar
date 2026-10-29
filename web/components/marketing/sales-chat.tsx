@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { salesChat } from "@/lib/api";
 import type { SalesChat, SalesMessage, SalesStatus } from "@/lib/api-types";
 import { ApiError } from "@/lib/http";
+import { useIOSApp } from "@/components/ios-app";
 import "./sales-chat.css";
 
 /* The sales chat on the marketing pages.
@@ -54,7 +55,20 @@ function write(key: string, value: string | null) {
 
 type Local = SalesMessage & { pending?: boolean };
 
+/* Not in the iOS app: the agent's job is selling plans ("See plans & prices"), which the
+ * iOS app may not do outside Apple's In-App Purchase (guideline 3.1.1,
+ * components/ios-app.tsx). Hidden by CSS until the page knows, then not rendered. (29 Oct 2026) */
 export function SalesChatWidget() {
+  const iosApp = useIOSApp();
+  if (iosApp) return null;
+  return (
+    <div className="ios-app-hidden">
+      <SalesChatPanel />
+    </div>
+  );
+}
+
+function SalesChatPanel() {
   const [open, setOpen] = useState(false);
   const [teaser, setTeaser] = useState(false);
   // Read once on the client. Nothing rendered depends on it, so the server's null

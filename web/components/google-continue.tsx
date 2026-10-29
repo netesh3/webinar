@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Alert, Spinner } from "./controls";
 import { useAppConfig } from "./providers";
 import { Button } from "./ui";
+import { startAppGoogleSignIn } from "@/lib/app-auth";
 import { safeAuthNext } from "@/lib/supabase";
 import { googleLoginHint } from "@/lib/webinar-register";
 
@@ -13,20 +14,28 @@ import { googleLoginHint } from "@/lib/webinar-register";
  * then accounts.google.com, then `/api/auth/google/callback`. It never hits
  * `*.supabase.co`. `next` is a same-origin path round-tripped in signed state
  * so a webinar registration comes back to that webinar.
+ *
+ * Inside the desktop or mobile app (29 Oct 2026) the same start URL opens in the system
+ * browser instead, and the sign-in comes back to the app through webinarliv:// (lib/app-auth.ts).
+ * That resolves "external": this page stays where it is.
  */
 export async function startGoogleOAuth(opts: {
   next: string;
   loginHint?: string;
-}): Promise<void> {
+}): Promise<"navigating" | "external"> {
   const params = new URLSearchParams();
   params.set("next", safeAuthNext(opts.next));
   const hint = googleLoginHint(opts.loginHint ?? "");
   if (hint) params.set("login_hint", hint);
+  if (await startAppGoogleSignIn({ next: params.get("next") ?? "/", loginHint: hint || undefined })) {
+    return "external";
+  }
   // Full navigation to the API proxy (Worker / Cloud Run), not a Next.js page.
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign(
     `${window.location.origin}/api/auth/google/start?${params.toString()}`,
   );
+  return "navigating";
 }
 
 /** Starts first-party Google OAuth; Cloud Run sets webcast_session on callback. */
@@ -42,6 +51,7 @@ export function GoogleContinueButton({
   const { googleAuth } = useAppConfig();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [external, setExternal] = useState(false);
 
   if (!googleAuth) {
     return null;
@@ -51,8 +61,12 @@ export function GoogleContinueButton({
     setBusy(true);
     setError(null);
     try {
-      await startGoogleOAuth({ next, loginHint });
-      // On success the browser navigates away to Google.
+      if ((await startGoogleOAuth({ next, loginHint })) === "external") {
+        // The app opened the browser; the sign-in comes back here by itself.
+        setExternal(true);
+        setBusy(false);
+      }
+      // Otherwise the browser navigates away to Google.
     } catch (err) {
       setError(
         err instanceof Error
@@ -80,6 +94,11 @@ export function GoogleContinueButton({
         )}
         {busy ? "Redirecting…" : label}
       </Button>
+      {external && !error && (
+        <p className="text-center text-[12.5px] text-ink-2">
+          Finish signing in with Google in your browser. You&rsquo;ll come straight back here.
+        </p>
+      )}
       {error && <Alert tone="error">{error}</Alert>}
     </div>
   );

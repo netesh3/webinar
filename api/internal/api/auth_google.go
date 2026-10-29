@@ -23,6 +23,11 @@ type googleOAuthState struct {
 	jwt.RegisteredClaims
 	Next  string `json:"next"`
 	Nonce string `json:"nonce"`
+	/* App and Challenge are set when the sign-in started inside the desktop or mobile app
+	 * (auth_app.go): the callback then hands the app a one-time code instead of setting the
+	 * session cookie in the system browser. */
+	App       string `json:"app,omitempty"`
+	Challenge string `json:"challenge,omitempty"`
 }
 
 func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +38,16 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	next := safeGoogleNext(r.URL.Query().Get("next"))
+	app := strings.TrimSpace(r.URL.Query().Get("app"))
+	challenge := strings.TrimSpace(r.URL.Query().Get("challenge"))
+	if app != "" || challenge != "" {
+		// An app sign-in without its challenge could not be finished safely: refuse it rather
+		// than fall back to a cookie in the wrong browser.
+		if !appAuthApps[app] || !validChallenge(challenge) {
+			httpx.Error(w, http.StatusBadRequest, "bad_request", "That app sign-in link is not valid. Start again from the app.")
+			return
+		}
+	}
 	nonce, err := randomNonce()
 	if err != nil {
 		s.fail(w, r, "google start: nonce", err)
@@ -45,8 +60,10 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
 			Issuer:    "webcast-google",
 		},
-		Next:  next,
-		Nonce: nonce,
+		Next:      next,
+		Nonce:     nonce,
+		App:       app,
+		Challenge: challenge,
 	})
 	signed, err := tok.SignedString([]byte(s.cfg.SessionSecret))
 	if err != nil {
@@ -74,13 +91,25 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	next := "/"
+	app := ""
 	fail := func(detail string) {
 		s.clearGoogleStateCookie(w)
+		if app != "" {
+			// Back to the app with the reason, so its own login page can say it.
+			http.Redirect(w, r, s.appReturnURL(r, app, url.Values{"error": {detail}}), http.StatusFound) // #nosec G710 -- googleOrigin is an allowlisted origin
+			return
+		}
 		dest := s.googleFront(r, "/login", next, detail)
 		http.Redirect(w, r, dest, http.StatusFound) // #nosec G710 -- googleFront prefixes an allowlisted origin; next passed safeGoogleNext
 	}
 
 	if gerr := r.URL.Query().Get("error"); gerr != "" {
+		// Google still returns the state with an error. If it is ours and the sign-in began
+		// in an app, the person cancelled in the system browser: send them back to the app.
+		if st, err := s.parseGoogleState(strings.TrimSpace(r.URL.Query().Get("state"))); err == nil &&
+			appAuthApps[st.App] && validChallenge(st.Challenge) {
+			app = st.App
+		}
 		if gerr == "access_denied" {
 			fail("denied")
 			return
@@ -105,6 +134,9 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next = safeGoogleNext(st.Next)
+	if appAuthApps[st.App] && validChallenge(st.Challenge) {
+		app = st.App
+	}
 
 	if !s.cfg.GoogleAuthEnabled() {
 		fail("unset")
@@ -137,6 +169,24 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		s.fail(w, r, "google oauth: account", err)
+		return
+	}
+
+	if app != "" {
+		/* Started in an app: this is the system browser, which must not be signed in. The
+		 * app redeems the code from its own webview (handleAppAuthExchange). */
+		code, err := s.store.IssueAppAuthCode(r.Context(), user.ID, st.Challenge, app, next)
+		if err != nil {
+			s.fail(w, r, "google oauth: app code", err)
+			return
+		}
+		s.clearGoogleStateCookie(w)
+		if created {
+			s.queueWelcome(r.Context(), user)
+			s.flushMailSoon()
+		}
+		s.log.Info("google auth: app hand-off", "user", user.ID, "app", app, "created", created)
+		http.Redirect(w, r, s.appReturnURL(r, app, url.Values{"code": {code}}), http.StatusFound) // #nosec G710 -- googleOrigin is an allowlisted origin
 		return
 	}
 

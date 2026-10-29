@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSession } from "../providers";
+import { IOS_APP_PLANS_NOTE, useIOSApp } from "../ios-app";
 import { Badge, Button, Card } from "../ui";
 import { api } from "@/lib/api";
 import type { BillingStatus } from "@/lib/api-types";
@@ -14,9 +15,14 @@ function day(iso: string): string {
 
 /** The plan the account is on: a free trial with its first-charge date, a renewing
  *  subscription, or a one-time payment's paid-until. A running subscription can be
- *  cancelled here, which stops it at once and ends the plan. */
+ *  cancelled here, which stops it at once and ends the plan.
+ *
+ *  In the iOS app the plan is shown but not sold: no "See plans", and the neutral line
+ *  where it would be (App Store guideline 3.1.1, components/ios-app.tsx). Cancelling
+ *  stays, as it buys nothing. (29 Oct 2026) */
 export function BillingCard() {
   const { refresh } = useSession();
+  const iosApp = useIOSApp();
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +67,9 @@ export function BillingCard() {
     line = `Free trial · first charge on ${billing.trialEndsAt ? day(billing.trialEndsAt) : "the trial's last day"}. Cancel before then and you won't be charged.`;
     badge = { tone: "ok", text: "Trial" };
   } else if (billing.plan && billing.status === "past_due") {
-    line = "Your last charge didn't go through. Razorpay is retrying; update your payment method from the link in its email.";
+    line = iosApp
+      ? "Your last charge didn't go through."
+      : "Your last charge didn't go through. Razorpay is retrying; update your payment method from the link in its email.";
     badge = { tone: "warn", text: "Payment due" };
   } else if (billing.plan && billing.renews) {
     line = billing.paidUntil ? `Renews monthly · next charge on ${day(billing.paidUntil)}.` : "Renews monthly.";
@@ -92,7 +100,8 @@ export function BillingCard() {
             {billing.status === "trialing" ? "Cancel trial" : "Cancel subscription"}
           </Button>
         )}
-        {!billing.active && (
+        {!billing.active && iosApp && <p className="text-[12.5px] text-ink-3">{IOS_APP_PLANS_NOTE}</p>}
+        {!billing.active && !iosApp && (
           <Link href="/pricing#pricing" className="text-[12.5px] font-medium text-brand hover:underline">
             See plans
           </Link>

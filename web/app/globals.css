@@ -2633,3 +2633,11 @@ html[data-theme="dark"] .tp-chip-5 { --tp-bg: rgba(6, 174, 212, 0.22); --tp-fg: 
 .tp-mark-3 { --tp-bg: #f4ebff; --tp-ring: #9e77ed; }
 .tp-mark-4 { --tp-bg: #fce7f6; --tp-ring: #ee46bc; }
 .tp-mark-5 { --tp-bg: #cff9fe; --tp-ring: #06aed4; }
+
+/* The iOS app sells nothing (App Store guideline 3.1.1; components/ios-app.tsx). <html
+ * data-ios-app> is set before paint (appStoreBootScript in lib/device.ts), so pricing
+ * links and buy buttons never flash there, and the neutral note never shows elsewhere.
+ * (29 Oct 2026) */
+.ios-app-only { display: none !important; }
+html[data-ios-app] .ios-app-only { display: revert !important; }
+html[data-ios-app] .ios-app-hidden { display: none !important; }

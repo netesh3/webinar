@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { RecordingStorage } from "@/lib/api-types";
 import { storageMeter } from "@/lib/recording-retention";
 import { Badge, Card } from "./ui";
+import { useIOSApp } from "./ios-app";
 
 /* The recording storage meter: "6.2 of 10 GB", on the Recording tab and in Settings.
  *
@@ -39,6 +40,9 @@ const BAR: Record<"ok" | "warn" | "over", string> = {
 
 export function RecordingStorageMeter({ storage }: { storage: RecordingStorage }) {
   const m = storageMeter(storage.usedBytes, storage.quotaBytes);
+  // No "upgrade" link in the iOS app (App Store guideline 3.1.1, components/ios-app.tsx).
+  // The meter is client-only (it waits for the fetch), so the hook alone is enough. (29 Oct 2026)
+  const iosApp = useIOSApp();
   return (
     <div className="min-w-0">
       <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
@@ -60,11 +64,15 @@ export function RecordingStorageMeter({ storage }: { storage: RecordingStorage }
       {m.tone === "over" ? (
         <p className="mt-1.5 text-[11.5px] leading-relaxed text-live">
           Full. Recordings can&apos;t be kept longer, and new ones are kept {storage.retentionDays} days. Delete
-          recordings you don&apos;t need, let others expire, or{" "}
-          <Link href="/pricing#pricing" className="font-medium underline">
-            upgrade
-          </Link>
-          .
+          recordings you don&apos;t need{iosApp ? " or let others expire." : ", let others expire, or "}
+          {!iosApp && (
+            <>
+              <Link href="/pricing#pricing" className="font-medium underline">
+                upgrade
+              </Link>
+              .
+            </>
+          )}
         </p>
       ) : m.tone === "warn" ? (
         <p className="mt-1.5 text-[11.5px] text-warn">Almost full.</p>

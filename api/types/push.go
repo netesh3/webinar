@@ -112,3 +112,28 @@ type PushPayload struct {
 	Icon     string   `json:"icon,omitempty"`
 	Badge    string   `json:"badge,omitempty"`
 }
+
+/* NativePushRegisterRequest is POST /api/push/native (29 Oct 2026): the Android or iOS app
+ * hands over its FCM registration token for the signed-in account. Sent after the app gets a
+ * token, again on sign-in, and whenever Firebase rotates the token. */
+type NativePushRegisterRequest struct {
+	// Platform is "ios" or "android".
+	Platform string `json:"platform"`
+	// Token is the FCM registration token (on iOS too: Firebase maps it to the APNs token).
+	Token string `json:"token"`
+	// AppVersion is the app's version string, for support. Optional.
+	AppVersion string `json:"appVersion,omitempty"`
+}
+
+// NativePushUnregisterRequest is DELETE /api/push/native: this install stops hearing from the
+// signed-in account. The app sends it just before it signs out.
+type NativePushUnregisterRequest struct {
+	Token string `json:"token"`
+}
+
+// NativePushRegisterResponse says whether this deployment will actually send to the token.
+// Sending is off until FCM_SERVICE_ACCOUNT_JSON is set; the token is stored either way.
+type NativePushRegisterResponse struct {
+	Status  string `json:"status"`
+	Sending bool   `json:"sending"`
+}

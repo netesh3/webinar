@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { FeaturesPage } from "@/components/marketing/features-page";
+import { IOSAppPlansGate } from "@/components/ios-app";
 import { TopNav } from "@/components/top-nav";
 import { indexable } from "@/lib/plans";
 
@@ -24,7 +25,10 @@ export default function FeaturesRoute() {
     <>
       <TopNav />
       <main className="flex-1">
-        <FeaturesPage />
+        {/* Carries prices: not in the iOS app (guideline 3.1.1, components/ios-app.tsx). */}
+        <IOSAppPlansGate>
+          <FeaturesPage />
+        </IOSAppPlansGate>
       </main>
     </>
   );

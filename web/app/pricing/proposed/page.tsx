@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { HomeLegalFooter } from "@/components/marketing/legal-page";
 import { AddOns, AiCredits, CompareTable, FinalCta, PlanCards, PlansFaq, ProposalNote } from "@/components/marketing/plans-ui";
+import { IOSAppPlansGate } from "@/components/ios-app";
 import { TopNav } from "@/components/top-nav";
 import { indexable } from "@/lib/plans";
 
@@ -20,24 +21,27 @@ export default function ProposedPricingRoute() {
     <>
       <TopNav />
       <main className="flex-1">
-        <div className="home">
-          <div className="lp lp-pricing-page">
-            <ProposalNote />
-            <PlanCards headingLevel={2} />
-            <AddOns />
-            <CompareTable />
-            <AiCredits />
-            <PlansFaq />
-            <FinalCta
-              title={
-                <>
-                  Start free. <em>Upgrade when you grow.</em>
-                </>
-              }
-            />
+        {/* Not in the iOS app (guideline 3.1.1, components/ios-app.tsx). */}
+        <IOSAppPlansGate>
+          <div className="home">
+            <div className="lp lp-pricing-page">
+              <ProposalNote />
+              <PlanCards headingLevel={2} />
+              <AddOns />
+              <CompareTable />
+              <AiCredits />
+              <PlansFaq />
+              <FinalCta
+                title={
+                  <>
+                    Start free. <em>Upgrade when you grow.</em>
+                  </>
+                }
+              />
+            </div>
+            <HomeLegalFooter />
           </div>
-          <HomeLegalFooter />
-        </div>
+        </IOSAppPlansGate>
       </main>
     </>
   );

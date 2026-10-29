@@ -5,9 +5,9 @@
  * updates work.
  */
 
-import { app, BrowserWindow, ipcMain, session, type BrowserWindowConstructorOptions } from "electron";
+import { app, BrowserWindow, ipcMain, session, shell, type BrowserWindowConstructorOptions } from "electron";
 import path from "node:path";
-import { findLaunchTarget, isSiteUrl, PROTOCOL, resolveLaunchTarget, START_URL } from "./config";
+import { findLaunchTarget, isAuthCompleteUrl, isSignInStartUrl, isSiteUrl, PROTOCOL, resolveLaunchTarget, START_URL } from "./config";
 import { buildMenu } from "./menu";
 import { isCallActive, registerPowerIpc } from "./power";
 import { installDisplayMediaHandler } from "./screen-picker";
@@ -19,15 +19,15 @@ app.setName("Webinar Liv");
 if (process.platform === "win32") app.setAppUserModelId("com.webinarliv.desktop");
 
 /*
- * Google refuses to sign people in from "embedded" browsers and recognises
- * Electron by the Electron/x and app-name tokens in the user agent. Without
- * them the UA is the plain Chrome one, which is what the app is. Pages that
- * want to know they are in the app use window.webinarlivDesktop instead.
+ * The user agent is Electron's own, plus a WebinarLivDesktop/<version> marker
+ * (29 Oct 2026). The app used to strip the Electron/x and app-name tokens so
+ * that Google would take it for plain Chrome and allow sign-in in the window.
+ * It no longer pretends: Continue with Google opens in the system browser and
+ * comes back through webinarliv:// (openSignIn below, web/lib/app-auth.ts).
+ * The marker is not WebinarLivApp/, which is the phone app's and hides
+ * purchases on iOS (web/lib/device.ts); the desktop app keeps them.
  */
-app.userAgentFallback = app.userAgentFallback
-  .replace(/\sElectron\/\S+/i, "")
-  .replace(new RegExp(`\\s${app.getName().replace(/\s+/g, "")}\\/\\S+`, "i"), "")
-  .replace(/\swebinarliv-desktop\/\S+/i, "");
+app.userAgentFallback = `${app.userAgentFallback} WebinarLivDesktop/${app.getVersion()}`;
 
 // Single instance: a second launch (deep link, file association, taskbar)
 // hands its arguments to the running app and exits.
@@ -155,6 +155,8 @@ app.on("open-url", (event, url) => {
   const target = resolveLaunchTarget(url);
   if (target) openTarget(target);
   else focusMain();
+  // Back from the system browser's Google sign-in: the browser is in front, so take focus.
+  if (target && isAuthCompleteUrl(target) && app.isReady()) app.focus({ steal: true });
 });
 
 // Windows / Linux deliver links (and https URLs) as arguments of a second launch.
@@ -185,6 +187,16 @@ app.whenReady().then(() => {
     if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
     const n = typeof count === "number" && Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
     app.setBadgeCount(n);
+  });
+  /* Continue with Google: the site's own start URL, in the system browser, which Google
+   * allows and an embedded window it does not. Only that one URL, only from a site page. */
+  ipcMain.on("webinarliv:open-sign-in", (event, url: unknown) => {
+    if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
+    if (typeof url !== "string" || !isSignInStartUrl(url)) {
+      console.warn("[auth] refusing to open sign-in URL", url);
+      return;
+    }
+    void shell.openExternal(url);
   });
   ipcMain.on("webinarliv:focus", (event) => {
     if (!isSiteUrl(event.senderFrame?.url ?? "")) return;

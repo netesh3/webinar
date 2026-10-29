@@ -13,6 +13,10 @@ import { Button, ButtonLink, Card } from "./ui";
  * payment clears. The request is still here for someone an administrator should
  * enable without payment.
  *
+ * In the iOS app only the request is offered: no "Buy a plan" and no mention of buying
+ * (App Store guideline 3.1.1, components/ios-app.tsx). CSS swaps the words and drops the
+ * button there (.ios-app-hidden / .ios-app-only). (29 Oct 2026)
+ *
  * The button is hidden for someone who already hosts. A phone is asked for
  * only when the account does not have one. After the request is recorded the
  * same control says so, on a refresh as well as on the click that sent it.
@@ -143,13 +147,20 @@ export function HostRequest({
               : "text-[12px] leading-relaxed text-ink-2"
           }
         >
-          {placement === "home"
-            ? "Want to run your own webinars? Buy a plan to start hosting right away, or request hosting and we'll review your account."
-            : "Buy a plan to turn hosting on straight away, or request it and an administrator will review your account."}
+          <span className="ios-app-hidden">
+            {placement === "home"
+              ? "Want to run your own webinars? Buy a plan to start hosting right away, or request hosting and we'll review your account."
+              : "Buy a plan to turn hosting on straight away, or request it and an administrator will review your account."}
+          </span>
+          <span className="ios-app-only">
+            {placement === "home"
+              ? "Want to run your own webinars? Request hosting and we'll review your account."
+              : "Request hosting and an administrator will review your account."}
+          </span>
         </p>
         {field && <p className="text-[12px] font-medium text-live">{field}</p>}
         <div className="flex flex-wrap gap-2">
-          <ButtonLink href="/pricing" size={placement === "settings" ? "sm" : "md"}>
+          <ButtonLink href="/pricing" className="ios-app-hidden" size={placement === "settings" ? "sm" : "md"}>
             Buy a plan
           </ButtonLink>
           <Button
@@ -191,9 +202,19 @@ export function HostRequest({
           <div className="mt-2">{body}</div>
         ) : (
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-2">
-            {sentNow
-              ? "An administrator still has to turn hosting on. You'll be able to schedule webinars once they do."
-              : "Buy a plan to start hosting now, or ask an administrator to turn it on. You can still join anything you've registered for."}
+            {sentNow ? (
+              "An administrator still has to turn hosting on. You'll be able to schedule webinars once they do."
+            ) : (
+              <>
+                <span className="ios-app-hidden">
+                  Buy a plan to start hosting now, or ask an administrator to turn it on. You can still join
+                  anything you&apos;ve registered for.
+                </span>
+                <span className="ios-app-only">
+                  Ask an administrator to turn it on. You can still join anything you&apos;ve registered for.
+                </span>
+              </>
+            )}
           </p>
         )}
         {!sentNow && !askingPhone && field && (
@@ -202,7 +223,7 @@ export function HostRequest({
       </div>
       {!askingPhone && (
         <div className="flex shrink-0 flex-wrap gap-2">
-          <ButtonLink href="/pricing" size="sm">
+          <ButtonLink href="/pricing" className="ios-app-hidden" size="sm">
             Buy a plan
           </ButtonLink>
           {!sentNow && (

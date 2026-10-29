@@ -96,6 +96,14 @@ type Config struct {
 	VAPIDPrivateKey string
 	VAPIDSubject    string
 
+	/* FCMServiceAccountJSON is a Firebase service account's JSON key (or the same, base64),
+	 * for native push to the Android and iOS apps through FCM HTTP v1 (api/internal/push/fcm.go;
+	 * FCM reaches iOS through the APNs key uploaded into the Firebase project). Empty means
+	 * native sending is off: the apps' tokens are still stored, nothing is sent to them, and
+	 * the API says so once at boot. A key that does not parse is logged and treated as empty
+	 * rather than refusing to boot, so a pasting mistake cannot take the API down. (29 Oct 2026) */
+	FCMServiceAccountJSON string
+
 	/* CaptionsSecret switches on server-side live captions (deploy/captions): the shared
 	 * secret the caption agent sends in X-Captions-Secret to POST /api/internal/captions,
 	 * /captions/status and /transcripts. Empty means those endpoints do not exist and
@@ -564,6 +572,7 @@ func Load() (Config, error) {
 		VAPIDPublicKey:          strings.TrimSpace(env("VAPID_PUBLIC_KEY", "")),
 		VAPIDPrivateKey:         strings.TrimSpace(env("VAPID_PRIVATE_KEY", "")),
 		VAPIDSubject:            strings.TrimSpace(env("VAPID_SUBJECT", "")),
+		FCMServiceAccountJSON:   strings.TrimSpace(env("FCM_SERVICE_ACCOUNT_JSON", "")),
 		CaptionsSecret:          strings.TrimSpace(env("CAPTIONS_SECRET", "")),
 		CaptionsAgentName:       strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
 		CaptionsProvider:        loadCaptionsProvider(),

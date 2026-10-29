@@ -166,11 +166,13 @@ func (s *Store) RemovePushSubscription(ctx context.Context, endpoint, userID, re
 	return nil
 }
 
-// PushDeviceCount is how many browsers an account is subscribed on.
+// PushDeviceCount is how many browsers, and app installs (native_push_tokens), an account is
+// subscribed on.
 func (s *Store) PushDeviceCount(ctx context.Context, userID string) (int, error) {
 	var n int
-	err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM push_subscriptions WHERE user_id = $1`, userID).Scan(&n)
+	err := s.pool.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM push_subscriptions WHERE user_id = $1)
+		     + (SELECT count(*) FROM native_push_tokens WHERE user_id = $1)`, userID).Scan(&n)
 	return n, err
 }
 
@@ -226,6 +228,11 @@ type PushMessage struct {
 	DedupeKey string
 	// DueAt zero means now.
 	DueAt time.Time
+	/* NoWeb and NoNative leave one channel out of the fan-out: the API sets them when that
+	 * channel's sender is not configured (no VAPID keys, no FCM key), so nothing is queued
+	 * that nothing would send. (29 Oct 2026) */
+	NoWeb    bool
+	NoNative bool
 }
 
 func (m PushMessage) args() []any {
@@ -258,22 +265,35 @@ const pushInsertSQL = `
 	 ORDER BY t.sid
 	ON CONFLICT (subscription_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`
 
+// The same for app installs: the source provides tid (a native_push_tokens id) and join_key.
+const pushNativeInsertSQL = `
+	INSERT INTO push_messages (native_token_id, kind, title, body, url, tag, urgency, ttl_sec, dedupe_key, due_at)
+	SELECT DISTINCT ON (t.tid) t.tid, $1, $2, $3, replace($4, '{joinKey}', t.join_key), $5, $6, $7, $8,
+	       coalesce($9::timestamptz, now())
+	  FROM targets t
+	 ORDER BY t.tid
+	ON CONFLICT (native_token_id, dedupe_key) WHERE dedupe_key IS NOT NULL AND native_token_id IS NOT NULL DO NOTHING`
+
 /* QueuePushToRegistrants fans a message out to the approved registrants of a webinar — all of
  * them, or only registrationIDs when that is non-nil — and returns how many browsers got a row.
  *
  * A registrant is reached on the browsers they opted in from the confirmation page (the
  * registration links, which are that webinar's explicit "tell me" and so are sent whatever
  * the account's settings say), and on their account's browsers when the registration has an
- * account and the account has not turned this kind off. */
+ * account and the account has not turned this kind off. The account's app installs
+ * (native_push_tokens) are reached the same way as its browsers. */
 func (s *Store) QueuePushToRegistrants(ctx context.Context, slug string, registrationIDs []string, m PushMessage) (int, error) {
 	args := append(m.args(), slug, registrationIDs)
-	tag, err := s.pool.Exec(ctx, `
+	const regs = `
 		WITH regs AS (
 		    SELECT r.id, r.user_id, r.join_key
 		      FROM registrations r JOIN webinars w ON w.id = r.webinar_id
 		     WHERE w.slug = $10 AND r.state = 'approved'
 		       AND ($11::uuid[] IS NULL OR r.id = ANY($11::uuid[]))
-		), targets AS (
+		)`
+	total := 0
+	if !m.NoWeb {
+		tag, err := s.pool.Exec(ctx, regs+`, targets AS (
 		    SELECT l.subscription_id AS sid, regs.join_key
 		      FROM regs JOIN push_subscription_registrations l ON l.registration_id = regs.id
 		    UNION ALL
@@ -282,31 +302,64 @@ func (s *Store) QueuePushToRegistrants(ctx context.Context, slug string, registr
 		     WHERE NOT EXISTS (SELECT 1 FROM push_preferences p
 		                        WHERE p.user_id = regs.user_id AND p.kind = $1 AND NOT p.enabled)
 		)`+pushInsertSQL, args...)
-	if err != nil {
-		return 0, err
+		if err != nil {
+			return 0, err
+		}
+		total += int(tag.RowsAffected())
 	}
-	return int(tag.RowsAffected()), nil
+	if !m.NoNative {
+		// An app install is always an account's, so only the account half applies.
+		tag, err := s.pool.Exec(ctx, regs+`, targets AS (
+		    SELECT t.id AS tid, regs.join_key
+		      FROM regs JOIN native_push_tokens t ON t.user_id = regs.user_id
+		     WHERE NOT EXISTS (SELECT 1 FROM push_preferences p
+		                        WHERE p.user_id = regs.user_id AND p.kind = $1 AND NOT p.enabled)
+		)`+pushNativeInsertSQL, args...)
+		if err != nil {
+			return total, err
+		}
+		total += int(tag.RowsAffected())
+	}
+	return total, nil
 }
 
-/* QueuePushToUsers fans a message out to the browsers of these accounts that have not turned
- * the kind off. A test notification ignores the preferences: it was asked for. */
+/* QueuePushToUsers fans a message out to the browsers and app installs of these accounts that
+ * have not turned the kind off. A test notification ignores the preferences: it was asked for. */
 func (s *Store) QueuePushToUsers(ctx context.Context, userIDs []string, m PushMessage) (int, error) {
 	if len(userIDs) == 0 {
 		return 0, nil
 	}
 	args := append(m.args(), userIDs)
-	tag, err := s.pool.Exec(ctx, `
-		WITH targets AS (
-		    SELECT ps.id AS sid, ''::text AS join_key
-		      FROM push_subscriptions ps
-		     WHERE ps.user_id = ANY($10::uuid[])
-		       AND ($1 = 'test' OR NOT EXISTS (SELECT 1 FROM push_preferences p
-		                        WHERE p.user_id = ps.user_id AND p.kind = $1 AND NOT p.enabled))
-		)`+pushInsertSQL, args...)
-	if err != nil {
-		return 0, err
+	total := 0
+	if !m.NoWeb {
+		tag, err := s.pool.Exec(ctx, `
+			WITH targets AS (
+			    SELECT ps.id AS sid, ''::text AS join_key
+			      FROM push_subscriptions ps
+			     WHERE ps.user_id = ANY($10::uuid[])
+			       AND ($1 = 'test' OR NOT EXISTS (SELECT 1 FROM push_preferences p
+			                        WHERE p.user_id = ps.user_id AND p.kind = $1 AND NOT p.enabled))
+			)`+pushInsertSQL, args...)
+		if err != nil {
+			return 0, err
+		}
+		total += int(tag.RowsAffected())
 	}
-	return int(tag.RowsAffected()), nil
+	if !m.NoNative {
+		tag, err := s.pool.Exec(ctx, `
+			WITH targets AS (
+			    SELECT t.id AS tid, ''::text AS join_key
+			      FROM native_push_tokens t
+			     WHERE t.user_id = ANY($10::uuid[])
+			       AND ($1 = 'test' OR NOT EXISTS (SELECT 1 FROM push_preferences p
+			                        WHERE p.user_id = t.user_id AND p.kind = $1 AND NOT p.enabled))
+			)`+pushNativeInsertSQL, args...)
+		if err != nil {
+			return total, err
+		}
+		total += int(tag.RowsAffected())
+	}
+	return total, nil
 }
 
 // PushReminderWebinar is a webinar whose 15-minute push is due.
@@ -330,7 +383,8 @@ func (s *Store) DuePushReminders(ctx context.Context, window time.Duration) ([]P
 		         SELECT 1 FROM registrations r
 		          WHERE r.webinar_id = w.id AND r.state = 'approved'
 		            AND (EXISTS (SELECT 1 FROM push_subscription_registrations l WHERE l.registration_id = r.id)
-		                 OR EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = r.user_id)))
+		                 OR EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = r.user_id)
+		                 OR EXISTS (SELECT 1 FROM native_push_tokens t WHERE t.user_id = r.user_id)))
 		 ORDER BY w.starts_at
 		 LIMIT 200`, window.Seconds())
 	if err != nil {

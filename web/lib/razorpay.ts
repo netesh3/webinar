@@ -15,6 +15,7 @@ import type {
   VerifyBillingPaymentRequest,
   VerifyTrialRequest,
 } from "./api-types";
+import { currentIsIOSApp } from "./device";
 
 const SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
@@ -121,6 +122,10 @@ async function openCheckout(
   appName: string,
   prefill: { name?: string; email?: string; contact?: string },
 ): Promise<VerifyBillingPaymentRequest & VerifyTrialRequest> {
+  /* Never inside the iOS app: plans sold there would have to go through Apple's In-App
+   * Purchase (App Store guideline 3.1.1). The pricing UI is not shown there either
+   * (components/ios-app.tsx); this is the backstop. Same neutral words, no link. (29 Oct 2026) */
+  if (currentIsIOSApp()) throw new CheckoutError("failed", "Plan changes aren't available in the app.");
   await loadScript();
   const Razorpay = window.Razorpay;
   if (!Razorpay) throw new CheckoutError("load", "The payment page didn't load. Please try again.");

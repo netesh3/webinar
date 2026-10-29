@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { isNativeApp, keepsScreenAwake, routeForOpenedUrl } from "./native-bridge.ts";
+import { isNativeApp, keepsScreenAwake, pushNeedsSync, routeForOpenedUrl } from "./native-bridge.ts";
 
 // App Links / Universal Links on the site itself become a path on the same origin.
 assert.equal(routeForOpenedUrl("https://webinarliv.com/webinars/abc?k=1#q"), "/webinars/abc?k=1#q");
@@ -30,6 +30,13 @@ assert.equal(routeForOpenedUrl("http://webinarliv.com/webinars/abc"), null);
 assert.equal(routeForOpenedUrl("javascript:alert(1)"), null);
 assert.equal(routeForOpenedUrl("not a url"), null);
 
+// The Google sign-in hand-off comes back on the custom scheme (lib/app-auth.ts).
+assert.equal(routeForOpenedUrl("webinarliv://auth/complete?code=abc"), "/auth/complete?code=abc");
+// A push may carry a bare site path; a protocol-relative or backslashed one is not a path.
+assert.equal(routeForOpenedUrl("/webinars/abc/room?k=K"), "/webinars/abc/room?k=K");
+assert.equal(routeForOpenedUrl("//evil.example/x"), null);
+assert.equal(routeForOpenedUrl("/\\evil.example"), null);
+
 // The screen stays on in a session and on a replay, nowhere else.
 assert.equal(keepsScreenAwake("/webinars/abc/room"), true);
 assert.equal(keepsScreenAwake("/host/abc/room"), true);
@@ -38,6 +45,16 @@ assert.equal(keepsScreenAwake("/w/abc/recording"), true);
 assert.equal(keepsScreenAwake("/webinars/abc"), false);
 assert.equal(keepsScreenAwake("/host"), false);
 assert.equal(keepsScreenAwake("/"), false);
+
+// The push token is sent when it or the account changes, and once a day besides.
+const day = 24 * 60 * 60_000;
+assert.equal(pushNeedsSync(null, "t1", "u1", 0), true);
+assert.equal(pushNeedsSync({ token: "t1", user: "u1", at: 1000 }, "t1", "u1", 2000), false);
+assert.equal(pushNeedsSync({ token: "t1", user: "u1", at: 1000 }, "t2", "u1", 2000), true);
+assert.equal(pushNeedsSync({ token: "t1", user: "u1", at: 1000 }, "t1", "u2", 2000), true);
+assert.equal(pushNeedsSync({ token: "t1", user: "u1", at: 1000 }, "t1", "u1", 1000 + day + 1), true);
+assert.equal(pushNeedsSync(null, "", "u1", 0), false);
+assert.equal(pushNeedsSync(null, "t1", "", 0), false);
 
 // Outside the app (no window here at all) it is never native.
 assert.equal(isNativeApp(), false);
