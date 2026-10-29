@@ -8,6 +8,7 @@ import { Badge, Button, Card } from "../ui";
 import { api } from "@/lib/api";
 import type { BillingStatus } from "@/lib/api-types";
 import { ApiError } from "@/lib/http";
+import { CONTACT } from "@/lib/contact";
 
 function day(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
@@ -19,7 +20,11 @@ function day(iso: string): string {
  *
  *  In the iOS app the plan is shown but not sold: no "See plans", and the neutral line
  *  where it would be (App Store guideline 3.1.1, components/ios-app.tsx). Cancelling
- *  stays, as it buys nothing. (29 Oct 2026) */
+ *  stays, as it buys nothing. (29 Oct 2026)
+ *
+ *  An account that has had a plan sees billing@ for invoices, refunds and payment
+ *  questions: an address to write to, not a way to buy, so the iOS app shows it too.
+ *  (29 Oct 2026) */
 export function BillingCard() {
   const { refresh } = useSession();
   const iosApp = useIOSApp();
@@ -89,6 +94,14 @@ export function BillingCard() {
         <Badge tone={badge.tone}>{badge.text}</Badge>
       </div>
       <p className="text-[12px] leading-relaxed text-ink-2">{line}</p>
+      {billing.plan && (
+        <p className="text-[12px] text-ink-3">
+          Invoices, refunds or a payment question:{" "}
+          <a className="font-medium text-brand hover:underline" href={`mailto:${CONTACT.billing}`}>
+            {CONTACT.billing}
+          </a>
+        </p>
+      )}
       {error && (
         <p className="text-[12px] text-live" role="alert">
           {error}

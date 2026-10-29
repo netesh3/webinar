@@ -8,6 +8,7 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/engage/crmstore"
 	"github.com/netkumar/webcast/api/internal/notify"
+	"github.com/netkumar/webcast/api/types"
 )
 
 /* Keeping WhatsApp connections healthy without waiting for a send to fail.
@@ -109,5 +110,6 @@ func tokenExpiryMessage(to string, expires time.Time, web string) notify.Message
 		To:      to,
 		Subject: "Reconnect WhatsApp before " + day,
 		Body:    body,
+		ReplyTo: types.ContactSupport,
 	}
 }

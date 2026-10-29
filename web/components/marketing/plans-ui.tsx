@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { SUPPORT_EMAIL } from "@/components/marketing/legal-page";
+import { CONTACT, mailto } from "@/lib/contact";
 import {
   ADD_ONS,
   AI_CREDIT_COSTS,
@@ -67,7 +67,7 @@ export function ProposalNote() {
 
 /** Where a plan's button goes: the live checkout once these are the real plans. */
 function planHref(plan: Plan): string {
-  if (!plan.monthly) return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`${plan.name} plan`)}`;
+  if (!plan.monthly) return mailto(CONTACT.hello, `${plan.name} plan`);
   return LIVE ? `/signup?next=${encodeURIComponent("/pricing")}` : "/pricing#pricing";
 }
 
@@ -382,7 +382,7 @@ export function PlansFaq() {
             Pricing <em>questions</em>
           </h2>
           <p className="lede">
-            Something else? Write to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+            Something else? Write to <a href={`mailto:${CONTACT.support}`}>{CONTACT.support}</a>.
           </p>
         </div>
         <div className="faq-list">
@@ -397,7 +397,8 @@ export function PlansFaq() {
           </FaqItem>
           <FaqItem question="Do I get a GST invoice?">
             Yes. {GST_PERCENT}% GST is added to rupee payments and shown on the invoice; add your GSTIN at checkout to
-            claim input credit. Dollar payments from outside India are charged without GST.
+            claim input credit. Dollar payments from outside India are charged without GST. For a copy of an invoice, a
+            refund or any payment question, write to <a href={`mailto:${CONTACT.billing}`}>{CONTACT.billing}</a>.
           </FaqItem>
           <FaqItem question="Can I cancel any time?">
             Yes, from Settings. Cancel a trial before it ends and you are never charged. Yearly plans cost{" "}
@@ -439,7 +440,7 @@ export function FinalCta({ title, children }: { title: ReactNode; children?: Rea
           <Link className="btn btn-white btn-lg" href="/signup">
             Start your free trial <ArrowRight />
           </Link>
-          <a className="btn btn-outline-light btn-lg" href={`mailto:${SUPPORT_EMAIL}`}>
+          <a className="btn btn-outline-light btn-lg" href={`mailto:${CONTACT.hello}`}>
             Talk to us
           </a>
         </div>

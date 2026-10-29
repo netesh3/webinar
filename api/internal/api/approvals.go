@@ -249,10 +249,9 @@ func (s *Server) flushOutbox(ctx context.Context) {
 			_ = s.markDelivery(m.ID, "skipped", "no mail transport configured")
 			continue
 		}
-		replyTo := strings.TrimSpace(m.ReplyTo)
-		if replyTo == "" {
-			replyTo = notify.InboxAddress(m.InboxLocal)
-		}
+		// The row's own reply_to, else the host's inbox on mail sent for the host, else
+		// the platform address for the kind (notify.ReplyToFor). (29 Oct 2026)
+		replyTo := notify.ReplyToFor(m.Kind, m.ReplyTo, m.InboxLocal)
 		sendCtx, cancel := context.WithTimeout(ctx, notify.SMTPTimeout)
 		err = s.mail.Send(sendCtx, notify.Message{
 			To: m.Email, Subject: m.Subject, Body: m.Body, HTML: m.HTML, ICS: m.ICS, ICSName: "webinar.ics",

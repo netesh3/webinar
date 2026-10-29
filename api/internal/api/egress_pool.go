@@ -322,7 +322,7 @@ func (s *Server) alertOps(ctx context.Context, key, subject, body string) {
 		go func() { // #nosec G118 -- best-effort mail that must outlive the caller
 			mctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if err := s.mail.Send(mctx, notify.Message{To: addr, Subject: subject, Body: body}); err != nil {
+			if err := s.mail.Send(mctx, notify.Message{To: addr, Subject: subject, Body: body, ReplyTo: types.ContactSupport}); err != nil {
 				s.log.Error("ops alert: send failed", "to", addr, "error", err)
 			}
 		}()

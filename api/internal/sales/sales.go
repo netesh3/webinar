@@ -20,6 +20,7 @@ import (
 
 	"github.com/netkumar/webcast/api/internal/ai"
 	"github.com/netkumar/webcast/api/internal/billing"
+	"github.com/netkumar/webcast/api/types"
 )
 
 // Greeting is the first message of every conversation. Not generated, so a
@@ -54,7 +55,7 @@ var Facts = []string{
 	"Buying: choose a plan on the pricing page, pay with UPI, cards, netbanking or wallets through Razorpay, and host access turns on immediately — no waiting for approval.",
 	"Free trial: 7 days on the monthly Professional and Business plans paid in INR. It needs a card or UPI, with a ₹5 authorisation that is refunded; the first charge is on day 8 unless cancelled before. Yearly plans and USD payments are paid upfront. One free trial per person.",
 	"GSTIN can be added at checkout for the invoice.",
-	"Support email: support@webinarliv.com.",
+	"Support email: " + types.ContactSupport + ". Invoices, payments and refunds: " + types.ContactBilling + ".",
 }
 
 // SystemPrompt is the instruction the model gets with every turn.

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppConfig } from "@/components/providers";
+import { CONTACT } from "@/lib/contact";
 
 interface Props {
   startedAt: string | null;
@@ -32,7 +33,7 @@ function minutesToHuman(min: number): string {
 
 function useSupportEmail(): string {
   const config = useAppConfig();
-  return config.supportEmail ?? "support@webinarliv.com";
+  return config.supportEmail ?? CONTACT.support;
 }
 
 export function MeetingLimitBanner({ startedAt, maxDurationMin, endedByLimit }: Props) {

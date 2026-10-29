@@ -9,7 +9,7 @@ import { ApiError } from "@/lib/http";
 import { planCta } from "@/lib/pricing-cta";
 import { CheckoutError, authoriseTrial, formatMoney, payWithRazorpay } from "@/lib/razorpay";
 import { useSession } from "@/components/providers";
-import { SUPPORT_EMAIL } from "@/components/marketing/legal-page";
+import { CONTACT, mailto } from "@/lib/contact";
 import { IOS_APP_PLANS_NOTE, useIOSApp } from "@/components/ios-app";
 
 /* The pricing section, and buying from it.
@@ -236,7 +236,7 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
                   </>
                 )}
                 {cta === "contact" ? (
-                  <a className={btnClass} href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`${plan.name} plan`)}`}>
+                  <a className={btnClass} href={mailto(CONTACT.hello, `${plan.name} plan`)}>
                     Contact us
                   </a>
                 ) : (
@@ -470,7 +470,7 @@ function TrialDialog({
             </button>
             <a
               className="btn btn-ghost btn-block"
-              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Free trial")}`}
+              href={mailto(CONTACT.support, "Free trial")}
             >
               Contact support
             </a>

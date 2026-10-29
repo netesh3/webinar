@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
-import { HomeLegalFooter, SUPPORT_EMAIL } from "@/components/marketing/legal-page";
+import { HomeLegalFooter } from "@/components/marketing/legal-page";
+import { CONTACT } from "@/lib/contact";
 import { Pricing, buyIntentFromSearch } from "@/components/marketing/pricing";
 import { SalesChatWidget } from "@/components/marketing/sales-chat";
 import { useSession } from "@/components/providers";
@@ -587,7 +588,7 @@ function Faq() {
             Questions coaches <em>ask us</em>
           </h2>
           <p className="lede">
-            Something else? Write to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+            Something else? Write to <a href={`mailto:${CONTACT.support}`}>{CONTACT.support}</a>.
           </p>
         </div>
         <div className="faq-list reveal">

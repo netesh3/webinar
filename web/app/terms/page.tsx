@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { LEGAL_UPDATED, legalDateLabel } from "@/lib/seo";
 import Link from "next/link";
-import {
-  LegalPage,
-  SUPPORT_EMAIL,
-} from "@/components/marketing/legal-page";
+import { LegalPage } from "@/components/marketing/legal-page";
+import { CONTACT } from "@/lib/contact";
 
 export const metadata: Metadata = {
   title: "Terms of Service — Webinar Liv",
@@ -62,6 +60,8 @@ export default function TermsPage() {
         You must not upload or stream unlawful, infringing, harassing, or
         harmful content; attempt to disrupt the Service; probe or abuse other
         users&apos; data; or use the Service to spam or distribute malware.
+        Report spam or an abusive webinar or host to{" "}
+        <a href={`mailto:${CONTACT.abuse}`}>{CONTACT.abuse}</a>.
       </p>
 
       <h2>4. Media, recordings, and privacy expectations</h2>
@@ -134,7 +134,7 @@ export default function TermsPage() {
       <p>
         You may stop using the Service at any time. You may request account
         deletion by contacting{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. We may suspend
+        <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>. We may suspend
         or delete accounts that violate these Terms or that have been inactive.
         Provisions that by nature should survive (including ownership,
         disclaimers, and limitations) will survive termination.
@@ -151,8 +151,12 @@ export default function TermsPage() {
 
       <h2>13. Contact</h2>
       <p>
-        Questions about these Terms:{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+        Questions about these Terms, and legal notices including takedown
+        requests:{" "}
+        <a href={`mailto:${CONTACT.legal}`}>{CONTACT.legal}</a>
+        <br />
+        Reports of abuse:{" "}
+        <a href={`mailto:${CONTACT.abuse}`}>{CONTACT.abuse}</a>
         <br />
         Related: <Link href="/privacy">Privacy Policy</Link>
       </p>

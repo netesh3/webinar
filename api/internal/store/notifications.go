@@ -294,6 +294,9 @@ type Outbound struct {
 	HostID string
 	// ReplyTo is notifications.reply_to. Empty when the row has none.
 	ReplyTo string
+	// Kind is notifications.kind, which picks the platform Reply-To
+	// (notify.ReplyToFor). (29 Oct 2026)
+	Kind types.NotificationKind
 }
 
 /* PendingDeliveries returns notifications with an address that are due now.
@@ -306,7 +309,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, email, subject, body, html, ics, attempts, reply_to,
+		SELECT id::text, email, subject, body, html, ics, attempts, reply_to, kind,
 		       COALESCE((
 		         SELECT u.inbox_local
 		           FROM webinars w
@@ -348,7 +351,7 @@ func (s *Store) PendingDeliveries(ctx context.Context, limit int) ([]Outbound, e
 	out := []Outbound{}
 	for rows.Next() {
 		var o Outbound
-		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts, &o.ReplyTo, &o.InboxLocal, &o.HostID); err != nil {
+		if err := rows.Scan(&o.ID, &o.Email, &o.Subject, &o.Body, &o.HTML, &o.ICS, &o.Attempts, &o.ReplyTo, &o.Kind, &o.InboxLocal, &o.HostID); err != nil {
 			return nil, err
 		}
 		out = append(out, o)
