@@ -384,6 +384,11 @@ func (s *Server) Routes() http.Handler {
 	 * so this is not what makes guessing hopeless; it keeps anybody from hammering the
 	 * table. One person signs in once, so ten a minute per IP is plenty. (29 Oct 2026) */
 	appExchangeLimit := httpx.NewRateLimiter(10, time.Minute)
+	/* Connecting Zoom, YouTube or Drive from an app (app_connect.go): minting a ticket, the
+	 * system browser's start, the Drive pick and the completion. Each is one try per attempt;
+	 * this keeps anybody from hammering them. The store caps tickets per account as well.
+	 * (29 Oct 2026) */
+	appConnectLimit := httpx.NewRateLimiter(20, time.Minute)
 	// Sized like joinLimit: this creates no rows and every participant in a
 	// live performance test polls it every ~10s, from what may be a shared
 	// corporate IP the same way a join burst is. A backstop against a flood,
@@ -687,6 +692,10 @@ func (s *Server) Routes() http.Handler {
 
 		r.Get("/host/youtube/callback", s.handleYouTubeCallback)
 		r.Get("/host/zoom/callback", s.handleZoomCallback)
+		/* The apps' connect hand-off, in the system browser: no session there, a one-time
+		 * ticket instead, and for Drive the pick cookie the start set. See app_connect.go. */
+		r.With(appConnectLimit.Middleware).Get("/integrations/{id}/app-start", s.handleAppConnectStart)
+		r.With(appConnectLimit.Middleware).Post("/integrations/drive/app-pick", s.handleAppDrivePick)
 
 		r.Route("/host", func(r chi.Router) {
 			r.Use(s.requireUser)
@@ -699,6 +708,13 @@ func (s *Server) Routes() http.Handler {
 			// and the stage list only ever returns the caller's own rows.
 			r.Post("/webinars/{slug}/join", s.handleHostJoin)
 			r.Get("/stage", s.handleStageWebinars)
+
+			/* Connecting from inside the desktop or mobile app (app_connect.go). Signed in
+			 * only, not hosting: a panelist shares a Drive video from the stage too. The
+			 * handlers ask for hosting themselves for Zoom and YouTube. */
+			r.With(appConnectLimit.Middleware).Post("/integrations/{id}/app-ticket", s.handleAppConnectTicket)
+			r.With(appConnectLimit.Middleware).Post("/integrations/app/complete", s.handleAppConnectComplete)
+			r.Get("/integrations/drive/app-pick/{pick}", s.handleAppDrivePickResult)
 
 			// ---- recording: the host AND the panelists ----
 			//

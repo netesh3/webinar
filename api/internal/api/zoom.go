@@ -28,6 +28,11 @@ var errZoomFeatureOff = errors.New("zoom feature off")
 type zoomState struct {
 	jwt.RegisteredClaims
 	Return string `json:"return"`
+	/* App and Handoff are set when the connect started inside the desktop or mobile app
+	 * (app_connect.go, 29 Oct 2026): which app, and the app_connect_handoffs row that Zoom's
+	 * code is parked on for the app to finish. */
+	App     string `json:"app,omitempty"`
+	Handoff string `json:"handoff,omitempty"`
 }
 
 func (s *Server) zoomOn() bool {
@@ -82,7 +87,13 @@ func (s *Server) handleZoomConnect(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusServiceUnavailable, "zoom_not_configured", "Zoom is not configured.")
 		return
 	}
-	ret := safeReturnPath(r.URL.Query().Get("return"))
+	s.zoomAuthRedirect(w, r, user, safeReturnPath(r.URL.Query().Get("return")), "", "")
+}
+
+/* zoomAuthRedirect signs the state and sends the browser to Zoom. app and handoff are set when
+ * the connect started inside the desktop or mobile app (app_connect.go): the callback then
+ * takes the account from the state, because the system browser has no session. */
+func (s *Server) zoomAuthRedirect(w http.ResponseWriter, r *http.Request, user store.User, ret, app, handoff string) {
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, zoomState{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -91,7 +102,9 @@ func (s *Server) handleZoomConnect(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
 			Issuer:    "webcast-zoom",
 		},
-		Return: ret,
+		Return:  ret,
+		App:     app,
+		Handoff: handoff,
 	})
 	signed, err := tok.SignedString([]byte(s.cfg.SessionSecret))
 	if err != nil {
@@ -110,16 +123,26 @@ func (s *Server) handleZoomConnect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.zoom.AuthCodeURL(s.cfg.ZoomRedirectURL, signed), http.StatusFound)
 }
 
+func (s *Server) clearZoomStateCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
+		Name: zoomStateCookie, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
+	})
+}
+
 func (s *Server) handleZoomCallback(w http.ResponseWriter, r *http.Request) {
 	ret := "/settings"
 	fail := func(result string) {
-		http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
-			Name: zoomStateCookie, Value: "", Path: "/", MaxAge: -1,
-			HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
-		})
+		s.clearZoomStateCookie(w)
 		http.Redirect(w, r, s.zoomFront(ret, result), http.StatusFound)
 	}
 	if gerr := r.URL.Query().Get("error"); gerr != "" {
+		// Started in an app: the person cancelled in the system browser. Back to the app.
+		if st, err := s.parseZoomState(strings.TrimSpace(r.URL.Query().Get("state"))); err == nil && st.App != "" {
+			s.clearZoomStateCookie(w)
+			s.appConnectFailed(w, r, "zoom", st.App, oauthErrorWord(gerr))
+			return
+		}
 		if gerr == "access_denied" {
 			fail("denied")
 			return
@@ -128,7 +151,9 @@ func (s *Server) handleZoomCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	cookieState := ""
 	if ck, err := r.Cookie(zoomStateCookie); err == nil && ck.Value != "" {
+		cookieState = ck.Value
 		if state != "" && ck.Value != state {
 			fail("error")
 			return
@@ -142,43 +167,57 @@ func (s *Server) handleZoomCallback(w http.ResponseWriter, r *http.Request) {
 		fail("error")
 		return
 	}
+	if st.App != "" {
+		// Started in an app: park the code for the app to finish (app_connect.go).
+		s.clearZoomStateCookie(w)
+		s.parkAppConnectCode(w, r, "zoom", st.App, st.Handoff, st.Subject, cookieState == state)
+		return
+	}
 	ret = safeReturnPath(st.Return)
 	user, err := s.sessionUser(r)
 	if err != nil || user.ID != st.Subject {
 		fail("error")
 		return
 	}
-	if !user.HasFeature(types.FeatureZoom) {
+	providerFailed, err := s.zoomConnectCode(r.Context(), user, r.URL.Query().Get("code"))
+	if providerFailed {
 		fail("error")
 		return
 	}
-	flow := s.zoomFlow()
-	if flow == nil {
-		fail("error")
-		return
-	}
-	tok, err := s.zoom.Exchange(r.Context(), s.cfg.ZoomRedirectURL, r.URL.Query().Get("code"))
 	if err != nil {
-		s.log.Warn("zoom oauth exchange", "user", user.ID, "status", zoomStatus(err))
-		fail("error")
-		return
-	}
-	account, err := s.zoom.Me(r.Context(), tok.AccessToken)
-	if err != nil {
-		s.log.Warn("zoom oauth profile", "user", user.ID, "status", zoomStatus(err))
-		fail("error")
-		return
-	}
-	if err := flow.StoreGrant(r.Context(), user.ID, account, tok); err != nil {
 		s.fail(w, r, "zoom oauth: save", err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
-		Name: zoomStateCookie, Value: "", Path: "/", MaxAge: -1,
-		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
-	})
-	s.log.Info("zoom connected", "user", user.ID, "zoomUser", account.ID)
+	s.clearZoomStateCookie(w)
 	http.Redirect(w, r, s.zoomFront(ret, "connected"), http.StatusFound)
+}
+
+/* zoomConnectCode turns Zoom's authorization code into a stored connection for user: the
+ * part of the callback that the web flow and the apps' completion (app_connect.go) share.
+ * providerFailed is Zoom, or the account's switch, saying no; any other err is ours. */
+func (s *Server) zoomConnectCode(ctx context.Context, user store.User, code string) (providerFailed bool, err error) {
+	if !user.HasFeature(types.FeatureZoom) {
+		return true, errZoomFeatureOff
+	}
+	flow := s.zoomFlow()
+	if flow == nil {
+		return true, errors.New("zoom not configured")
+	}
+	tok, err := s.zoom.Exchange(ctx, s.cfg.ZoomRedirectURL, code)
+	if err != nil {
+		s.log.Warn("zoom oauth exchange", "user", user.ID, "status", zoomStatus(err))
+		return true, err
+	}
+	account, err := s.zoom.Me(ctx, tok.AccessToken)
+	if err != nil {
+		s.log.Warn("zoom oauth profile", "user", user.ID, "status", zoomStatus(err))
+		return true, err
+	}
+	if err := flow.StoreGrant(ctx, user.ID, account, tok); err != nil {
+		return false, err
+	}
+	s.log.Info("zoom connected", "user", user.ID, "zoomUser", account.ID)
+	return false, nil
 }
 
 func (s *Server) parseZoomState(raw string) (zoomState, error) {

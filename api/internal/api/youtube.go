@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/netkumar/webcast/api/internal/httpx"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/yt"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -19,6 +20,9 @@ const youtubeStateCookie = "webcast_youtube"
 type youtubeState struct {
 	jwt.RegisteredClaims
 	Return string `json:"return"`
+	// App and Handoff: a connect started inside an app, as for zoomState (app_connect.go).
+	App     string `json:"app,omitempty"`
+	Handoff string `json:"handoff,omitempty"`
 }
 
 func (s *Server) youtubeRedirectURI() string {
@@ -60,17 +64,22 @@ func (s *Server) handleYouTubeConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := userFromContext(r.Context())
-	ret := safeReturnPath(r.URL.Query().Get("return"))
+	s.youtubeAuthRedirect(w, r, userFromContext(r.Context()).ID, safeReturnPath(r.URL.Query().Get("return")), "", "")
+}
+
+// youtubeAuthRedirect signs the state and sends the browser to Google; see zoomAuthRedirect.
+func (s *Server) youtubeAuthRedirect(w http.ResponseWriter, r *http.Request, userID, ret, app, handoff string) {
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, youtubeState{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   user.ID,
+			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
 			Issuer:    "webcast-youtube",
 		},
-		Return: ret,
+		Return:  ret,
+		App:     app,
+		Handoff: handoff,
 	})
 	signed, err := tok.SignedString([]byte(s.cfg.SessionSecret))
 	if err != nil {
@@ -98,17 +107,27 @@ func (s *Server) youtubeSameSite() http.SameSite {
 	return http.SameSiteLaxMode
 }
 
+func (s *Server) clearYouTubeStateCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
+		Name: youtubeStateCookie, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
+	})
+}
+
 func (s *Server) handleYouTubeCallback(w http.ResponseWriter, r *http.Request) {
 	ret := "/settings"
 	fail := func(result, detail string) {
-		http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
-			Name: youtubeStateCookie, Value: "", Path: "/", MaxAge: -1,
-			HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
-		})
+		s.clearYouTubeStateCookie(w)
 		http.Redirect(w, r, s.youtubeFront(ret, result, detail), http.StatusFound)
 	}
 
 	if gerr := r.URL.Query().Get("error"); gerr != "" {
+		// Started in an app: the person cancelled in the system browser. Back to the app.
+		if st, err := s.parseYouTubeState(strings.TrimSpace(r.URL.Query().Get("state"))); err == nil && st.App != "" {
+			s.clearYouTubeStateCookie(w)
+			s.appConnectFailed(w, r, "youtube", st.App, oauthErrorWord(gerr))
+			return
+		}
 		if gerr == "access_denied" {
 			fail("denied", "")
 			return
@@ -118,7 +137,9 @@ func (s *Server) handleYouTubeCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	cookieState := ""
 	if ck, err := r.Cookie(youtubeStateCookie); err == nil && ck.Value != "" {
+		cookieState = ck.Value
 		if state != "" && ck.Value != state {
 			fail("error", "state")
 			return
@@ -132,6 +153,12 @@ func (s *Server) handleYouTubeCallback(w http.ResponseWriter, r *http.Request) {
 		fail("error", "state")
 		return
 	}
+	if st.App != "" {
+		// Started in an app: park the code for the app to finish (app_connect.go).
+		s.clearYouTubeStateCookie(w)
+		s.parkAppConnectCode(w, r, "youtube", st.App, st.Handoff, st.Subject, cookieState == state)
+		return
+	}
 	ret = safeReturnPath(st.Return)
 
 	user, err := s.sessionUser(r)
@@ -140,29 +167,38 @@ func (s *Server) handleYouTubeCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.youtube == nil || !s.youtube.Enabled() {
-		fail("error", "unset")
+	detail, err := s.youtubeConnectCode(r.Context(), user, r.URL.Query().Get("code"))
+	if detail != "" {
+		fail("error", detail)
 		return
 	}
-
-	tok, ch, err := s.youtube.Exchange(r.Context(), s.youtubeRedirectURI(), r.URL.Query().Get("code"))
 	if err != nil {
-		s.log.Warn("youtube oauth exchange", "error", err, "user", user.ID)
-		fail("error", "exchange")
-		return
-	}
-
-	if err := s.store.SetUserYouTube(r.Context(), user.ID, tok.RefreshToken, ch.ID, ch.Title, user.YouTubeStreamID); err != nil {
 		s.fail(w, r, "youtube oauth: save", err)
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite set; Secure follows COOKIE_SECURE, on outside development
-		Name: youtubeStateCookie, Value: "", Path: "/", MaxAge: -1,
-		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: s.youtubeSameSite(),
-	})
-	s.log.Info("youtube connected", "user", user.ID, "channel", ch.ID)
+	s.clearYouTubeStateCookie(w)
 	http.Redirect(w, r, s.youtubeFront(ret, "connected", ""), http.StatusFound)
+}
+
+/* youtubeConnectCode turns Google's authorization code into the account's YouTube channel:
+ * the part of the callback that the web flow and the apps' completion (app_connect.go) share.
+ * A non-empty detail is the provider side failing ("unset", "exchange"); any other err is
+ * ours. */
+func (s *Server) youtubeConnectCode(ctx context.Context, user store.User, code string) (detail string, err error) {
+	if s.youtube == nil || !s.youtube.Enabled() {
+		return "unset", yt.ErrNotConfigured
+	}
+	tok, ch, err := s.youtube.Exchange(ctx, s.youtubeRedirectURI(), code)
+	if err != nil {
+		s.log.Warn("youtube oauth exchange", "error", err, "user", user.ID)
+		return "exchange", err
+	}
+	if err := s.store.SetUserYouTube(ctx, user.ID, tok.RefreshToken, ch.ID, ch.Title, user.YouTubeStreamID); err != nil {
+		return "", err
+	}
+	s.log.Info("youtube connected", "user", user.ID, "channel", ch.ID)
+	return "", nil
 }
 
 func (s *Server) parseYouTubeState(raw string) (youtubeState, error) {

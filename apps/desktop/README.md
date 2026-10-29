@@ -101,11 +101,12 @@ Open; or `xattr -cr "/Applications/Webinar Liv.app"`) and Windows SmartScreen's
 
 - The site is `webinarliv.com`, every subdomain (so `recordings.webinarliv.com`),
   and the host of `WEBINARLIV_URL`. It stays in the app.
-- Integration and payment flows stay in the app, because they must come back
-  to the site with its cookies: `accounts.google.com` and
-  `accounts.youtube.com` (Connect YouTube, the Drive picker), `zoom.us`
-  (Connect Zoom), `razorpay.com` (checkout). Continue with Google is the
-  exception: it runs in the system browser (see Sign-in).
+- Payment flows stay in the app, because they must come back to the site with
+  its cookies: `razorpay.com` (checkout). `accounts.google.com`,
+  `accounts.youtube.com` and `zoom.us` stay too, for an older site build that
+  still sends them to the window. Continue with Google, Connect Zoom, Connect
+  YouTube and the Drive picker run in the system browser instead (see Sign-in
+  and Connecting integrations).
 - Every other link, and any `target=_blank` to another site, opens in the
   system browser (`http`, `https`, `mailto`, `tel` only).
 - `window.open` of a site URL opens another app window (live rooms open in
@@ -164,6 +165,50 @@ Google One Tap uses an iframe, but the product no longer shows it. FedCM
 isn't available in Electron, and the site already falls back when it is
 missing.
 
+### Connecting integrations
+
+**Connect Zoom, Connect YouTube and the Drive picker run in the system
+browser too** (29 Oct 2026). Their OAuth has the same problem as sign-in, and
+their callbacks used to find the account in the session cookie, which lives
+in the app's window, not in Chrome or Safari. The round trip
+(`web/lib/app-connect.ts`, `api/internal/api/app_connect.go`):
+
+1. The page sees `window.webinarlivDesktop.openConnect` and POSTs
+   `/api/host/integrations/{zoom|youtube|drive}/app-ticket` with the window's
+   session. The API returns a start URL with a one-time ticket in it
+   (32 random bytes, SHA-256 only, two minutes, one use, bound to the account
+   and the provider).
+2. `openConnect(url)`: the main process opens it with `shell.openExternal`, and
+   only a site URL with path `/api/integrations/{zoom|youtube|drive}/app-start`,
+   `app=desktop` and a ticket (`isConnectStartUrl` in `src/config.ts`).
+3. The start route spends the ticket and signs the usual OAuth state with the
+   account, the app and the attempt in it, then goes to Zoom or Google. The
+   callback, in that browser, connects nothing there. It needs the state
+   cookie the start route set in the same browser, parks the provider's
+   authorization code (sealed, two minutes, once) and sends the browser to
+   `/connect/app-return#code=…`, which opens
+   `webinarliv://connect/complete?code=…&provider=…`.
+4. The app loads `https://webinarliv.com/connect/complete?code=…` and takes
+   focus (in a new window if the main one is in a call). That page POSTs the
+   code to `/api/host/integrations/app/complete`. Only if the window's session
+   is the ticket's account does the API exchange the provider's code and store
+   the tokens, as the web callback does. The page then goes back to Settings,
+   Integrations (or the room it started from) showing Connected.
+
+**Drive picker.** In a room, "Pick from Drive" mints a drive ticket and opens
+it the same way. The start route sets a short, HttpOnly pick cookie and shows
+`/connect/drive`, where Google's sign-in and Picker run with the browser's own
+Google session. The chosen file and Google's short read token go to the API,
+and the page opens `webinarliv://connect/picked`, which only brings the app
+forward. The room stays live, polls for the pick with its session, collects it
+once and copies the file in, as the web page does.
+
+Why it is safe: no session and no OAuth token is ever in a URL. A ticket is
+single use, expires in two minutes and is rate-limited (20 a minute per IP,
+30 an hour per account). A forwarded ticket link can't connect somebody else's
+Zoom to the sender's account: the completion code lands in the clicker's own
+app, whose session is not the ticket's account, and is spent there.
+
 ### Security
 
 - `contextIsolation`, `sandbox`, no `nodeIntegration`, no `<webview>`.
@@ -176,7 +221,8 @@ missing.
 - The preload exposes `window.webinarlivDesktop` on site pages only:
   `isDesktop`, `platform`, `version`, `setCallActive(on)`, `setBadgeCount(n)`,
   `openSignIn(url)` (the main process opens only the site's Google sign-in
-  start URL in the system browser).
+  start URL in the system browser), `openConnect(url)` (only the site's
+  connect start URL with a ticket).
 
 ### Screen sharing
 
@@ -204,6 +250,8 @@ The app registers the `webinarliv://` scheme (in the installers and at run time)
 | `webinarliv://open?path=/browse` | `https://webinarliv.com/browse` |
 | `webinarliv://open` | the home page |
 | `webinarliv://auth/complete?code=…` | `https://webinarliv.com/auth/complete?code=…`, the end of Continue with Google (see Sign-in) |
+| `webinarliv://connect/complete?code=…&provider=…` | `https://webinarliv.com/connect/complete?code=…&provider=…`, the end of Connect Zoom / YouTube (see Connecting integrations) |
+| `webinarliv://connect/picked` | nothing; the app comes forward (the Drive picker is done) |
 
 A `https://webinarliv.com/...` URL passed as a command-line argument opens too.
 
@@ -250,14 +298,10 @@ master would give a sharper icon on Retina docks: run
 
 ## Limits
 
-- **Connect YouTube and the Drive picker** still run Google OAuth inside the
-  window. With the honest user agent, Google may refuse them there
-  (`disallowed_useragent`, or "This browser or app may not be secure"). Their
-  callbacks need the app's session, so they can't simply move to the system
-  browser. Until they get the same hand-off as sign-in (follow-up), connect
-  YouTube from a browser at webinarliv.com. The connection is saved on the
-  account, so the app uses it too. Connect Zoom (`zoom.us`) is unaffected.
-
+- Desktop builds before `openConnect` keep the old in-window Connect Zoom /
+  YouTube and Drive picker, where Google may refuse them
+  (`disallowed_useragent`). The site only uses the hand-off when the bridge
+  has `openConnect`.
 - Web push from the service worker (`web/public/sw.js`) does not arrive:
   Electron has no push service. Notifications work while the app is open.
 - The Windows taskbar has no badge count (macOS dock only).

@@ -7,7 +7,18 @@
 
 import { app, BrowserWindow, ipcMain, session, shell, type BrowserWindowConstructorOptions } from "electron";
 import path from "node:path";
-import { findLaunchTarget, isAuthCompleteUrl, isSignInStartUrl, isSiteUrl, PROTOCOL, resolveLaunchTarget, START_URL } from "./config";
+import {
+  findLaunchTarget,
+  isAuthCompleteUrl,
+  isConnectCompleteUrl,
+  isConnectStartUrl,
+  isFocusOnlyLink,
+  isSignInStartUrl,
+  isSiteUrl,
+  PROTOCOL,
+  resolveLaunchTarget,
+  START_URL,
+} from "./config";
 import { buildMenu } from "./menu";
 import { isCallActive, registerPowerIpc } from "./power";
 import { installDisplayMediaHandler } from "./screen-picker";
@@ -155,8 +166,11 @@ app.on("open-url", (event, url) => {
   const target = resolveLaunchTarget(url);
   if (target) openTarget(target);
   else focusMain();
-  // Back from the system browser's Google sign-in: the browser is in front, so take focus.
-  if (target && isAuthCompleteUrl(target) && app.isReady()) app.focus({ steal: true });
+  /* Back from the system browser (a Google sign-in, a connect, a Drive pick): the browser is
+   * in front, so take focus. */
+  const handOff = (target !== null && (isAuthCompleteUrl(target) || isConnectCompleteUrl(target))) ||
+    isFocusOnlyLink(url);
+  if (handOff && app.isReady()) app.focus({ steal: true });
 });
 
 // Windows / Linux deliver links (and https URLs) as arguments of a second launch.
@@ -194,6 +208,17 @@ app.whenReady().then(() => {
     if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
     if (typeof url !== "string" || !isSignInStartUrl(url)) {
       console.warn("[auth] refusing to open sign-in URL", url);
+      return;
+    }
+    void shell.openExternal(url);
+  });
+  /* Connect Zoom / YouTube and the Drive picker (web/lib/app-connect.ts, 29 Oct 2026): the
+   * site's own connect start route with a one-time ticket, in the system browser. Only that,
+   * only from a site page. */
+  ipcMain.on("webinarliv:open-connect", (event, url: unknown) => {
+    if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
+    if (typeof url !== "string" || !isConnectStartUrl(url)) {
+      console.warn("[connect] refusing to open a connect URL");
       return;
     }
     void shell.openExternal(url);

@@ -267,12 +267,29 @@ export async function pickFromDrive(
   onProgress: (fraction: number) => void,
   signal: AbortSignal,
 ): Promise<{ name: string; url: string; size: number } | null> {
+  const chosen = await chooseFromDrive(config);
+  if (!chosen) return null;
+  return downloadDriveFile(chosen.file, chosen.token, onProgress, signal);
+}
+
+/** Consent and the Picker, without the download. The apps run this half in the system
+ *  browser (app/connect/drive, lib/app-connect.ts), where Google allows it. */
+export async function chooseFromDrive(config: DriveConfig): Promise<{ file: DrivePick; token: string } | null> {
   const token = await accessToken(config.clientId);
   if (!token) return null;
-
   const file = await pick(config, token);
   if (!file) return null;
+  return { file, token };
+}
 
+/** The download half: in the page itself on the web, and in the room after the system
+ *  browser handed the pick over in the apps. */
+export async function downloadDriveFile(
+  file: DrivePick,
+  token: string,
+  onProgress: (fraction: number) => void,
+  signal: AbortSignal,
+): Promise<{ name: string; url: string; size: number }> {
   if (file.size > DRIVE_MAX_BYTES) {
     throw new Error(
       `That file is ${Math.round(file.size / 1e9)} GB. Drive files have to be copied into this tab first, so ` +

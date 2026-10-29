@@ -5,6 +5,7 @@ import { MaterialIcon } from "../icons";
 import { Menu, Modal, Spinner } from "../controls";
 import { Button, ButtonLink } from "../ui";
 import { ApiError, api } from "@/lib/api";
+import { interceptConnectClick } from "@/lib/app-connect";
 import { baseFor } from "@/lib/http";
 import type { IntegrationAction, IntegrationCard } from "@/lib/api-types";
 
@@ -159,6 +160,8 @@ export function IntegrationCard({
         ) : primary?.kind === "redirect" && primary.href ? (
           <a
             href={`${baseFor()}${primary.href}`}
+            // Inside the desktop or mobile app, the connect runs in the system browser.
+            onClick={(e) => interceptConnectClick(e, primary.href!, setError)}
             className="inline-flex h-8 items-center justify-center rounded-lg bg-brand px-3 text-[12.5px] font-medium text-white hover:bg-brand-hover"
           >
             {primary.label}

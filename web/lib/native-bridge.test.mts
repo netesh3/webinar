@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { isNativeApp, keepsScreenAwake, pushNeedsSync, routeForOpenedUrl } from "./native-bridge.ts";
+import { handOffReturn, isNativeApp, keepsScreenAwake, pushNeedsSync, routeForOpenedUrl } from "./native-bridge.ts";
 
 // App Links / Universal Links on the site itself become a path on the same origin.
 assert.equal(routeForOpenedUrl("https://webinarliv.com/webinars/abc?k=1#q"), "/webinars/abc?k=1#q");
@@ -32,6 +32,18 @@ assert.equal(routeForOpenedUrl("not a url"), null);
 
 // The Google sign-in hand-off comes back on the custom scheme (lib/app-auth.ts).
 assert.equal(routeForOpenedUrl("webinarliv://auth/complete?code=abc"), "/auth/complete?code=abc");
+// The connect hand-offs come back the same way (lib/app-connect.ts).
+assert.equal(
+  routeForOpenedUrl("webinarliv://connect/complete?code=abc&provider=zoom"),
+  "/connect/complete?code=abc&provider=zoom",
+);
+assert.equal(routeForOpenedUrl("webinarliv://connect/picked"), "/connect/picked");
+// Sign-in and connect completions load their page; a Drive pick leaves the live room alone.
+assert.equal(handOffReturn("/auth/complete?code=abc"), "navigate");
+assert.equal(handOffReturn("/connect/complete?error=denied&provider=youtube"), "navigate");
+assert.equal(handOffReturn("/connect/picked"), "stay");
+assert.equal(handOffReturn("/connect/pickedx"), "none");
+assert.equal(handOffReturn("/webinars/abc/room"), "none");
 // A push may carry a bare site path; a protocol-relative or backslashed one is not a path.
 assert.equal(routeForOpenedUrl("/webinars/abc/room?k=K"), "/webinars/abc/room?k=K");
 assert.equal(routeForOpenedUrl("//evil.example/x"), null);

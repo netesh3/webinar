@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
+import { interceptConnectClick } from "@/lib/app-connect";
 import type { SetStreamRequest, Webinar } from "@/lib/api-types";
 import { CopyField, Modal, Spinner } from "../controls";
 import { useAppConfig, useSession, useToast } from "../providers";
@@ -183,6 +184,8 @@ export function useYouTubeStream(): YouTubeStream {
         {youtubeOAuth && !connected && (
           <a
             href={api.youtubeConnectURL(typeof window === "undefined" ? "/account" : window.location.pathname)}
+            // Inside the desktop or mobile app, the connect runs in the system browser.
+            onClick={(e) => interceptConnectClick(e, e.currentTarget.href, (m) => notify(m, "error"))}
             className="inline-flex h-9 items-center rounded-lg bg-brand px-3 text-[13px] font-medium text-white"
           >
             Connect YouTube

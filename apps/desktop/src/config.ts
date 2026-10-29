@@ -72,14 +72,14 @@ export function isSiteOrigin(origin: string): boolean {
  * to come back to the site with its cookies; anything else leaves for the
  * system browser.
  *
- *  - Connect YouTube, and the Drive picker in a room: Google OAuth on
- *    accounts.google.com. Google may refuse these in the app now that the user
- *    agent is Electron's own (main.ts); README.md, Limits.
- *  - Connect Zoom (Settings -> Integrations): zoom.us OAuth
  *  - Razorpay checkout: its 3-D Secure / net-banking popups
+ *  - Google and Zoom OAuth for a page that still navigates to them in the
+ *    window (a site build older than the connect hand-off)
  *
- * Continue with Google itself no longer passes through here: it runs in the
- * system browser (isSignInStartUrl) and comes back through webinarliv://auth.
+ * Continue with Google, Connect Zoom, Connect YouTube and the Drive picker no
+ * longer pass through here: they run in the system browser (isSignInStartUrl,
+ * isConnectStartUrl) and come back through webinarliv://auth and
+ * webinarliv://connect (29 Oct 2026).
  */
 const FLOW_DOMAINS = ["accounts.google.com", "accounts.youtube.com", "zoom.us", "razorpay.com"];
 
@@ -96,10 +96,38 @@ export function isSignInStartUrl(url: string): boolean {
     u.searchParams.get("app") === "desktop";
 }
 
+/**
+ * The site's connect start for Zoom, YouTube or the Drive picker, with a one-time ticket: the
+ * one kind of URL openConnect hands to the system browser (web/lib/app-connect.ts). The
+ * ticket is what lets that browser, which has no session, act for the app's account once.
+ */
+export function isConnectStartUrl(url: string): boolean {
+  const u = parse(url);
+  if (!u || !isSiteUrl(u.toString())) return false;
+  if (!/^\/api\/integrations\/(zoom|youtube|drive)\/app-start$/.test(u.pathname)) return false;
+  const ticket = u.searchParams.get("ticket") ?? "";
+  return u.searchParams.get("app") === "desktop" && /^[A-Za-z0-9_-]{32,128}$/.test(ticket) && !u.username && !u.password;
+}
+
 /** The page that finishes a sign-in handed back through webinarliv://auth/complete. */
 export function isAuthCompleteUrl(url: string): boolean {
   const u = parse(url);
   return !!u && isSiteUrl(u.toString()) && u.pathname === "/auth/complete";
+}
+
+/** The page that finishes a connect handed back through webinarliv://connect/complete. */
+export function isConnectCompleteUrl(url: string): boolean {
+  const u = parse(url);
+  return !!u && isSiteUrl(u.toString()) && u.pathname === "/connect/complete";
+}
+
+/**
+ * webinarliv://connect/picked: the Drive picker in the system browser is done. It opens
+ * nothing (the room that asked collects the pick itself); the app only comes forward.
+ */
+export function isFocusOnlyLink(arg: string): boolean {
+  const u = parse(arg);
+  return !!u && u.protocol === `${PROTOCOL}:` && u.hostname.toLowerCase() === "connect" && u.pathname === "/picked";
 }
 
 /** Schemes that may be handed to the OS (shell.openExternal). */
@@ -117,10 +145,13 @@ export function isExternalSafe(url: string): boolean {
  *   webinarliv://open?path=/x                      -> <site>/x
  *   webinarliv://open                              -> <site>/
  *   webinarliv://auth/complete?code=c              -> <site>/auth/complete?code=c
+ *   webinarliv://connect/complete?code=c&provider=zoom
+ *                                                  -> <site>/connect/complete?code=c&provider=zoom
  *   https://webinarliv.com/...                     -> as is
  *
- * auth/complete is the end of Continue with Google (web/lib/app-auth.ts): only
- * its code or error is carried over, nothing else from the link.
+ * auth/complete is the end of Continue with Google (web/lib/app-auth.ts), and
+ * connect/complete the end of Connect Zoom / YouTube (web/lib/app-connect.ts):
+ * only the code or error, and the provider's name, are carried over.
  */
 export function resolveLaunchTarget(arg: string): string | null {
   const u = parse(arg);
@@ -148,6 +179,19 @@ export function resolveLaunchTarget(arg: string): string | null {
     if (code && /^[A-Za-z0-9_-]{1,128}$/.test(code)) target.searchParams.set("code", code);
     else if (error && /^[a-z_]{1,32}$/.test(error)) target.searchParams.set("error", error);
     else return null;
+    return target.toString();
+  }
+  if (action === "connect") {
+    // connect/picked opens nothing: see isFocusOnlyLink.
+    if (u.pathname !== "/complete") return null;
+    const target = new URL("/connect/complete", START_URL.origin);
+    const code = u.searchParams.get("code");
+    const error = u.searchParams.get("error");
+    const provider = u.searchParams.get("provider");
+    if (code && /^[A-Za-z0-9_-]{1,128}$/.test(code)) target.searchParams.set("code", code);
+    else if (error && /^[a-z_]{1,32}$/.test(error)) target.searchParams.set("error", error);
+    else return null;
+    if (provider && /^(zoom|youtube|drive)$/.test(provider)) target.searchParams.set("provider", provider);
     return target.toString();
   }
   if (action === "open" || action === "") {
