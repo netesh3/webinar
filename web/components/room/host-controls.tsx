@@ -286,7 +286,7 @@ export function HostControls() {
           </section>
           )}
 
-          {/* What edge viewers and the recording see. Renders nothing without a composite. */}
+          {/* Where WebRTC attendees start, and what edge viewers and the recording see. In a meeting it renders nothing unless a recording runs. */}
           <AudienceLayoutPicker />
 
           {/* The language the captions are made in; a change applies from the next sentence. */}

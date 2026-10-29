@@ -133,6 +133,7 @@ import { WhiteboardStage } from "./whiteboard/whiteboard-stage";
 import { isToolVisible, useToolLayout, type ToolId } from "@/lib/tools";
 import { stageFrame, useCompact } from "@/lib/compact";
 import { useFileShare } from "@/lib/file-share";
+import { stageModeForAudienceLayout } from "@/lib/composite-layouts";
 import { useStageLayout } from "@/lib/layout";
 import { trackEvent, useTelemetry } from "@/lib/telemetry";
 import { useMentionBadge } from "@/lib/use-mentions";
@@ -1745,8 +1746,18 @@ function ConnectedRoom({
   /* How this viewer wants the stage laid out — and, as a consequence, which video
    * tracks this browser subscribes to. Room-level because the control that changes
    * it is in the footer and the thing it changes is the stage. Client-side only:
-   * see lib/layout.ts. */
-  const stage = useStageLayout();
+   * see lib/layout.ts.
+   *
+   * A webinar attendee starts in the host's Audience layout and follows it until they pick
+   * a view of their own (29 Oct 2026, effectiveStageMode). The live role, so somebody
+   * brought onto the stage arranges it themselves and goes back to following the host
+   * when they return to the audience. Meetings have no audience and are unchanged. */
+  const followsHostLayout = !meeting && liveRole === "attendee" && !isCoHost;
+  const stage = useStageLayout(
+    followsHostLayout
+      ? { room: join.room, host: stageModeForAudienceLayout(controls.audienceLayout) }
+      : null,
+  );
 
   /* The stage element, captured into state and handed on in an effect.
    *

@@ -419,9 +419,91 @@ function load(): StageLayoutState {
   }
 }
 
+// ------------------------------------------------------ the host's starting view
+
+/* A webinar attendee on WebRTC starts in the view the host chose (29 Oct 2026).
+ *
+ * The host's Audience layout (SessionControls.audienceLayout) used to reach only the
+ * composite. It now also decides where a WebRTC attendee's stage starts, mapped by
+ * stageModeForAudienceLayout in lib/composite-layouts.ts, and keeps following it: a host
+ * switching to Grid mid-session moves every attendee who has not picked a view of their own.
+ * The first time an attendee picks one in the Views menu, theirs wins for the rest of the
+ * session, and the host's later changes no longer move them.
+ *
+ * "This session" is sessionStorage, keyed by room: a reload or a rejoin in the same tab
+ * keeps the attendee's choice, and a different webinar starts on its host's view again. The
+ * mode is not in localStorage at all (see Persisted below), so a view from an older webinar
+ * has nowhere to come back from.
+ *
+ * Hosts, panelists and meetings pass no host view and keep the viewer-only behaviour. */
+export function effectiveStageMode(input: {
+  /** This viewer's mode as useStageLayout holds it: what hosts and panelists see. */
+  own: LayoutMode;
+  /** The host's layout mapped to a view, or null when this viewer does not follow it. */
+  host: LayoutMode | null;
+  /** The view this viewer picked during this session, if they have. */
+  chosen: LayoutMode | null;
+}): LayoutMode {
+  if (input.host === null) return input.own;
+  return input.chosen ?? input.host;
+}
+
+/** Just the part of Storage the session choice needs, so a test can pass a fake. */
+export type ViewStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+const SESSION_VIEW_KEY = "webcast.stage-view.v1";
+
+export function sessionViewKey(room: string): string {
+  return `${SESSION_VIEW_KEY}:${room}`;
+}
+
+/** The view this viewer picked in this room during this session, or null. Anything that is
+ *  not a LayoutMode reads as no choice, so a bad value falls back to the host's. */
+export function readSessionView(
+  storage: ViewStorage | null,
+  room: string,
+): LayoutMode | null {
+  if (!storage || !room) return null;
+  try {
+    const raw = storage.getItem(sessionViewKey(room)) ?? "";
+    return (LAYOUT_MODES as readonly string[]).includes(raw)
+      ? (raw as LayoutMode)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSessionView(
+  storage: ViewStorage | null,
+  room: string,
+  mode: LayoutMode | null,
+): void {
+  if (!storage || !room) return;
+  try {
+    if (mode === null) storage.removeItem(sessionViewKey(room));
+    else storage.setItem(sessionViewKey(room), mode);
+  } catch {
+    // Private browsing. The choice lasts this mount.
+  }
+}
+
+function sessionStore(): ViewStorage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------- hook
 
 export type StageLayoutApi = StageLayoutState & {
+  /** True while the mode is the host's: an attendee who has not picked a view. The stage
+   *  leaves the mode alone then; its grid-to-speaker switch when a share starts is for the
+   *  viewer's own default, not for a layout the host chose. */
+  followingHost: boolean;
   setMode: (mode: LayoutMode) => void;
   setPreferences: (patch: Partial<LayoutPreferences>) => void;
   setPage: (page: number) => void;
@@ -430,11 +512,29 @@ export type StageLayoutApi = StageLayoutState & {
   reset: () => void;
 };
 
-export function useStageLayout(): StageLayoutApi {
+/** `audience` is a webinar attendee's: the room, for the session choice, and the host's
+ *  layout as a view. Null (hosts, panelists, meetings, the other rooms) is the viewer alone. */
+export function useStageLayout(
+  audience: { room: string; host: LayoutMode } | null = null,
+): StageLayoutApi {
   // Read in the initialiser: the room is never server-rendered (the join response
   // is fetched in the browser), so there is nothing for a stored value to disagree
   // with, and doing it in an effect showed the default layout for one frame.
   const [state, setState] = useState<StageLayoutState>(load);
+  const room = audience?.room ?? "";
+  const host = audience?.host ?? null;
+  const [chosen, setChosen] = useState(() => ({
+    room,
+    mode: readSessionView(sessionStore(), room),
+  }));
+  // Read again if the room changes under the same mount (adjusted during render, as React
+  // recommends for state derived from a prop).
+  if (chosen.room !== room) {
+    setChosen({ room, mode: readSessionView(sessionStore(), room) });
+  }
+  const chosenMode = chosen.room === room ? chosen.mode : null;
+  const mode = effectiveStageMode({ own: state.mode, host, chosen: chosenMode });
+  const followingHost = host !== null && chosenMode === null;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -456,16 +556,25 @@ export function useStageLayout(): StageLayoutApi {
     state.preferences.pageSize,
   ]);
 
-  const setMode = useCallback((mode: LayoutMode) => {
-    setState((c) => ({
-      ...c,
-      mode,
-      // Back to the first page on a mode change. Landing on page 3 of a grid you
-      // have just switched into is disorienting, and page 3 may not exist in the
-      // new mode's filtered set.
-      preferences: { ...c.preferences, currentPage: 0 },
-    }));
-  }, []);
+  const setMode = useCallback(
+    (mode: LayoutMode) => {
+      /* Every caller is the viewer's own pick (the Views menu, the More sheet); the stage's
+       * switch on a share skips a viewer following the host. Recorded for hosts and
+       * panelists too: harmless while they have no host view, and an attendee moved back
+       * from the stage keeps the view they were using. */
+      writeSessionView(sessionStore(), room, mode);
+      setChosen({ room, mode });
+      setState((c) => ({
+        ...c,
+        mode,
+        // Back to the first page on a mode change. Landing on page 3 of a grid you
+        // have just switched into is disorienting, and page 3 may not exist in the
+        // new mode's filtered set.
+        preferences: { ...c.preferences, currentPage: 0 },
+      }));
+    },
+    [room],
+  );
 
   const setPreferences = useCallback((patch: Partial<LayoutPreferences>) => {
     setState((c) => {
@@ -500,11 +609,18 @@ export function useStageLayout(): StageLayoutApi {
     );
   }, []);
 
-  const reset = useCallback(() => setState(DEFAULTS), []);
+  // Back to the defaults, which for an attendee is following the host again.
+  const reset = useCallback(() => {
+    writeSessionView(sessionStore(), room, null);
+    setChosen({ room, mode: null });
+    setState(DEFAULTS);
+  }, [room]);
 
   return useMemo<StageLayoutApi>(
     () => ({
       ...state,
+      mode,
+      followingHost,
       setMode,
       setPreferences,
       setPage,
@@ -512,7 +628,17 @@ export function useStageLayout(): StageLayoutApi {
       clearPin,
       reset,
     }),
-    [state, setMode, setPreferences, setPage, togglePin, clearPin, reset],
+    [
+      state,
+      mode,
+      followingHost,
+      setMode,
+      setPreferences,
+      setPage,
+      togglePin,
+      clearPin,
+      reset,
+    ],
   );
 }
 

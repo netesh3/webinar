@@ -218,17 +218,22 @@ export function Stage() {
    * toggle calls, so the toggle and the stage can never disagree about what is
    * selected. It also only fires once per share STARTING while the viewer happens
    * to be in Grid, not a standing override: switching back to Grid mid-share is
-   * respected, and the switch does not repeat itself while the same share continues. */
-  const { setMode } = stage;
+   * respected, and the switch does not repeat itself while the same share continues.
+   *
+   * Not for an attendee following the host's Audience layout (29 Oct 2026, see
+   * effectiveStageMode in lib/layout.ts): a host who picked Grid for the audience picked it
+   * knowing there are slides, and calling setMode here would also count as the attendee's
+   * own choice and stop them following the host for the rest of the session. */
+  const { setMode, followingHost } = stage;
   const isSharing = !!screenShare;
 
   const wasSharing = useRef(false);
   useEffect(() => {
-    if (isSharing && !wasSharing.current && mode === "grid") {
+    if (isSharing && !wasSharing.current && mode === "grid" && !followingHost) {
       setMode("speaker");
     }
     wasSharing.current = isSharing;
-  }, [isSharing, mode, setMode]);
+  }, [isSharing, mode, setMode, followingHost]);
 
   // Paged only in the grid. The other two modes are one tile plus a strip, and the
   // strip is bounded by what fits.

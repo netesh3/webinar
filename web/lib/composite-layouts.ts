@@ -16,6 +16,7 @@
  *
  * Pure so node can test it — see composite-layouts.test.mts, run by `make test-web`. */
 
+import type { LayoutMode } from "./layout.ts";
 import { beaconCells, SV_SHARE, SV_SPEAKER, toPixels } from "./speaker-view.ts";
 
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -362,6 +363,43 @@ export const DEFAULT_LAYOUT: AudienceLayoutId = "auto";
 /** The registry entry for an id, auto for anything unknown (a newer server, a bad value). */
 export function layoutById(id: string | null | undefined): CompositeLayoutDef {
   return LAYOUTS.find((l) => l.id === id) ?? LAYOUTS[0];
+}
+
+/* The WebRTC stage's view closest to each composite layout (29 Oct 2026).
+ *
+ * In a webinar the host's Audience layout is also where a WebRTC attendee's stage STARTS
+ * (effectiveStageMode in lib/layout.ts); the attendee can still pick their own view. The
+ * stage has three views and the composite eight, so this is the nearest view, not the same
+ * picture:
+ *
+ *   auto, speaker        speaker    one large tile (the share, or the talker), a strip
+ *   speaker_view         speaker    the share large, the cameras floating over it, which is
+ *   share_speaker        speaker    what the stage's speaker view already does during a share
+ *   grid                 grid       equal tiles; the stage pages where the composite stops
+ *   share_only           spotlight  the share locked large. The stage cannot hide the
+ *                                   presenters, so they stay in the column beside it
+ *   side_by_side         spotlight  the share large with the presenters in a column beside
+ *                                   it: the stage's closest thing to a two-thirds split
+ *   video_only           grid       the composite's own picture for 2 to 16 cameras. The stage
+ *                                   cannot leave a share out, so it is one more equal tile
+ *
+ * Mode only. Nothing here pins a tile: a pin is the viewer's, and spotlight's large tile is
+ * already the share while there is one. */
+const STAGE_MODE_FOR: Record<AudienceLayoutId, LayoutMode> = {
+  auto: "speaker",
+  speaker: "speaker",
+  speaker_view: "speaker",
+  share_speaker: "speaker",
+  grid: "grid",
+  share_only: "spotlight",
+  side_by_side: "spotlight",
+  video_only: "grid",
+};
+
+/** The stage view a WebRTC attendee starts in for the host's layout; auto's for anything
+ *  unknown, as layoutById does. */
+export function stageModeForAudienceLayout(id: string | null | undefined): LayoutMode {
+  return STAGE_MODE_FOR[layoutById(id).id];
 }
 
 /** Lay out the stage with the named layout. */

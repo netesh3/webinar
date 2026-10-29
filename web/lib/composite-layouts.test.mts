@@ -20,6 +20,7 @@ import {
   noteLeft,
   placeStage,
   SHARE_ID,
+  stageModeForAudienceLayout,
   thumbnailFor,
   usesSpeakerView,
   type LayoutInput,
@@ -267,5 +268,23 @@ assert.equal(isEdgeTemplatePath("/recorder-template/edge/clock"), true);
 assert.equal(isEdgeTemplatePath("/recorder-template/clock"), false);
 assert.equal(isEdgeTemplatePath("/recorder-template"), false);
 assert.equal(isEdgeTemplatePath("/recorder-template/edgewise"), false);
+
+// The WebRTC view each layout starts an attendee in (29 Oct 2026): every layout has one.
+const STAGE_MODES = new Set(["speaker", "grid", "spotlight"]);
+for (const def of LAYOUTS) {
+  assert.ok(STAGE_MODES.has(stageModeForAudienceLayout(def.id)), `${def.id} maps to a stage view`);
+}
+assert.equal(stageModeForAudienceLayout("auto"), "speaker");
+assert.equal(stageModeForAudienceLayout("speaker"), "speaker");
+assert.equal(stageModeForAudienceLayout("speaker_view"), "speaker");
+assert.equal(stageModeForAudienceLayout("share_speaker"), "speaker");
+assert.equal(stageModeForAudienceLayout("grid"), "grid");
+assert.equal(stageModeForAudienceLayout("video_only"), "grid");
+assert.equal(stageModeForAudienceLayout("share_only"), "spotlight");
+assert.equal(stageModeForAudienceLayout("side_by_side"), "spotlight");
+// Unknown and missing are auto's view, as layoutById treats them.
+assert.equal(stageModeForAudienceLayout("from_a_newer_server"), "speaker");
+assert.equal(stageModeForAudienceLayout(null), "speaker");
+assert.equal(stageModeForAudienceLayout(undefined), "speaker");
 
 console.log("composite-layouts ok");

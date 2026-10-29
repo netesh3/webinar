@@ -21,6 +21,10 @@
 
 import {
   applyBudget,
+  effectiveStageMode,
+  readSessionView,
+  sessionViewKey,
+  writeSessionView,
   filterTiles,
   paginate,
   qualityFor,
@@ -535,6 +539,95 @@ console.log("\ntileFit");
     "just outside it letterboxes",
   );
 }
+
+/* A webinar attendee's starting view (29 Oct 2026): the host's Audience layout until the
+ * attendee picks a view, then theirs for the rest of the session, in that room only. */
+group("the host's starting view", () => {
+  // Hosts, panelists and meetings have no host view: their own mode, as before.
+  eq(
+    effectiveStageMode({ own: "grid", host: null, chosen: null }),
+    "grid",
+    "no host view: the viewer's own mode",
+  );
+  eq(
+    effectiveStageMode({ own: "spotlight", host: null, chosen: "speaker" }),
+    "spotlight",
+    "no host view: a session choice changes nothing the hook does not already hold",
+  );
+
+  // An attendee who has not picked lands in the host's view, not the viewer default (grid).
+  eq(
+    effectiveStageMode({ own: "grid", host: "speaker", chosen: null }),
+    "speaker",
+    "attendee starts in the host's view",
+  );
+  // The host changes the layout: still following, so the view moves with it.
+  eq(
+    effectiveStageMode({ own: "grid", host: "spotlight", chosen: null }),
+    "spotlight",
+    "attendee who has not picked follows a host change",
+  );
+  // The attendee picks Grid; the host then switches to Spotlight. Theirs stays.
+  eq(
+    effectiveStageMode({ own: "grid", host: "speaker", chosen: "grid" }),
+    "grid",
+    "the attendee's own pick beats the host's",
+  );
+  eq(
+    effectiveStageMode({ own: "grid", host: "spotlight", chosen: "grid" }),
+    "grid",
+    "a host change does not move an attendee who picked",
+  );
+
+  // The session choice is per room: a pick in one webinar is not read in another.
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  eq(readSessionView(storage, "webinar-a"), null, "nothing picked yet");
+  writeSessionView(storage, "webinar-a", "spotlight");
+  eq(readSessionView(storage, "webinar-a"), "spotlight", "a pick is read back in the same room");
+  eq(readSessionView(storage, "webinar-b"), null, "and not in another room");
+  eq(
+    effectiveStageMode({
+      own: "grid",
+      host: "grid",
+      chosen: readSessionView(storage, "webinar-b"),
+    }),
+    "grid",
+    "an older webinar's pick does not override this host",
+  );
+
+  // A stale or foreign value is no choice at all, and so is the old localStorage mode.
+  store.set(sessionViewKey("webinar-c"), "filmstrip");
+  eq(readSessionView(storage, "webinar-c"), null, "an unknown stored view is ignored");
+  store.set("webcast.stage-layout.v1", JSON.stringify({ mode: "spotlight" }));
+  eq(readSessionView(storage, "webinar-d"), null, "the old persisted mode is not a session pick");
+  eq(readSessionView(storage, ""), null, "no room, no choice");
+  eq(readSessionView(null, "webinar-a"), null, "no storage, no choice");
+
+  // Reset clears the pick, so the attendee follows the host again.
+  writeSessionView(storage, "webinar-a", null);
+  eq(readSessionView(storage, "webinar-a"), null, "clearing the pick");
+
+  // Storage that throws (private browsing) reads as no choice and does not throw.
+  const broken = {
+    getItem: () => {
+      throw new Error("denied");
+    },
+    setItem: () => {
+      throw new Error("denied");
+    },
+    removeItem: () => {
+      throw new Error("denied");
+    },
+  };
+  eq(readSessionView(broken, "webinar-a"), null, "storage that throws reads as no choice");
+  writeSessionView(broken, "webinar-a", "grid");
+  ok(true, "writing to storage that throws does not throw");
+});
 
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"}  ${checks - failures}/${checks} checks passed`,

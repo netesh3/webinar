@@ -6,12 +6,15 @@
  * edge viewers, CDN viewers and the recording get. Saved through PATCH /controls, which pushes
  * room metadata; the egress page is in the room and re-lays the composite live.
  *
- * Shown only while there is a composite to arrange: an edge webinar, or a recording running.
- * A meeting has no edge delivery, so for one it is the recording alone. The thumbnails are each
+ * In a webinar it is also where WebRTC attendees' stage starts, the nearest of Speaker, Grid
+ * and Spotlight (stageModeForAudienceLayout), until each picks a view of their own; see
+ * effectiveStageMode in lib/layout.ts. So it is shown for every webinar, edge or standard,
+ * not only while there is a composite (29 Oct 2026). A meeting has no audience to start, so
+ * for one it is still the recording alone. The thumbnails are each
  * layout's own place() on a sample stage (lib/composite-layouts.ts), so they cannot drift from
  * what the egress draws. */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import type { ControlsPatch } from "@/lib/api-types";
 import { LAYOUTS, layoutById, SHARE_ID, thumbnailFor, type CompositeLayoutDef } from "@/lib/composite-layouts";
@@ -20,36 +23,16 @@ import { useToast } from "../providers";
 import { useRoomUI } from "./context";
 
 export const AUDIENCE_LAYOUT_TIP =
-  "How viewers of the live stream and the recording see the stage. Your panelists' own view doesn't change.";
-
-/** Whether this session has an edge mix: asked once, the host's own status endpoint. */
-function useEdgeDelivery(slug: string, skip: boolean): boolean {
-  const [edge, setEdge] = useState(false);
-  useEffect(() => {
-    if (skip) return;
-    let cancelled = false;
-    api
-      .hostEdgeStatus(slug)
-      .then((s) => {
-        if (!cancelled) setEdge(s.delivery === "edge");
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, skip]);
-  return edge;
-}
+  "How viewers first see the stage (each viewer can still change their own view), and how the live stream and the recording look. Your panelists' own view doesn't change.";
 
 export function AudienceLayoutPicker() {
   const { slug, controls, join, recording, isHost } = useRoomUI();
   const meeting = join.meeting === true;
-  const edge = useEdgeDelivery(slug, meeting || !isHost);
   const { notify } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isHost || !(recording || (edge && !meeting))) return null;
+  if (!isHost || (meeting && !recording)) return null;
   const current = layoutById(controls.audienceLayout).id;
 
   async function choose(def: CompositeLayoutDef) {
