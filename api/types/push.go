@@ -132,7 +132,8 @@ type NativePushUnregisterRequest struct {
 }
 
 // NativePushRegisterResponse says whether this deployment will actually send to the token.
-// Sending is off until FCM_SERVICE_ACCOUNT_JSON is set; the token is stored either way.
+// Sending is off until FCM_SERVICE_ACCOUNT_JSON or FCM_PROJECT_ID is set; the token is stored
+// either way.
 type NativePushRegisterResponse struct {
 	Status  string `json:"status"`
 	Sending bool   `json:"sending"`

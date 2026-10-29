@@ -32,6 +32,11 @@ import (
  * firebase.messaging scope; the token is cached and refreshed a minute early. No Google SDK:
  * the whole protocol is two POSTs.
  *
+ * Or no key at all (29 Oct 2026): when FCM_SERVICE_ACCOUNT_JSON is unset and FCM_PROJECT_ID
+ * is set, the token comes from the GCE / Cloud Run metadata server for the runtime service
+ * account, which holds roles/firebasecloudmessaging.admin on that project. Nothing to download
+ * or rotate. The JSON key wins when both are set.
+ *
  * Outcomes reuse Web Push's (Classify above): Sent, Gone (FCM says the token is UNREGISTERED,
  * or belongs to another Firebase project: delete it), Retry (429, 5xx, network) and Drop. */
 
@@ -40,6 +45,15 @@ const FCMScope = "https://www.googleapis.com/auth/firebase.messaging"
 
 // FCMBaseURL is FCM's API root. A variable so tests can point it at a fake.
 var FCMBaseURL = "https://fcm.googleapis.com"
+
+// MetadataBaseURL is the GCE / Cloud Run metadata server. A variable so tests can point it at a fake.
+var MetadataBaseURL = "http://metadata.google.internal"
+
+// The credential an FCMSender uses, for the boot log.
+const (
+	FCMSourceServiceAccount = "service_account_json"
+	FCMSourceMetadata       = "metadata_server"
+)
 
 // ServiceAccount is the part of a service account JSON key that sending needs.
 type ServiceAccount struct {
@@ -103,8 +117,10 @@ type NativeMessage struct {
 
 // FCMSender posts to FCM's v1 send endpoint.
 type FCMSender struct {
-	sa     ServiceAccount
-	key    *rsa.PrivateKey
+	projectID string
+	source    string
+	// mint fetches a fresh access token and its lifetime in seconds (0: the default hour).
+	mint   func(ctx context.Context) (string, int, error)
 	client *http.Client
 
 	mu      sync.Mutex
@@ -121,11 +137,46 @@ func NewFCMSender(serviceAccountJSON string, client *http.Client) (*FCMSender, e
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
-	return &FCMSender{sa: sa, key: key, client: client}, nil
+	f := &FCMSender{projectID: sa.ProjectID, source: FCMSourceServiceAccount, client: client}
+	f.mint = func(ctx context.Context) (string, int, error) { return f.jwtToken(ctx, sa, key) }
+	return f, nil
+}
+
+/* NewFCMMetadataSender makes a sender that sends through Firebase project projectID with the
+ * runtime service account's token from the metadata server (29 Oct 2026). Nothing is fetched
+ * until the first send. client may be nil. */
+func NewFCMMetadataSender(projectID string, client *http.Client) (*FCMSender, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return nil, errors.New("FCM_PROJECT_ID is empty")
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	f := &FCMSender{projectID: projectID, source: FCMSourceMetadata, client: client}
+	f.mint = f.metadataToken
+	return f, nil
+}
+
+/* NewFCMSenderFromConfig picks the credential (29 Oct 2026): the service account JSON when it
+ * is set (an unusable one is an error, not a quiet fall back to the metadata server, so a bad
+ * paste is noticed), else the metadata server when projectID is set, else nil and no error:
+ * native sending is off. */
+func NewFCMSenderFromConfig(serviceAccountJSON, projectID string, client *http.Client) (*FCMSender, error) {
+	if strings.TrimSpace(serviceAccountJSON) != "" {
+		return NewFCMSender(serviceAccountJSON, client)
+	}
+	if strings.TrimSpace(projectID) != "" {
+		return NewFCMMetadataSender(projectID, client)
+	}
+	return nil, nil
 }
 
 // ProjectID is the Firebase project messages are sent through.
-func (f *FCMSender) ProjectID() string { return f.sa.ProjectID }
+func (f *FCMSender) ProjectID() string { return f.projectID }
+
+// Source is where the access token comes from: FCMSourceServiceAccount or FCMSourceMetadata.
+func (f *FCMSender) Source() string { return f.source }
 
 // accessToken is a cached OAuth token, refreshed a minute before it runs out.
 func (f *FCMSender) accessToken(ctx context.Context) (string, error) {
@@ -135,47 +186,76 @@ func (f *FCMSender) accessToken(ctx context.Context) (string, error) {
 		return f.access, nil
 	}
 	now := time.Now()
-	assertion, err := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss":   f.sa.ClientEmail,
-		"scope": FCMScope,
-		"aud":   f.sa.TokenURI,
-		"iat":   now.Unix(),
-		"exp":   now.Add(time.Hour).Unix(),
-	}).SignedString(f.key)
+	access, expiresIn, err := f.mint(ctx)
 	if err != nil {
 		return "", err
+	}
+	if expiresIn <= 0 {
+		expiresIn = 3600
+	}
+	f.access = access
+	f.expires = now.Add(time.Duration(expiresIn)*time.Second - time.Minute)
+	return f.access, nil
+}
+
+// jwtToken exchanges a JWT signed with the service account's key for an access token.
+func (f *FCMSender) jwtToken(ctx context.Context, sa ServiceAccount, key *rsa.PrivateKey) (string, int, error) {
+	now := time.Now()
+	assertion, err := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss":   sa.ClientEmail,
+		"scope": FCMScope,
+		"aud":   sa.TokenURI,
+		"iat":   now.Unix(),
+		"exp":   now.Add(time.Hour).Unix(),
+	}).SignedString(key)
+	if err != nil {
+		return "", 0, err
 	}
 	form := url.Values{
 		"grant_type": {"urn:ietf:params:oauth:grant-type:jwt-bearer"},
 		"assertion":  {assertion},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.sa.TokenURI, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sa.TokenURI, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return f.readToken(req, "fcm token endpoint")
+}
+
+/* metadataToken asks the metadata server for the runtime service account's token with the
+ * firebase.messaging scope (29 Oct 2026). The server refuses a request without
+ * Metadata-Flavor: Google. */
+func (f *FCMSender) metadataToken(ctx context.Context) (string, int, error) {
+	endpoint := strings.TrimRight(MetadataBaseURL, "/") +
+		"/computeMetadata/v1/instance/service-accounts/default/token?scopes=" + url.QueryEscape(FCMScope)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Metadata-Flavor", "Google")
+	return f.readToken(req, "metadata server")
+}
+
+// readToken does req and reads an OAuth token answer: {"access_token", "expires_in"}.
+func (f *FCMSender) readToken(req *http.Request, what string) (string, int, error) {
 	res, err := f.client.Do(req)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("fcm token endpoint answered %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+		return "", 0, fmt.Errorf("%s answered %d: %s", what, res.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var tok struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(body, &tok); err != nil || tok.AccessToken == "" {
-		return "", errors.New("fcm token endpoint gave no access_token")
+		return "", 0, fmt.Errorf("%s gave no access_token", what)
 	}
-	if tok.ExpiresIn <= 0 {
-		tok.ExpiresIn = 3600
-	}
-	f.access = tok.AccessToken
-	f.expires = now.Add(time.Duration(tok.ExpiresIn)*time.Second - time.Minute)
-	return f.access, nil
+	return tok.AccessToken, tok.ExpiresIn, nil
 }
 
 func (f *FCMSender) forgetToken() {
@@ -242,7 +322,7 @@ func (f *FCMSender) Send(ctx context.Context, t NativeTarget, m NativeMessage) R
 		// Our credential, not the install: the message waits and the token backs off.
 		return Result{Outcome: Retry, Err: err}
 	}
-	endpoint := strings.TrimRight(FCMBaseURL, "/") + "/v1/projects/" + url.PathEscape(f.sa.ProjectID) + "/messages:send"
+	endpoint := strings.TrimRight(FCMBaseURL, "/") + "/v1/projects/" + url.PathEscape(f.projectID) + "/messages:send"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return Result{Outcome: Drop, Err: err}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -243,5 +244,161 @@ func TestFCMSenderOutcomes(t *testing.T) {
 	if last["android"].(map[string]any)["ttl"] != "0s" ||
 		last["apns"].(map[string]any)["headers"].(map[string]any)["apns-expiration"] != "0" {
 		t.Fatalf("zero ttl payload %v", last)
+	}
+}
+
+/* fakeMetadata is the GCE / Cloud Run metadata server's token endpoint (29 Oct 2026). It
+ * hands out meta-access-1, meta-access-2, ... and refuses a request without
+ * Metadata-Flavor: Google, as the real one does. */
+type fakeMetadata struct {
+	srv    *httptest.Server
+	mu     sync.Mutex
+	hits   int
+	scopes []string
+}
+
+func newFakeMetadata(t *testing.T) *fakeMetadata {
+	t.Helper()
+	m := &fakeMetadata{}
+	m.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/computeMetadata/v1/instance/service-accounts/default/token" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Metadata-Flavor") != "Google" {
+			http.Error(w, "Missing Metadata-Flavor:Google header.", http.StatusForbidden)
+			return
+		}
+		m.mu.Lock()
+		m.hits++
+		n := m.hits
+		m.scopes = append(m.scopes, r.URL.Query().Get("scopes"))
+		m.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "meta-access-" + strconv.Itoa(n), "expires_in": 3599, "token_type": "Bearer"})
+	}))
+	t.Cleanup(m.srv.Close)
+	prev := MetadataBaseURL
+	MetadataBaseURL = m.srv.URL
+	t.Cleanup(func() { MetadataBaseURL = prev })
+	return m
+}
+
+func TestFCMMetadataSenderFetchesAndCaches(t *testing.T) {
+	f := newFakeFCM(t)
+	m := newFakeMetadata(t)
+	s, err := NewFCMSenderFromConfig("", "webinarliv-test", nil)
+	if err != nil || s == nil {
+		t.Fatalf("sender: %v %v", s, err)
+	}
+	if s.Source() != FCMSourceMetadata || s.ProjectID() != "webinarliv-test" {
+		t.Fatalf("source %q project %q", s.Source(), s.ProjectID())
+	}
+	ctx := context.Background()
+	msg := NativeMessage{Title: "t", URL: "https://webinarliv.com/"}
+	for _, tok := range []string{"tok-1", "tok-2"} {
+		if r := s.Send(ctx, NativeTarget{Token: tok, Platform: "android"}, msg); r.Outcome != Sent {
+			t.Fatalf("send %s: %+v", tok, r)
+		}
+	}
+	m.mu.Lock()
+	hits, scopes := m.hits, m.scopes
+	m.mu.Unlock()
+	if hits != 1 {
+		t.Fatalf("metadata server hit %d times, want 1 (cached)", hits)
+	}
+	if scopes[0] != FCMScope {
+		t.Fatalf("scopes %q", scopes[0])
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.tokenHits != 0 {
+		t.Fatal("the JWT token endpoint was used")
+	}
+	if f.auth[0] != "Bearer meta-access-1" || f.auth[1] != "Bearer meta-access-1" {
+		t.Fatalf("authorization %v", f.auth)
+	}
+}
+
+func TestFCMMetadataSenderSendsTheFlavorHeader(t *testing.T) {
+	m := newFakeMetadata(t)
+	// The fake refuses a request without the header, so a token back means the sender sent it.
+	res, err := http.Get(m.srv.URL + "/computeMetadata/v1/instance/service-accounts/default/token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("headerless request answered %d", res.StatusCode)
+	}
+	s, _ := NewFCMMetadataSender("webinarliv-test", nil)
+	if tok, err := s.accessToken(context.Background()); err != nil || tok != "meta-access-1" {
+		t.Fatalf("token %q %v", tok, err)
+	}
+}
+
+func TestFCMMetadataSenderRefreshesAnExpiredToken(t *testing.T) {
+	m := newFakeMetadata(t)
+	s, err := NewFCMMetadataSender("webinarliv-test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	first, err := s.accessToken(ctx)
+	if err != nil || first != "meta-access-1" {
+		t.Fatalf("first %q %v", first, err)
+	}
+	// Cached until a minute before expires_in.
+	if until := time.Until(s.expires); until < 3530*time.Second || until > 3540*time.Second {
+		t.Fatalf("cached for %v, want about 3539s", until)
+	}
+	if again, _ := s.accessToken(ctx); again != first {
+		t.Fatalf("not cached: %q", again)
+	}
+	s.mu.Lock()
+	s.expires = time.Now().Add(-time.Second)
+	s.mu.Unlock()
+	second, err := s.accessToken(ctx)
+	if err != nil || second != "meta-access-2" {
+		t.Fatalf("after expiry %q %v", second, err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hits != 2 {
+		t.Fatalf("metadata server hit %d times, want 2", m.hits)
+	}
+}
+
+func TestFCMSenderFromConfigPrefersTheJSON(t *testing.T) {
+	f := newFakeFCM(t)
+	m := newFakeMetadata(t)
+	raw, key := testServiceAccount(t, f.srv.URL+"/token")
+	f.key = key
+	s, err := NewFCMSenderFromConfig(raw, "some-other-project", f.srv.Client())
+	if err != nil || s == nil {
+		t.Fatalf("sender: %v %v", s, err)
+	}
+	if s.Source() != FCMSourceServiceAccount || s.ProjectID() != "webinarliv-test" {
+		t.Fatalf("source %q project %q", s.Source(), s.ProjectID())
+	}
+	if r := s.Send(context.Background(), NativeTarget{Token: "tok-1"}, NativeMessage{Title: "t", URL: "https://webinarliv.com/"}); r.Outcome != Sent {
+		t.Fatalf("send: %+v", r)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hits != 0 {
+		t.Fatal("the metadata server was used although the JSON is set")
+	}
+	// A JSON that does not parse is an error, not a quiet switch to the metadata server.
+	if s, err := NewFCMSenderFromConfig("%%%", "webinarliv-test", nil); err == nil || s != nil {
+		t.Fatalf("bad JSON: %v %v", s, err)
+	}
+}
+
+func TestFCMSenderFromConfigOff(t *testing.T) {
+	for _, c := range [][2]string{{"", ""}, {"  ", " \n"}} {
+		if s, err := NewFCMSenderFromConfig(c[0], c[1], nil); s != nil || err != nil {
+			t.Fatalf("%q: %v %v, want off", c, s, err)
+		}
 	}
 }
