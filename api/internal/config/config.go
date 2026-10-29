@@ -597,7 +597,7 @@ func Load() (Config, error) {
 		// comes from should not have to say it twice.
 		SMTPFrom:                env("SMTP_FROM", env("SUPPORT_EMAIL", "")),
 		InboxWebhookSecret:      strings.TrimSpace(env("INBOX_WEBHOOK_SECRET", "")),
-		ContactEmail:            strings.TrimSpace(env("CONTACT_EMAIL", "webinarliv@gmail.com")),
+		ContactEmail:            strings.TrimSpace(env("CONTACT_EMAIL", types.ContactHello)), // hello@ (29 Oct 2026)
 		ContactPhone:            strings.TrimSpace(env("CONTACT_PHONE", "+91-9852411280")),
 		GoogleClientID:          env("GOOGLE_CLIENT_ID", ""),
 		GoogleAPIKey:            env("GOOGLE_API_KEY", ""),

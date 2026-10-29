@@ -416,7 +416,7 @@ func TestWelcomeEmailDefaultsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if !c.WelcomeEmail || c.ContactEmail != "webinarliv@gmail.com" || c.ContactPhone != "+91-9852411280" {
+	if !c.WelcomeEmail || c.ContactEmail != "hello@webinarliv.com" || c.ContactPhone != "+91-9852411280" {
 		t.Errorf("defaults: on=%v email=%q phone=%q", c.WelcomeEmail, c.ContactEmail, c.ContactPhone)
 	}
 
