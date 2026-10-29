@@ -618,6 +618,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/stats", s.handleAdminStats)
 			r.Get("/stats/whatsapp", s.handleAdminWhatsAppUsage)
 			r.Get("/devices", s.handleAdminDevices)
+			r.Get("/locations", s.handleAdminLocations)
 			r.Get("/users", s.handleAdminUsers)
 			r.Get("/users/counts", s.handleAdminAccountCounts)
 			r.Patch("/users/{id}/kind", s.handleSetAccountKind)
@@ -887,6 +888,8 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/report", s.handleSessionReport)
 				// The audience by device (devices.go): exact, one per attendee.
 				r.Get("/devices", s.handleWebinarDevices)
+				// The audience by location (devices.go): country, and the state within India.
+				r.Get("/locations", s.handleWebinarLocations)
 				r.Get("/report.csv", s.handleExportReport)
 				// The attendee list of an ended session; host and co-hosts only. See attendee_export.go.
 				r.Get("/attendees.csv", s.handleAttendeesCSV)

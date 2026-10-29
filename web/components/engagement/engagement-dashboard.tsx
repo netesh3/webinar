@@ -22,6 +22,7 @@ import { KpiGrid } from "./kpi-grid";
 import { Icon } from "./primitives";
 import { StageAttendance, useFullQuestions } from "./record-panels";
 import { WebinarAudienceDevices } from "../audience-devices";
+import { WebinarAudienceLocations } from "../audience-locations";
 import { Deferred, FoldAllButton, PageSection, revealSection } from "./page-section";
 import { DashboardSkeleton, EmptyState, ErrorState, errorMessage } from "./states";
 
@@ -79,6 +80,10 @@ export function EngagementDashboard({
   const loadDevices = useMemo(() => {
     const devices = source.devices;
     return devices ? (signal: AbortSignal) => devices(signal) : null;
+  }, [source]);
+  const loadLocations = useMemo(() => {
+    const locations = source.locations;
+    return locations ? (signal: AbortSignal) => locations(signal) : null;
   }, [source]);
 
   const s = summary.data;
@@ -294,6 +299,7 @@ export function EngagementDashboard({
           </Card>
           <StageAttendance record={record} timeZone={s.webinar.timeZone} onLoad={loadRecord} />
           {loadDevices && <WebinarAudienceDevices load={loadDevices} />}
+          {loadLocations && <WebinarAudienceLocations load={loadLocations} />}
         </Deferred>
       </PageSection>
 

@@ -94,6 +94,7 @@ const HOP_BY_HOP = new Set([
   "x-forwarded-for",
   // Set below from Cloudflare's own lookup, never taken from the client.
   "x-viewer-country",
+  "x-viewer-region",
 ]);
 
 async function proxyApi(request: Request, env: ApiEnv): Promise<Response> {
@@ -117,8 +118,14 @@ async function proxyApi(request: Request, env: ApiEnv): Promise<Response> {
   /* The viewer's country, for the API's choice of delivery path (direct from the video box
    * near them, or the CDN; api/internal/api/edge.go viewerCountry). cf-ipcountry itself is
    * dropped above with the other CF-* headers. */
-  const country = (request as Request & { cf?: { country?: string } }).cf?.country;
+  const cf = (request as Request & { cf?: { country?: string; region?: string } }).cf;
+  const country = cf?.country;
   if (country) headers.set("x-viewer-country", country);
+  /* And the region inside it (the state, for India), for the hosts' audience by location
+   * (29 Oct 2026; api/internal/api/edge.go viewerRegion). URI-encoded, since a header value is
+   * bytes and "São Paulo" is not ASCII. Never the city: country and region are enough. */
+  const region = cf?.region;
+  if (region) headers.set("x-viewer-region", encodeURIComponent(region));
   // Upstream CORS is for browser→run.app; same-origin proxy must not claim the
   // Workers origin as an allowed cross-origin caller when we re-emit headers.
   // Leave upstream ACAO as-is — browsers ignore CORS on same-origin responses.

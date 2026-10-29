@@ -8,6 +8,7 @@ import { formatCount, formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { AdminBoxPoolPanel } from "./admin-box-pool";
 import { AdminWhatsAppUsagePanel } from "./admin-whatsapp-usage";
 import { AdminAudienceDevicesPanel } from "./audience-devices";
+import { AdminAudienceLocationsPanel } from "./audience-locations";
 import { Alert } from "./controls";
 import { Badge, ButtonLink, Card, Stat } from "./ui";
 
@@ -198,6 +199,8 @@ export function AdminDashboard({
       <AdminBoxPoolPanel />
 
       <AdminAudienceDevicesPanel />
+
+      <AdminAudienceLocationsPanel />
 
       <AdminWhatsAppUsagePanel />
     </div>

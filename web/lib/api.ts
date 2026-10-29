@@ -216,7 +216,7 @@ import {
 } from "./http";
 import type { ClipPlan, ClipPlanInput, StudioClipsResponse, StudioRecordingsResponse } from "./api-types";
 import type { RecordingPurgeStatus } from "./api-types";
-import type { AudienceDevices } from "./api-types";
+import type { AudienceDevices, AudienceLocations } from "./api-types";
 
 /** "?a=1&b=2" from the set values, or "". */
 function query(opts: Record<string, string | number | undefined>): string {
@@ -1457,6 +1457,9 @@ export const api = {
   /** One webinar's audience by device, one per attendee. */
   webinarDevices: (slug: string, signal?: AbortSignal) =>
     request<AudienceDevices>(`/api/host/webinars/${seg(slug)}/devices`, { ...fresh, signal }),
+  /** One webinar's audience by location (country, and India by state), one per attendee. */
+  webinarLocations: (slug: string, signal?: AbortSignal) =>
+    request<AudienceLocations>(`/api/host/webinars/${seg(slug)}/locations`, { ...fresh, signal }),
 
   sessionReport: (slug: string, signal?: AbortSignal) =>
     request<SessionReport>(`/api/host/webinars/${seg(slug)}/report`, {
@@ -1679,6 +1682,8 @@ export const api = {
   /** Which WhatsApp CRM features hosts used over the last 7, 30 or 90 days. */
   /** Every webinar's audience by device, people who first joined in the window. */
   adminDevices: (days: 7 | 30 | 90) => request<AudienceDevices>(`/api/admin/devices?days=${days}`, fresh),
+  /** Every webinar's audience by location, people who first joined in the window. */
+  adminLocations: (days: 7 | 30 | 90) => request<AudienceLocations>(`/api/admin/locations?days=${days}`, fresh),
 
   adminWhatsAppUsage: (days: 7 | 30 | 90) =>
     request<AdminWhatsAppUsage>(

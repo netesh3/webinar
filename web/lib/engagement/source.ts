@@ -8,6 +8,7 @@
 import type {
   AttendanceRow,
   AudienceDevices,
+  AudienceLocations,
   EngagementAttendeeDetail,
   EngagementAttendeePage,
   EngagementSummary,
@@ -46,6 +47,8 @@ export interface EngagementSource {
   record?(signal?: AbortSignal): Promise<SessionRecord>;
   /** The audience by device (GET /api/host/webinars/{slug}/devices), exact, one per person. */
   devices?(signal?: AbortSignal): Promise<AudienceDevices>;
+  /** The audience by location (GET /api/host/webinars/{slug}/locations), one per person. */
+  locations?(signal?: AbortSignal): Promise<AudienceLocations>;
 }
 
 export interface SessionRecord {
@@ -107,6 +110,7 @@ export function fixtureSource(status: "ended" | "live" | "scheduled" = "ended"):
       }),
     surveyResults: (signal) => abortable(signal, () => FIXTURE_SURVEY_RESULTS),
     devices: (signal) => abortable(signal, () => SAMPLE_DEVICES),
+    locations: (signal) => abortable(signal, () => SAMPLE_LOCATIONS),
     record: (signal) =>
       abortable(signal, () => ({
         stage: SAMPLE_STAGE,
@@ -162,6 +166,32 @@ const SAMPLE_STAGE: AttendanceRow[] = [
     ],
   },
 ];
+
+/** The sample webinar's 85 people by where they joined from, for the Audience locations card. */
+const SAMPLE_LOCATIONS: AudienceLocations = {
+  attendees: 85,
+  recorded: 82,
+  unknown: 3,
+  countries: [
+    { key: "IN", count: 71 },
+    { key: "AE", count: 4 },
+    { key: "US", count: 3 },
+    { key: "GB", count: 2 },
+    { key: "SG", count: 1 },
+    { key: "CA", count: 1 },
+  ],
+  indiaRegions: [
+    { key: "Karnataka", count: 18 },
+    { key: "Maharashtra", count: 14 },
+    { key: "Tamil Nadu", count: 11 },
+    { key: "Kerala", count: 8 },
+    { key: "Delhi", count: 7 },
+    { key: "Telangana", count: 6 },
+    { key: "Gujarat", count: 3 },
+    { key: "West Bengal", count: 2 },
+  ],
+  indiaUnknown: 2,
+};
 
 /** The sample webinar's 85 people by device, for the preview's Audience devices card. */
 const SAMPLE_DEVICES: AudienceDevices = {

@@ -395,6 +395,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/recording-purge.test.mts
 	# Audience devices: labels, shares of the people with a known device, and the coverage note.
 	cd web && node --experimental-strip-types --no-warnings lib/audience-devices.test.mts
+	# Audience locations: flags, country names, folding into Other, India's states, the note.
+	cd web && node --experimental-strip-types --no-warnings lib/audience-locations.test.mts
 	# The host's "N / limit" seats readout, and when it turns to nearly full and full.
 	cd web && node --experimental-strip-types --no-warnings lib/audience-seats.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/box-regions.test.mts

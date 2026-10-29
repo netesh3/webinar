@@ -20,11 +20,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
@@ -388,6 +391,40 @@ func viewerCountry(r *http.Request) string {
 	}
 	return ""
 }
+
+/* viewerRegion is the region inside the viewer's country that Cloudflare places them in (the
+ * state, for India: "Karnataka"), "" when there is none. Only the region: the Worker never
+ * forwards the city.
+ *
+ * The Worker URI-encodes it (a header value is bytes, and "São Paulo" is not ASCII) and drops
+ * any copy the client sent, so this decodes, keeps it valid UTF-8 without control characters,
+ * and caps it at maxRegionLen runes. Analytics only (devices.go noteJoinDevice). */
+func viewerRegion(r *http.Request) string {
+	raw := strings.TrimSpace(r.Header.Get("X-Viewer-Region"))
+	if raw == "" {
+		return ""
+	}
+	if v, err := url.PathUnescape(raw); err == nil {
+		raw = v
+	}
+	if !utf8.ValidString(raw) {
+		return ""
+	}
+	raw = strings.Map(func(c rune) rune {
+		if unicode.IsControl(c) {
+			return -1
+		}
+		return c
+	}, raw)
+	raw = strings.TrimSpace(raw)
+	if runes := []rune(raw); len(runes) > maxRegionLen {
+		raw = strings.TrimSpace(string(runes[:maxRegionLen]))
+	}
+	return raw
+}
+
+// maxRegionLen bounds a region name; the longest real ones are about half of it.
+const maxRegionLen = 64
 
 const (
 	// eventsIssuer keeps an events token from ever passing as a session or a rejoin token,

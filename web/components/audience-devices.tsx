@@ -11,7 +11,7 @@ import { Card } from "./ui";
  * join requests (GET /api/host/webinars/{slug}/devices, GET /api/admin/devices), one per
  * person; the frontend error tracking's sessions are page loads and miss ad-blocked browsers. */
 
-function Bars({ title, rows }: { title: string; rows: DeviceRow[] }) {
+export function Bars({ title, rows }: { title: string; rows: DeviceRow[] }) {
   return (
     <div>
       <h4 className="text-[12px] font-medium text-ink-2">{title}</h4>
@@ -80,8 +80,30 @@ export function WebinarAudienceDevices({ load }: { load: (signal: AbortSignal) =
   );
 }
 
-type Days = 7 | 30 | 90;
+export type Days = 7 | 30 | 90;
 const WINDOWS: Days[] = [7, 30, 90];
+
+/** The admin's 7 / 30 / 90 days toggle; the audience-locations panel has the same one. */
+export function WindowPicker({ days, onChange }: { days: Days; onChange: (d: Days) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Window" className="flex gap-1">
+      {WINDOWS.map((d) => (
+        <button
+          key={d}
+          type="button"
+          role="radio"
+          aria-checked={days === d}
+          onClick={() => onChange(d)}
+          className={`rounded-md px-2 py-0.5 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+            days === d ? "bg-brand-soft font-medium text-brand" : "text-ink-2 hover:bg-surface-2"
+          }`}
+        >
+          {d} days
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** Every webinar's audience devices, for the Admin dashboard. */
 export function AdminAudienceDevicesPanel() {
@@ -111,22 +133,7 @@ export function AdminAudienceDevicesPanel() {
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="text-[13px] font-semibold tracking-[0.01em] text-ink">Audience devices</h2>
-        <div role="radiogroup" aria-label="Window" className="flex gap-1">
-          {WINDOWS.map((d) => (
-            <button
-              key={d}
-              type="button"
-              role="radio"
-              aria-checked={days === d}
-              onClick={() => setDays(d)}
-              className={`rounded-md px-2 py-0.5 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
-                days === d ? "bg-brand-soft font-medium text-brand" : "text-ink-2 hover:bg-surface-2"
-              }`}
-            >
-              {d} days
-            </button>
-          ))}
-        </div>
+        <WindowPicker days={days} onChange={setDays} />
       </div>
       <Card className="p-4">
         {error && <Alert tone="error">{error}</Alert>}
