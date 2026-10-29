@@ -101,6 +101,9 @@ func (s *Module) handleRenameEmailInbox(w http.ResponseWriter, r *http.Request) 
 		case err == store.ErrInboxInvalid:
 			httpx.Error(w, http.StatusUnprocessableEntity, "address_invalid",
 				"Use 3-30 lowercase letters, numbers, or hyphens.")
+		case err == store.ErrInboxReserved:
+			httpx.Error(w, http.StatusUnprocessableEntity, "address_reserved",
+				"That address is reserved for Webinar Liv. Choose another.")
 		default:
 			s.fail(w, r, "rename inbox", err)
 		}

@@ -13,6 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/netkumar/webcast/api/types"
 )
 
 var (
@@ -21,6 +23,9 @@ var (
 	ErrInboxTaken = errors.New("inbox address taken")
 	// ErrInboxInvalid means the local part is not 3–30 letters, digits and hyphens.
 	ErrInboxInvalid = errors.New("inbox address invalid")
+	// ErrInboxReserved means the local part is on types.ReservedInboxLocals: the
+	// company's own mail is routed there, so a host would never receive it (29 Oct 2026).
+	ErrInboxReserved = errors.New("inbox address reserved")
 )
 
 // Inbox is one host's reply address.
@@ -95,6 +100,11 @@ func (s *Store) RenameInbox(ctx context.Context, userID, name, next string) (Inb
 	next = strings.ToLower(strings.TrimSpace(next))
 	if !inboxRenameOK(next) {
 		return Inbox{}, ErrInboxInvalid
+	}
+	// Before anything else, so a host already holding a reserved name from before
+	// the list cannot re-save it either; they can only move off it (29 Oct 2026).
+	if types.InboxLocalReserved(next) {
+		return Inbox{}, ErrInboxReserved
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -187,6 +197,35 @@ func (s *Store) HostForInboxLocal(ctx context.Context, local string) (string, bo
 		return "", false, err
 	}
 	return id, true, nil
+}
+
+// ReservedInboxHolder is a host whose current inbox_local is on the reserved list.
+type ReservedInboxHolder struct {
+	UserID string
+	Local  string
+}
+
+// ReservedInboxHolders lists hosts that took a reserved local part before the list
+// existed (29 Oct 2026). Read-only: boot logs them so the owner can rename each by
+// hand. Uses the inbox_local unique index, so it is cheap on every boot.
+func (s *Store) ReservedInboxHolders(ctx context.Context) ([]ReservedInboxHolder, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id::text, inbox_local FROM users
+		  WHERE inbox_local = ANY($1::text[])
+		  ORDER BY inbox_local`, types.ReservedInboxLocalList())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ReservedInboxHolder
+	for rows.Next() {
+		var h ReservedInboxHolder
+		if err := rows.Scan(&h.UserID, &h.Local); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 // InsertHostEmail stores one message for that host only.
@@ -601,8 +640,9 @@ func inboxCandidates(name, userID string) []string {
 	}
 	seen := map[string]bool{}
 	var out []string
+	// A host named "Support" gets support-1a2b, never support@ itself (29 Oct 2026).
 	add := func(s string) {
-		if inboxLocalOK(s) && !seen[s] {
+		if inboxLocalOK(s) && !seen[s] && !types.InboxLocalReserved(s) {
 			seen[s] = true
 			out = append(out, s)
 		}

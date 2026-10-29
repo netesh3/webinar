@@ -138,6 +138,22 @@ func run() error {
 			"configured", len(cfg.AdminEmails), "promoted", promoted, "demoted", demoted)
 	}
 
+	/* Hosts holding a reserved inbox name (29 Oct 2026).
+	 *
+	 * Names taken before types.ReservedInboxLocals existed are not changed here: renaming
+	 * a host's address under them is the owner's call. Cloudflare routes these to the
+	 * company's Gmail, so the host is not receiving that mail. One warning per host, with
+	 * the user id and local part only. Never fatal.
+	 */
+	if holders, err := st.ReservedInboxHolders(ctx); err != nil {
+		log.Error("could not check for reserved inbox names", "err", err)
+	} else {
+		for _, h := range holders {
+			log.Warn("host holds a reserved inbox name; rename it by hand",
+				"user_id", h.UserID, "inbox_local", h.Local)
+		}
+	}
+
 	// Seeding only ever happens in development — production data comes from
 	// real usage, and a known password in a real database is a breach. SEED_DEV=false
 	// turns it off for a development instance that is nobody's demo any more.
