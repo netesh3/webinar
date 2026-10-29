@@ -19,6 +19,10 @@
  */
 export function inAppBrowserName(ua: string): string | null {
   if (!ua) return null;
+  // Our own Android / iOS app (apps/mobile) is a WebView too, but not somebody else's:
+  // no "open this in Chrome" note there. Google sign-in is still unavailable inside it,
+  // which isNativeAppUA lets the registration form account for separately.
+  if (isNativeAppUA(ua)) return null;
   if (/FBAN|FBAV|FB_IAB|FBIOS|FB4A|\[FB/i.test(ua)) return "Facebook";
   if (/Instagram/i.test(ua)) return "Instagram";
   if (/LinkedInApp/i.test(ua)) return "LinkedIn";
@@ -31,6 +35,11 @@ export function inAppBrowserName(ua: string): string | null {
   // carry it, so WhatsApp and Gmail links opened that way are not caught here.
   if (/Android/i.test(ua) && /;\s*wv\)/i.test(ua)) return "this app";
   return null;
+}
+
+/** The Webinar Liv mobile app (apps/mobile/capacitor.config.ts appendUserAgent). */
+export function isNativeAppUA(ua: string): boolean {
+  return /\bWebinarLivApp\//.test(ua);
 }
 
 export function isAndroid(ua: string): boolean {
@@ -71,6 +80,9 @@ function touch(): number {
 
 export function currentInAppBrowser(): string | null {
   return inAppBrowserName(ua());
+}
+export function currentIsNativeApp(): boolean {
+  return isNativeAppUA(ua());
 }
 export function currentIsMobile(): boolean {
   return isMobileUA(ua(), touch());

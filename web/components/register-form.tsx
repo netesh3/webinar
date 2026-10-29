@@ -24,7 +24,12 @@ import {
   webinarSignInHref,
 } from "@/lib/webinar-register";
 import { usePrimeMediaOnGesture } from "@/lib/media-unlock";
-import { androidChromeIntent, currentInAppBrowser, currentIsAndroid } from "@/lib/device";
+import {
+  androidChromeIntent,
+  currentInAppBrowser,
+  currentIsAndroid,
+  currentIsNativeApp,
+} from "@/lib/device";
 import { CHECKBOX_YES } from "@/lib/registration-questions";
 import { WhatsAppOptInCheckbox } from "@/engage";
 import { PushOptIn } from "./pwa";
@@ -1022,6 +1027,10 @@ function RegisterFields({
    * so the server HTML and the hydrating render agree; the client value follows. */
   const inApp = useSyncExternalStore(noSubscribe, currentInAppBrowser, () => null);
   const android = useSyncExternalStore(noSubscribe, currentIsAndroid, () => false);
+  /* Our own mobile app: no "open in Chrome" note, but Google OAuth would leave the app for
+   * the system browser, so it takes the email link like any other WebView. */
+  const nativeApp = useSyncExternalStore(noSubscribe, currentIsNativeApp, () => false);
+  const embedded = Boolean(inApp) || nativeApp;
 
   async function redirectGmail(body: RegisterRequest) {
     savePendingWebinarRegister(w.id, body);
@@ -1067,7 +1076,7 @@ function RegisterFields({
       passcode,
       /* Google refuses OAuth inside an app's WebView, so a Gmail address here takes
        * the email verification link instead (see handleRegister). */
-      embeddedBrowser: inApp ? true : undefined,
+      embeddedBrowser: embedded ? true : undefined,
     };
 
     /* Gmail on this public form signs in with Google instead of the password
@@ -1075,7 +1084,7 @@ function RegisterFields({
      * back, on this same webinar page. Anyone already signed in, and any other
      * domain, keeps the ordinary register call — that is the email verification
      * link, and it does not ask for a password. */
-    if (!account && googleAuth && !inApp && isGmailAddress(body.email)) {
+    if (!account && googleAuth && !embedded && isGmailAddress(body.email)) {
       await redirectGmail(body);
       return;
     }
@@ -1088,7 +1097,7 @@ function RegisterFields({
     } catch (err) {
       if (
         !account &&
-        !inApp &&
+        !embedded &&
         err instanceof ApiError &&
         err.code === "google_signin_required"
       ) {

@@ -1,0 +1,49 @@
+import UIKit
+import AVFoundation
+import Capacitor
+
+@UIApplicationMain
+class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    var window: UIWindow?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        configureAudioSession()
+        return true
+    }
+
+    /* Background audio. With UIBackgroundModes "audio" in Info.plist and a playback
+     * session, a webinar's sound (HLS <video> or LiveKit's remote audio) keeps playing
+     * when the screen locks or the app goes to the background, and is not silenced by
+     * the ring/silent switch. WebKit moves the session to play-and-record by itself
+     * while the page captures the microphone, so this does not get in WebRTC's way. */
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            // Category only, not setActive: activating at launch would stop whatever
+            // music the user had playing just for opening the app. WebKit activates
+            // the session when the page actually starts playing media.
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetoothA2DP])
+        } catch {
+            print("Webinar Liv: audio session setup failed: \(error)")
+        }
+    }
+
+    // Push: hand the APNs token to @capacitor/push-notifications.
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: "Default Configuration",
+                                          sessionRole: connectingSceneSession.role)
+        config.delegateClass = SceneDelegate.self
+        return config
+    }
+}

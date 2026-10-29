@@ -4,7 +4,13 @@
  */
 
 import assert from "node:assert/strict";
-import { androidChromeIntent, inAppBrowserName, isIOS, isMobileUA } from "./device.ts";
+import {
+  androidChromeIntent,
+  inAppBrowserName,
+  isIOS,
+  isMobileUA,
+  isNativeAppUA,
+} from "./device.ts";
 
 const instagramAndroid =
   "Mozilla/5.0 (Linux; Android 13; SM-A536E Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 Mobile Safari/537.36 Instagram 312.0.0.32.112 Android";
@@ -26,6 +32,16 @@ assert.equal(inAppBrowserName(chromeAndroid), null);
 assert.equal(inAppBrowserName(safariIOS), null);
 assert.equal(inAppBrowserName(chromeMac), null);
 assert.equal(inAppBrowserName(""), null);
+
+// Our own app (apps/mobile): a WebView, but never told to open itself in Chrome.
+const ourAndroidApp = `${plainWebView} WebinarLivApp/1.0`;
+const ourIOSApp =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 WebinarLivApp/1.0";
+assert.equal(inAppBrowserName(ourAndroidApp), null);
+assert.equal(isNativeAppUA(ourAndroidApp), true);
+assert.equal(isNativeAppUA(ourIOSApp), true);
+assert.equal(isNativeAppUA(safariIOS), false);
+assert.equal(isNativeAppUA(plainWebView), false);
 
 assert.equal(isMobileUA(chromeAndroid), true);
 assert.equal(isMobileUA(safariIOS), true);
