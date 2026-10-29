@@ -75,3 +75,16 @@
 # `immutable` — the same reasoning as /backgrounds above.
 /icons/*
   Cache-Control: public,max-age=604800
+
+# App Links / Universal Links for the mobile apps (apps/mobile/README.md). Android and Apple
+# fetch these directly and accept neither a redirect nor HTML: Workers Assets serves them
+# before the Worker runs (so no www/http redirect logic applies), and the Apple file has no
+# extension, so its type has to be named here or it goes out as application/octet-stream.
+# Short cache: a fingerprint or Team ID edit should reach the verifiers within the hour.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public,max-age=3600
+
+/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: public,max-age=3600

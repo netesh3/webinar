@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+# Firebase config for Android push: keep out of git (README.md, "Push notifications").
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
+# Signing material, never committed.
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+*.p8

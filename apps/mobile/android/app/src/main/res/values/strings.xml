@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Webinar Liv</string>
+    <string name="title_activity_main">Webinar Liv</string>
+    <string name="package_name">com.webinarliv.app</string>
+    <string name="custom_url_scheme">com.webinarliv.app</string>
+</resources>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="false">
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Android App Links: a tapped https://webinarliv.com join / webinar link
+                 (WhatsApp, Gmail, SMS) opens the app instead of the browser. autoVerify
+                 checks https://webinarliv.com/.well-known/assetlinks.json, which must list
+                 the SHA-256 of the key the installed build is signed with (README.md,
+                 <ANDROID_SHA256_CERT_FINGERPRINT>). Unverified, Android shows a chooser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="webinarliv.com" />
+                <data android:host="www.webinarliv.com" />
+                <data android:pathPrefix="/webinars/" />
+                <data android:pathPrefix="/w/" />
+                <data android:pathPrefix="/host/" />
+                <data android:pathPrefix="/recordings" />
+                <data android:pathPrefix="/my-webinars" />
+                <data android:pathPrefix="/verify-email" />
+                <data android:pathPrefix="/reset-password" />
+            </intent-filter>
+
+            <!-- Fallback custom scheme: webinarliv://webinars/<id> opens
+                 https://webinarliv.com/webinars/<id> inside the app (web/lib/native-bridge.ts). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="webinarliv" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- WebRTC (LiveKit) in the WebView. Capacitor's BridgeWebChromeClient already
+         implements onPermissionRequest: it asks for the runtime permission(s) matching
+         the page's getUserMedia request and then grants the WebView's PermissionRequest,
+         so no custom WebChromeClient is needed, only these declarations. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Bluetooth headsets for call audio on Android 12+. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Push (Android 13+ runtime prompt); @capacitor/push-notifications also merges it. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Not required: attendees without a camera can still watch and talk. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+</manifest>

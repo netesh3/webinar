@@ -1,0 +1,21 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["<APPLE_TEAM_ID>.com.webinarliv.app"],
+        "components": [
+          { "/": "/webinars/*", "comment": "Webinar landing, registration and join links" },
+          { "/": "/w/*", "comment": "Short links (recordings)" },
+          { "/": "/host/*", "comment": "Host and panelist links" },
+          { "/": "/recordings*", "comment": "Replays" },
+          { "/": "/my-webinars*", "comment": "Attendee's list" },
+          { "/": "/verify-email*", "comment": "Email verification after registering in the app" },
+          { "/": "/reset-password*", "comment": "Password reset" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["<APPLE_TEAM_ID>.com.webinarliv.app"]
+  }
+}

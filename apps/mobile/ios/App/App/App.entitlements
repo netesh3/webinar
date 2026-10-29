@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Universal Links. Needs the Associated Domains capability on the App ID
+	     com.webinarliv.app and web/public/.well-known/apple-app-site-association
+	     with the real <APPLE_TEAM_ID> (apps/mobile/README.md). -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:webinarliv.com</string>
+		<string>applinks:www.webinarliv.com</string>
+		<!-- Saved passwords for webinarliv.com offered at the login form (AutoFill). -->
+		<string>webcredentials:webinarliv.com</string>
+	</array>
+	<!-- Push (APNs). Exporting for the App Store signs this as production. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
