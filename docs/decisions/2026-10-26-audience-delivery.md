@@ -1,6 +1,6 @@
 # Audience delivery: plain HLS, by where the viewer is, with capacity limits
 
-**Date:** 2026-10-26. **Status:** in force. **Context:** a customer webinar on 2026-10-25 froze
+**Date:** 2026-10-26 (section 7: 2026-10-29). **Status:** in force. **Context:** a customer webinar on 2026-10-25 froze
 in waves and the customer moved to Zoom. These decisions followed.
 
 ## 1. The audience moved from LL-HLS to plain HLS
@@ -98,6 +98,30 @@ Airtel, home Wi-Fi) pass. Box CPU and capacity numbers alone don't count.
 it never proved smooth playback through the CDN, and that cost a customer.
 
 **Revisit:** never relaxed; extend it when a new path or CDN is added.
+
+## 7. WebRTC by default; HLS per host, set by an admin (29 Oct 2026)
+
+**Decision.** Webinars on the GCP and DigitalOcean video servers go back to WebRTC (LiveKit,
+delivery `standard`) for the audience by default. An admin moves an individual host to HLS
+(delivery `edge`) with the **HLS delivery (large audiences)** switch (`hls_delivery`, Admin →
+Accounts, per host, in no plan). Hosts never choose. Meetings stay WebRTC; simulive is
+unchanged. The API applies the rule on every save, at boot to every webinar that has not run
+yet, and to one host's future webinars and series when an admin flips their switch. Live and
+ended sessions keep theirs. Standard recordings with nothing to push default to 720p
+(`RECORDINGS_EGRESS_PRESET`), so a second compositor does not take a 1080p share of the box.
+
+**Why.** WebRTC puts the audience ~0.3 s behind the stage instead of HLS's ~2–3 s, which
+matters for Q&A, polls and stage invites, and it avoids the CDN path that froze on 2026-10-25
+(section 1). HLS stays for the hosts whose audience is big or global, where the box should not
+fan out every viewer itself.
+
+**Risk.** The c-4's WebRTC audience capacity has **not been measured** yet: the 2026-10-24 load
+test and the box points (section 5) are for edge webinars (a mix, viewers on HLS). A standard
+webinar has no mix but every viewer is a WebRTC subscriber on the box. Measure it before
+putting a large standard webinar on one box.
+
+**Revisit when** the WebRTC capacity test is done (then set the box points for standard
+webinars), or the egress bill from WebRTC audiences on DigitalOcean grows.
 
 ## Observability that would have caught it
 

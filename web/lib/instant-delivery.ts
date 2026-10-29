@@ -12,8 +12,9 @@ export function parseInstantDelivery(raw: string | null | undefined): InstantDel
   return raw === "edge" ? "edge" : "standard";
 }
 
-/** What the create request sends: edge where every webinar is edge (a GCP or DO video
- *  server, lib/delivery-policy.ts), the host's pick where they have the choice, else standard. */
+/** What the create request sends: edge for a host an admin put on edge (on a GCP or DO
+ *  video server, lib/delivery-policy.ts), the host's pick where they have the choice, else
+ *  standard. On GCP and DO the server applies the admin's rule whatever this sends. */
 export function instantDeliveryFor(
   choice: InstantDelivery,
   offer: DeliveryOffer,

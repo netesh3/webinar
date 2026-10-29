@@ -123,18 +123,21 @@ func (s *Server) forgetDelivery(slug string) { s.deliveryCache.Delete(slug) }
 
 // --------------------------------------------------------- saving the choice
 
-/* Edge is the only webinar delivery on GCP and DigitalOcean video servers.
+/* On GCP and DigitalOcean video servers the admin decides a webinar's delivery, per host.
  *
- * Those boxes carry the stage on WebRTC and the audience on LL-HLS through the CDN; a WebRTC
- * audience there is the egress bill the move was made to avoid (docs/edge-delivery.md, "Where
- * edge is the standard"). So a webinar that is, or will be, on one of them is saved as edge
- * whatever the form sent. Production video is the on-demand DigitalOcean box and new rooms go
- * there (sfu_retired.go), so every new webinar is edge. Any other server (a dev SFU, LiveKit
- * Cloud) offers every host the Standard / Edge choice when there is a live origin: there is no
- * per-account switch any more (the "Edge delivery (beta)" feature went with Hetzner,
- * migrations/0159). Meetings and simulive sessions are never edge. */
+ * WebRTC is the default there (29 Oct 2026): the audience joins the room over the SFU, about
+ * 0.3 s behind the stage, rather than the HLS stream's 2–3 s. A host an admin gave
+ * hls_delivery (types.FeatureHLSDelivery, Admin -> Accounts) is edge instead, for a big or
+ * global audience the box should not fan out itself. Hosts never choose: a webinar that is,
+ * or will be, on one of those servers is saved as the rule says whatever the form sent, and
+ * the switch moves the host's webinars that have not run yet (applyHostDelivery). From
+ * 24 Oct to 29 Oct 2026 every webinar there was edge, for the egress bill; the decision is in
+ * docs/decisions/2026-10-26-audience-delivery.md. Any other server (a dev SFU, LiveKit Cloud)
+ * offers every host the Standard / Edge choice when there is a live origin. Meetings and
+ * simulive sessions are never edge. */
 
-// edgeOnlyProvider is whether a video-server provider runs every webinar on edge.
+// edgeOnlyProvider is whether a video-server provider has its webinars' delivery set by the
+// admin rule (hostDelivery) rather than by the host. The name is from when that meant edge.
 func edgeOnlyProvider(provider string) bool { return provider == "gcp" || provider == "do" }
 
 /* deliveryProject is where a webinar's room is, or will be when it is first opened: the pin
@@ -157,9 +160,11 @@ func (s *Server) deliveryProject(ctx context.Context, hostID, pinned string) str
 	return s.firstChoice(ctx, types.Webinar{Host: types.Person{ID: hostID}}, candidates)
 }
 
-/* edgeOnlyProject reports whether a webinar room on this project must be edge: a GCP or DO
- * server, or no project known at all (edge is the default going forward). Never without a
- * live origin to push the mix to: forcing edge there would be a webinar nobody can watch. */
+/* edgeOnlyProject reports whether a webinar room on this project takes its delivery from the
+ * admin rule (hostDelivery) rather than the host: a GCP or DO server, or no project known at
+ * all (production places every new room on the DO box). Never without a live origin to push
+ * the mix to: edge there would be a webinar nobody can watch, so the host's own choice (none,
+ * without an origin) stands. */
 func (s *Server) edgeOnlyProject(project string) bool {
 	if s.cfg.BroadcastRTMPBase == "" {
 		return false
@@ -170,6 +175,15 @@ func (s *Server) edgeOnlyProject(project string) bool {
 // edgeOnlyFor is edgeOnlyProject for a host's webinar pinned to pinned ("" for a new one).
 func (s *Server) edgeOnlyFor(ctx context.Context, hostID, pinned string) bool {
 	return s.edgeOnlyProject(s.deliveryProject(ctx, hostID, pinned))
+}
+
+/* hostDelivery is the admin rule for a webinar of this host's on an edgeOnlyProject: edge
+ * with hls_delivery, else standard (WebRTC, the default since 29 Oct 2026). */
+func (s *Server) hostDelivery(ctx context.Context, hostID string) string {
+	if s.hostFeature(ctx, hostID, types.FeatureHLSDelivery) {
+		return types.DeliveryEdge
+	}
+	return types.DeliveryStandard
 }
 
 /* edgeAllowed is whether a room on this project can have an edge audience: always on GCP
@@ -201,7 +215,8 @@ type deliveryTarget struct {
 
 /* resolveDelivery validates the delivery a save asks for and returns what to store.
  *
- * On a GCP or DO server (edgeOnlyFor) a webinar in this app is edge, whatever was asked for.
+ * On a GCP or DO server (edgeOnlyFor) a webinar in this app is what the admin rule says
+ * (hostDelivery), whatever was asked for; a live or ended one there keeps what it has.
  * Elsewhere "" keeps what is saved (or standard on a create), so a client that never heard
  * of the field changes nothing. Edge there needs a webinar in this app (not Zoom, not
  * simulive) and a live origin to push to; anything else is a field error rather than a
@@ -216,8 +231,15 @@ func (s *Server) resolveDelivery(ctx context.Context, hostID string, in types.We
 		return types.DeliveryStandard, nil
 	}
 	prev := t.prev
-	if edgeFits(in) && !t.locked && s.edgeOnlyFor(ctx, hostID, t.pinned) {
-		return types.DeliveryEdge, nil
+	if edgeFits(in) && s.edgeOnlyFor(ctx, hostID, t.pinned) {
+		if t.locked {
+			// Never switched under its audience, by the rule or by the host.
+			if prev == "" {
+				return types.DeliveryStandard, nil
+			}
+			return prev, nil
+		}
+		return s.hostDelivery(ctx, hostID), nil
 	}
 	want := strings.TrimSpace(in.Delivery)
 	explicit := want != ""
@@ -272,35 +294,66 @@ func (s *Server) saveSeriesDeliveryFrom(ctx context.Context, seriesID, delivery 
 	return err
 }
 
-/* BackfillEdgeDelivery moves every webinar that has not run yet and will run on a GCP or DO
- * server onto edge, at boot: the rule resolveDelivery applies to every save, applied once to
- * what was saved before it existed. Live and ended sessions, meetings, simulive and Zoom are
- * left alone. Idempotent, and a failure only logs: a boot must not fail over it. */
-func (s *Server) BackfillEdgeDelivery(ctx context.Context) {
+/* ruleProjects is every configured project whose webinars take the admin rule (the GCP and DO
+ * video servers), for the SQL that applies it in bulk. Nil without a live origin: then the
+ * rule applies nowhere (edgeOnlyProject). */
+func (s *Server) ruleProjects() []string {
 	if s.cfg.BroadcastRTMPBase == "" {
-		return
+		return nil
 	}
-	var edgeProjects []string
+	out := []string{}
 	for _, id := range s.sfu.IDs() {
 		if edgeOnlyProvider(s.costProviderOf(id)) {
-			edgeProjects = append(edgeProjects, id)
+			out = append(out, id)
 		}
 	}
-	// An unpinned webinar goes to its host's assigned project when that is taking rooms,
-	// else to the first candidate (firstChoice).
-	// No candidate at all leaves an unpinned webinar's target empty, which is edge
-	// (edgeOnlyProject).
-	slugs, err := s.store.BackfillEdgeDelivery(ctx, edgeProjects, s.sfu.Candidates())
-	if err != nil {
-		s.log.Warn("edge: backfill of future webinars failed", "error", err)
+	return out
+}
+
+/* BackfillEdgeDelivery applies the admin rule (hostDelivery) at boot to every webinar that has
+ * not run yet and will run on a GCP or DO server, both ways: edge for a host with
+ * hls_delivery, standard for everyone else. The rule resolveDelivery applies to every save,
+ * applied once to what was saved before it existed (29 Oct 2026: the first boot moves every
+ * future webinar of a host without the switch back to WebRTC). Live and ended sessions,
+ * meetings, simulive and Zoom are left alone. Idempotent, and a failure only logs: a boot
+ * must not fail over it. */
+func (s *Server) BackfillEdgeDelivery(ctx context.Context) {
+	s.applyDeliveryRule(ctx, "")
+}
+
+/* applyHostDelivery is the rule applied to one host's webinars and series that have not run
+ * yet, when an admin turns their hls_delivery on or off (admin.go). */
+func (s *Server) applyHostDelivery(ctx context.Context, hostID string) {
+	if hostID != "" {
+		s.applyDeliveryRule(ctx, hostID)
+	}
+}
+
+// applyDeliveryRule is BackfillEdgeDelivery for one host, or for everyone with hostID "".
+func (s *Server) applyDeliveryRule(ctx context.Context, hostID string) {
+	projects := s.ruleProjects()
+	if projects == nil {
 		return
 	}
-	for _, slug := range slugs {
-		s.forgetDelivery(slug)
+	// An unpinned webinar goes to its host's assigned project when that is taking rooms,
+	// else to the first candidate (firstChoice). No candidate at all leaves an unpinned
+	// webinar's target empty, which takes the rule too (edgeOnlyProject).
+	moved, err := s.store.ApplyHLSDelivery(ctx, projects, s.sfu.Candidates(), hostID)
+	if err != nil {
+		s.log.Warn("delivery: applying the HLS delivery rule to future webinars failed",
+			"host", hostID, "error", err)
+		return
 	}
-	if len(slugs) > 0 {
-		s.log.Info("edge: moved future webinars on GCP/DO video servers to edge delivery",
-			"count", len(slugs), "projects", edgeProjects)
+	edge := 0
+	for _, m := range moved {
+		s.forgetDelivery(m.Slug)
+		if m.Delivery == types.DeliveryEdge {
+			edge++
+		}
+	}
+	if len(moved) > 0 || hostID != "" {
+		s.log.Info("delivery: applied the HLS delivery rule to future webinars on GCP/DO video servers",
+			"host", hostID, "to_edge", edge, "to_standard", len(moved)-edge, "projects", projects)
 	}
 }
 
@@ -646,8 +699,11 @@ func (s *Server) handleDeliveryPolicy(w http.ResponseWriter, r *http.Request) {
 			hostID, pinned = wb.Host.ID, wb.SFUProject
 		}
 	}
-	out := types.DeliveryPolicy{EdgeOnly: s.edgeOnlyFor(r.Context(), hostID, pinned)}
-	if !out.EdgeOnly {
+	// On GCP/DO the admin decides (hostDelivery): no choice either way, edge only with the switch.
+	var out types.DeliveryPolicy
+	if s.edgeOnlyFor(r.Context(), hostID, pinned) {
+		out.EdgeOnly = s.hostDelivery(r.Context(), hostID) == types.DeliveryEdge
+	} else {
 		out.EdgeChoice = s.cfg.BroadcastRTMPBase != ""
 	}
 	httpx.JSON(w, http.StatusOK, out)

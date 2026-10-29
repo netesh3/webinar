@@ -194,7 +194,7 @@ Ensure the following secrets are configured in GitHub Actions (Repository Settin
 | `RECORDINGS_S3_ACCESS_KEY` | `005...` | Scoped Application Key ID |
 | `RECORDINGS_S3_SECRET_KEY` | `K005...` | Scoped Application Key Secret |
 | `RECORDINGS_EGRESS_TEMPLATE_URL` | `https://webinarliv.com/recorder-template` | Zoom-style recording template |
-| `RECORDINGS_EGRESS_PRESET` | `1080p` | `1080p` (default) or `720p` |
+| `RECORDINGS_EGRESS_PRESET` | `720p` | `720p` (default since 29 Oct 2026) or `1080p` |
 | `RECORDINGS_CDN_BASE_URL` | `https://recordings.webinarliv.com` | Cloudflare CDN endpoint |
 
 ---

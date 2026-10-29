@@ -175,8 +175,8 @@ const DELIVERY = [
 
 /** Edge delivery (docs/edge-delivery.md): the choice only on a video server that is not GCP
  *  or DigitalOcean (a dev SFU), for a webinar or series in this app. On GCP and DigitalOcean
- *  (production) every webinar is edge and WhereSection shows a note instead. The stage is the
- *  same either way. */
+ *  (production) an admin decides per host: no choice, and WhereSection shows a note only to a
+ *  host on edge (29 Oct 2026). The stage is the same either way. */
 function DeliverySection({
   form,
   set,

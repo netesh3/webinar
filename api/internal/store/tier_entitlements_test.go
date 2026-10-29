@@ -27,6 +27,10 @@ func TestAIDefaultOffSQLMatchesMigration(t *testing.T) {
 	}
 	// Every switch no plan may include is taken out of the tiers, and nothing else is.
 	for _, f := range types.Features {
+		// hls_delivery came after 0159 (29 Oct 2026), per host from the start: no plan ever had it.
+		if f.Key == types.FeatureHLSDelivery {
+			continue
+		}
 		if in := strings.Contains(AIDefaultOffSQL, "'"+f.Key+"'"); in != f.PerHost {
 			t.Errorf("%s: in AIDefaultOffSQL = %v, PerHost = %v", f.Key, in, f.PerHost)
 		}

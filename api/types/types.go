@@ -1057,9 +1057,10 @@ type Webinar struct {
 	 * the SFU, or the WHEP mix for CDN-broadcast hosts — today's behaviour) or
 	 * DeliveryEdge (the audience watches LL-HLS and gets chat, polls and controls over
 	 * the SSE event stream, never connecting to LiveKit). A webinar on a GCP or
-	 * DigitalOcean video server is always edge; on any other server it is the host's
-	 * choice per webinar (DeliveryPolicy). Meetings and simulive are always standard. See
-	 * docs/edge-delivery.md. */
+	 * DigitalOcean video server is edge when an admin gave its host FeatureHLSDelivery and
+	 * standard otherwise (29 Oct 2026; it was always edge before); on any other server it is
+	 * the host's choice per webinar (DeliveryPolicy). Meetings and simulive are always
+	 * standard. See docs/edge-delivery.md. */
 	Delivery string `json:"delivery,omitempty"`
 	/* ZoomNotice is set on a save Zoom's plan refused. Not stored. */
 	ZoomNotice string `json:"zoomNotice,omitempty"`
@@ -1438,6 +1439,16 @@ const (
 	 * in every tier (migrations/0142). Off: turning server captions on is refused 403
 	 * feature_off and the room falls back to on-device captions in the browser. */
 	FeatureCaptions = "captions"
+	/* FeatureHLSDelivery puts this host's webinars on edge delivery on the GCP and DigitalOcean
+	 * video servers: the audience watches the HLS stream (~2–3 s behind) from the video server
+	 * or the CDN instead of joining the room over WebRTC (~0.3 s). For big or global audiences.
+	 *
+	 * Off for every host, in no plan tier (PerHost): since 29 Oct 2026 webinars there are
+	 * standard (WebRTC) by default, and only an admin moves a host to HLS (Admin -> Accounts).
+	 * Hosts never choose it. Turning it on or off moves the host's webinars and series that
+	 * have not run yet (Server.applyHostDelivery); live and ended sessions keep theirs. A new
+	 * key on purpose: edge_delivery was the old beta switch (migrations/0159, 0160). */
+	FeatureHLSDelivery = "hls_delivery"
 )
 
 // Feature groups: the admin screen's headings (Feature.Group).
@@ -1587,6 +1598,13 @@ var Features = []Feature{
 		Description: "Suggest the best moments and reels of a recorded session (from reactions, chat, questions, polls and what was said, picked by AI) and let this host make them into captioned vertical, square and wide videos with suggested post text, made on the video server between sessions. Counts against the monthly AI limit and the host's recording storage; in effect only with AI and Cloud recording. Off by default.",
 		Group:       FeatureGroupDelivery,
 		Requires:    []string{FeatureAI, FeatureCloudRecording},
+		PerHost:     true,
+	},
+	{
+		Key:         FeatureHLSDelivery,
+		Label:       "HLS delivery (large audiences)",
+		Description: "This host's audience watches an HLS stream from the video server or CDN, about 2–3 s behind, instead of joining the room over WebRTC (about 0.3 s). For big or global audiences. Off by default: webinars run on WebRTC. Moves this host's webinars that have not run yet; meetings stay as they are.",
+		Group:       FeatureGroupDelivery,
 		PerHost:     true,
 	},
 	{
@@ -4077,8 +4095,10 @@ type ServerTime struct {
 /* DeliveryPolicy is GET /api/host/delivery[?slug=]: which delivery the schedule form may
  * offer this host, for a new webinar or (with slug) for one they own.
  *
- * EdgeOnly is a webinar on a GCP or DigitalOcean video server (or one not placed yet that
- * will be): it is always edge, the form offers no choice and the server ignores the field.
+ * On a GCP or DigitalOcean video server (or one not placed yet that will be) the admin
+ * decides, not the host (29 Oct 2026): EdgeOnly is a host with FeatureHLSDelivery, whose
+ * webinars there are edge; without it both are false and they are standard. Either way the
+ * form offers no choice and the server ignores the field.
  * EdgeChoice is the Standard / Edge choice, on any other server that has a live origin
  * (BROADCAST_RTMP_BASE), for every host. Both false is standard only. Meetings and simulive
  * are always standard. */

@@ -163,7 +163,9 @@ type Config struct {
 	RecordingsMode string
 	// RecordingsEgressTemplateURL is the web template URL loaded by LiveKit Egress.
 	RecordingsEgressTemplateURL string
-	// RecordingsEgressPreset: "1080p" (default) or "720p".
+	/* RecordingsEgressPreset: "720p" (default) or "1080p", for a room composite recording with
+	 * no mix beside it. 720p since 29 Oct 2026: standard (WebRTC) webinars are the default on
+	 * the video box again, and a 1080p compositor there takes CPU the room needs. */
 	RecordingsEgressPreset string
 	// RecordingsCDNBaseURL: Cloudflare CDN URL for serving recordings (e.g. https://recordings.webinarliv.com).
 	RecordingsCDNBaseURL string
@@ -625,7 +627,7 @@ func Load() (Config, error) {
 		RecordingsS3SecretKey:       env("RECORDINGS_S3_SECRET_KEY", ""),
 		RecordingsMode:              strings.ToLower(env("RECORDINGS_MODE", "")),
 		RecordingsEgressTemplateURL: strings.TrimRight(env("RECORDINGS_EGRESS_TEMPLATE_URL", ""), "/"),
-		RecordingsEgressPreset:      strings.ToLower(env("RECORDINGS_EGRESS_PRESET", "1080p")),
+		RecordingsEgressPreset:      strings.ToLower(env("RECORDINGS_EGRESS_PRESET", "720p")),
 		RecordingsCDNBaseURL:        strings.TrimRight(env("RECORDINGS_CDN_BASE_URL", ""), "/"),
 		BroadcastRTMPBase:           strings.TrimRight(env("BROADCAST_RTMP_BASE", ""), "/"),
 		BroadcastHLSBase:            strings.TrimRight(env("BROADCAST_HLS_BASE", ""), "/"),

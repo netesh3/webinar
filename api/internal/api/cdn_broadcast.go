@@ -281,11 +281,12 @@ func (s *Server) startEgressRecording(
 		return info, true, nil
 	}
 
-	// Nothing to protect and nowhere to push: the recording gets the whole box and the
-	// quality that goes with it.
-	preset := livekit.EncodingOptionsPreset_H264_1080P_30
-	if s.cfg.RecordingsEgressPreset == "720p" {
-		preset = livekit.EncodingOptionsPreset_H264_720P_30
+	// Nothing to protect and nowhere to push: a standard webinar or a meeting. 720p unless
+	// RECORDINGS_EGRESS_PRESET says 1080p (the default was 1080p until 29 Oct 2026, when
+	// standard webinars came back to the box and its CPU went to the room).
+	preset := livekit.EncodingOptionsPreset_H264_720P_30
+	if s.cfg.RecordingsEgressPreset == "1080p" {
+		preset = livekit.EncodingOptionsPreset_H264_1080P_30
 	}
 	info, err = sfu.StartRoomCompositeEgress(ctx, lk.RoomName(wb.ID), storageKey, s3Opts,
 		s.recordingTemplateURL(wb), preset)

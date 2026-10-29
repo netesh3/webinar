@@ -312,6 +312,10 @@ func (s *Server) handleSetFeature(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("account feature changed",
 		"admin", admin.ID, "target", updated.ID, "feature", body.Feature,
 		"enabled", body.Enabled, "inherit", body.Inherit)
+	// HLS delivery moves the host's webinars that have not run yet, both ways (edge.go).
+	if body.Feature == types.FeatureHLSDelivery {
+		s.applyHostDelivery(r.Context(), updated.ID)
+	}
 
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
@@ -356,6 +360,12 @@ func (s *Server) handleSetFeatures(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("account features changed", "admin", admin.ID, "target", updated.ID, "count", len(changes))
+	for _, c := range changes {
+		if c.Feature == types.FeatureHLSDelivery {
+			s.applyHostDelivery(r.Context(), updated.ID)
+			break
+		}
+	}
 	httpx.JSON(w, http.StatusOK, updated.Public())
 }
 

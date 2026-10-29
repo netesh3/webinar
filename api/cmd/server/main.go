@@ -212,7 +212,8 @@ func run() error {
 	go apiServer.StartRecordingRetentionSweeper(ctx)
 	/* Future webinars still pinned to a retired video server (Hetzner, or any project marked
 	 * disabled) move to the box first (api/internal/api/sfu_retired.go); then future webinars
-	 * on GCP/DO video servers are edge-only (docs/edge-delivery.md). */
+	 * on GCP/DO video servers take the admin rule: edge for hosts with hls_delivery, standard
+	 * (WebRTC) for everyone else (29 Oct 2026, docs/edge-delivery.md). */
 	go func() {
 		apiServer.MoveOffRetiredServers(ctx)
 		apiServer.BackfillEdgeDelivery(ctx)
