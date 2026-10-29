@@ -28,6 +28,8 @@ type googleOAuthState struct {
 	 * session cookie in the system browser. */
 	App       string `json:"app,omitempty"`
 	Challenge string `json:"challenge,omitempty"`
+	Redirect  string `json:"redirect"`
+	Verifier  string `json:"verifier,omitempty"`
 }
 
 func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +55,12 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "google start: nonce", err)
 		return
 	}
+	pkce, err := auth.NewGooglePKCE()
+	if err != nil {
+		s.fail(w, r, "google start: pkce", err)
+		return
+	}
+	redirect := s.googleRedirectURI(r)
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, googleOAuthState{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -64,6 +72,8 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 		Nonce:     nonce,
 		App:       app,
 		Challenge: challenge,
+		Redirect:  redirect,
+		Verifier:  pkce.Verifier,
 	})
 	signed, err := tok.SignedString([]byte(s.cfg.SessionSecret))
 	if err != nil {
@@ -81,18 +91,21 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 		SameSite: s.googleSameSite(),
 	})
 
-	redirect := s.googleRedirectURI(r)
 	hint := auth.GoogleLoginHint(r.URL.Query().Get("login_hint"))
 	if hint == "" {
 		hint = auth.GoogleLoginHint(r.URL.Query().Get("email"))
 	}
-	http.Redirect(w, r, auth.GoogleAuthCodeURL(s.cfg.GoogleClientID, redirect, signed, nonce, hint), http.StatusFound) // #nosec G710 -- redirect to Google's fixed authorize endpoint
+	http.Redirect(w, r, auth.GoogleAuthCodeURL(s.cfg.GoogleClientID, redirect, signed, nonce, hint, pkce.Challenge), http.StatusFound) // #nosec G710 -- redirect to Google's fixed authorize endpoint
 }
 
 func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	next := "/"
 	app := ""
 	fail := func(detail string) {
+		if detail != "denied" {
+			s.log.Warn("google oauth callback failed", "detail", detail,
+				"google_error", r.URL.Query().Get("error"))
+		}
 		s.clearGoogleStateCookie(w)
 		if app != "" {
 			// Back to the app with the reason, so its own login page can say it.
@@ -103,7 +116,8 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, dest, http.StatusFound) // #nosec G710 -- googleFront prefixes an allowlisted origin; next passed safeGoogleNext
 	}
 
-	if gerr := r.URL.Query().Get("error"); gerr != "" {
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	if gerr := r.URL.Query().Get("error"); gerr != "" && code == "" {
 		// Google still returns the state with an error. If it is ours and the sign-in began
 		// in an app, the person cancelled in the system browser: send them back to the app.
 		if st, err := s.parseGoogleState(strings.TrimSpace(r.URL.Query().Get("state"))); err == nil &&
@@ -143,10 +157,18 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redirect := strings.TrimSpace(st.Redirect)
+	if redirect == "" {
+		redirect = s.googleRedirectURI(r)
+	}
+	if reqRedirect := s.googleRedirectURI(r); reqRedirect != redirect {
+		s.log.Info("google oauth redirect pinned", "start", redirect, "request", reqRedirect)
+	}
+
 	tok, err := auth.ExchangeGoogleCode(r.Context(), s.cfg.GoogleClientID, s.cfg.GoogleClientSecret,
-		s.googleRedirectURI(r), r.URL.Query().Get("code"))
+		redirect, code, st.Verifier)
 	if err != nil {
-		s.log.Warn("google oauth exchange", "error", err)
+		s.log.Warn("google oauth exchange", "error", err, "redirect", redirect)
 		fail("exchange")
 		return
 	}
@@ -300,6 +322,34 @@ func (s *Server) googleRedirectURI(r *http.Request) string {
 	return s.googleOrigin(r) + "/api/auth/google/callback"
 }
 
+// canonicalGoogleOrigin maps the www alias of WEB_BASE_URL onto that apex (or
+// the reverse) so authorize and token exchange use one registered redirect_uri.
+// Cloudflare 301s www HTML to the apex; a start on www and a callback that
+// sees the apex (or a dropped X-Forwarded-Host falling back to WebBaseURL)
+// must not send Google two different redirect_uris — that is invalid_grant /
+// "Bad Request" on the token endpoint.
+func canonicalGoogleOrigin(origin, webBase string) string {
+	base := strings.TrimRight(strings.TrimSpace(webBase), "/")
+	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	if base == "" || origin == "" {
+		return origin
+	}
+	u, err := url.Parse(origin)
+	b, err2 := url.Parse(base)
+	if err != nil || err2 != nil {
+		return origin
+	}
+	host := strings.ToLower(u.Hostname())
+	baseHost := strings.ToLower(b.Hostname())
+	if host == "" || baseHost == "" {
+		return origin
+	}
+	if host == "www."+baseHost || baseHost == "www."+host {
+		return base
+	}
+	return origin
+}
+
 func (s *Server) googleFront(r *http.Request, path, next, detail string) string {
 	u, err := url.Parse(s.googleOrigin(r) + path)
 	if err != nil {
@@ -331,10 +381,10 @@ func (s *Server) googleOrigin(r *http.Request) string {
 	}
 	origin := proto + "://" + host
 	if s.webOriginAllowed(origin) {
-		return origin
+		return canonicalGoogleOrigin(origin, s.cfg.WebBaseURL)
 	}
 	if s.cfg.IsDev() && host != "" {
-		return origin
+		return canonicalGoogleOrigin(origin, s.cfg.WebBaseURL)
 	}
 	return strings.TrimRight(s.cfg.WebBaseURL, "/")
 }
