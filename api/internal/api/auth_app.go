@@ -82,7 +82,10 @@ func ChallengeFor(verifier string) string {
  * both out of server logs. */
 func (s *Server) appReturnURL(r *http.Request, app string, v url.Values) string {
 	v.Set("app", app)
-	return s.googleOrigin(r) + "/auth/app-return#" + v.Encode()
+	enc := v.Encode()
+	/* Query and fragment both carry the code: some proxies drop a fragment on a
+	 * 302 Location, and the page prefers the fragment when both are present. */
+	return s.googleOrigin(r) + "/auth/app-return?" + enc + "#" + enc
 }
 
 /* handleAppAuthExchange is POST /api/auth/app/exchange: the app's webview trades the hand-off

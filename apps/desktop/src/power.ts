@@ -9,6 +9,7 @@
 
 import { ipcMain, powerSaveBlocker } from "electron";
 import { isSiteUrl } from "./config";
+import { senderUrl } from "./security";
 
 const active = new Set<number>();
 let blockerId: number | null = null;
@@ -34,7 +35,7 @@ export function isCallActive(): boolean {
 
 export function registerPowerIpc(): void {
   ipcMain.on("webinarliv:call-active", (event, on: unknown) => {
-    if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
+    if (!isSiteUrl(senderUrl(event))) return;
     const id = event.sender.id;
     if (on === true && !active.has(id)) {
       // Drop the flag when this page goes away without saying so.

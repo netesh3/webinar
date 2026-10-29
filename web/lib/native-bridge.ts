@@ -41,7 +41,7 @@ export function routeForOpenedUrl(raw: string): string | null {
   }
   if (u.protocol === "webinarliv:") {
     // webinarliv://webinars/x parses with "webinars" as the host; put it back in the path.
-    const path = `${u.host ? `/${u.host}` : ""}${u.pathname}`.replace(/\/{2,}/g, "/");
+    const path = `${u.host ? `/${u.host}` : ""}${u.pathname}`.replace(/\/{2,}/g, "/").replace(/\/+$/, "");
     return `${path || "/"}${u.search}${u.hash}`;
   }
   if (u.protocol !== "https:" || !isOurHost(u.hostname)) return null;
@@ -59,7 +59,7 @@ export function routeForOpenedUrl(raw: string): string | null {
  *               because the live room that asked is collecting it
  *   "none"      any other link */
 export function handOffReturn(route: string): "navigate" | "stay" | "none" {
-  const path = route.split(/[?#]/)[0];
+  const path = (route.split(/[?#]/)[0] ?? "").replace(/\/+$/, "") || "/";
   if (path === "/auth/complete" || path === "/connect/complete") return "navigate";
   if (path === "/connect/picked") return "stay";
   return "none";

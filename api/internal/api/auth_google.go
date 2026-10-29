@@ -92,6 +92,25 @@ func (s *Server) handleGoogleStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	next := "/"
 	app := ""
+
+	/* The signed state in the query is what Google round-tripped. A leftover
+	 * webcast_google cookie from an earlier attempt must not veto it: that is
+	 * how the desktop app landed on /login?google=state after a real Google
+	 * consent. The JWT signature is the CSRF check; the cookie is only a
+	 * fallback when Google omitted state. */
+	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	if state == "" {
+		if ck, err := r.Cookie(googleStateCookie); err == nil {
+			state = strings.TrimSpace(ck.Value)
+		}
+	}
+	if st, err := s.parseGoogleState(state); err == nil {
+		next = safeGoogleNext(st.Next)
+		if appAuthApps[st.App] && validChallenge(st.Challenge) {
+			app = st.App
+		}
+	}
+
 	fail := func(detail string) {
 		s.clearGoogleStateCookie(w)
 		if app != "" {
@@ -104,12 +123,6 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if gerr := r.URL.Query().Get("error"); gerr != "" {
-		// Google still returns the state with an error. If it is ours and the sign-in began
-		// in an app, the person cancelled in the system browser: send them back to the app.
-		if st, err := s.parseGoogleState(strings.TrimSpace(r.URL.Query().Get("state"))); err == nil &&
-			appAuthApps[st.App] && validChallenge(st.Challenge) {
-			app = st.App
-		}
 		if gerr == "access_denied" {
 			fail("denied")
 			return
@@ -118,16 +131,6 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state := strings.TrimSpace(r.URL.Query().Get("state"))
-	if ck, err := r.Cookie(googleStateCookie); err == nil && ck.Value != "" {
-		if state != "" && ck.Value != state {
-			fail("state")
-			return
-		}
-		if state == "" {
-			state = ck.Value
-		}
-	}
 	st, err := s.parseGoogleState(state)
 	if err != nil {
 		fail("state")

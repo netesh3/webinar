@@ -32,6 +32,7 @@ assert.equal(routeForOpenedUrl("not a url"), null);
 
 // The Google sign-in hand-off comes back on the custom scheme (lib/app-auth.ts).
 assert.equal(routeForOpenedUrl("webinarliv://auth/complete?code=abc"), "/auth/complete?code=abc");
+assert.equal(routeForOpenedUrl("webinarliv://auth/complete/?code=abc"), "/auth/complete?code=abc");
 // The connect hand-offs come back the same way (lib/app-connect.ts).
 assert.equal(
   routeForOpenedUrl("webinarliv://connect/complete?code=abc&provider=zoom"),
@@ -40,6 +41,7 @@ assert.equal(
 assert.equal(routeForOpenedUrl("webinarliv://connect/picked"), "/connect/picked");
 // Sign-in and connect completions load their page; a Drive pick leaves the live room alone.
 assert.equal(handOffReturn("/auth/complete?code=abc"), "navigate");
+assert.equal(handOffReturn("/auth/complete/?code=abc"), "navigate");
 assert.equal(handOffReturn("/connect/complete?error=denied&provider=youtube"), "navigate");
 assert.equal(handOffReturn("/connect/picked"), "stay");
 assert.equal(handOffReturn("/connect/pickedx"), "none");
