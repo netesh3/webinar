@@ -9,7 +9,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes -PversionCode=<run number> so every upload to Play is higher.
         versionCode = Integer.parseInt((project.findProperty("versionCode") ?: "1").toString())
-        versionName "1.0.0"
+        // A mobile-v<version> tag passes -PversionName=<version>; local builds stay 1.0.0.
+        versionName = (project.findProperty("versionName") ?: "1.0.0").toString()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

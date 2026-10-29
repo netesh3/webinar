@@ -13,7 +13,7 @@ apps/desktop/
   src/preload.ts         window.webinarlivDesktop bridge, call detection, badge
   src/picker-preload.ts  bridge for the picker window
   src/power.ts           keep the display awake during a call
-  src/updater.ts         electron-updater (GitHub Releases)
+  src/updater.ts         electron-updater (generic feed on downloads.webinarliv.com)
   src/menu.ts            native menus
   src/window-state.ts    remembered window size and position
   static/                picker and offline pages (local files, strict CSP)
@@ -56,12 +56,15 @@ and uploads the files as the `desktop-mac` and `desktop-windows` artifacts.
 
 1. Bump `version` in `package.json` (and run `npm install` so the lock file follows).
 2. Merge, then tag the merge commit `desktop-v<version>` and push the tag.
-3. CI builds and creates a **draft** release with all the files. Check it and
-   publish it. Installed apps pick it up on their next check.
+3. CI builds both platforms, then publishes the installers and the update feed
+   to https://downloads.webinarliv.com (Cloudflare R2; skipped with a notice
+   until the `R2_DOWNLOADS_*` secrets exist). Installed apps pick it up on their
+   next check, and the website's download page reads `latest.json`.
+4. CI also creates a **draft** GitHub release with the same files, as an archive.
+   Installed apps do not read it.
 
-electron-updater asks GitHub for the repo's *latest* release, so only publish
-desktop releases as "latest" in this repo. A different kind of release marked
-latest would break update checks until the next desktop release.
+Layout, manifest, rollback (Run workflow with `promote_tag`) and the bucket
+setup are in [docs/downloads.md](../../docs/downloads.md).
 
 ## Signing and notarization (to add later)
 
@@ -196,8 +199,9 @@ app forward. On Windows they appear under "Webinar Liv" (AppUserModelID
 
 ### Auto-update
 
-electron-updater with the GitHub Releases provider (`netesh3/webinar`, tags
-`desktop-v*`). Off when running unpackaged (`npm start`) or with
+electron-updater with the generic provider, feed
+`https://downloads.webinarliv.com/desktop/` (`latest-mac.yml`, `latest.yml` and
+the payloads next to them; see docs/downloads.md). Off when running unpackaged (`npm start`) or with
 `WEBINARLIV_DISABLE_UPDATES=1`. Checks 10 s after start and every 4 hours,
 downloads in the background, installs on quit. "Check for Updates…" is in the
 app menu (macOS) or Help menu (Windows).

@@ -184,6 +184,14 @@ Make the upload keystore once with `keytool -genkeypair -v -keystore upload.jks 
 Play App Signing, so Google holds the app signing key, and put *that* key's SHA-256 in
 `assetlinks.json`. CI sets the Android `versionCode` and the iOS build number to the run number.
 
+**Direct APK download.** With the signing secrets, CI also builds a signed `app-release.apk`
+(`assembleRelease`, artifact `webinarliv-android-apk`). Pushing a `mobile-v<version>` tag
+builds with `versionName <version>` and publishes that APK to
+`https://downloads.webinarliv.com/android/` and `latest.json` (see
+[docs/downloads.md](../../docs/downloads.md)). Unsigned and debug APKs are never published.
+The APK is signed with the upload key, not Play's app signing key, so add the upload key's
+SHA-256 to `assetlinks.json` too for App Links to verify on sideloaded installs.
+
 ## What the owner must provide
 
 1. **Apple:** Team ID. Register the App ID `com.webinarliv.app` with the Push Notifications and

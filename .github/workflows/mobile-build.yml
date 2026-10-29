@@ -1,10 +1,18 @@
-# Build the Android and iOS apps (apps/mobile, Capacitor). Builds only: nothing is uploaded
-# to Google Play or App Store Connect from here. See apps/mobile/README.md.
+# Build the Android and iOS apps (apps/mobile, Capacitor). Nothing is uploaded to Google Play
+# or App Store Connect from here. See apps/mobile/README.md.
 #
 # Triggers:
-#   - workflow_dispatch (Actions tab)
+#   - workflow_dispatch (Actions tab); with "promote_tag" (e.g. mobile-v0.1.0) it builds
+#     nothing and makes that APK, already in the downloads bucket, the latest again
 #   - push to main touching apps/mobile/** or this file
 #   - pull requests touching the same paths
+#   - a mobile-v<version> tag: the same builds with versionName <version>, then the signed
+#     release APK is published to https://downloads.webinarliv.com/android/ (Cloudflare R2,
+#     docs/downloads.md). Only when the Android signing secrets exist: an unsigned or debug
+#     APK is never published. Needs the R2_DOWNLOADS_ACCOUNT_ID, R2_DOWNLOADS_ACCESS_KEY_ID,
+#     R2_DOWNLOADS_SECRET_ACCESS_KEY secrets (skipped with a notice without them) and reads
+#     the R2_DOWNLOADS_BUCKET, IOS_APP_STORE_URL, ANDROID_PLAY_STORE_URL, IOS_TESTFLIGHT_URL
+#     variables.
 #
 # Always produced (no secrets needed):
 #   webinarliv-android-debug     app-debug.apk, installable with `adb install`
@@ -12,6 +20,7 @@
 #
 # Produced only when the signing secrets exist (repo Settings -> Secrets -> Actions):
 #   webinarliv-android-release   app-release.aab, signed for Play upload
+#   webinarliv-android-apk       app-release.apk, signed, for direct download
 #     ANDROID_KEYSTORE_BASE64    base64 of the upload keystore (.jks)
 #     ANDROID_KEYSTORE_PASSWORD
 #     ANDROID_KEY_ALIAS
@@ -34,8 +43,14 @@ name: mobile-build
 
 on:
   workflow_dispatch:
+    inputs:
+      promote_tag:
+        description: "Re-publish this existing mobile-v<version> APK from the downloads bucket as latest (no build). Leave empty for a normal build."
+        type: string
+        default: ""
   push:
     branches: [main]
+    tags: ["mobile-v*"]
     paths:
       - "apps/mobile/**"
       - ".github/workflows/mobile-build.yml"
@@ -48,13 +63,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-build-${{ github.ref }}
-  cancel-in-progress: true
+  group: mobile-build-${{ github.ref }}-${{ inputs.promote_tag || 'build' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   android:
+    if: ${{ !inputs.promote_tag }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    outputs:
+      version-name: ${{ steps.version.outputs.name }}
+      version-code: ${{ steps.version.outputs.code }}
+      apk: ${{ steps.verify.outputs.apk }}
     defaults:
       run:
         working-directory: apps/mobile
@@ -63,6 +83,22 @@ jobs:
       HAS_GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Version (versionName from a mobile-v tag)
+        id: version
+        run: |
+          code="${{ github.run_number }}"
+          name=""
+          if [[ "$GITHUB_REF" == refs/tags/mobile-v* ]]; then
+            name="${GITHUB_REF_NAME#mobile-v}"
+            if ! [[ "$name" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::tag $GITHUB_REF_NAME is not mobile-v<major>.<minor>.<patch>"
+              exit 1
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$name" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -82,7 +118,7 @@ jobs:
         run: echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
       - name: assembleDebug
         working-directory: apps/mobile/android
-        run: ./gradlew --no-daemon assembleDebug -PversionCode=${{ github.run_number }}
+        run: ./gradlew --no-daemon assembleDebug -PversionCode="$VERSION_CODE" ${VERSION_NAME:+"-PversionName=$VERSION_NAME"}
       - uses: actions/upload-artifact@v4
         with:
           name: webinarliv-android-debug
@@ -95,25 +131,49 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
-      - name: bundleRelease
+      - name: bundleRelease and assembleRelease
         if: env.HAS_ANDROID_SIGNING == 'true'
         working-directory: apps/mobile/android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon bundleRelease -PversionCode=${{ github.run_number }}
+        run: ./gradlew --no-daemon bundleRelease assembleRelease -PversionCode="$VERSION_CODE" ${VERSION_NAME:+"-PversionName=$VERSION_NAME"}
       - uses: actions/upload-artifact@v4
         if: env.HAS_ANDROID_SIGNING == 'true'
         with:
           name: webinarliv-android-release
           path: apps/mobile/android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
+      # Gradle names an APK without a signing config app-release-unsigned.apk; only a
+      # verified app-release.apk that is not debug-signed is ever offered for download.
+      - name: Verify the release APK signature
+        id: verify
+        if: env.HAS_ANDROID_SIGNING == 'true'
+        working-directory: apps/mobile/android/app/build/outputs/apk/release
+        run: |
+          set -euo pipefail
+          ls -la
+          test -f app-release.apk
+          apksigner="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)/apksigner"
+          "$apksigner" verify --print-certs app-release.apk | tee "$RUNNER_TEMP/apk-certs.txt"
+          if grep -q "CN=Android Debug" "$RUNNER_TEMP/apk-certs.txt"; then
+            echo "::error::app-release.apk is signed with the debug key"
+            exit 1
+          fi
+          echo "apk=signed" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.verify.outputs.apk == 'signed'
+        with:
+          name: webinarliv-android-apk
+          path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
       - name: Remove keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/upload.jks" android/app/google-services.json
 
   ios:
+    if: ${{ !inputs.promote_tag }}
     runs-on: macos-latest
     timeout-minutes: 60
     defaults:
@@ -237,3 +297,92 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
           rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/profile.mobileprovision" \
             "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision
+
+  publish-android:
+    name: publish APK to downloads.webinarliv.com
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Shared with desktop-build.yml: one writer of latest.json at a time.
+    concurrency:
+      group: downloads-publish
+      cancel-in-progress: false
+    env:
+      HAS_R2: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID != '' && secrets.R2_DOWNLOADS_ACCESS_KEY_ID != '' && secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY != '' }}
+      APK_SIGNED: ${{ needs.android.outputs.apk == 'signed' }}
+    steps:
+      - name: Nothing to publish
+        if: env.APK_SIGNED != 'true' || env.HAS_R2 != 'true'
+        run: |
+          if [ "$APK_SIGNED" != "true" ]; then
+            echo "::notice title=APK not published::No signed release APK (the ANDROID_KEYSTORE_* / ANDROID_KEY_* secrets are missing). Debug builds are never published."
+          else
+            echo "::notice title=APK not published::Add the R2_DOWNLOADS_ACCOUNT_ID, R2_DOWNLOADS_ACCESS_KEY_ID and R2_DOWNLOADS_SECRET_ACCESS_KEY secrets to publish to downloads.webinarliv.com (docs/downloads.md)."
+          fi
+      - uses: actions/checkout@v4
+        if: env.APK_SIGNED == 'true' && env.HAS_R2 == 'true'
+      - uses: actions/setup-node@v4
+        if: env.APK_SIGNED == 'true' && env.HAS_R2 == 'true'
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        if: env.APK_SIGNED == 'true' && env.HAS_R2 == 'true'
+        with:
+          name: webinarliv-android-apk
+          path: dist
+      - name: Publish
+        if: env.APK_SIGNED == 'true' && env.HAS_R2 == 'true'
+        env:
+          VERSION_NAME: ${{ needs.android.outputs.version-name }}
+          VERSION_CODE: ${{ needs.android.outputs.version-code }}
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          IOS_APP_STORE_URL: ${{ vars.IOS_APP_STORE_URL }}
+          ANDROID_PLAY_STORE_URL: ${{ vars.ANDROID_PLAY_STORE_URL }}
+          IOS_TESTFLIGHT_URL: ${{ vars.IOS_TESTFLIGHT_URL }}
+        run: |
+          set -euo pipefail
+          node scripts/downloads/publish.mjs android --version "$VERSION_NAME" --version-code "$VERSION_CODE" \
+            --apk dist/app-release.apk --signed true --write-manifest "$RUNNER_TEMP/latest.json"
+          { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  promote-android:
+    name: re-publish ${{ inputs.promote_tag }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: downloads-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Promote
+        env:
+          PROMOTE_TAG: ${{ inputs.promote_tag }}
+          HAS_R2: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID != '' && secrets.R2_DOWNLOADS_ACCESS_KEY_ID != '' && secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY != '' }}
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          IOS_APP_STORE_URL: ${{ vars.IOS_APP_STORE_URL }}
+          ANDROID_PLAY_STORE_URL: ${{ vars.ANDROID_PLAY_STORE_URL }}
+          IOS_TESTFLIGHT_URL: ${{ vars.IOS_TESTFLIGHT_URL }}
+        run: |
+          set -euo pipefail
+          case "$PROMOTE_TAG" in
+            mobile-v*) ;;
+            *) echo "::error::promote_tag must look like mobile-v0.1.0, got '$PROMOTE_TAG'"; exit 1 ;;
+          esac
+          if [ "$HAS_R2" != "true" ]; then
+            echo "::error::the R2_DOWNLOADS_* secrets are not set (docs/downloads.md)"
+            exit 1
+          fi
+          node scripts/downloads/publish.mjs promote-android --version "${PROMOTE_TAG#mobile-v}" \
+            --write-manifest "$RUNNER_TEMP/latest.json"
+          { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
