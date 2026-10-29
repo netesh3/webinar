@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  cityLabel,
+  cityRows,
   countryName,
   countryRows,
   flagEmoji,
@@ -9,7 +11,7 @@ import {
   topRows,
 } from "./audience-locations.ts";
 
-const base = { countries: [], indiaRegions: [], indiaUnknown: 0, unknown: 0 };
+const base = { countries: [], indiaRegions: [], indiaUnknown: 0, unknown: 0, cities: [], citiesOther: 0, citiesUnknown: 0 };
 
 test("a flag is the code's two regional indicators, and nothing for a bad code", () => {
   assert.equal(flagEmoji("IN"), "🇮🇳");
@@ -64,6 +66,38 @@ test("countries carry their flag and name; India's states end with Unknown", () 
     { key: "~unknown", label: "Unknown", count: 1, pct: 17 },
   ]);
   assert.deepEqual(indiaStateRows(d, 1).map((r) => r.label), ["Karnataka", "Other", "Unknown"]);
+});
+
+test("a city is named with its state in India and its country elsewhere", () => {
+  assert.equal(cityLabel({ country: "IN", region: "Karnataka", city: "Bengaluru", count: 1 }), "Bengaluru, Karnataka");
+  assert.equal(cityLabel({ country: "IN", region: "", city: "Bengaluru", count: 1 }), "Bengaluru, India");
+  assert.equal(cityLabel({ country: "FR", region: "Auvergne-Rhone-Alpes", city: "Lyon", count: 1 }), "Lyon, France");
+});
+
+test("the top cities keep two of one name apart, then Other and Unknown", () => {
+  const d = {
+    ...base,
+    attendees: 12,
+    recorded: 10,
+    unknown: 2,
+    cities: [
+      { country: "IN", region: "Karnataka", city: "Bengaluru", count: 5 },
+      { country: "US", region: "Texas", city: "Paris", count: 2 },
+      { country: "FR", region: "Île-de-France", city: "Paris", count: 1 },
+    ],
+    citiesOther: 1,
+    citiesUnknown: 1,
+  };
+  assert.deepEqual(cityRows(d), [
+    { key: "IN|Karnataka|Bengaluru", label: "Bengaluru, Karnataka", count: 5, pct: 50 },
+    { key: "US|Texas|Paris", label: "Paris, United States", count: 2, pct: 20 },
+    { key: "FR|Île-de-France|Paris", label: "Paris, France", count: 1, pct: 10 },
+    { key: "~other", label: "Other", count: 1, pct: 10 },
+    { key: "~unknown", label: "Unknown", count: 1, pct: 10 },
+  ]);
+  assert.deepEqual(cityRows({ ...base, attendees: 1, recorded: 1, citiesUnknown: 1 }), [
+    { key: "~unknown", label: "Unknown", count: 1, pct: 100 },
+  ]);
 });
 
 test("the note says how many people the numbers cover", () => {

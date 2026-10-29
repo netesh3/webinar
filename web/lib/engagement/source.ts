@@ -191,6 +191,20 @@ const SAMPLE_LOCATIONS: AudienceLocations = {
     { key: "West Bengal", count: 2 },
   ],
   indiaUnknown: 2,
+  cities: [
+    { country: "IN", region: "Karnataka", city: "Bengaluru", count: 16 },
+    { country: "IN", region: "Maharashtra", city: "Mumbai", count: 11 },
+    { country: "IN", region: "Tamil Nadu", city: "Chennai", count: 10 },
+    { country: "IN", region: "Delhi", city: "New Delhi", count: 7 },
+    { country: "IN", region: "Kerala", city: "Kochi", count: 6 },
+    { country: "IN", region: "Telangana", city: "Hyderabad", count: 6 },
+    { country: "AE", region: "Dubai", city: "Dubai", count: 4 },
+    { country: "IN", region: "Gujarat", city: "Ahmedabad", count: 3 },
+    { country: "IN", region: "Maharashtra", city: "Pune", count: 3 },
+    { country: "IN", region: "West Bengal", city: "Kolkata", count: 2 },
+  ],
+  citiesOther: 9,
+  citiesUnknown: 5,
 };
 
 /** The sample webinar's 85 people by device, for the preview's Audience devices card. */

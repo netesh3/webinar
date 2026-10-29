@@ -22,14 +22,14 @@ func (s *Server) noteJoinDevice(r *http.Request, slug, identity string) {
 
 /* joinLocation is where Cloudflare places this join's network, for the audience by location.
  * A country is two letters, upper case; Cloudflare's XX (no idea) and T1 (Tor) are unknown,
- * as is anything else that is not a real code. With no country there is no region either.
- * (29 Oct 2026) */
+ * as is anything else that is not a real code. With no country there is no region or city
+ * either. (29 Oct 2026) */
 func joinLocation(r *http.Request) store.Location {
 	c := viewerCountry(r)
 	if len(c) != 2 || c == "XX" || c[0] < 'A' || c[0] > 'Z' || c[1] < 'A' || c[1] > 'Z' {
 		return store.Location{}
 	}
-	return store.Location{Country: c, Region: viewerRegion(r)}
+	return store.Location{Country: c, Region: viewerRegion(r), City: viewerCity(r)}
 }
 
 // handleWebinarDevices is one webinar's audience by device, for its host.

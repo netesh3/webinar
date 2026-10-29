@@ -2799,6 +2799,16 @@ export interface LocationCount {
   count: number /* int */;
 }
 /**
+ * CityCount is one city, with the region ("" when Cloudflare gave none) and the country it is
+ * in, so two cities of one name are two buckets.
+ */
+export interface CityCount {
+  country: string;
+  region: string;
+  city: string;
+  count: number /* int */;
+}
+/**
  * AudienceLocations is the audience's locations, largest bucket first.
  */
 export interface AudienceLocations {
@@ -2817,6 +2827,14 @@ export interface AudienceLocations {
    */
   indiaRegions: LocationCount[];
   indiaUnknown: number /* int */;
+  /**
+   * Cities is the top ten cities, out of the people whose country is known. CitiesOther is
+   * everyone in the cities past those; CitiesUnknown is those with a country but no city
+   * (Cloudflare gave none, or they joined before cities were recorded, 29 Oct 2026).
+   */
+  cities: CityCount[];
+  citiesOther: number /* int */;
+  citiesUnknown: number /* int */;
   /**
    * Days is the admin's window; 0 for one webinar.
    */

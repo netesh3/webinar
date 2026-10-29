@@ -340,14 +340,24 @@ func viewerCountry(r *http.Request) string {
 }
 
 /* viewerRegion is the region inside the viewer's country that Cloudflare places them in (the
- * state, for India: "Karnataka"), "" when there is none. Only the region: the Worker never
- * forwards the city.
+ * state, for India: "Karnataka"), "" when there is none.
  *
  * The Worker URI-encodes it (a header value is bytes, and "São Paulo" is not ASCII) and drops
  * any copy the client sent, so this decodes, keeps it valid UTF-8 without control characters,
  * and caps it at maxRegionLen runes. Analytics only (devices.go noteJoinDevice). */
 func viewerRegion(r *http.Request) string {
-	raw := strings.TrimSpace(r.Header.Get("X-Viewer-Region"))
+	return viewerPlace(r, "X-Viewer-Region")
+}
+
+/* viewerCity is the city Cloudflare places the viewer in ("Bengaluru"), "" when there is none:
+ * X-Viewer-City, encoded by the Worker and cleaned here exactly as the region is. (29 Oct 2026) */
+func viewerCity(r *http.Request) string {
+	return viewerPlace(r, "X-Viewer-City")
+}
+
+// viewerPlace is a place name the Worker forwarded URI-encoded in header, cleaned as above.
+func viewerPlace(r *http.Request, header string) string {
+	raw := strings.TrimSpace(r.Header.Get(header))
 	if raw == "" {
 		return ""
 	}
@@ -370,7 +380,8 @@ func viewerRegion(r *http.Request) string {
 	return raw
 }
 
-// maxRegionLen bounds a region name; the longest real ones are about half of it.
+// maxRegionLen bounds a region or a city name (migrations 0171, 0172); the longest real ones
+// are about half of it.
 const maxRegionLen = 64
 
 const (

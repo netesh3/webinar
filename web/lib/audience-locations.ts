@@ -1,8 +1,9 @@
-import type { AudienceLocations, LocationCount } from "./api-types";
+import type { AudienceLocations, CityCount, LocationCount } from "./api-types";
 import type { DeviceRow } from "./audience-devices";
 
 /* The audience-by-location breakdown as the cards show it (components/audience-locations.tsx):
- * the top countries with a flag and a name, and India by state, each with a count and a share,
+ * the top countries with a flag and a name, India by state, and the top cities, each with a
+ * count and a share,
  * the long tail folded into "Other". The same rows as the device card's bars. Pure, so the
  * grouping and the wording are tested (audience-locations.test.mts). (29 Oct 2026) */
 
@@ -66,6 +67,32 @@ export function indiaStateRows(d: AudienceLocations, top = TOP_STATES): DeviceRo
   const rows = topRows(d.indiaRegions, india, top);
   if (d.indiaUnknown > 0) {
     rows.push({ key: "~unknown", label: "Unknown", count: d.indiaUnknown, pct: pctOf(d.indiaUnknown, india) });
+  }
+  return rows;
+}
+
+/** A city as the card names it: "Bengaluru, Karnataka" in India, where the state says more than
+ * the country, and "Lyon, France" elsewhere; "Bengaluru, India" when India gave no state. */
+export function cityLabel(c: CityCount): string {
+  const where = c.country === "IN" && c.region ? c.region : countryName(c.country);
+  return `${c.city}, ${where}`;
+}
+
+/** The top cities (the API sends ten), then "Other" for the cities past them and "Unknown" for
+ * the people with a country but no city, all shared out of the people whose country is known.
+ * The key is country, region and city, so two places of one name are two rows. (29 Oct 2026) */
+export function cityRows(d: AudienceLocations): DeviceRow[] {
+  const rows: DeviceRow[] = d.cities.map((c) => ({
+    key: `${c.country}|${c.region}|${c.city}`,
+    label: cityLabel(c),
+    count: c.count,
+    pct: pctOf(c.count, d.recorded),
+  }));
+  if (d.citiesOther > 0) {
+    rows.push({ key: "~other", label: "Other", count: d.citiesOther, pct: pctOf(d.citiesOther, d.recorded) });
+  }
+  if (d.citiesUnknown > 0) {
+    rows.push({ key: "~unknown", label: "Unknown", count: d.citiesUnknown, pct: pctOf(d.citiesUnknown, d.recorded) });
   }
   return rows;
 }
