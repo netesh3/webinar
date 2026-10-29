@@ -21,7 +21,11 @@ const env = (name) => {
 
 const macSigned = Boolean(env("CSC_LINK") || env("CSC_NAME"));
 const macNotarize =
-  macSigned && Boolean(env("APPLE_ID") && env("APPLE_APP_SPECIFIC_PASSWORD") && env("APPLE_TEAM_ID"));
+  macSigned &&
+  Boolean(
+    (env("APPLE_ID") && env("APPLE_APP_SPECIFIC_PASSWORD") && env("APPLE_TEAM_ID")) ||
+      (env("APPLE_API_KEY") && env("APPLE_API_KEY_ID") && env("APPLE_API_ISSUER")),
+  );
 
 const azureSign =
   env("AZURE_TRUSTED_SIGNING_ENDPOINT") &&

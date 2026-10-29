@@ -57,7 +57,7 @@ import {
   updaterFeedFiles,
   updaterFeedVersion,
 } from "./lib.mjs";
-import { AwsStore, DirStore, DryRunStore } from "./store.mjs";
+import { AwsStore, DirStore, DryRunStore, WranglerR2Store } from "./store.mjs";
 
 const bool = (v) => v === true || v === "true" || v === "1";
 
@@ -108,6 +108,7 @@ function desktopSection({ version, releasedAt, signed, files, baseUrl }) {
   const out = { version, releasedAt, signed, files: {} };
   for (const t of DESKTOP_TARGETS) {
     const f = files[t.id];
+    if (!f) continue;
     out.files[t.id] = { url: publicUrl(baseUrl, desktopLatestKey(t)), size: f.size, sha256: f.sha256 };
   }
   return out;
@@ -121,15 +122,22 @@ export async function publishDesktop({ store, dir, version, signedMac, signedWin
   const installers = [];
   for (const t of DESKTOP_TARGETS) {
     const path = join(dir, desktopFileName(version, t));
-    if (!existsSync(path)) throw new Error(`missing installer ${path}`);
+    if (!existsSync(path)) continue;
     installers.push({ t, path, ...(await fileInfo(path)) });
+  }
+  if (!installers.some((i) => i.t.platform === "mac")) {
+    throw new Error(`missing macOS installer in ${dir}`);
   }
 
   const feeds = [];
   const payloadNames = new Set();
   for (const name of DESKTOP_FEED_FILES) {
     const path = join(dir, name);
-    if (!existsSync(path)) throw new Error(`missing updater feed ${path}`);
+    if (!existsSync(path)) {
+      // Windows feed is absent when this Mac ships macOS-only (no Azure Trusted Signing).
+      if (name === "latest.yml") continue;
+      throw new Error(`missing updater feed ${path}`);
+    }
     const text = await readFile(path, "utf8");
     const feedVersion = updaterFeedVersion(text);
     if (feedVersion !== version) throw new Error(`${name} is for version ${feedVersion}, expected ${version}`);
@@ -192,14 +200,20 @@ export async function promoteDesktop({ store, version, baseUrl, env, now, log })
   for (const t of DESKTOP_TARGETS) {
     const key = desktopVersionedKey(version, t);
     const head = await store.head(key);
-    if (!head?.metadata?.sha256) throw new Error(`${key} is not in the bucket (or has no sha256 metadata)`);
+    if (!head?.metadata?.sha256) {
+      if (t.platform === "windows") continue;
+      throw new Error(`${key} is not in the bucket (or has no sha256 metadata)`);
+    }
     files[t.id] = { size: head.size, sha256: head.metadata.sha256 };
     meta[t.id] = head.metadata;
   }
   const feeds = [];
   for (const name of DESKTOP_FEED_FILES) {
     const text = await store.getText(desktopFeedVersionedKey(version, name));
-    if (text == null) throw new Error(`${desktopFeedVersionedKey(version, name)} is not in the bucket`);
+    if (text == null) {
+      if (name === "latest.yml") continue;
+      throw new Error(`${desktopFeedVersionedKey(version, name)} is not in the bucket`);
+    }
     for (const n of updaterFeedFiles(text)) {
       if (!(await store.head(desktopPayloadKey(n)))) throw new Error(`${desktopPayloadKey(n)} is not in the bucket`);
     }
@@ -207,6 +221,7 @@ export async function promoteDesktop({ store, version, baseUrl, env, now, log })
   }
 
   for (const t of DESKTOP_TARGETS) {
+    if (!files[t.id]) continue;
     log(`copy  ${desktopVersionedKey(version, t)} -> ${desktopLatestKey(t)}`);
     await store.copy(desktopVersionedKey(version, t), desktopLatestKey(t), {
       contentType: contentTypeFor(desktopLatestKey(t)),
@@ -218,8 +233,11 @@ export async function promoteDesktop({ store, version, baseUrl, env, now, log })
     log(`put   ${desktopFeedKey(f.name)}`);
     await store.putText(desktopFeedKey(f.name), f.text, { contentType: contentTypeFor(f.name), cacheControl: CACHE_FEED });
   }
-  const signed = { mac: meta["mac-arm64"].signed === "true", windows: meta["win-x64"].signed === "true" };
-  const releasedAt = meta["mac-arm64"]["released-at"] ?? now;
+  const signed = {
+    mac: meta["mac-arm64"]?.signed === "true",
+    windows: meta["win-x64"]?.signed === "true",
+  };
+  const releasedAt = meta["mac-arm64"]?.["released-at"] ?? now;
   const value = desktopSection({ version, releasedAt, signed, files, baseUrl });
   return writeManifest(store, { section: "desktop", value, env, now, log });
 }
@@ -330,14 +348,20 @@ async function main(argv) {
     const endpoint = env.R2_DOWNLOADS_ENDPOINT || `https://${env.R2_DOWNLOADS_ACCOUNT_ID}.r2.cloudflarestorage.com`;
     store = new AwsStore({ bucket, endpoint });
   } else if (!values["dry-run"]) {
-    throw new Error("no bucket: set R2_DOWNLOADS_ACCOUNT_ID, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (or use --dry-run / --fake-bucket)");
+    // This Mac: Wrangler OAuth to R2 when the S3 API keys are not in the env.
+    store = new WranglerR2Store({ bucket });
   }
   if (values["dry-run"]) {
     const overrides = {};
     if (values["current-manifest"]) overrides[MANIFEST_KEY] = await readFile(values["current-manifest"], "utf8");
     store = new DryRunStore(store, (line) => console.log(line), overrides);
   }
-  const target = store instanceof AwsStore ? `r2://${bucket}` : values["fake-bucket"] ? `dir:${values["fake-bucket"]}` : "nothing";
+  const target =
+    store instanceof AwsStore || store instanceof WranglerR2Store
+      ? `r2://${bucket}`
+      : values["fake-bucket"]
+        ? `dir:${values["fake-bucket"]}`
+        : "nothing";
   log(`${command}${values["dry-run"] ? " (dry run)" : ""} -> ${target}, public base ${baseUrl}`);
 
   const common = { store, version: values.version, baseUrl, env, log };

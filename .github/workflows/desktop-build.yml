@@ -71,9 +71,12 @@ jobs:
           node-version: 22
       - run: node --test scripts/downloads/publish.test.mjs
 
+  # GitHub-hosted macos-latest / windows-latest are off until
+  # vars.GITHUB_HOSTED_DESKTOP=true (this Mac builds and publishes macOS for now;
+  # Windows is skipped with Azure Trusted Signing).
   build:
     name: build (${{ matrix.name }})
-    if: ${{ !inputs.promote_tag }}
+    if: ${{ !inputs.promote_tag && vars.GITHUB_HOSTED_DESKTOP == 'true' }}
     strategy:
       fail-fast: false
       matrix:
