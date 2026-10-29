@@ -21,6 +21,7 @@ import {
   setDevBypassOptedOut,
 } from "@/lib/dev-bypass-session";
 import { isSignOutNotice, publishSignOut } from "@/lib/login-redirect";
+import { unregisterNativePush } from "@/lib/native-bridge";
 import { ThemeProvider } from "./theme";
 
 /* App-wide client state: who is signed in, what the operator named this
@@ -420,6 +421,9 @@ export function AppProviders({
           return;
         }
         try {
+          // Inside the mobile app: this install stops getting the account's pushes. It needs
+          // the session, so it goes first; it never holds up signing out. (29 Oct 2026)
+          await unregisterNativePush().catch(() => {});
           await api.logout();
         } finally {
           // Drop local state even if the request failed: the cookie may already

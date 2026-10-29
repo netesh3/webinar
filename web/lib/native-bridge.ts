@@ -26,9 +26,13 @@ function isOurHost(host: string): boolean {
  *   https://recordings.webinarliv.com/a    -> that URL as is    (an allowed subdomain)
  *   webinarliv://webinars/x                -> /webinars/x       (custom scheme fallback)
  *   webinarliv:///webinars/x               -> /webinars/x
+ *   webinarliv://auth/complete?code=c      -> /auth/complete?code=c  (the Google hand-off)
+ *   /webinars/x                            -> /webinars/x       (a path, as a push may carry)
  *   anything else                          -> null
  */
 export function routeForOpenedUrl(raw: string): string | null {
+  // A bare site path (an older push payload's data.url): as is, but never "//host".
+  if (raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\")) return raw;
   let u: URL;
   try {
     u = new URL(raw);
@@ -93,12 +97,15 @@ type AppPlugin = {
 type SharePlugin = {
   share: (o: { title?: string; text?: string; url?: string; dialogTitle?: string }) => Promise<unknown>;
 };
-type PushPlugin = {
+/* @capacitor-firebase/messaging (29 Oct 2026): an FCM registration token on iOS as well as
+ * Android, so the API sends to both through FCM (api/internal/push/fcm.go). */
+type MessagingPlugin = {
   checkPermissions: () => Promise<{ receive: string }>;
   requestPermissions: () => Promise<{ receive: string }>;
-  register: () => Promise<void>;
+  getToken: () => Promise<{ token: string }>;
   addListener: (event: string, fn: (data: never) => void) => Promise<Listener>;
 };
+type BrowserPlugin = { close: () => Promise<void> };
 type KeepAwakePlugin = { keepAwake: () => Promise<void>; allowSleep: () => Promise<void> };
 
 const LAUNCH_KEY = "webinarliv.native.launchUrl";
@@ -107,6 +114,12 @@ const LAST_OPEN_KEY = "webinarliv.native.lastOpen";
 function open(raw: string): void {
   const route = routeForOpenedUrl(raw);
   if (!route) return;
+  if (route.startsWith("/auth/complete")) {
+    /* The Google hand-off is back (lib/app-auth.ts): put away the in-app browser sheet it
+     * ran in. iOS only; Android's Custom Tab closes as the app comes forward. */
+    const browser = plugin("Browser") as unknown as BrowserPlugin | null;
+    if (browser && cap()?.getPlatform?.() === "ios") void browser.close().catch(() => {});
+  }
   const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (route === here || route === window.location.href) return;
   /* A cold start can report the same link twice: getLaunchUrl, and the appUrlOpen event
@@ -157,26 +170,118 @@ function wireShare(): void {
 }
 
 const PUSH_ASKED_KEY = "webinarliv.native.pushAsked";
+/** The install's FCM token, once Firebase has given one. */
+const PUSH_TOKEN_KEY = "webinarliv.native.pushToken";
+/** What the API last accepted: {token, user, at}. */
+const PUSH_SYNCED_KEY = "webinarliv.native.pushSynced";
+/** Re-send a token the API already has once a day, so a lost row heals by itself. */
+const PUSH_RESYNC_MS = 24 * 60 * 60_000;
 
-/** Native push (FCM / APNs). Registers and logs the device token.
- *
- * FOLLOW-UP: the API only knows Web Push subscriptions (api/internal/api/push.go,
- * VAPID); there is no endpoint that accepts an FCM / APNs token yet, so the token is
- * logged and not sent anywhere. See apps/mobile/README.md, "Push notifications". */
+/** Whether the API needs (token, user) again. Pure, for the test. */
+export function pushNeedsSync(
+  last: { token?: string; user?: string; at?: number } | null,
+  token: string,
+  user: string,
+  now: number,
+): boolean {
+  if (!token || !user) return false;
+  if (!last || last.token !== token || last.user !== user) return true;
+  return !last.at || now - last.at > PUSH_RESYNC_MS;
+}
+
+let signedInUser: string | null = null;
+let syncing: Promise<void> | null = null;
+
+function readJSON<T>(key: string): T | null {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "null") as T | null;
+  } catch {
+    return null;
+  }
+}
+
+async function appVersion(): Promise<string> {
+  const app = plugin("App") as unknown as { getInfo?: () => Promise<{ version?: string; build?: string }> } | null;
+  try {
+    const info = await app?.getInfo?.();
+    return info?.version ? `${info.version}${info.build ? ` (${info.build})` : ""}` : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Hands the install's token to the API for the signed-in account (POST /api/push/native). */
+async function syncPushToken(): Promise<void> {
+  const user = signedInUser;
+  const token = localStorage.getItem(PUSH_TOKEN_KEY) ?? "";
+  const platform = cap()?.getPlatform?.();
+  if (!user || !token || (platform !== "ios" && platform !== "android")) return;
+  if (!pushNeedsSync(readJSON(PUSH_SYNCED_KEY), token, user, Date.now())) return;
+  try {
+    const res = await fetch("/api/push/native", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform, token, appVersion: await appVersion() }),
+    });
+    if (res.ok) {
+      localStorage.setItem(PUSH_SYNCED_KEY, JSON.stringify({ token, user, at: Date.now() }));
+    }
+  } catch {
+    // Offline: the next page load tries again.
+  }
+}
+
+function syncSoon(): void {
+  syncing = (syncing ?? Promise.resolve()).then(syncPushToken, syncPushToken);
+}
+
+/** Who is signed in, from the session (components/native-boot.tsx NativeSessionSync). A
+ *  signed-in account gets this install's token; null is signed out. No-op outside the app. */
+export function setNativeSessionUser(userID: string | null): void {
+  if (!isNativeApp()) return;
+  signedInUser = userID;
+  if (userID) syncSoon();
+}
+
+/** Before signing out: this install stops hearing from the account (DELETE /api/push/native,
+ *  which needs the session that is about to end). No-op outside the app or without a token. */
+export async function unregisterNativePush(): Promise<void> {
+  if (!isNativeApp()) return;
+  const token = localStorage.getItem(PUSH_TOKEN_KEY) ?? "";
+  localStorage.removeItem(PUSH_SYNCED_KEY);
+  signedInUser = null;
+  if (!token) return;
+  try {
+    await fetch("/api/push/native", {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+  } catch {
+    // Signed out anyway; the token moves to whoever signs in next on this install.
+  }
+}
+
+function keepToken(token: string | undefined): void {
+  if (!token) return;
+  localStorage.setItem(PUSH_TOKEN_KEY, token);
+  syncSoon();
+}
+
+/** Native push through Firebase Cloud Messaging: asks once, gets the install's FCM token,
+ *  and sends it to the API for the signed-in account (and again whenever Firebase rotates
+ *  it). A tapped notification opens its data.url. */
 async function wirePush(): Promise<Listener[]> {
-  const push = plugin("PushNotifications") as unknown as PushPlugin | null;
+  const push = plugin("FirebaseMessaging") as unknown as MessagingPlugin | null;
   if (!push) return [];
   const platform = cap()?.getPlatform?.() ?? "native";
   const listeners = await Promise.all([
-    push.addListener("registration", (t: { value: string }) => {
-      console.info(`[webinarliv-app] ${platform} push token:`, t.value);
-    }),
-    push.addListener("registrationError", (e: { error: unknown }) => {
-      console.warn("[webinarliv-app] push registration failed:", e.error);
-    }),
+    push.addListener("tokenReceived", (t: { token: string }) => keepToken(t.token)),
     // A tapped notification whose payload carries data.url opens that page.
     push.addListener(
-      "pushNotificationActionPerformed",
+      "notificationActionPerformed",
       (a: { notification?: { data?: { url?: string } } }) => {
         const url = a.notification?.data?.url;
         if (url) open(url);
@@ -184,10 +289,10 @@ async function wirePush(): Promise<Listener[]> {
     ),
   ]);
   try {
-    /* Android: only with Firebase in the build. Without google-services.json the
-     * plugin's register() throws on the main thread and the app crashes, so the app's
-     * own WebinarLivApp plugin (AppInfoPlugin.java) is asked first. Missing plugin
-     * means an unknown build: leave push off. iOS just reports registrationError. */
+    /* Android: only with Firebase in the build. Without google-services.json Firebase is
+     * not initialised and asking it for a token throws on the main thread, so the app's
+     * own WebinarLivApp plugin (AppInfoPlugin.java) is asked first. Missing plugin means an
+     * unknown build: leave push off. iOS without GoogleService-Info.plist rejects getToken. */
     if (platform === "android") {
       const info = plugin("WebinarLivApp") as unknown as
         | { info: () => Promise<{ pushConfigured?: boolean }> }
@@ -203,9 +308,9 @@ async function wirePush(): Promise<Listener[]> {
       localStorage.setItem(PUSH_ASKED_KEY, "1");
       ({ receive } = await push.requestPermissions());
     }
-    if (receive === "granted") await push.register();
+    if (receive === "granted") keepToken((await push.getToken()).token);
   } catch (err) {
-    // Android without google-services.json lands here: push is simply off.
+    // A build without the Firebase config files lands here: push is simply off.
     console.warn("[webinarliv-app] push unavailable:", err);
   }
   return listeners;

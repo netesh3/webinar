@@ -255,6 +255,10 @@ done
 [[ -n "${VAPID_PUBLIC_KEY:-}" ]] && ENV_VARS+=("VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}")
 [[ -n "${VAPID_PRIVATE_KEY:-}" ]] && ENV_VARS+=("VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}")
 [[ -n "${VAPID_SUBJECT:-}" ]] && ENV_VARS+=("VAPID_SUBJECT=${VAPID_SUBJECT}")
+# Native push to the Android and iOS apps through FCM (api/internal/push/fcm.go): a Firebase
+# service account's JSON key. The env file below JSON-encodes it, so its quotes and newlines are
+# safe. Unset, the apps' tokens are stored and nothing is sent to them.
+[[ -n "${FCM_SERVICE_ACCOUNT_JSON:-}" ]] && ENV_VARS+=("FCM_SERVICE_ACCOUNT_JSON=${FCM_SERVICE_ACCOUNT_JSON}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")

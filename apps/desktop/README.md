@@ -98,9 +98,11 @@ Open; or `xattr -cr "/Applications/Webinar Liv.app"`) and Windows SmartScreen's
 
 - The site is `webinarliv.com`, every subdomain (so `recordings.webinarliv.com`),
   and the host of `WEBINARLIV_URL`. It stays in the app.
-- Sign-in, integration and payment flows also stay in the app, because they
-  must come back to the site with its cookies: `accounts.google.com`,
-  `accounts.youtube.com`, `zoom.us` (Connect Zoom), `razorpay.com` (checkout).
+- Integration and payment flows stay in the app, because they must come back
+  to the site with its cookies: `accounts.google.com` and
+  `accounts.youtube.com` (Connect YouTube, the Drive picker), `zoom.us`
+  (Connect Zoom), `razorpay.com` (checkout). Continue with Google is the
+  exception: it runs in the system browser (see Sign-in).
 - Every other link, and any `target=_blank` to another site, opens in the
   system browser (`http`, `https`, `mailto`, `tel` only).
 - `window.open` of a site URL opens another app window (live rooms open in
@@ -112,23 +114,52 @@ Open; or `xattr -cr "/Applications/Webinar Liv.app"`) and Windows SmartScreen's
 
 ### Sign-in
 
-Google sign-in on the site is a full-page redirect, not a popup:
-`/api/auth/google/start` -> `accounts.google.com` -> `/api/auth/google/callback`,
-which sets the session cookie. The app keeps that whole round trip **inside the
-window**, so the cookie lands in the app's own session and there is nothing to
-hand back. Email and password sign-in is a normal form.
+Email and password, and the email links, are normal pages in the window and
+are unchanged.
 
-Google blocks sign-in from embedded browsers and spots Electron by its user
-agent, so the app removes the `Electron/x` and app-name tokens: the UA is the
-plain Chrome one. Pages that need to know they are in the app can check
-`window.webinarlivDesktop`. Verified: the Continue-with-Google redirect reaches
-Google's account chooser in the app. If Google ever starts refusing the app
-anyway, the fallback is sign-in in the system browser and a one-time code
-returned through `webinarliv://`, which needs a small API endpoint to exchange
-the code for a session cookie (not built).
+**Continue with Google runs in the system browser** (29 Oct 2026). Google
+refuses OAuth in embedded browsers, and the app used to get round that by
+stripping `Electron/x` from its user agent so it looked like plain Chrome. It
+no longer pretends. The round trip (`web/lib/app-auth.ts`,
+`api/internal/api/auth_app.go`):
 
-Google One Tap uses an iframe and works as on the web. FedCM is not available
-in Electron, and the site already falls back when it is missing.
+1. The sign-in page sees `window.webinarlivDesktop.openSignIn` and makes a
+   random verifier, kept in the window's localStorage. It calls
+   `openSignIn("/api/auth/google/start?app=desktop&challenge=<SHA-256 of the verifier>&next=…")`.
+2. The main process opens that URL with `shell.openExternal`, and only that
+   URL: a site page, path `/api/auth/google/start`, `app=desktop`
+   (`isSignInStartUrl` in `src/config.ts`).
+3. Google, then `/api/auth/google/callback`, in Chrome or Safari. The API sets
+   **no** session there. It stores a one-time code (SHA-256 only, two
+   minutes, one try) and sends the browser to `/auth/app-return#code=…`,
+   which opens `webinarliv://auth/complete?code=…`. The browser asks before
+   opening the app. The tab can be closed afterwards.
+4. The app gets the link (`open-url` on macOS, `second-instance` on Windows),
+   loads `https://webinarliv.com/auth/complete?code=…` in its window and takes
+   focus. Only the code or an error word is carried over from the link.
+5. That page POSTs the code and the verifier to `/api/auth/app/exchange`,
+   which sets the normal session cookie in the app and returns where the
+   sign-in was going.
+
+Why it is safe: the session token is never in a URL. The code is, but it is
+useless without the verifier, which never leaves the app's window. A code
+that leaks from the browser history, or that another app registered for
+`webinarliv://` catches, can't be redeemed. The first redemption attempt
+spends a code, right verifier or wrong, and exchange is rate-limited
+(10 a minute per IP).
+
+The user agent is Electron's own plus `WebinarLivDesktop/<version>`. Pages can
+also check `window.webinarlivDesktop`. The marker is deliberately not
+`WebinarLivApp/`: that is the phone app's, and the iOS app hides purchases.
+The desktop app keeps them.
+
+Deploy the web app and the API before shipping a desktop build with this:
+an older site doesn't know `openSignIn` and would run Google in the window,
+where Google now refuses it.
+
+Google One Tap uses an iframe, but the product no longer shows it. FedCM
+isn't available in Electron, and the site already falls back when it is
+missing.
 
 ### Security
 
@@ -140,7 +171,9 @@ in Electron, and the site already falls back when it is missing.
   (geolocation, MIDI, USB, HID, serial, ...) is refused, and third-party
   iframes get nothing. On macOS the OS camera/microphone prompt comes first.
 - The preload exposes `window.webinarlivDesktop` on site pages only:
-  `isDesktop`, `platform`, `version`, `setCallActive(on)`, `setBadgeCount(n)`.
+  `isDesktop`, `platform`, `version`, `setCallActive(on)`, `setBadgeCount(n)`,
+  `openSignIn(url)` (the main process opens only the site's Google sign-in
+  start URL in the system browser).
 
 ### Screen sharing
 
@@ -167,6 +200,7 @@ The app registers the `webinarliv://` scheme (in the installers and at run time)
 | `webinarliv://open?url=https://webinarliv.com/pricing` | that URL (site URLs only) |
 | `webinarliv://open?path=/browse` | `https://webinarliv.com/browse` |
 | `webinarliv://open` | the home page |
+| `webinarliv://auth/complete?code=…` | `https://webinarliv.com/auth/complete?code=…`, the end of Continue with Google (see Sign-in) |
 
 A `https://webinarliv.com/...` URL passed as a command-line argument opens too.
 
@@ -211,6 +245,14 @@ master would give a sharper icon on Retina docks: run
 `npm run icons -- /path/to/master-1024.png` and commit `build/`.
 
 ## Limits
+
+- **Connect YouTube and the Drive picker** still run Google OAuth inside the
+  window. With the honest user agent, Google may refuse them there
+  (`disallowed_useragent`, or "This browser or app may not be secure"). Their
+  callbacks need the app's session, so they can't simply move to the system
+  browser. Until they get the same hand-off as sign-in (follow-up), connect
+  YouTube from a browser at webinarliv.com. The connection is saved on the
+  account, so the app uses it too. Connect Zoom (`zoom.us`) is unaffected.
 
 - Web push from the service worker (`web/public/sw.js`) does not arrive:
   Electron has no push service. Notifications work while the app is open.

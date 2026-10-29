@@ -210,6 +210,9 @@ type Server struct {
 	// is which subscription endpoints are accepted (push.ValidEndpoint; tests widen it).
 	push           *push.Sender
 	pushEndpointOK func(string) error
+	// fcm sends native push to the mobile apps (push.go, push/fcm.go); nil without
+	// FCM_SERVICE_ACCOUNT_JSON. Independent of push: either channel can be on alone.
+	fcm *push.FCMSender
 }
 
 func NewServer(cfg config.Config, st *store.Store, sfu SFUPool, rec media.Store, log *slog.Logger) *Server {
@@ -377,6 +380,10 @@ func (s *Server) Routes() http.Handler {
 	// Signup is cheaper to abuse than login and creates rows, so it gets its own
 	// tighter bucket rather than sharing the login one.
 	signupLimit := httpx.NewRateLimiter(5, time.Minute)
+	/* The apps' sign-in hand-off (auth_app.go). A code is one try and a verifier is 256 bits,
+	 * so this is not what makes guessing hopeless; it keeps anybody from hammering the
+	 * table. One person signs in once, so ten a minute per IP is plenty. (29 Oct 2026) */
+	appExchangeLimit := httpx.NewRateLimiter(10, time.Minute)
 	// Sized like joinLimit: this creates no rows and every participant in a
 	// live performance test polls it every ~10s, from what may be a shared
 	// corporate IP the same way a join burst is. A backstop against a flood,
@@ -579,6 +586,9 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/auth/google/start", s.handleGoogleStart)
 		r.With(loginLimit.Middleware).Get("/auth/google/callback", s.handleGoogleCallback)
 		r.With(loginLimit.Middleware).Post("/auth/google", s.handleGoogleAuth)
+		// The desktop and mobile apps redeem a Google sign-in's hand-off code here, from
+		// their own webview. See auth_app.go.
+		r.With(appExchangeLimit.Middleware).Post("/auth/app/exchange", s.handleAppAuthExchange)
 		r.Post("/auth/logout", s.handleLogout)
 		r.With(s.requireUser).Get("/auth/me", s.handleMe)
 		r.With(s.requireUser).Patch("/auth/me", s.handleUpdateProfile)

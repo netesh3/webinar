@@ -42,6 +42,37 @@ export function isNativeAppUA(ua: string): boolean {
   return /\bWebinarLivApp\//.test(ua);
 }
 
+/** The iOS build of that app, where Apple's in-app purchase rule applies (App Store
+ *  guideline 3.1.1): no pricing, no checkout, no link out to buy (29 Oct 2026).
+ *
+ *  The app ships on iOS and Android only, so "our marker, not Android" is iOS. The
+ *  device part of the UA is not used: an iPad's WKWebView asks for desktop sites and
+ *  reports "Macintosh", which a plain iPhone|iPad test would miss. The desktop app
+ *  (apps/desktop) does not send WebinarLivApp/, so it keeps purchasing. */
+export function isIOSAppUA(ua: string): boolean {
+  return isNativeAppUA(ua) && !isAndroid(ua);
+}
+
+/** Which way the page is told it is in the iOS app, given what it can read: the bridge
+ *  Capacitor injects (authoritative once there), otherwise the user agent. Pure, so
+ *  the node tests cover it; currentIsIOSApp feeds it the real window. */
+export function iosAppFrom(platform: string | null, ua: string): boolean {
+  if (platform === "ios") return true;
+  if (platform === "android" || platform === "web") return false;
+  return isIOSAppUA(ua);
+}
+
+/* Set before first paint by appStoreBootScript (app/layout.tsx), so links that must not
+ * show in the iOS app are hidden by CSS before React hydrates (globals.css,
+ * .ios-app-hidden / .ios-app-only). */
+export const IOS_APP_ATTR = "data-ios-app";
+
+/** The inline script for <head>: marks <html> in the iOS app. Same test as isIOSAppUA,
+ *  inlined because it runs before any bundle. */
+export function appStoreBootScript(): string {
+  return `try{var u=navigator.userAgent||"";if(/\\bWebinarLivApp\\//.test(u)&&!/Android/i.test(u))document.documentElement.setAttribute("${IOS_APP_ATTR}","1")}catch(e){}`;
+}
+
 export function isAndroid(ua: string): boolean {
   return /Android/i.test(ua);
 }
@@ -86,6 +117,15 @@ export function currentIsNativeApp(): boolean {
 }
 export function currentIsMobile(): boolean {
   return isMobileUA(ua(), touch());
+}
+/** True in the iOS app (see isIOSAppUA). False on the server. */
+export function currentIsIOSApp(): boolean {
+  if (typeof window === "undefined") return false;
+  const c = (window as unknown as {
+    Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+  }).Capacitor;
+  const platform = c?.isNativePlatform?.() ? (c.getPlatform?.() ?? null) : null;
+  return iosAppFrom(platform, ua());
 }
 export function currentIsAndroid(): boolean {
   return isAndroid(ua());

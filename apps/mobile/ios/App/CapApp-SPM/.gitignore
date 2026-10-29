@@ -7,3 +7,5 @@ DerivedData/
 .swiftpm/config/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+# Made by `cap sync` (the Firebase plugin's packageOptions.symlink), with an absolute path.
+/symlinks

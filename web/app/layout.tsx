@@ -9,10 +9,11 @@ import { siteOrigin } from "@/lib/site-origin";
 import type { AppConfig } from "@/lib/api-types";
 import { SidebarBoot } from "@/components/sidebar-boot";
 import { PwaBoot } from "@/components/pwa";
-import { NativeBoot } from "@/components/native-boot";
+import { NativeBoot, NativeSessionSync } from "@/components/native-boot";
 import { FaroBoot } from "@/components/faro-boot";
 import { sidebarBootScript } from "@/lib/sidebar";
 import { themeBootScript } from "@/lib/theme";
+import { appStoreBootScript } from "@/lib/device";
 import "./globals.css";
 import "./sidebar.css";
 
@@ -100,6 +101,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {/* Before paint: collapsed rail when that choice was saved, or when the
             window is under 1280px. suppressHydrationWarning is already on <html>. */}
         <script dangerouslySetInnerHTML={{ __html: sidebarBootScript() }} />
+        {/* Before paint: <html data-ios-app> inside the iOS app, where no plan is sold
+            (App Store guideline 3.1.1, components/ios-app.tsx). (29 Oct 2026) */}
+        <script dangerouslySetInnerHTML={{ __html: appStoreBootScript() }} />
         {/* Google Material Symbols */}
         <link
           rel="stylesheet"
@@ -147,6 +151,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SiteBanner />
           {children}
           <PhonePrompt />
+          {/* The mobile app's push token follows the signed-in account (no-op elsewhere). */}
+          <NativeSessionSync />
         </AppProviders>
       </body>
     </html>

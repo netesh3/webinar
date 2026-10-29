@@ -29,13 +29,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    // Push: hand the APNs token to @capacitor/push-notifications.
+    /* Push: hand the APNs token to @capacitor-firebase/messaging, which gives it to Firebase
+     * and hands the page an FCM token for it (29 Oct 2026). The plugin configures Firebase
+     * itself from GoogleService-Info.plist, and stays off (no crash) when the plist is not in
+     * the build; the "Copy Firebase config" build phase copies it in when it is present. */
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        NotificationCenter.default.post(name: Notification.Name("didReceiveRemoteNotification"),
+                                        object: completionHandler, userInfo: userInfo)
     }
 
     func application(_ application: UIApplication,

@@ -529,6 +529,33 @@ export interface SessionPastAnswersPatch {
 }
 
 //////////
+// source: app_auth.go
+
+/**
+ * AppAuthExchangeRequest is POST /api/auth/app/exchange.
+ */
+export interface AppAuthExchangeRequest {
+  /**
+   * Code is the one-time code from webinarliv://auth/complete.
+   */
+  code: string;
+  /**
+   * Verifier is the random string the app hashed into the challenge it started with.
+   */
+  verifier: string;
+}
+/**
+ * AppAuthExchangeResponse is the account now signed in and where to take it.
+ */
+export interface AppAuthExchangeResponse {
+  account: Account;
+  /**
+   * Next is a same-site path: where the sign-in was headed.
+   */
+  next: string;
+}
+
+//////////
 // source: billing.go
 
 /**
@@ -3046,6 +3073,40 @@ export interface PushPayload {
   renotify?: boolean;
   icon?: string;
   badge?: string;
+}
+/**
+ *  NativePushRegisterRequest is POST /api/push/native (29 Oct 2026): the Android or iOS app
+ *  * hands over its FCM registration token for the signed-in account. Sent after the app gets a
+ *  * token, again on sign-in, and whenever Firebase rotates the token.
+ */
+export interface NativePushRegisterRequest {
+  /**
+   * Platform is "ios" or "android".
+   */
+  platform: string;
+  /**
+   * Token is the FCM registration token (on iOS too: Firebase maps it to the APNs token).
+   */
+  token: string;
+  /**
+   * AppVersion is the app's version string, for support. Optional.
+   */
+  appVersion?: string;
+}
+/**
+ * NativePushUnregisterRequest is DELETE /api/push/native: this install stops hearing from the
+ * signed-in account. The app sends it just before it signs out.
+ */
+export interface NativePushUnregisterRequest {
+  token: string;
+}
+/**
+ * NativePushRegisterResponse says whether this deployment will actually send to the token.
+ * Sending is off until FCM_SERVICE_ACCOUNT_JSON is set; the token is stored either way.
+ */
+export interface NativePushRegisterResponse {
+  status: string;
+  sending: boolean;
 }
 
 //////////

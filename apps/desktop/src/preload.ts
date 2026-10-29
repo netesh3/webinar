@@ -10,6 +10,9 @@
  *   version: app version
  *   setCallActive(on: boolean)  keep the display awake (explicit override)
  *   setBadgeCount(n: number)    dock / taskbar badge (0 clears)
+ *   openSignIn(url: string)     Continue with Google in the system browser
+ *                               (web/lib/app-auth.ts; the main process only
+ *                               opens the site's own sign-in start URL)
  *
  * The page does not have to call anything: a small main-world script below
  * detects a call by itself (a held screen wake lock, which the live rooms take
@@ -56,6 +59,9 @@ if (isSitePage()) {
     setBadgeCount(count: unknown) {
       const n = typeof count === "number" && Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
       ipcRenderer.send("webinarliv:badge", n);
+    },
+    openSignIn(url: unknown) {
+      if (typeof url === "string") ipcRenderer.send("webinarliv:open-sign-in", url);
     },
     // Used by the main-world helper below; not part of the public surface.
     _detected(on: unknown) {

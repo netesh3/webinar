@@ -1035,10 +1035,13 @@ function RegisterFields({
   async function redirectGmail(body: RegisterRequest) {
     savePendingWebinarRegister(w.id, body);
     try {
-      await startGoogleOAuth({
+      const how = await startGoogleOAuth({
         next: `/webinars/${w.id}`,
         loginHint: body.email,
       });
+      // The desktop app finishes Google in the system browser and comes back to this
+      // webinar by itself, where the saved registration completes. (29 Oct 2026)
+      if (how === "external") setBusy(false);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not start Google sign-in.",

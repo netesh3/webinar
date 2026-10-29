@@ -33,7 +33,14 @@ import (
  * minute.
  *
  * Off entirely without VAPID keys (config.Push): s.push is nil, the public key says
- * enabled:false, subscribe answers 404, and nothing is ever queued.
+ * enabled:false, subscribe answers 404, and nothing is ever queued for a browser.
+ *
+ * Native push (29 Oct 2026). The Android and iOS apps register an FCM token with
+ * POST /api/push/native (signed in only) and drop it with DELETE on sign-out. The same fan-outs
+ * write a push_messages row per install next to the row per browser, and flushPush sends both:
+ * browsers through s.push, installs through s.fcm (FCM HTTP v1, which reaches iOS through
+ * APNs). Each channel is on only when its credential is set, independently; with neither,
+ * nothing is queued at all. A tap opens data.url in the app (web/lib/native-bridge.ts).
  */
 
 // pushKindsOrder is the Settings page's list, attendee kinds first.
@@ -70,6 +77,14 @@ const (
 )
 
 func newPushSender(s *Server) {
+	if raw := s.cfg.FCMServiceAccountJSON; raw == "" {
+		s.log.Info("native push off: FCM_SERVICE_ACCOUNT_JSON is not set; app tokens are stored, nothing is sent to them")
+	} else if f, err := push.NewFCMSender(raw, nil); err != nil {
+		s.log.Error("native push off: FCM_SERVICE_ACCOUNT_JSON is not usable", "error", err)
+	} else {
+		s.fcm = f
+		s.log.Info("native push enabled", "firebase_project", f.ProjectID())
+	}
 	cfg := s.cfg.Push()
 	if !cfg.Enabled() {
 		return
@@ -77,6 +92,16 @@ func newPushSender(s *Server) {
 	s.push = push.NewSender(cfg, nil)
 	s.pushEndpointOK = push.ValidEndpoint
 	s.log.Info("web push enabled")
+}
+
+// pushAny is whether any channel sends: Web Push, native, or both.
+func (s *Server) pushAny() bool { return s.push != nil || s.fcm != nil }
+
+// channels marks the channels that are off, so the fan-out queues nothing for them.
+func (s *Server) channels(m store.PushMessage) store.PushMessage {
+	m.NoWeb = s.push == nil
+	m.NoNative = s.fcm == nil
+	return m
 }
 
 func (s *Server) mountPush(r chi.Router) {
@@ -88,6 +113,57 @@ func (s *Server) mountPush(r chi.Router) {
 	r.With(s.requireUser).Get("/push/preferences", s.handlePushPreferences)
 	r.With(s.requireUser).Put("/push/preferences", s.handleSetPushPreferences)
 	r.With(s.requireUser, testLimit.Middleware).Post("/push/test", s.handlePushTest)
+	// The mobile apps' FCM tokens. Signed in only: an install is always an account's.
+	r.With(s.requireUser, subscribeLimit.Middleware).Post("/push/native", s.handleNativePushRegister)
+	r.With(s.requireUser, subscribeLimit.Middleware).Delete("/push/native", s.handleNativePushUnregister)
+}
+
+// nativePlatforms are the platforms POST /api/push/native accepts.
+var nativePlatforms = map[string]bool{"ios": true, "android": true}
+
+/* handleNativePushRegister is POST /api/push/native. The token is stored even while native
+ * sending is off (no FCM key yet), so the installs are there the moment it is switched on;
+ * the answer's sending says which. */
+func (s *Server) handleNativePushRegister(w http.ResponseWriter, r *http.Request) {
+	var req types.NativePushRegisterRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	platform := strings.ToLower(strings.TrimSpace(req.Platform))
+	token := strings.TrimSpace(req.Token)
+	if !nativePlatforms[platform] {
+		httpx.Fields(w, map[string]string{"platform": "Must be ios or android."})
+		return
+	}
+	// FCM tokens are a few hundred URL-safe characters; anything else is not one.
+	if len(token) < 20 || len(token) > 4096 || strings.ContainsAny(token, " \t\r\n") || !utf8.ValidString(token) {
+		httpx.Fields(w, map[string]string{"token": "That is not a push token."})
+		return
+	}
+	user := userFromContext(r.Context())
+	if err := s.store.SaveNativePushToken(r.Context(), user.ID, platform, token,
+		strings.ToValidUTF8(strings.TrimSpace(req.AppVersion), "")); err != nil {
+		s.fail(w, r, "native push register", err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, types.NativePushRegisterResponse{Status: "ok", Sending: s.fcm != nil})
+}
+
+// handleNativePushUnregister is DELETE /api/push/native: the app signing out.
+func (s *Server) handleNativePushUnregister(w http.ResponseWriter, r *http.Request) {
+	var req types.NativePushUnregisterRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil || strings.TrimSpace(req.Token) == "" {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
+		return
+	}
+	err := s.store.RemoveNativePushToken(r.Context(), userFromContext(r.Context()).ID, strings.TrimSpace(req.Token))
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.fail(w, r, "native push unregister", err)
+		return
+	}
+	// Not found is a success, as for a browser: this install hears nothing from the account.
+	httpx.JSON(w, http.StatusOK, types.StatusResponse{Status: "ok"})
 }
 
 // handlePushPublicKey is GET /api/push/public-key.
@@ -220,7 +296,7 @@ func (s *Server) handlePushPreferences(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, "push preferences: devices", err)
 		return
 	}
-	out := types.PushPreferencesResponse{Enabled: s.push != nil, Devices: devices}
+	out := types.PushPreferencesResponse{Enabled: s.pushAny(), Devices: devices}
 	for _, k := range pushKindsOrder {
 		if k.admin && !user.IsAdmin {
 			continue
@@ -259,15 +335,16 @@ func (s *Server) handleSetPushPreferences(w http.ResponseWriter, r *http.Request
 
 // handlePushTest is POST /api/push/test: one notification to every browser of this account.
 func (s *Server) handlePushTest(w http.ResponseWriter, r *http.Request) {
-	if s.pushOff(w) {
+	if !s.pushAny() {
+		httpx.Error(w, http.StatusNotFound, "push_off", "Notifications are not set up on this server.")
 		return
 	}
 	user := userFromContext(r.Context())
-	n, err := s.store.QueuePushToUsers(r.Context(), []string{user.ID}, store.PushMessage{
+	n, err := s.store.QueuePushToUsers(r.Context(), []string{user.ID}, s.channels(store.PushMessage{
 		Kind: types.PushTest, Title: s.cfg.AppName + " notifications are on",
 		Body: "This is a test. You'll be told here when a webinar starts.",
 		URL:  "/settings#notifications", Tag: "test", TTL: 10 * time.Minute, Urgency: "high",
-	})
+	}))
 	if err != nil {
 		s.fail(w, r, "push test", err)
 		return
@@ -311,7 +388,7 @@ func registrantJoinURL(slug string) string {
  * now — after the change committed. Deduplicated on the scheduled start, so a host who drops
  * and presses Go live again does not ring everybody's phone twice. */
 func (s *Server) pushWentLive(ctx context.Context, wb types.Webinar) {
-	if s.push == nil {
+	if !s.pushAny() {
 		return
 	}
 	m := store.PushMessage{
@@ -327,7 +404,7 @@ func (s *Server) pushWentLive(ctx context.Context, wb types.Webinar) {
 		m.Title = "Meeting started: " + pushTopic(wb)
 		m.Body = "Tap to join."
 	}
-	n, err := s.store.QueuePushToRegistrants(ctx, wb.ID, nil, m)
+	n, err := s.store.QueuePushToRegistrants(ctx, wb.ID, nil, s.channels(m))
 	if err != nil {
 		s.log.Error("push: queue went-live", "slug", wb.ID, "error", err)
 		return
@@ -341,7 +418,7 @@ func (s *Server) pushWentLive(ctx context.Context, wb types.Webinar) {
 // sweepPushReminders queues the 15-minute "starts soon" push for every webinar entering the
 // window. Idempotent: each browser holds one reminder per scheduled start.
 func (s *Server) sweepPushReminders(ctx context.Context) {
-	if s.push == nil {
+	if !s.pushAny() {
 		return
 	}
 	due, err := s.store.DuePushReminders(ctx, pushReminderLead)
@@ -366,13 +443,13 @@ func (s *Server) sweepPushReminders(ctx context.Context) {
 		if isMeeting(wb) {
 			title = fmt.Sprintf("%s: %s in %d min", pushTopic(wb), what, mins)
 		}
-		_, err := s.store.QueuePushToRegistrants(ctx, d.Slug, nil, store.PushMessage{
+		_, err := s.store.QueuePushToRegistrants(ctx, d.Slug, nil, s.channels(store.PushMessage{
 			Kind: types.PushWebinarReminder, Title: title,
 			Body: "Your join link is ready. Tap to open it.",
 			URL:  registrantJoinURL(d.Slug), Tag: "webinar-" + d.Slug,
 			Urgency: "normal", TTL: time.Until(d.StartsAt),
 			DedupeKey: "soon:" + d.Slug + ":" + d.StartsAt.UTC().Format(time.RFC3339),
-		})
+		}))
 		if err != nil {
 			s.log.Error("push reminders: queue", "slug", d.Slug, "error", err)
 		}
@@ -381,16 +458,16 @@ func (s *Server) sweepPushReminders(ctx context.Context) {
 
 // pushReplayReady tells the registrants a replay goes to that it is up, when the email is due.
 func (s *Server) pushReplayReady(ctx context.Context, wb types.Webinar, recordingID string, regIDs []string, due time.Time) {
-	if s.push == nil || len(regIDs) == 0 {
+	if !s.pushAny() || len(regIDs) == 0 {
 		return
 	}
-	n, err := s.store.QueuePushToRegistrants(ctx, wb.ID, regIDs, store.PushMessage{
+	n, err := s.store.QueuePushToRegistrants(ctx, wb.ID, regIDs, s.channels(store.PushMessage{
 		Kind: types.PushReplayReady, Title: "Recording available: " + pushTopic(wb),
 		Body: "Watch the replay.",
 		URL:  "/w/" + url.PathEscape(wb.ID) + "/recording/" + url.PathEscape(recordingID),
 		Tag:  "replay-" + wb.ID, TTL: 3 * 24 * time.Hour, DueAt: due,
 		DedupeKey: "replay:" + recordingID,
-	})
+	}))
 	if err != nil {
 		s.log.Error("push: queue replay", "slug", wb.ID, "error", err)
 		return
@@ -402,10 +479,10 @@ func (s *Server) pushReplayReady(ctx context.Context, wb types.Webinar, recordin
 
 // pushToHost queues one host-side notification to these accounts and flushes soon.
 func (s *Server) pushToHost(ctx context.Context, userIDs []string, m store.PushMessage) {
-	if s.push == nil || len(userIDs) == 0 {
+	if !s.pushAny() || len(userIDs) == 0 {
 		return
 	}
-	n, err := s.store.QueuePushToUsers(ctx, userIDs, m)
+	n, err := s.store.QueuePushToUsers(ctx, userIDs, s.channels(m))
 	if err != nil {
 		s.log.Error("push: queue host", "kind", m.Kind, "error", err)
 		return
@@ -475,7 +552,7 @@ func allSameWebinar(batch []store.ExpiringRecording) bool {
  * host is not in the room (when they are, the lobby panel already says so). At most one per
  * meeting per minute: ten people arriving together is one buzz, and the tag folds them. */
 func (s *Server) pushLobbyKnock(ctx context.Context, wb types.Webinar, name string) {
-	if s.push == nil {
+	if !s.pushAny() {
 		return
 	}
 	if wb.SFUProject != "" {
@@ -508,7 +585,7 @@ func (s *Server) pushLobbyKnock(ctx context.Context, wb types.Webinar, name stri
 // flushPushSoon sends what is due after the response, so "starting now" does not wait for
 // the next tick.
 func (s *Server) flushPushSoon() {
-	if s.push == nil {
+	if !s.pushAny() {
 		return
 	}
 	s.inBackground(func(ctx context.Context) {
@@ -518,15 +595,22 @@ func (s *Server) flushPushSoon() {
 	})
 }
 
-/* flushPush sends due messages until there are none or ctx runs out.
+// flushPush sends what is due on both channels: browsers, then app installs.
+func (s *Server) flushPush(ctx context.Context) {
+	if s.push != nil {
+		s.flushWebPush(ctx)
+	}
+	if s.fcm != nil {
+		s.flushNativePush(ctx)
+	}
+}
+
+/* flushWebPush sends due browser messages until there are none or ctx runs out.
  *
  * Each claimed batch is grouped by endpoint. Endpoints are posted to in parallel (pushWorkers
  * at a time); one endpoint's messages go in order, and the first transient failure stops the
  * rest of its group — they are released for the next pass, which the backoff then delays. */
-func (s *Server) flushPush(ctx context.Context) {
-	if s.push == nil {
-		return
-	}
+func (s *Server) flushWebPush(ctx context.Context) {
 	for ctx.Err() == nil {
 		claimed, err := s.store.ClaimDuePush(ctx, pushBatch)
 		if err != nil {
@@ -603,6 +687,96 @@ func (s *Server) sendPushGroup(ctx context.Context, group []store.ClaimedPush) {
 			for _, later := range group[i+1:] {
 				if err := s.store.PushRelease(wctx, later.ID); err != nil {
 					s.log.Error("push: release", "error", err)
+				}
+			}
+			return
+		}
+	}
+}
+
+/* flushNativePush is flushWebPush for app installs: claimed by token, a token's messages in
+ * order, the first transient failure backing that token off. */
+func (s *Server) flushNativePush(ctx context.Context) {
+	for ctx.Err() == nil {
+		claimed, err := s.store.ClaimDueNativePush(ctx, pushBatch)
+		if err != nil {
+			if ctx.Err() == nil {
+				s.log.Error("native push: claim", "error", err)
+			}
+			return
+		}
+		if len(claimed) == 0 {
+			return
+		}
+		groups := map[string][]store.ClaimedNativePush{}
+		var order []string
+		for _, c := range claimed {
+			if _, ok := groups[c.TokenID]; !ok {
+				order = append(order, c.TokenID)
+			}
+			groups[c.TokenID] = append(groups[c.TokenID], c)
+		}
+		sem := make(chan struct{}, pushWorkers)
+		var wg sync.WaitGroup
+		for _, id := range order {
+			group := groups[id]
+			wg.Add(1)
+			sem <- struct{}{}
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				s.sendNativeGroup(ctx, group)
+			}()
+		}
+		wg.Wait()
+		if len(claimed) < pushBatch {
+			return
+		}
+	}
+}
+
+// nativeURL makes a message's path absolute: the app opens a tapped notification's URL only
+// when it is one of the site's (routeForOpenedUrl in web/lib/native-bridge.ts).
+func (s *Server) nativeURL(path string) string {
+	if strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "//") {
+		return strings.TrimRight(s.cfg.WebBaseURL, "/") + path
+	}
+	return path
+}
+
+func (s *Server) sendNativeGroup(ctx context.Context, group []store.ClaimedNativePush) {
+	wctx := context.WithoutCancel(ctx)
+	for i, c := range group {
+		res := s.fcm.Send(ctx, push.NativeTarget{Token: c.Token, Platform: c.Platform}, push.NativeMessage{
+			Kind: string(c.Kind), Title: clip(c.Title, 120), Body: clip(c.Body, 300),
+			URL: s.nativeURL(c.URL), Tag: c.Tag, TTL: c.TTL, Urgency: c.Urgency,
+		})
+		switch res.Outcome {
+		case push.Sent:
+			if err := s.store.NativePushSent(wctx, c.ID, c.TokenID); err != nil {
+				s.log.Error("native push: record sent", "error", err)
+			}
+		case push.Gone:
+			s.log.Info("native push: token gone, removing", "platform", c.Platform, "status", res.Status, "error", res.Err)
+			if err := s.store.NativePushGone(wctx, c.TokenID); err != nil {
+				s.log.Error("native push: remove gone", "error", err)
+			}
+			return
+		case push.Drop:
+			s.log.Warn("native push: message refused", "kind", c.Kind, "platform", c.Platform, "error", res.Err)
+			if err := s.store.PushDropped(wctx, c.ID, errText(res.Err)); err != nil {
+				s.log.Error("native push: record dropped", "error", err)
+			}
+		case push.Retry:
+			failures, _ := s.store.NativePushFailures(wctx, c.TokenID)
+			rest := push.Backoff(failures+1, res.RetryAfter)
+			s.log.Warn("native push: send failed, backing off", "kind", c.Kind, "rest", rest, "error", res.Err)
+			if err := s.store.NativePushRetry(wctx, c.ID, c.TokenID, errText(res.Err), rest); err != nil {
+				s.log.Error("native push: record retry", "error", err)
+			}
+			for _, later := range group[i+1:] {
+				if err := s.store.PushRelease(wctx, later.ID); err != nil {
+					s.log.Error("native push: release", "error", err)
 				}
 			}
 			return

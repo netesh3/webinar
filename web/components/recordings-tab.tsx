@@ -16,6 +16,7 @@ import {
 } from "@/lib/recording-retention";
 import { ApiError } from "@/lib/http";
 import { RecordingStorageMeter, useRecordingStorage } from "./recording-storage-meter";
+import { useIOSApp } from "./ios-app";
 import {
   CloudAlertIcon,
   CloudCheckIcon,
@@ -634,6 +635,8 @@ function RecordingCard({
   // Rendered on the client only: a locale-formatted timestamp differs between the
   // server render and the browser, and React calls that a hydration error.
   const hydrated = useHydrated();
+  // No "upgrade" in the iOS app (App Store guideline 3.1.1, components/ios-app.tsx). (29 Oct 2026)
+  const iosApp = useIOSApp();
   const live = rec.status === "recording";
   // A cloud recording whose size is still zero has not landed in storage yet,
   // whatever the row says — an Egress uploads its file after the room closes,
@@ -763,7 +766,9 @@ function RecordingCard({
                       ? "Keep this recording 3 more months from its current date"
                       : rec.overQuota
                         ? "Made while your recording storage was full: kept for the standard period only"
-                        : "Your recording storage is full. Delete or let other recordings expire, or upgrade."
+                        : iosApp
+                          ? "Your recording storage is full. Delete or let other recordings expire."
+                          : "Your recording storage is full. Delete or let other recordings expire, or upgrade."
                   }
                 >
                   Keep 3 more months

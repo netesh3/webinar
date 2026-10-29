@@ -27,8 +27,9 @@
 #       APP_STORE_CONNECT_API_ISSUER_ID
 #       APP_STORE_CONNECT_API_KEY_P8_BASE64   base64 of the AuthKey_XXXX.p8
 #
-# Optional, for Android push in the built app:
-#   GOOGLE_SERVICES_JSON_BASE64  base64 of Firebase's google-services.json (never committed)
+# Optional, for push in the built apps (Firebase Cloud Messaging; never committed):
+#   GOOGLE_SERVICES_JSON_BASE64       base64 of Firebase's google-services.json (Android)
+#   GOOGLE_SERVICE_INFO_PLIST_BASE64  base64 of Firebase's GoogleService-Info.plist (iOS)
 
 name: mobile-build
 
@@ -123,6 +124,7 @@ jobs:
       HAS_TEAM: ${{ secrets.APPLE_TEAM_ID != '' }}
       HAS_MANUAL_SIGNING: ${{ secrets.APPLE_TEAM_ID != '' && secrets.IOS_DIST_CERT_P12_BASE64 != '' && secrets.IOS_DIST_CERT_PASSWORD != '' && secrets.IOS_PROVISIONING_PROFILE_BASE64 != '' }}
       HAS_ASC_KEY: ${{ secrets.APPLE_TEAM_ID != '' && secrets.APP_STORE_CONNECT_API_KEY_ID != '' && secrets.APP_STORE_CONNECT_API_ISSUER_ID != '' && secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 != '' }}
+      HAS_GOOGLE_SERVICE_INFO: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -132,6 +134,12 @@ jobs:
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci
       - run: npx cap sync ios
+      # The "Copy Firebase config" build phase bundles it when present; without it push is off.
+      - name: Firebase config (iOS push)
+        if: env.HAS_GOOGLE_SERVICE_INFO == 'true'
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 -d > ios/App/App/GoogleService-Info.plist
       - run: xcodebuild -version
       - name: Simulator build (unsigned)
         working-directory: apps/mobile/ios/App

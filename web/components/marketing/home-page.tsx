@@ -119,7 +119,10 @@ function Hero() {
       <div className="hero-bg" aria-hidden />
       <div className="wrap">
         <div className="hero-copy">
-          <p className="pill reveal">
+          {/* .ios-app-hidden: nothing on this page sells inside the iOS app (App Store
+              guideline 3.1.1, components/ios-app.tsx): the buy pitch, the "See plans &
+              buy" buttons, the payment lines and FAQs. Pricing renders its own note. (29 Oct 2026) */}
+          <p className="pill reveal ios-app-hidden">
             <b className="pill-tag">NEW</b> Buy a plan and start hosting in under a minute
           </p>
           <h1 id="hero-title" className="h1 reveal">
@@ -130,7 +133,7 @@ function Hero() {
             score for every attendee during, and follow‑up minutes after you end.
           </p>
           <div className="cta-row reveal">
-            <a className="btn btn-primary btn-lg" href="#pricing">
+            <a className="btn btn-primary btn-lg ios-app-hidden" href="#pricing">
               See plans &amp; buy <Icon name="arrow-right" />
             </a>
             <a className="btn btn-outline-light btn-lg" href="#how-it-works">
@@ -141,10 +144,10 @@ function Hero() {
             <li>
               <Icon name="check" /> No download for attendees
             </li>
-            <li>
+            <li className="ios-app-hidden">
               <Icon name="check" /> UPI, cards &amp; netbanking
             </li>
-            <li>
+            <li className="ios-app-hidden">
               <Icon name="check" /> Host access unlocks instantly
             </li>
           </ul>
@@ -588,11 +591,11 @@ function Faq() {
           </p>
         </div>
         <div className="faq-list reveal">
-          <FaqItem open question="When do I get host access after paying?">
+          <FaqItem open sells question="When do I get host access after paying?">
             Immediately. As soon as Razorpay confirms the payment your account is upgraded, and
             you land on your host dashboard ready to schedule.
           </FaqItem>
-          <FaqItem question="How can I pay?">
+          <FaqItem sells question="How can I pay?">
             UPI, debit and credit cards, netbanking and wallets, through Razorpay. Add your GSTIN
             at checkout if you need it on the invoice.
           </FaqItem>
@@ -622,14 +625,17 @@ function Faq() {
 function FaqItem({
   question,
   open,
+  sells,
   children,
 }: {
   question: string;
   open?: boolean;
+  /** About buying: left out of the iOS app (.ios-app-hidden, see Hero). */
+  sells?: boolean;
   children: ReactNode;
 }) {
   return (
-    <details open={open}>
+    <details open={open} className={sells ? "ios-app-hidden" : undefined}>
       <summary>
         {question} <Icon name="chevron" />
       </summary>
@@ -649,7 +655,7 @@ function FinalCta() {
           Your next webinar could be <em>your best sales day</em>
         </h2>
         <div className="cta-row">
-          <a className="btn btn-white btn-lg" href="#pricing">
+          <a className="btn btn-white btn-lg ios-app-hidden" href="#pricing">
             See plans &amp; buy <Icon name="arrow-right" />
           </a>
           <Link className="btn btn-outline-light btn-lg" href="/browse">

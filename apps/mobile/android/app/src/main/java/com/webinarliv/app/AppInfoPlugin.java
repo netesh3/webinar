@@ -11,8 +11,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * window.Capacitor.Plugins.WebinarLivApp).
  *
  * pushConfigured: whether the build was made with google-services.json. Without it
- * Firebase is never initialised, and @capacitor/push-notifications' register() throws
- * on the main thread, which takes the whole app down. The page asks first.
+ * Firebase is never initialised, and asking @capacitor-firebase/messaging for a token
+ * throws on the main thread, which takes the whole app down. The page asks first.
  */
 @CapacitorPlugin(name = "WebinarLivApp")
 public class AppInfoPlugin extends Plugin {
