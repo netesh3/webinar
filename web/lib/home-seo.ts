@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CONTACT } from "./contact.ts";
 
 /** Search metadata for the marketing homepage, shared by / and /home so the
  *  alias points Google at / instead of being indexed as a second page. */
@@ -35,7 +36,7 @@ export function homeJsonLd(origin: string) {
         name: "Webinar Liv",
         url: `${origin}/`,
         logo: `${origin}/brand/mark.png`,
-        email: "support@webinarliv.com",
+        email: CONTACT.hello,
       },
       {
         "@type": "WebSite",

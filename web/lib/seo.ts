@@ -25,11 +25,11 @@ export type SitemapEntry = {
 export const DOWNLOAD_UPDATED = "2026-10-29";
 
 /** When /contact last changed (its sitemap date). */
-export const CONTACT_UPDATED = "2026-10-27";
+export const CONTACT_UPDATED = "2026-10-29";
 
 export const LEGAL_UPDATED = {
-  privacy: "2026-10-27",
-  terms: "2026-09-11",
+  privacy: "2026-10-29",
+  terms: "2026-10-29",
   zoom: "2026-10-17",
 } as const;
 

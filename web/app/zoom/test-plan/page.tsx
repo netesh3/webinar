@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { LegalPage, SUPPORT_EMAIL } from "@/components/marketing/legal-page";
+import { LegalPage } from "@/components/marketing/legal-page";
+import { CONTACT } from "@/lib/contact";
 
 export const metadata: Metadata = {
   title: "Zoom app test plan — Webinar Liv",
@@ -645,7 +646,7 @@ export default function ZoomTestPlanPage() {
 
       <h2 id="support">Support</h2>
       <p>
-        Questions during review: <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+        Questions during review: <a href={`mailto:${CONTACT.support}`}>{CONTACT.support}</a>.
       </p>
     </LegalPage>
   );

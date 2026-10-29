@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/netkumar/webcast/api/internal/notify"
+	"github.com/netkumar/webcast/api/types"
 )
 
 /* The coach's email about WhatsApp replies waiting.
@@ -71,5 +72,5 @@ func replyDigestMessage(to string, waiting int, names []string, web string) noti
 	body := fmt.Sprintf("%s wrote to you on WhatsApp.\n\nReply here: %s/host?tab=messages\n\n"+
 		"WhatsApp lets you reply in your own words for 24 hours after their last message.\n",
 		who, strings.TrimRight(web, "/"))
-	return notify.Message{To: to, Subject: subject, Body: body}
+	return notify.Message{To: to, Subject: subject, Body: body, ReplyTo: types.ContactSupport}
 }

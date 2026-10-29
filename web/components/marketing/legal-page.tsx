@@ -3,10 +3,7 @@ import type { ReactNode } from "react";
 import { TopNav } from "@/components/top-nav";
 import { SocialLinks } from "@/components/marketing/social-links";
 import { GetAppLink } from "@/components/get-app-link";
-
-const SUPPORT_EMAIL = "support@webinarliv.com";
-
-export { SUPPORT_EMAIL };
+import { CONTACT } from "@/lib/contact";
 
 type LegalPageProps = {
   title: string;
@@ -50,7 +47,9 @@ export function LegalFooterNav() {
       <Link href="/contact">Contact</Link>
       <GetAppLink before={<span aria-hidden>·</span>}>Download the app</GetAppLink>
       <span aria-hidden>·</span>
-      <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+      <a href={`mailto:${CONTACT.support}`}>{CONTACT.support}</a>
+      <span aria-hidden>·</span>
+      <a href={`mailto:${CONTACT.hello}`}>{CONTACT.hello}</a>
       <SocialLinks className="legal-footer-social" />
     </nav>
   );

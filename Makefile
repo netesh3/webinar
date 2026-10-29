@@ -468,6 +468,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# Search: the sitemap lists every public page and post and no app route; robots
 	# disallows the app routes and links the sitemap (lib/seo.ts).
 	cd web && node --experimental-strip-types --no-warnings lib/seo.test.mts
+	# The company's addresses, one per purpose, from api/types/contact.go (lib/contact.ts).
+	cd web && node --experimental-strip-types --no-warnings lib/contact.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/site-banner.test.mts
 	cd web && node --experimental-strip-types --no-warnings lib/social.test.mts
 	# The proposed plans behind /features and /pricing/proposed: the yearly rule, limits read

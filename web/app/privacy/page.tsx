@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { LEGAL_UPDATED, legalDateLabel } from "@/lib/seo";
 import Link from "next/link";
-import {
-  LegalPage,
-  SUPPORT_EMAIL,
-} from "@/components/marketing/legal-page";
+import { LegalPage } from "@/components/marketing/legal-page";
+import { CONTACT } from "@/lib/contact";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — Webinar Liv",
@@ -32,7 +30,7 @@ export default function PrivacyPage() {
         Webinar Liv is a webinar hosting platform at{" "}
         <a href="https://webinarliv.com">https://webinarliv.com</a>. For privacy
         questions, contact{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+        <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
       </p>
 
       <h2>2. Information we collect</h2>
@@ -253,14 +251,18 @@ export default function PrivacyPage() {
         We use industry-standard measures such as encrypted transport (HTTPS /
         WSS), hashed passwords, and access controls. No method of transmission
         or storage is completely secure; please use strong credentials and treat
-        join links carefully.
+        join links carefully. To report a security vulnerability, email{" "}
+        <a href={`mailto:${CONTACT.security}`}>{CONTACT.security}</a>.
       </p>
 
       <h2>11. Your choices</h2>
       <ul>
         <li>Update account details where the product allows</li>
         <li>Sign out to end an authenticated browser session</li>
-        <li>Request account or data deletion by emailing {SUPPORT_EMAIL}</li>
+        <li>
+          Request account or data deletion by emailing{" "}
+          <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>
+        </li>
         <li>Control camera, microphone, and screen share from your browser and in-room controls</li>
         <li>Manage Google account permissions for third-party apps in your Google settings</li>
         <li>Disconnect Zoom in Settings → Integrations, or remove Webinar Liv from your Zoom App Marketplace apps</li>
@@ -283,7 +285,7 @@ export default function PrivacyPage() {
       </ul>
       <p>
         To use any of these, email{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> from the address
+        <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> from the address
         on your account. We may need to confirm it is you, and we reply within
         30 days. If you registered for someone else&apos;s webinar, that host
         decides what is collected; we will pass your request to them or help
@@ -317,8 +319,8 @@ export default function PrivacyPage() {
 
       <h2>15. Contact</h2>
       <p>
-        Questions about privacy:{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+        Questions about privacy, data requests and grievances:{" "}
+        <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>
         <br />
         Related: <Link href="/terms">Terms of Service</Link>
       </p>

@@ -5,6 +5,7 @@ import { Alert } from "../controls";
 import { useAppConfig, useSession } from "../providers";
 import { ApiError } from "@/lib/api";
 import type { IntegrationCard } from "@/lib/api-types";
+import { CONTACT } from "@/lib/contact";
 import { EmailIntegration } from "../email/email-inbox";
 import { IntegrationCard as IntegrationCardView } from "./integration-card";
 
@@ -120,7 +121,7 @@ export function IntegrationsSection({
     { id: "streaming", label: "Streaming" },
     { id: "soon", label: "Coming soon" },
   ] as const;
-  const mail = supportEmail || "support@webinarliv.com";
+  const mail = supportEmail || CONTACT.support;
 
   return (
     <section id="integrations">

@@ -832,7 +832,7 @@ func (s *Module) runSilentStep(ctx context.Context, step crmstore.DripDue) {
 			body += "\n\nOpen their conversation: " + strings.TrimRight(s.cfg.WebBaseURL, "/") +
 				"/host?tab=messages&contact=" + step.ContactID + "\n"
 			if err := s.mail.Send(ctx, notify.Message{To: step.HostEmail,
-				Subject: name + " · " + step.DripName, Body: body}); err != nil {
+				Subject: name + " · " + step.DripName, Body: body, ReplyTo: types.ContactSupport}); err != nil {
 				s.log.Error("rule step: notify", "enrollment", step.EnrollmentID, "error", err)
 				return
 			}

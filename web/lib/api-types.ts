@@ -1131,6 +1131,46 @@ export const HighlightsNotReady = "not_ready";
 export const HighlightsNotStarted = "not_started";
 
 //////////
+// source: contact.go
+
+/**
+ * ContactSupport is product help: accounts, webinars, the app.
+ */
+export const ContactSupport = "support@webinarliv.com";
+/**
+ * ContactHello is general enquiries, including sales.
+ */
+export const ContactHello = "hello@webinarliv.com";
+/**
+ * ContactBilling is invoices, payments, refunds and GST.
+ */
+export const ContactBilling = "billing@webinarliv.com";
+/**
+ * ContactInvite is the Reply-To on invitations and event mail sent on a host's behalf.
+ */
+export const ContactInvite = "invite@webinarliv.com";
+/**
+ * ContactSecurity is vulnerability reports and account security alerts.
+ */
+export const ContactSecurity = "security@webinarliv.com";
+/**
+ * ContactPrivacy is data access and deletion requests, and the DPDP/GDPR and grievance contact.
+ */
+export const ContactPrivacy = "privacy@webinarliv.com";
+/**
+ * ContactLegal is terms, legal notices and takedowns.
+ */
+export const ContactLegal = "legal@webinarliv.com";
+/**
+ * ContactAbuse is reports of spam or abusive webinars and hosts.
+ */
+export const ContactAbuse = "abuse@webinarliv.com";
+/**
+ * ContactPartners is affiliates, resellers and integrations.
+ */
+export const ContactPartners = "partners@webinarliv.com";
+
+//////////
 // source: costs.go
 
 /**
