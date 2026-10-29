@@ -2788,6 +2788,42 @@ export interface FollowupEditRequest {
 }
 
 //////////
+// source: locations.go
+
+/**
+ * LocationCount is one bucket: an ISO 3166-1 alpha-2 country ("IN", "US") or, inside India,
+ * a state or territory as Cloudflare names it ("Karnataka").
+ */
+export interface LocationCount {
+  key: string;
+  count: number /* int */;
+}
+/**
+ * AudienceLocations is the audience's locations, largest bucket first.
+ */
+export interface AudienceLocations {
+  /**
+   * Attendees is everyone in the audience; Recorded is those whose country is known. The
+   * difference (Unknown) joined before locations were recorded, came from a network
+   * Cloudflare could not place (or Tor), or was only seen by the video server.
+   */
+  attendees: number /* int */;
+  recorded: number /* int */;
+  unknown: number /* int */;
+  countries: LocationCount[];
+  /**
+   * IndiaRegions is the people from India by state; IndiaUnknown is those from India whose
+   * state Cloudflare did not give.
+   */
+  indiaRegions: LocationCount[];
+  indiaUnknown: number /* int */;
+  /**
+   * Days is the admin's window; 0 for one webinar.
+   */
+  days?: number /* int */;
+}
+
+//////////
 // source: metrics.go
 
 export interface CRMMetricsResponse {

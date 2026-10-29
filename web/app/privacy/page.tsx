@@ -68,6 +68,9 @@ export default function PrivacyPage() {
         may also collect standard technical logs such as IP address, user agent,
         approximate region, device or browser type, and request timestamps to
         operate, secure, and debug the Service.
+        When you join a session we also note your device type and your
+        approximate location (country and region) from the network, used for
+        audience analytics.
       </p>
 
       <h2>3. How we use information</h2>
