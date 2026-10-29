@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { AudienceLocations } from "@/lib/api-types";
-import { countryRows, indiaStateRows, locationsNote } from "@/lib/audience-locations";
+import { cityRows, countryRows, indiaStateRows, locationsNote } from "@/lib/audience-locations";
 import { Bars, WindowPicker, type Days } from "./audience-devices";
 import { Alert } from "./controls";
 import { Card } from "./ui";
 
-/* The audience by location: the top countries, and India by state. Counts from the join
- * requests, as Cloudflare places each person's network (GET /api/host/webinars/{slug}/locations,
- * GET /api/admin/locations), one per person; never the city. Beside the devices card, built
- * the same way. Recorded from 29 Oct 2026. */
+/* The audience by location: the top countries, India by state, and the top cities. Counts from
+ * the join requests, as Cloudflare places each person's network (GET
+ * /api/host/webinars/{slug}/locations, GET /api/admin/locations), one per person. Beside the
+ * devices card, built the same way. Recorded from 29 Oct 2026, the city too. */
 
 export function AudienceLocationsBreakdown({ data }: { data: AudienceLocations }) {
   const india = data.countries.some((c) => c.key === "IN");
@@ -22,6 +22,7 @@ export function AudienceLocationsBreakdown({ data }: { data: AudienceLocations }
         <div className="grid gap-4 sm:grid-cols-2">
           <Bars title="Country" rows={countryRows(data)} />
           {india && <Bars title="India by state" rows={indiaStateRows(data)} />}
+          <Bars title="Top cities" rows={cityRows(data)} />
         </div>
       )}
     </div>
