@@ -12,7 +12,7 @@
 import { execFile } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { fileInfo } from "./lib.mjs";
@@ -168,7 +168,8 @@ export class WranglerR2Store {
   }
 
   async putFile(key, path, opts = {}) {
-    const args = ["r2", "object", "put", this.#objectPath(key), "--file", path, "-y"];
+    // wrangler is spawned with cwd=tmpdir, so --file must be absolute.
+    const args = ["r2", "object", "put", this.#objectPath(key), "--file", resolve(path), "-y"];
     if (opts.contentType) args.push("--content-type", opts.contentType);
     if (opts.cacheControl) args.push("--cache-control", opts.cacheControl);
     await this.#wrangler(args);
