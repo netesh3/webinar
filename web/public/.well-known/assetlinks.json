@@ -4,7 +4,9 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.webinarliv.app",
-      "sha256_cert_fingerprints": ["<ANDROID_SHA256_CERT_FINGERPRINT>"]
+      "sha256_cert_fingerprints": [
+        "CC:F6:DD:43:BA:2F:9F:5C:FB:0D:30:E4:06:EB:8F:66:7C:E0:4A:BE:A0:32:90:20:90:B0:40:B5:B5:FE:9B:A3"
+      ]
     }
   }
 ]
