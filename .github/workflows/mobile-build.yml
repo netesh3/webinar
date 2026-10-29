@@ -350,7 +350,7 @@ jobs:
           { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   promote-android:
-    name: re-publish ${{ inputs.promote_tag }}
+    name: re-publish an existing version (promote_tag)
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_tag != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
