@@ -327,7 +327,13 @@ GOOGLE_SERVICE_INFO_PLIST_BASE64 FCM_SERVICE_ACCOUNT_JSON`, the `AZURE_*` set if
 section 6, and the existing `R2_DOWNLOADS_*`.
 
 Release (after PR #776, the downloads pipeline, is merged). The desktop tag must match
-`apps/desktop/package.json` (currently `0.1.0`):
+`apps/desktop/package.json` (currently `0.1.0`).
+
+GitHub-hosted `macos-latest` is off until the repo variables `GITHUB_HOSTED_DESKTOP` /
+`GITHUB_HOSTED_MOBILE` / `GITHUB_HOSTED_MACOS` are `true`. Until then this Mac builds the
+signed macOS app, Android APK/AAB and iOS IPA, and `scripts/downloads/publish.mjs` uploads
+through Wrangler OAuth (Windows is skipped with Azure Trusted Signing). Tags still mark the
+version:
 
 ```sh
 cd ~/Personal/webinar && git fetch origin && git checkout main && git pull
