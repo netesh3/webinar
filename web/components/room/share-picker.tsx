@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Recording } from "@/lib/api-types";
-import { driveConfigured, pickFromDrive } from "@/lib/drive";
+import { connectAppKind, pickFromDriveInApp } from "@/lib/app-connect";
+import { downloadDriveFile, driveConfigured, pickFromDrive } from "@/lib/drive";
 import {
   canShareFile,
   formatPosition,
@@ -273,11 +274,27 @@ function SourceStep({
     abort.current = controller;
     onBusy("Waiting for Google…", null);
     try {
-      const picked = await pickFromDrive(
-        drive,
-        (fraction) => onBusy("Copying from Drive…", fraction),
-        controller.signal,
-      );
+      const progress = (fraction: number) => onBusy("Copying from Drive…", fraction);
+      /* Inside the desktop or mobile app Google's sign-in and Picker can't run here, so they
+       * run in the system browser and the pick comes back to this room (lib/app-connect.ts,
+       * 29 Oct 2026). On the web, and in an app too old for that, the Picker opens here. */
+      let picked: { name: string; url: string; size: number } | null;
+      if (connectAppKind()) {
+        onBusy("Choose the video in your browser, then come back here…", null);
+        const handed = await pickFromDriveInApp(controller.signal);
+        if (handed === "cancelled" || !handed) {
+          onError("");
+          return;
+        }
+        picked = await downloadDriveFile(
+          { id: handed.id, name: handed.name, size: handed.size, mimeType: handed.mimeType },
+          handed.accessToken,
+          progress,
+          controller.signal,
+        );
+      } else {
+        picked = await pickFromDrive(drive, progress, controller.signal);
+      }
       if (!picked) {
         // Backed out. Return to the source list rather than reporting an error.
         onError("");

@@ -556,6 +556,81 @@ export interface AppAuthExchangeResponse {
 }
 
 //////////
+// source: app_connect.go
+
+/**
+ * AppConnectTicketRequest is POST /api/host/integrations/{zoom|youtube|drive}/app-ticket.
+ */
+export interface AppConnectTicketRequest {
+  /**
+   * App is "desktop", "ios" or "android".
+   */
+  app: string;
+  /**
+   * Return is the same-site path to come back to once connected.
+   */
+  return?: string;
+}
+/**
+ * AppConnectTicketResponse is where the system browser goes, and the attempt's id.
+ */
+export interface AppConnectTicketResponse {
+  /**
+   * StartURL is an absolute URL on the API's own origin with the one-time ticket in it.
+   */
+  startUrl: string;
+  /**
+   * ID names the attempt. The room polls a Drive pick by it.
+   */
+  id: string;
+}
+/**
+ * AppConnectCompleteRequest is POST /api/host/integrations/app/complete.
+ */
+export interface AppConnectCompleteRequest {
+  /**
+   * Code is the completion code from webinarliv://connect/complete.
+   */
+  code: string;
+}
+/**
+ * AppConnectCompleteResponse says what was connected and where to go.
+ */
+export interface AppConnectCompleteResponse {
+  provider: string;
+  /**
+   * Next is a same-site path, with the result the settings page shows (?zoom=connected).
+   */
+  next: string;
+}
+/**
+ * AppDrivePickRequest is POST /api/integrations/drive/app-pick, from the picker page in the
+ * system browser.
+ */
+export interface AppDrivePickRequest {
+  fileId: string;
+  name: string;
+  size: number /* int64 */;
+  mimeType: string;
+  /**
+   * AccessToken is the short-lived drive.readonly token the picker page got from Google.
+   */
+  accessToken: string;
+}
+/**
+ * AppDrivePickResponse is GET /api/host/integrations/drive/app-pick/{id}: "pending" until
+ * the system browser has handed a pick over, then the pick, once.
+ */
+export interface AppDrivePickResponse {
+  status: string;
+  fileId?: string;
+  name?: string;
+  size?: number /* int64 */;
+  mimeType?: string;
+  accessToken?: string;
+}
+
+//////////
 // source: billing.go
 
 /**

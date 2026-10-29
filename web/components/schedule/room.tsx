@@ -4,6 +4,7 @@ import { Toggle } from "../controls";
 import { Badge } from "../ui";
 import { useAppConfig, useSession } from "../providers";
 import { api } from "@/lib/api";
+import { interceptConnectClick } from "@/lib/app-connect";
 import { FeatureCloudRecording, type Webinar } from "@/lib/api-types";
 import { CaptionsLanguageSelect } from "../captions-language-select";
 import { FormGroup, FormSection } from "./chrome";
@@ -215,6 +216,8 @@ export function RoomSection({
                       ? "/host/schedule"
                       : window.location.pathname,
                   )}
+                  // Inside the desktop or mobile app, the connect runs in the system browser.
+                  onClick={(e) => interceptConnectClick(e, e.currentTarget.href)}
                   className="font-medium text-brand hover:underline"
                 >
                   Connect YouTube

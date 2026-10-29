@@ -52,6 +52,19 @@ export function routeForOpenedUrl(raw: string): string | null {
   return u.toString();
 }
 
+/** What an opened route means for a system-browser hand-off (29 Oct 2026):
+ *   "navigate"  the end of a sign-in or a connect (/auth/complete, /connect/complete): close
+ *               the browser sheet and load the page, which finishes it
+ *   "stay"      a Drive pick handed over (/connect/picked): close the sheet, load nothing,
+ *               because the live room that asked is collecting it
+ *   "none"      any other link */
+export function handOffReturn(route: string): "navigate" | "stay" | "none" {
+  const path = route.split(/[?#]/)[0];
+  if (path === "/auth/complete" || path === "/connect/complete") return "navigate";
+  if (path === "/connect/picked") return "stay";
+  return "none";
+}
+
 /** A live session: the screen stays on while one of these is open. */
 export function keepsScreenAwake(pathname: string): boolean {
   return /^\/(webinars|host)\/[^/]+\/(room|recording)(\/|$)/.test(pathname) ||
@@ -114,12 +127,16 @@ const LAST_OPEN_KEY = "webinarliv.native.lastOpen";
 function open(raw: string): void {
   const route = routeForOpenedUrl(raw);
   if (!route) return;
-  if (route.startsWith("/auth/complete")) {
-    /* The Google hand-off is back (lib/app-auth.ts): put away the in-app browser sheet it
-     * ran in. iOS only; Android's Custom Tab closes as the app comes forward. */
+  const hand = handOffReturn(route);
+  if (hand !== "none") {
+    /* A system-browser hand-off is back (lib/app-auth.ts, lib/app-connect.ts): put away the
+     * in-app browser sheet it ran in. iOS only; Android's Custom Tab closes as the app comes
+     * forward. */
     const browser = plugin("Browser") as unknown as BrowserPlugin | null;
     if (browser && cap()?.getPlatform?.() === "ios") void browser.close().catch(() => {});
   }
+  // A Drive pick: the room that asked for it is open and collects it itself. Stay put.
+  if (hand === "stay") return;
   const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (route === here || route === window.location.href) return;
   /* A cold start can report the same link twice: getLaunchUrl, and the appUrlOpen event
