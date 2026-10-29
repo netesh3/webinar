@@ -227,6 +227,54 @@ func TestNativePushDeliveryThroughFCM(t *testing.T) {
 	}
 }
 
+/* With FCM_PROJECT_ID and no key file (29 Oct 2026), the API sends with the Cloud Run
+ * identity's token from the metadata server, which it asks with Metadata-Flavor: Google. */
+func TestNativePushDeliveryThroughFCMWithTheMetadataServer(t *testing.T) {
+	f, _ := newFakeFCMService(t)
+	var mu sync.Mutex
+	metaHits := 0
+	meta := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Metadata-Flavor") != "Google" ||
+			r.URL.Path != "/computeMetadata/v1/instance/service-accounts/default/token" ||
+			r.URL.Query().Get("scopes") != push.FCMScope {
+			http.Error(w, "bad metadata request", http.StatusForbidden)
+			return
+		}
+		mu.Lock()
+		metaHits++
+		mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "fake-access", "expires_in": 3599, "token_type": "Bearer"})
+	}))
+	t.Cleanup(meta.Close)
+	prev := push.MetadataBaseURL
+	push.MetadataBaseURL = meta.URL
+	t.Cleanup(func() { push.MetadataBaseURL = prev })
+
+	h := newHarness(t, func(c *config.Config) { c.FCMProjectID = "webinarliv-test" })
+	h.signup("Meta", "meta-native@example.com", false)
+	res, raw := h.do(http.MethodPost, "/api/push/native", types.NativePushRegisterRequest{Platform: "android", Token: fcmToken("meta")})
+	var out types.NativePushRegisterResponse
+	h.decode(raw, &out)
+	if res.StatusCode != http.StatusOK || !out.Sending {
+		t.Fatalf("register: %d %s", res.StatusCode, raw)
+	}
+	if res, raw := h.do(http.MethodPost, "/api/push/test", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("test push: %d %s", res.StatusCode, raw)
+	}
+	h.flushPush()
+	if sent := f.sentTo(); len(sent) != 1 || sent[0] != fcmToken("meta") {
+		t.Fatalf("FCM sends %v", sent)
+	}
+	f.mu.Lock()
+	jwtHits := f.tokens
+	f.mu.Unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	if metaHits != 1 || jwtHits != 0 {
+		t.Fatalf("metadata hits %d, JWT token hits %d", metaHits, jwtHits)
+	}
+}
+
 // "Starting now" reaches a signed-in registrant's phone through the same fan-out as their
 // browsers, with their own join link, once, and not when the account turned the kind off.
 func TestNativePushWentLiveFollowsPreferences(t *testing.T) {

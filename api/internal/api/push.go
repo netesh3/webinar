@@ -77,13 +77,15 @@ const (
 )
 
 func newPushSender(s *Server) {
-	if raw := s.cfg.FCMServiceAccountJSON; raw == "" {
-		s.log.Info("native push off: FCM_SERVICE_ACCOUNT_JSON is not set; app tokens are stored, nothing is sent to them")
-	} else if f, err := push.NewFCMSender(raw, nil); err != nil {
+	// The service account JSON wins; else FCM_PROJECT_ID sends with the Cloud Run identity's
+	// token from the metadata server (29 Oct 2026); else off.
+	if f, err := push.NewFCMSenderFromConfig(s.cfg.FCMServiceAccountJSON, s.cfg.FCMProjectID, nil); err != nil {
 		s.log.Error("native push off: FCM_SERVICE_ACCOUNT_JSON is not usable", "error", err)
+	} else if f == nil {
+		s.log.Info("native push off: neither FCM_SERVICE_ACCOUNT_JSON nor FCM_PROJECT_ID is set; app tokens are stored, nothing is sent to them")
 	} else {
 		s.fcm = f
-		s.log.Info("native push enabled", "firebase_project", f.ProjectID())
+		s.log.Info("native push enabled", "firebase_project", f.ProjectID(), "credential", f.Source())
 	}
 	cfg := s.cfg.Push()
 	if !cfg.Enabled() {

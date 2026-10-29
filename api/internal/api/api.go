@@ -211,7 +211,7 @@ type Server struct {
 	push           *push.Sender
 	pushEndpointOK func(string) error
 	// fcm sends native push to the mobile apps (push.go, push/fcm.go); nil without
-	// FCM_SERVICE_ACCOUNT_JSON. Independent of push: either channel can be on alone.
+	// FCM_SERVICE_ACCOUNT_JSON or FCM_PROJECT_ID. Independent of push: either channel can be on alone.
 	fcm *push.FCMSender
 }
 

@@ -60,7 +60,9 @@
 #     pair with `npx web-push generate-vapid-keys`; the subject is mailto:you@domain.
 #   FCM_SERVICE_ACCOUNT_JSON — optional; native push to the Android and iOS apps through Firebase
 #     Cloud Messaging (api/internal/push/fcm.go). A Firebase service account's JSON key, as is or
-#     base64. Unset, the apps' tokens are stored and nothing is sent to them (apps/mobile/README.md).
+#     base64. Optional since the FCM_PROJECT_ID variable (29 Oct 2026), which needs no key; this
+#     wins when both are set. Neither, the apps' tokens are stored and nothing is sent to them
+#     (apps/mobile/README.md).
 #   META_WEBHOOK_VERIFY_TOKEN — must match the Verify token on the Meta app's
 #     WhatsApp webhook, whose callback is {API}/api/webhooks/whatsapp
 #   ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET / ZOOM_REDIRECT_URL / ZOOM_TOKEN_KEY —
@@ -128,6 +130,10 @@
 #     override the defaults in deploy/cloudrun-deploy.sh.
 #   EMPTY_ROOM_CLOSE_MIN — minutes an empty live room may run past its scheduled
 #     start before the server ends it (default 10; 0 = never).
+#   FCM_PROJECT_ID — the Firebase project for native push with no key file (29 Oct 2026):
+#     the API takes its FCM token from the Cloud Run metadata server for the runtime service
+#     account (it needs roles/firebasecloudmessaging.admin there). selfreminder-rnix. The
+#     FCM_SERVICE_ACCOUNT_JSON secret wins when both are set; neither, native sending is off.
 #
 # Deploy guard (docs/DEPLOYMENT-TOPOLOGY.md): the first step waits while ANY session is live
 # (.github/scripts/wait-no-live.sh, GUARD_MODE=api: proceeds if the API is down or predates the
@@ -247,6 +253,8 @@ jobs:
       VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
       # Native push for the mobile apps (FCM HTTP v1). Optional; unset, native sending is off.
       FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+      # Or no key: the Cloud Run identity's token from the metadata server (29 Oct 2026).
+      FCM_PROJECT_ID: ${{ vars.FCM_PROJECT_ID }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}

@@ -166,9 +166,14 @@ APNs itself.
   deletes the token and what was queued for it. 429 and 5xx back the token off, as for a
   browser endpoint. Other 4xx, including `THIRD_PARTY_AUTH_ERROR` (the APNs key in Firebase is
   missing or wrong), drop that message.
-- **Off by default.** Without `FCM_SERVICE_ACCOUNT_JSON` the API logs once at boot that native
-  push is off. Tokens are still stored, and nothing is queued for them. A key that doesn't parse
-  is logged and treated as unset, so it can't stop the API from booting.
+- **Credential.** Preferred: `FCM_PROJECT_ID` with no key file. The API asks the Cloud Run
+  metadata server for the runtime service account's token with the `firebase.messaging` scope
+  and caches it until a minute before it expires. The fallback is a service account JSON key in
+  `FCM_SERVICE_ACCOUNT_JSON`, which wins when both are set. The boot log says which one is in
+  use (`native push enabled ... credential=metadata_server` or `service_account_json`).
+- **Off by default.** With neither set, the API logs once at boot that native push is off.
+  Tokens are still stored, and nothing is queued for them. A key that doesn't parse is logged
+  and treated as unset, so it can't stop the API from booting.
 
 **Setup the owner has to do:**
 
@@ -186,12 +191,17 @@ APNs itself.
    then Cloud Messaging, then Apple app configuration, and upload the `.p8` with its Key ID and
    your Team ID. The App ID needs the Push Notifications capability. The key stays in Firebase,
    not in this repo or the API.
-3. **Service account for the API.** In Firebase, go to Project settings, then Service
-   accounts, and click Generate new private key. Store the whole JSON file as the repo secret
-   **`FCM_SERVICE_ACCOUNT_JSON`**, either as is or base64-encoded.
-   `.github/workflows/cloudrun-deploy.yml` passes it to the API
-   (`deploy/cloudrun-deploy.sh`). The next deploy turns native sending on, and the boot log
-   says `native push enabled`.
+3. **Credential for the API: the Cloud Run identity, no key download.** Firebase lives in the
+   API's own GCP project (`selfreminder-rnix`), and the Cloud Run runtime service account
+   (`65278594492-compute@developer.gserviceaccount.com`) holds
+   `roles/firebasecloudmessaging.admin` there. Set the repo **variable** (not a secret)
+   **`FCM_PROJECT_ID=selfreminder-rnix`** and deploy. `.github/workflows/cloudrun-deploy.yml`
+   passes it to the API (`deploy/cloudrun-deploy.sh`), and the boot log says
+   `native push enabled` with `credential=metadata_server`.
+   - Fallback, for a Firebase project outside the API's GCP project: in Firebase, go to Project
+     settings, then Service accounts, and click Generate new private key. Store the whole JSON
+     file as the repo secret `FCM_SERVICE_ACCOUNT_JSON`, as is or base64-encoded. It wins over
+     `FCM_PROJECT_ID` when both are set.
 4. Check it: sign in on a phone, then use Settings, then Notifications, then Send test
    notification. That queues one notification to every browser and install of the account.
 
@@ -257,8 +267,8 @@ Play App Signing, so Google holds the app signing key, and put *that* key's SHA-
 2. **Google:** a Play Console app for `com.webinarliv.app`, an upload keystore (plus its
    passwords and alias) enrolled in Play App Signing, the **app signing key's SHA-256** for
    `assetlinks.json`, and a Firebase project with an Android and an iOS app, which gives
-   `google-services.json` and `GoogleService-Info.plist`, plus a service account key for the
-   `FCM_SERVICE_ACCOUNT_JSON` secret.
+   `google-services.json` and `GoogleService-Info.plist`. The API sends with its Cloud Run
+   identity once the `FCM_PROJECT_ID` repo variable is set; no service account key is needed.
 3. Replace the two placeholders in `web/public/.well-known/` and deploy the web app.
 4. Store listings: name, subtitle, description, keywords, category (Business or Productivity),
    support URL, marketing URL, privacy policy URL (`https://webinarliv.com/privacy`),

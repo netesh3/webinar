@@ -259,6 +259,9 @@ done
 # service account's JSON key. The env file below JSON-encodes it, so its quotes and newlines are
 # safe. Unset, the apps' tokens are stored and nothing is sent to them.
 [[ -n "${FCM_SERVICE_ACCOUNT_JSON:-}" ]] && ENV_VARS+=("FCM_SERVICE_ACCOUNT_JSON=${FCM_SERVICE_ACCOUNT_JSON}")
+# Or no key (29 Oct 2026): the Firebase project ID, and the API takes its token from the Cloud Run
+# metadata server for the runtime service account. The JSON key wins when both are set.
+[[ -n "${FCM_PROJECT_ID:-}" ]] && ENV_VARS+=("FCM_PROJECT_ID=${FCM_PROJECT_ID}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")

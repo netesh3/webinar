@@ -104,6 +104,13 @@ type Config struct {
 	 * rather than refusing to boot, so a pasting mistake cannot take the API down. (29 Oct 2026) */
 	FCMServiceAccountJSON string
 
+	/* FCMProjectID is the Firebase project to send through with no key file (29 Oct 2026):
+	 * when FCMServiceAccountJSON is empty and this is set, the access token comes from the
+	 * GCE / Cloud Run metadata server for the runtime service account, which needs
+	 * roles/firebasecloudmessaging.admin on the project. The JSON key wins when both are set.
+	 * Empty (the default) with no JSON key means native sending is off. */
+	FCMProjectID string
+
 	/* CaptionsSecret switches on server-side live captions (deploy/captions): the shared
 	 * secret the caption agent sends in X-Captions-Secret to POST /api/internal/captions,
 	 * /captions/status and /transcripts. Empty means those endpoints do not exist and
@@ -573,6 +580,7 @@ func Load() (Config, error) {
 		VAPIDPrivateKey:         strings.TrimSpace(env("VAPID_PRIVATE_KEY", "")),
 		VAPIDSubject:            strings.TrimSpace(env("VAPID_SUBJECT", "")),
 		FCMServiceAccountJSON:   strings.TrimSpace(env("FCM_SERVICE_ACCOUNT_JSON", "")),
+		FCMProjectID:            strings.TrimSpace(env("FCM_PROJECT_ID", "")),
 		CaptionsSecret:          strings.TrimSpace(env("CAPTIONS_SECRET", "")),
 		CaptionsAgentName:       strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
 		CaptionsProvider:        loadCaptionsProvider(),
