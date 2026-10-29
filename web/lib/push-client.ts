@@ -1,9 +1,9 @@
-/* Web Push, the browser side: the service worker, the subscription, the API calls, and the
- * install prompt Chrome hands us once.
+/* Web Push, the browser side: the service worker, the subscription, and the API calls.
  *
- * Nothing here runs on page load except registering /sw.js (no prompt) and listening for
- * beforeinstallprompt. Notification permission is only ever requested from a click — a
- * browser that is asked on load learns to ignore the site, and Safari refuses outright.
+ * Nothing here runs on page load except registering /sw.js (no prompt) and swallowing
+ * Chrome's beforeinstallprompt so the browser does not offer a PWA. Native apps are at
+ * /download. Notification permission is only ever requested from a click — a browser
+ * that is asked on load learns to ignore the site, and Safari refuses outright.
  */
 
 import type {
@@ -136,49 +136,12 @@ export async function disablePush(joinKey?: string): Promise<void> {
 
 // ------------------------------------------------------------------ install prompt
 
-/** Chrome's BeforeInstallPromptEvent, which TypeScript's DOM types do not include. */
-export type InstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
-
-let deferred: InstallPromptEvent | null = null;
-let installed = false;
-const listeners = new Set<() => void>();
-const emit = () => listeners.forEach((l) => l());
-
-/** Starts listening; call once, early (components/pwa.tsx PwaBoot). */
+/** Swallows Chrome's beforeinstallprompt so the mini-infobar never appears.
+ *  Native apps are offered at /download; we do not prompt to install a PWA.
+ *  Call once, early (components/pwa.tsx PwaBoot). */
 export function captureInstallPrompt(): void {
   if (typeof window === "undefined") return;
   window.addEventListener("beforeinstallprompt", (e) => {
-    // Keep Chrome's mini-infobar from appearing on its own: the menu item offers it instead.
     e.preventDefault();
-    deferred = e as InstallPromptEvent;
-    emit();
   });
-  window.addEventListener("appinstalled", () => {
-    deferred = null;
-    installed = true;
-    emit();
-  });
-}
-
-export function subscribeInstall(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-/** A snapshot for useSyncExternalStore: whether a prompt is waiting, and whether we installed. */
-export function installSnapshot(): string {
-  return `${deferred ? 1 : 0}${installed ? 1 : 0}`;
-}
-
-export async function promptInstall(): Promise<boolean> {
-  const e = deferred;
-  if (!e) return false;
-  deferred = null;
-  emit();
-  await e.prompt();
-  const choice = await e.userChoice.catch(() => ({ outcome: "dismissed" as const }));
-  return choice.outcome === "accepted";
 }

@@ -126,12 +126,15 @@ func appGoogleSignIn(t *testing.T, h *harness, g *fakeGoogleFor, app, verifier, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if back.Path != "/auth/app-return" || back.RawQuery != "" {
-		t.Fatalf("callback went to %s, want /auth/app-return#…", back)
+	if back.Path != "/auth/app-return" {
+		t.Fatalf("callback went to %s, want /auth/app-return", back)
 	}
 	frag, err := url.ParseQuery(back.Fragment)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if frag.Get("app") == "" {
+		frag = back.Query()
 	}
 	if frag.Get("app") != app {
 		t.Fatalf("return page app %q, want %q", frag.Get("app"), app)
@@ -306,7 +309,84 @@ func TestAppSignInDeniedReturnsToTheApp(t *testing.T) {
 	res.Body.Close()
 	back, _ := url.Parse(res.Header.Get("Location"))
 	frag, _ := url.ParseQuery(back.Fragment)
+	if frag.Get("error") == "" {
+		frag = back.Query()
+	}
 	if back.Path != "/auth/app-return" || frag.Get("error") != "denied" || frag.Get("code") != "" {
 		t.Fatalf("denied went to %s", res.Header.Get("Location"))
+	}
+}
+
+/* A leftover webcast_google cookie from an earlier start must not fail a later
+ * callback whose query state is still a valid signed JWT. That mismatch is what
+ * sent the desktop app to /login?google=state after Google consent. */
+func TestAppSignInStaleStateCookieStillHandsOff(t *testing.T) {
+	g := newFakeGoogle(t, "stale-cookie@test.dev")
+	h := newHarness(t, withGoogleOAuth)
+
+	first := newVerifier(t)
+	jar := noRedirects(&http.Client{Jar: h.client.Jar})
+	q := url.Values{"next": {"/"}, "app": {"desktop"}, "challenge": {api.ChallengeFor(first)}}
+	res, err := jar.Get(h.srv.URL + "/api/auth/google/start?" + q.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("stale start: %d", res.StatusCode)
+	}
+
+	verifier := newVerifier(t)
+	browser := noRedirects(&http.Client{})
+	q = url.Values{"next": {"/host"}, "app": {"desktop"}, "challenge": {api.ChallengeFor(verifier)}}
+	res, err = browser.Get(h.srv.URL + "/api/auth/google/start?" + q.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	loc, err := url.Parse(res.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.mu.Lock()
+	g.nonce = loc.Query().Get("nonce")
+	g.mu.Unlock()
+	state := loc.Query().Get("state")
+
+	req, err := http.NewRequest(http.MethodGet, h.srv.URL+"/api/auth/google/callback?code=test-code&state="+url.QueryEscape(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin, err := url.Parse(h.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range h.client.Jar.Cookies(origin) {
+		if c.Name == "webcast_google" {
+			req.AddCookie(c)
+		}
+	}
+	res, err = browser.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("callback: %d", res.StatusCode)
+	}
+	back, err := url.Parse(res.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	frag, _ := url.ParseQuery(back.Fragment)
+	if frag.Get("code") == "" {
+		frag = back.Query()
+	}
+	if back.Path != "/auth/app-return" || frag.Get("code") == "" || frag.Get("error") != "" {
+		t.Fatalf("stale cookie vetoed the sign-in: %s", res.Header.Get("Location"))
+	}
+	res, raw := h.exchange(frag.Get("code"), verifier)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("exchange: %d %s", res.StatusCode, raw)
 	}
 }

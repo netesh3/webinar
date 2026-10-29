@@ -127,13 +127,36 @@ export function isConnectCompleteUrl(url: string): boolean {
  */
 export function isFocusOnlyLink(arg: string): boolean {
   const u = parse(arg);
-  return !!u && u.protocol === `${PROTOCOL}:` && u.hostname.toLowerCase() === "connect" && u.pathname === "/picked";
+  return !!u && u.protocol === `${PROTOCOL}:` && protocolPath(u) === "/connect/picked";
 }
 
 /** Schemes that may be handed to the OS (shell.openExternal). */
 export function isExternalSafe(url: string): boolean {
   const u = parse(url);
   return !!u && ["https:", "http:", "mailto:", "tel:"].includes(u.protocol);
+}
+
+/**
+ * Host + pathname of a webinarliv:// link, collapsed. Chrome and Safari disagree
+ * on the slashes: `webinarliv://auth/complete`, `webinarliv://auth/complete/`,
+ * `webinarliv:///auth/complete`, and `webinarliv:auth/complete` must all mean
+ * the same path or the Google hand-off is dropped.
+ */
+function protocolPath(u: URL): string {
+  const host = u.hostname;
+  const path = u.pathname.startsWith("/") ? u.pathname : `/${u.pathname}`;
+  const raw = `${host ? `/${host}` : ""}${path}`;
+  return raw.replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
+}
+
+function handOffComplete(sitePath: string, u: URL): string | null {
+  const target = new URL(sitePath, START_URL.origin);
+  const code = u.searchParams.get("code");
+  const error = u.searchParams.get("error");
+  if (code && /^[A-Za-z0-9_-]{1,128}$/.test(code)) target.searchParams.set("code", code);
+  else if (error && /^[a-z_]{1,32}$/.test(error)) target.searchParams.set("error", error);
+  else return null;
+  return target.toString();
 }
 
 /**
@@ -162,6 +185,17 @@ export function resolveLaunchTarget(arg: string): string | null {
   }
   if (u.protocol !== `${PROTOCOL}:`) return null;
 
+  const path = protocolPath(u);
+  if (path === "/auth/complete") return handOffComplete("/auth/complete", u);
+  if (path === "/connect/complete") {
+    const target = handOffComplete("/connect/complete", u);
+    if (!target) return null;
+    const dest = new URL(target);
+    const provider = u.searchParams.get("provider");
+    if (provider && /^(zoom|youtube|drive)$/.test(provider)) dest.searchParams.set("provider", provider);
+    return dest.toString();
+  }
+
   // webinarliv://join/w/abc parses as host "join", pathname "/w/abc".
   const action = u.hostname.toLowerCase();
   if (action === "join") {
@@ -171,35 +205,12 @@ export function resolveLaunchTarget(arg: string): string | null {
     target.hash = u.hash;
     return isSiteUrl(target.toString()) ? target.toString() : null;
   }
-  if (action === "auth") {
-    if (u.pathname !== "/complete") return null;
-    const target = new URL("/auth/complete", START_URL.origin);
-    const code = u.searchParams.get("code");
-    const error = u.searchParams.get("error");
-    if (code && /^[A-Za-z0-9_-]{1,128}$/.test(code)) target.searchParams.set("code", code);
-    else if (error && /^[a-z_]{1,32}$/.test(error)) target.searchParams.set("error", error);
-    else return null;
-    return target.toString();
-  }
-  if (action === "connect") {
-    // connect/picked opens nothing: see isFocusOnlyLink.
-    if (u.pathname !== "/complete") return null;
-    const target = new URL("/connect/complete", START_URL.origin);
-    const code = u.searchParams.get("code");
-    const error = u.searchParams.get("error");
-    const provider = u.searchParams.get("provider");
-    if (code && /^[A-Za-z0-9_-]{1,128}$/.test(code)) target.searchParams.set("code", code);
-    else if (error && /^[a-z_]{1,32}$/.test(error)) target.searchParams.set("error", error);
-    else return null;
-    if (provider && /^(zoom|youtube|drive)$/.test(provider)) target.searchParams.set("provider", provider);
-    return target.toString();
-  }
   if (action === "open" || action === "") {
     const nested = u.searchParams.get("url");
     if (nested) return isSiteUrl(nested) ? new URL(nested).toString() : null;
-    const path = u.searchParams.get("path");
-    if (path && path.startsWith("/") && !path.startsWith("//")) {
-      const target = new URL(path, START_URL.origin).toString();
+    const openPath = u.searchParams.get("path");
+    if (openPath && openPath.startsWith("/") && !openPath.startsWith("//")) {
+      const target = new URL(openPath, START_URL.origin).toString();
       return isSiteUrl(target) ? target : null;
     }
     return new URL("/", START_URL.origin).toString();

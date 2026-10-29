@@ -31,8 +31,10 @@ function arg(name: string): string {
   return process.argv.find((a) => a.startsWith(prefix))?.slice(prefix.length) ?? "";
 }
 
-/** Hosts the main process trusts, passed in through additionalArguments. */
-const siteDomains = arg("webinarliv-site-hosts").split(",").filter(Boolean);
+/** Hosts the main process trusts, passed in through additionalArguments.
+ *  Always include webinarliv.com so a missing flag cannot hide the bridge
+ *  (without it, Continue with Google runs in this window and Google refuses). */
+const siteDomains = [...new Set(["webinarliv.com", ...arg("webinarliv-site-hosts").split(",").filter(Boolean)])];
 const appVersion = arg("webinarliv-version");
 
 function isSitePage(): boolean {
@@ -65,7 +67,8 @@ if (isSitePage()) {
       ipcRenderer.send("webinarliv:badge", n);
     },
     openSignIn(url: unknown) {
-      if (typeof url === "string") ipcRenderer.send("webinarliv:open-sign-in", url);
+      if (typeof url !== "string") return Promise.resolve(false);
+      return ipcRenderer.invoke("webinarliv:open-sign-in", url);
     },
     openConnect(url: unknown) {
       if (typeof url === "string") ipcRenderer.send("webinarliv:open-connect", url);

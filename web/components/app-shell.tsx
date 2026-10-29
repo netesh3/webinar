@@ -28,7 +28,6 @@ import { BookmarkIcon, CalendarIcon, CameraIcon, ClapperIcon, MaterialIcon, Menu
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { useTheme } from "./theme";
-import { InstallAppItem } from "./pwa";
 import { GetAppLink } from "./get-app-link";
 
 /* The host shell.
@@ -631,10 +630,6 @@ export function AccountMenu() {
               </span>
             </span>
           </div>
-          <InstallAppItem
-            onDone={close}
-            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"
-          />
           <GetAppLink
             onClick={close}
             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] font-medium text-ink hover:bg-surface-2"

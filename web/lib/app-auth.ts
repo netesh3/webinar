@@ -62,9 +62,9 @@ export function appStartUrl(
   return `${origin}/api/auth/google/start?${q.toString()}`;
 }
 
-/** What /auth/app-return got in its fragment: a code, or an error, for which app. */
+/** What /auth/app-return got in its fragment (or query): a code, or an error, for which app. */
 export function parseReturnFragment(hash: string): { code: string; error: string; app: string } {
-  const q = new URLSearchParams(hash.replace(/^#/, ""));
+  const q = new URLSearchParams(hash.replace(/^[#?]/, ""));
   return { code: q.get("code") ?? "", error: q.get("error") ?? "", app: q.get("app") ?? "" };
 }
 
@@ -84,7 +84,7 @@ export function safeNextPath(raw: string | null | undefined, fallback = "/"): st
 
 // ------------------------------------------------------------------ runtime
 
-type DesktopBridge = { openSignIn?: (url: string) => void };
+type DesktopBridge = { openSignIn?: (url: string) => void | Promise<boolean> };
 type CapacitorLike = {
   isNativePlatform?: () => boolean;
   getPlatform?: () => string;
@@ -92,12 +92,24 @@ type CapacitorLike = {
   Plugins?: Record<string, { open?: (o: { url: string }) => Promise<void> } | undefined>;
 };
 
+function desktopBridge(): DesktopBridge | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { webinarlivDesktop?: DesktopBridge }).webinarlivDesktop;
+}
+
+function isDesktopUA(): boolean {
+  return typeof navigator !== "undefined" && /\bWebinarLivDesktop\//.test(navigator.userAgent);
+}
+
 /** Which app this page runs in, if the app can hand a sign-in to the system browser. The
- *  desktop app before this change has no openSignIn, so it keeps the old in-window flow. */
+ *  desktop app before this change has no openSignIn, so it keeps the old in-window flow
+ *  (and spoofs Chrome). A build that sends WebinarLivDesktop/ must not fall back: Google
+ *  refuses Electron's own user agent. */
 export function currentAppKind(): AppKind | null {
   if (typeof window === "undefined") return null;
-  const desktop = (window as unknown as { webinarlivDesktop?: DesktopBridge }).webinarlivDesktop;
+  const desktop = desktopBridge();
   if (desktop && typeof desktop.openSignIn === "function") return "desktop";
+  if (isDesktopUA()) return "desktop";
   const c = (window as unknown as { Capacitor?: CapacitorLike }).Capacitor;
   if (c?.isNativePlatform?.()) {
     const p = c.getPlatform?.();
@@ -116,12 +128,23 @@ export async function startAppGoogleSignIn(opts: { next: string; loginHint?: str
   try {
     localStorage.setItem(VERIFIER_KEY, JSON.stringify({ verifier, at: Date.now() }));
   } catch {
-    // No storage, no way to finish: the ordinary redirect at least gets somewhere.
+    // No storage, no way to finish. An ordinary redirect would run Google in this
+    // webview, which Google refuses when the UA still says Electron.
+    if (app === "desktop") {
+      throw new Error("Could not save the sign-in on this device. Try again.");
+    }
     return false;
   }
   const url = appStartUrl(window.location.origin, { ...opts, app, challenge });
   if (app === "desktop") {
-    (window as unknown as { webinarlivDesktop: Required<DesktopBridge> }).webinarlivDesktop.openSignIn(url);
+    const open = desktopBridge()?.openSignIn;
+    if (typeof open !== "function") {
+      throw new Error("Could not open the system browser to sign in. Restart the app and try again.");
+    }
+    const opened = await open(url);
+    if (opened === false) {
+      throw new Error("Could not open the system browser to sign in. Restart the app and try again.");
+    }
     return true;
   }
   const c = (window as unknown as { Capacitor?: CapacitorLike }).Capacitor;

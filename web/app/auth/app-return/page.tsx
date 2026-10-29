@@ -22,7 +22,9 @@ export default function AppReturnPage() {
   const [app, setApp] = useState("");
 
   useEffect(() => {
-    const got = parseReturnFragment(window.location.hash);
+    const fromHash = parseReturnFragment(window.location.hash);
+    const fromQuery = parseReturnFragment(window.location.search);
+    const got = fromHash.code || fromHash.error ? fromHash : fromQuery;
     // Out of the address bar and the history: the link below carries it now.
     window.history.replaceState(null, "", window.location.pathname);
     if (!got.code && !got.error) return;
