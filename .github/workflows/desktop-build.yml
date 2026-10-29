@@ -4,8 +4,16 @@
 #   upload the installers as workflow artifacts.
 # - Manual run (Actions -> Desktop build -> Run workflow): the same, on any ref.
 # - A desktop-v<version> tag (matching apps/desktop/package.json): the same, then
-#   a DRAFT GitHub release with the installers and the latest*.yml files
-#   electron-updater reads. Publishing the draft is a manual step.
+#   a DRAFT GitHub release with the installers and the latest*.yml files (an archive;
+#   publishing the draft is a manual step), and the installers plus the auto-update
+#   feed published to https://downloads.webinarliv.com (Cloudflare R2, docs/downloads.md).
+# - Manual run with "promote_tag" (e.g. desktop-v0.1.0): no build; makes that version,
+#   already in the downloads bucket, the latest again (rollback / re-publish).
+#
+# Downloads bucket (publishing is skipped with a notice when these are missing):
+#   secrets R2_DOWNLOADS_ACCOUNT_ID, R2_DOWNLOADS_ACCESS_KEY_ID, R2_DOWNLOADS_SECRET_ACCESS_KEY
+#   variables R2_DOWNLOADS_BUCKET (default webinarliv-downloads), and optionally
+#   IOS_APP_STORE_URL, ANDROID_PLAY_STORE_URL, IOS_TESTFLIGHT_URL for latest.json "stores".
 #
 # Signing is optional. Each secret is used only when it is set; without them the
 # builds are unsigned (macOS ad-hoc). Secrets (names only, see apps/desktop/README.md):
@@ -17,19 +25,26 @@ name: Desktop build
 
 on:
   workflow_dispatch:
+    inputs:
+      promote_tag:
+        description: "Re-publish this existing desktop-v<version> from the downloads bucket as latest (no build). Leave empty for a normal build."
+        type: string
+        default: ""
   pull_request:
     paths:
       - "apps/desktop/**"
+      - "scripts/downloads/**"
       - ".github/workflows/desktop-build.yml"
   push:
     branches: [main]
     tags: ["desktop-v*"]
     paths:
       - "apps/desktop/**"
+      - "scripts/downloads/**"
       - ".github/workflows/desktop-build.yml"
 
 concurrency:
-  group: desktop-build-${{ github.ref }}
+  group: desktop-build-${{ github.ref }}-${{ inputs.promote_tag || 'build' }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
@@ -41,8 +56,24 @@ defaults:
     shell: bash
 
 jobs:
+  publisher-tests:
+    name: downloads publisher tests
+    if: ${{ !inputs.promote_tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/downloads/publish.test.mjs
+
   build:
     name: build (${{ matrix.name }})
+    if: ${{ !inputs.promote_tag }}
     strategy:
       fail-fast: false
       matrix:
@@ -168,3 +199,96 @@ jobs:
               --notes "Desktop app build from ${GITHUB_SHA}. Publish this draft to ship it to the auto-updater." \
               -R "$GITHUB_REPOSITORY"
           fi
+
+  publish:
+    name: publish to downloads.webinarliv.com
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: [build, publisher-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Shared with mobile-build.yml: one writer of latest.json at a time.
+    concurrency:
+      group: downloads-publish
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: .
+    env:
+      HAS_R2: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID != '' && secrets.R2_DOWNLOADS_ACCESS_KEY_ID != '' && secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY != '' }}
+    steps:
+      - name: No downloads bucket configured
+        if: env.HAS_R2 != 'true'
+        run: echo "::notice title=Downloads not published::Add the R2_DOWNLOADS_ACCOUNT_ID, R2_DOWNLOADS_ACCESS_KEY_ID and R2_DOWNLOADS_SECRET_ACCESS_KEY secrets to publish to downloads.webinarliv.com (docs/downloads.md)."
+      - uses: actions/checkout@v4
+        if: env.HAS_R2 == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_R2 == 'true'
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        if: env.HAS_R2 == 'true'
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        if: env.HAS_R2 == 'true'
+        env:
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          IOS_APP_STORE_URL: ${{ vars.IOS_APP_STORE_URL }}
+          ANDROID_PLAY_STORE_URL: ${{ vars.ANDROID_PLAY_STORE_URL }}
+          IOS_TESTFLIGHT_URL: ${{ vars.IOS_TESTFLIGHT_URL }}
+          # The same conditions the build used to sign (electron-builder.config.cjs).
+          MAC_SIGNED: ${{ secrets.CSC_LINK != '' }}
+          WIN_SIGNED: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT != '' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT != '' && secrets.AZURE_TRUSTED_SIGNING_PROFILE != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          node scripts/downloads/publish.mjs desktop --version "$version" --dir dist \
+            --signed-mac "$MAC_SIGNED" --signed-windows "$WIN_SIGNED" \
+            --write-manifest "$RUNNER_TEMP/latest.json"
+          { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    name: re-publish an existing version (promote_tag)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: downloads-publish
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Promote
+        env:
+          PROMOTE_TAG: ${{ inputs.promote_tag }}
+          HAS_R2: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID != '' && secrets.R2_DOWNLOADS_ACCESS_KEY_ID != '' && secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY != '' }}
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          IOS_APP_STORE_URL: ${{ vars.IOS_APP_STORE_URL }}
+          ANDROID_PLAY_STORE_URL: ${{ vars.ANDROID_PLAY_STORE_URL }}
+          IOS_TESTFLIGHT_URL: ${{ vars.IOS_TESTFLIGHT_URL }}
+        run: |
+          set -euo pipefail
+          case "$PROMOTE_TAG" in
+            desktop-v*) ;;
+            *) echo "::error::promote_tag must look like desktop-v0.1.0, got '$PROMOTE_TAG'"; exit 1 ;;
+          esac
+          if [ "$HAS_R2" != "true" ]; then
+            echo "::error::the R2_DOWNLOADS_* secrets are not set (docs/downloads.md)"
+            exit 1
+          fi
+          node scripts/downloads/publish.mjs promote-desktop --version "${PROMOTE_TAG#desktop-v}" \
+            --write-manifest "$RUNNER_TEMP/latest.json"
+          { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

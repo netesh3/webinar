@@ -48,13 +48,13 @@ module.exports = {
   files: ["dist/**/*", "static/**/*", "package.json"],
   asar: true,
   protocols: [{ name: "Webinar Liv", schemes: ["webinarliv"] }],
-  publish: {
-    provider: "github",
-    owner: "netesh3",
-    repo: "webinar",
-    releaseType: "draft",
-    tagNamePrefix: "desktop-v",
-  },
+  // Auto-update feed: electron-updater's generic provider reads
+  // https://downloads.webinarliv.com/desktop/latest-mac.yml (macOS) or latest.yml
+  // (Windows) and resolves the files listed there against the same directory.
+  // CI uploads them (scripts/downloads/publish.mjs, docs/downloads.md); electron-builder
+  // itself never publishes (`--publish never`). The first entry is the one baked into the
+  // app's app-update.yml.
+  publish: [{ provider: "generic", url: "https://downloads.webinarliv.com/desktop/" }],
 
   mac: {
     category: "public.app-category.business",
