@@ -4,4 +4,6 @@
     <string name="title_activity_main">Webinar Liv</string>
     <string name="package_name">com.webinarliv.app</string>
     <string name="custom_url_scheme">com.webinarliv.app</string>
+    <string name="call_qos_channel">Live session</string>
+    <string name="call_qos_notification">In a live webinar — tap to return</string>
 </resources>

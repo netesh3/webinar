@@ -15,8 +15,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /* Background audio. With UIBackgroundModes "audio" in Info.plist and a playback
      * session, a webinar's sound (HLS <video> or LiveKit's remote audio) keeps playing
      * when the screen locks or the app goes to the background, and is not silenced by
-     * the ring/silent switch. WebKit moves the session to play-and-record by itself
-     * while the page captures the microphone, so this does not get in WebRTC's way. */
+     * the ring/silent switch. CallQosPlugin switches this to playAndRecord / videoChat
+     * while a live room is open (web/lib/native-bridge.ts), which is the call-class
+     * session; this launch default does not interrupt music just for opening the app.
+     * WebKit still moves the session to play-and-record while the page captures the
+     * microphone, so this does not get in WebRTC's way. */
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {
