@@ -11,6 +11,9 @@ INBOUND_HOST = "webinarliv.com"
 
 # Temporary hold so a reply is not dropped while POST /api/webhooks/email
 # is not deployed on the API yet. The worker still POSTs first.
+# Namespace in the company Cloudflare account (moved 30 Oct 2026; the old personal-account
+# namespace was c469f6a2205040db9c531a4a8615bee1). The account itself is not in this file:
+# CI passes it as vars.CLOUDFLARE_ACCOUNT_ID (.github/workflows/email-inbound-deploy.yml).
 [[kv_namespaces]]
 binding = "INBOX"
-id = "c469f6a2205040db9c531a4a8615bee1"
+id = "937a47f5a1454fe8abd5ab13ca741c51"
