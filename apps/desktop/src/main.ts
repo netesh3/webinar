@@ -21,13 +21,21 @@ import {
 } from "./config";
 import { buildMenu } from "./menu";
 import { isCallActive, registerPowerIpc } from "./power";
+import { applyChromiumQosFlags } from "./qos";
 import { installDisplayMediaHandler } from "./screen-picker";
 import { guardContents, hardenApp, installPermissionHandlers, senderUrl } from "./security";
+import { focusShareBar, isShareSessionActive, registerShareIpc } from "./share-session";
 import { startAutoUpdates } from "./updater";
 import { loadWindowState, trackWindowState } from "./window-state";
 
 app.setName("Webinar Liv");
 if (process.platform === "win32") app.setAppUserModelId("com.webinarliv.desktop");
+
+/* LiveKit encode / decode / adaptiveStream need a full time slice even when the
+ * window is unfocused, occluded by the share picker, or on a dual-GPU laptop.
+ * See qos.ts for what each switch does. Must run before app.whenReady().
+ * Hardware acceleration stays on (never disableHardwareAcceleration). */
+applyChromiumQosFlags(app.commandLine);
 
 /*
  * The user agent is Electron's own, plus a WebinarLivDesktop/<version> marker
@@ -76,6 +84,9 @@ function webPreferences(): BrowserWindowConstructorOptions["webPreferences"] {
     webviewTag: false,
     navigateOnDragDrop: false,
     spellcheck: true,
+    // Always off, not only in a live room: Chromium otherwise throttles rAF /
+    // WebRTC in an unfocused or occluded window, which is exactly when a host
+    // is looking at slides or the share picker. qos.ts covers process flags.
     backgroundThrottling: false,
     additionalArguments: [`--webinarliv-site-hosts=${siteHosts}`, `--webinarliv-version=${app.getVersion()}`],
   };
@@ -157,6 +168,10 @@ function openTarget(target: string): void {
 }
 
 function focusMain(): void {
+  if (isShareSessionActive()) {
+    focusShareBar();
+    return;
+  }
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -188,6 +203,10 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
+  if (isShareSessionActive()) {
+    focusShareBar();
+    return;
+  }
   if (BrowserWindow.getAllWindows().length === 0) mainWindow = createMainWindow();
   else focusMain();
 });
@@ -199,6 +218,7 @@ app.whenReady().then(() => {
   installPermissionHandlers(ses);
   installDisplayMediaHandler(ses);
   registerPowerIpc();
+  registerShareIpc(() => mainWindow);
 
   registerProtocol();
 

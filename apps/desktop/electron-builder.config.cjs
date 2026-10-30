@@ -62,6 +62,9 @@ module.exports = {
 
   mac: {
     category: "public.app-category.business",
+    // Finder / Dock / DMG volume icon. --prepackaged must be this .app bundle,
+    // not release/mac-arm64 (that nests Webinar Liv.app/Webinar Liv.app;
+    // Finder then shows the missing-icon glyph and Gatekeeper rejects the image).
     icon: "build/icon.icns",
     target: [
       { target: "dmg", arch: ["arm64", "x64"] },
@@ -86,6 +89,8 @@ module.exports = {
   },
   dmg: {
     sign: false,
+    icon: "build/icon.icns",
+    iconSize: 128,
   },
 
   win: {
