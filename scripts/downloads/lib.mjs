@@ -48,6 +48,18 @@ export const DESKTOP_TARGETS = [
   { id: "win-x64", ext: "exe", platform: "windows" },
 ];
 
+export const DESKTOP_PLATFORMS = ["mac", "windows"];
+export const desktopTargetsFor = (platform) => DESKTOP_TARGETS.filter((t) => t.platform === platform);
+/** Each platform has its own electron-updater feed, so macOS and Windows update independently. */
+export const DESKTOP_FEED_FOR = { mac: "latest-mac.yml", windows: "latest.yml" };
+
+export function assertDesktopPlatform(platform) {
+  if (!DESKTOP_PLATFORMS.includes(platform)) {
+    throw new Error(`invalid platform "${platform}" (expected ${DESKTOP_PLATFORMS.join(" or ")})`);
+  }
+  return platform;
+}
+
 /** electron-builder's artifact name (artifactName in apps/desktop/electron-builder.config.cjs). */
 export const desktopFileName = (version, t) => `WebinarLiv-${version}-${t.id}.${t.ext}`;
 export const desktopVersionedKey = (version, t) => `desktop/${version}/${desktopFileName(version, t)}`;
@@ -94,6 +106,87 @@ export function normalizeManifest(current) {
     desktop: isObject(current.desktop) ? current.desktop : null,
     android: isObject(current.android) ? current.android : null,
     stores,
+  };
+}
+
+/** Semver order: -1, 0 or 1. A prerelease sorts before its release. */
+export function compareVersions(a, b) {
+  const parse = (v) => {
+    const s = String(v);
+    const dash = s.indexOf("-");
+    const core = dash < 0 ? s : s.slice(0, dash);
+    return { nums: core.split(".").map((n) => Number(n) || 0), pre: dash < 0 ? null : s.slice(dash + 1).split(".") };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < 3; i++) {
+    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
+    if (d) return Math.sign(d);
+  }
+  if (!x.pre || !y.pre) return x.pre ? -1 : y.pre ? 1 : 0;
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const p = x.pre[i];
+    const q = y.pre[i];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    const pn = /^\d+$/.test(p);
+    const qn = /^\d+$/.test(q);
+    if (pn && qn && Number(p) !== Number(q)) return Math.sign(Number(p) - Number(q));
+    if (pn !== qn) return pn ? -1 : 1;
+    if (p !== q) return p < q ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * The desktop section after publishing some platforms. macOS and Windows are released on
+ * their own (macOS from the owner's Mac, Windows from CI), so each file entry carries its
+ * own `version` and `releasedAt`:
+ *
+ * - each platform in `platforms` gets exactly `files` (its targets only) and `signed[platform]`;
+ *   every other platform's files and signed flag are kept as they are;
+ * - entries written before per-file versions take the section's `version` / `releasedAt`;
+ * - the section's `version` is the highest version among the files, and `releasedAt` the
+ *   latest release time among the files on that version (for readers that only look there).
+ */
+export function mergeDesktopSection(current, { platforms, files = {}, signed = {} }) {
+  for (const p of platforms) assertDesktopPlatform(p);
+  const cur = isObject(current) ? current : null;
+  const curFiles = isObject(cur?.files) ? cur.files : {};
+  const outFiles = {};
+  for (const t of DESKTOP_TARGETS) {
+    if (platforms.includes(t.platform)) {
+      if (files[t.id]) outFiles[t.id] = files[t.id];
+      continue;
+    }
+    const f = curFiles[t.id];
+    if (!isObject(f)) continue;
+    const version = typeof f.version === "string" ? f.version : cur.version;
+    const releasedAt = typeof f.releasedAt === "string" ? f.releasedAt : cur.releasedAt;
+    outFiles[t.id] = {
+      ...f,
+      ...(typeof version === "string" ? { version } : {}),
+      ...(typeof releasedAt === "string" ? { releasedAt } : {}),
+    };
+  }
+  const outSigned = { mac: cur?.signed?.mac === true, windows: cur?.signed?.windows === true };
+  for (const p of platforms) outSigned[p] = Boolean(signed[p]);
+
+  let version = null;
+  for (const f of Object.values(outFiles)) {
+    if (typeof f.version === "string" && (version === null || compareVersions(f.version, version) > 0)) version = f.version;
+  }
+  let releasedAt = null;
+  for (const f of Object.values(outFiles)) {
+    if (f.version === version && typeof f.releasedAt === "string" && (releasedAt === null || f.releasedAt > releasedAt)) {
+      releasedAt = f.releasedAt;
+    }
+  }
+  return {
+    version: version ?? cur?.version ?? null,
+    releasedAt: releasedAt ?? cur?.releasedAt ?? null,
+    signed: outSigned,
+    files: outFiles,
   };
 }
 

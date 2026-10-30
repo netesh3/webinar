@@ -2,7 +2,7 @@
 
 Installable packages (the desktop app for macOS and Windows, the Android APK) live in a
 Cloudflare R2 bucket, `webinarliv-downloads`, served at **https://downloads.webinarliv.com**.
-CI uploads them on release tags; the website's `/download` page reads `latest.json`.
+macOS is published from the owner's Mac, Windows by CI (each on its own version); the website's `/download` page reads `latest.json`.
 
 This file is the contract between the publisher (`scripts/downloads/publish.mjs`, run by
 `.github/workflows/desktop-build.yml` and `.github/workflows/mobile-build.yml`) and everything
@@ -64,13 +64,13 @@ bump the version.
   "schema": 1,
   "updatedAt": "2026-10-29T10:00:00.000Z",
   "desktop": {
-    "version": "0.1.0",
-    "releasedAt": "2026-10-29T10:00:00.000Z",
-    "signed": { "mac": false, "windows": false },
+    "version": "0.1.1",
+    "releasedAt": "2026-10-30T10:00:00.000Z",
+    "signed": { "mac": true, "windows": false },
     "files": {
-      "mac-arm64": { "url": "https://downloads.webinarliv.com/desktop/latest/WebinarLiv-mac-arm64.dmg", "size": 123456789, "sha256": "<64 hex>" },
-      "mac-x64":   { "url": "https://downloads.webinarliv.com/desktop/latest/WebinarLiv-mac-x64.dmg",   "size": 123456789, "sha256": "<64 hex>" },
-      "win-x64":   { "url": "https://downloads.webinarliv.com/desktop/latest/WebinarLiv-win-x64.exe",   "size": 123456789, "sha256": "<64 hex>" }
+      "mac-arm64": { "url": "https://downloads.webinarliv.com/desktop/latest/WebinarLiv-mac-arm64.dmg", "size": 123456789, "sha256": "<64 hex>", "version": "0.1.0", "releasedAt": "2026-10-29T10:00:00.000Z" },
+      "mac-x64":   { "url": "https://downloads.webinarliv.com/desktop/latest/WebinarLiv-mac-x64.dmg",   "size": 123456789, "sha256": "<64 hex>", "version": "0.1.0", "releasedAt": "2026-10-29T10:00:00.000Z" },
+      "win-x64":   { "url": "https://downloads.webinarliv.com/desktop/latest/WebinarLiv-win-x64.exe",   "size": 123456789, "sha256": "<64 hex>", "version": "0.1.1", "releasedAt": "2026-10-30T10:00:00.000Z" }
     }
   },
   "android": {
@@ -89,6 +89,19 @@ bump the version.
 - `url`s point at the `latest/` copies; `size` is bytes; `sha256` is lowercase hex of the file.
 - `releasedAt` is when that version was first published (a rollback keeps the original time);
   `updatedAt` is the last write of the file.
+- **Desktop platforms have their own versions.** macOS is built, signed and published from
+  the owner's Mac (`publish.mjs desktop --platform mac`), Windows from GitHub's
+  windows-latest (`--platform windows`), so they can be on different versions:
+  - every `desktop.files` entry carries its own `version` and `releasedAt`;
+  - a publish replaces only its platform's entries (`mac-arm64` + `mac-x64`, or `win-x64`)
+    and its `signed` flag, and keeps the other platform's as they are;
+  - `desktop.version` is the highest version among the files, and `desktop.releasedAt` the
+    latest `releasedAt` among the files on that version. They are kept for older readers;
+    new readers use the per-file values.
+  - Entries written before per-file versions have neither field: readers (and the next
+    publish) take the section's `version` / `releasedAt` for them. This is still schema 1.
+  - Each platform also has its own update feed (`latest-mac.yml`, `latest.yml`), so a
+    Windows release never offers macOS users an update or the other way round.
 - `signed.mac`: built with a Developer ID certificate (`CSC_LINK` secret present).
   `signed.windows`: built with Azure Trusted Signing (all its secrets present). The page can
   show the Gatekeeper / SmartScreen instructions when they are `false`.
@@ -129,8 +142,19 @@ signed release.
 
 ## Releasing
 
-- **Desktop:** bump `apps/desktop/package.json`, merge, tag `desktop-v<version>`, push the
-  tag. The `publish` job uploads after both builds succeed.
+- **Desktop, macOS:** on the owner's Mac, build, sign and notarize, then
+  `node scripts/downloads/publish.mjs desktop --platform mac --version <version> --dir apps/desktop/release --signed-mac true`.
+  (With `vars.GITHUB_HOSTED_DESKTOP=true`, a `desktop-v<version>` tag also builds macOS on
+  macos-latest and the `publish` job publishes it.)
+- **Desktop, Windows:** bump `apps/desktop/package.json` and merge, then either push a
+  `desktop-v<version>` tag, or run **Desktop build** by hand (Actions, Run workflow) on
+  `main` with **publish_windows** ticked
+  (`gh workflow run desktop-build.yml --ref main -f publish_windows=true`). The
+  `build (windows)` job builds the NSIS x64 installer, its blockmap and `latest.yml`, and
+  `publish-windows` uploads them and updates `files["win-x64"]` / `signed.windows` only.
+  It is unsigned (SmartScreen note on the page) until the Azure Trusted Signing secrets are
+  set. A version's Windows files are immutable: re-publishing the same version from a
+  different build is refused, so bump the version to ship a changed Windows build.
 - **Android:** tag `mobile-v<version>` and push it. CI builds `versionName <version>`,
   `versionCode <run number>`, signs the APK (`assembleRelease`, next to the Play AAB),
   verifies the signature with `apksigner`, and the `publish-android` job uploads it. Without
@@ -148,7 +172,8 @@ Every version stays in the bucket, so making an older one current is a copy:
 2. The `promote` job (`publish.mjs promote-desktop` / `promote-android`) copies
    `desktop/<version>/*` to `desktop/latest/`, restores that version's `latest-mac.yml` and
    `latest.yml` as the feed, and rewrites that section of `latest.json` from the stored
-   metadata. Nothing is rebuilt.
+   metadata. Nothing is rebuilt. For the desktop, only the platforms that have that version
+   in the bucket change; `--platform mac|windows` (by hand) limits it to one.
 
 `latest/` and `latest.json` are cached for 5 minutes, so the change shows within that time
 (purge `downloads.webinarliv.com` in the Cloudflare dashboard to make it immediate).
@@ -197,6 +222,11 @@ node --test scripts/downloads/publish.test.mjs          # merge logic + a full p
 # when the R2 credentials are in the environment, or --current-manifest <file>.
 node scripts/downloads/publish.mjs desktop --version 0.1.0 --dir apps/desktop/release \
   --signed-mac false --signed-windows false --dry-run
+
+# Only Windows, merged into a saved copy of the live manifest (the mac entries stay).
+curl -s https://downloads.webinarliv.com/latest.json > /tmp/live.json
+node scripts/downloads/publish.mjs desktop --platform windows --version 0.1.4 --dir dist \
+  --signed-windows false --dry-run --current-manifest /tmp/live.json
 
 # A local directory as the bucket (headers in <dir>/.meta/).
 node scripts/downloads/publish.mjs android --version 0.1.0 --version-code 1 \

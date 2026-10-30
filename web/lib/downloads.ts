@@ -2,7 +2,7 @@
  * offer, and which one to put first for the visitor's device.
  *
  * The manifest is https://downloads.webinarliv.com/latest.json, written by the release
- * pipeline (schema 1). Anything that does not match the schema exactly is treated as no
+ * pipeline (schema 1; desktop files may carry their own version, docs/downloads.md). Anything that does not match the schema exactly is treated as no
  * manifest at all: a half-read manifest could put a wrong link or checksum on the page.
  *
  * Kept free of React, Next and "@/" imports so lib/downloads.test.mts runs it with plain
@@ -23,6 +23,11 @@ export type DesktopFileKey = "mac-arm64" | "mac-x64" | "win-x64";
 
 export type ManifestFile = { url: string; size: number; sha256: string };
 
+/** A desktop installer. macOS and Windows are released separately, so each file has its own
+ *  version and release time; manifests written before that carry them only on the section,
+ *  and the parser copies them down. */
+export type DesktopFile = ManifestFile & { version: string; releasedAt: string };
+
 export type Manifest = {
   schema: 1;
   updatedAt: string;
@@ -30,7 +35,8 @@ export type Manifest = {
     version: string;
     releasedAt: string;
     signed: { mac: boolean; windows: boolean };
-    files: Partial<Record<DesktopFileKey, ManifestFile>>;
+    /** The highest version among the files (older readers show only this). */
+    files: Partial<Record<DesktopFileKey, DesktopFile>>;
   } | null;
   android: {
     version: string;
@@ -76,6 +82,19 @@ function file(v: unknown): ManifestFile {
   return { url: o.url as string, size: o.size as number, sha256: (o.sha256 as string).toLowerCase() };
 }
 
+/** A desktop file; `version` / `releasedAt` are optional on it and default to the section's. */
+function desktopFile(v: unknown, version: string, releasedAt: string): DesktopFile {
+  const base = file(v);
+  const o = v as Obj;
+  if (o.version !== undefined) need(isStr(o.version), o.version);
+  if (o.releasedAt !== undefined) need(isDate(o.releasedAt), o.releasedAt);
+  return {
+    ...base,
+    version: (o.version as string | undefined) ?? version,
+    releasedAt: (o.releasedAt as string | undefined) ?? releasedAt,
+  };
+}
+
 function storeUrl(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   return need(isHttpsUrl(v), v as string);
@@ -99,10 +118,10 @@ export function parseManifest(raw: unknown): Manifest | null {
       need(isStr(d.version) && isDate(d.releasedAt) && isObj(d.signed) && isObj(d.files), d);
       const signed = d.signed as Obj;
       need(isBool(signed.mac) && isBool(signed.windows), signed);
-      const files: Partial<Record<DesktopFileKey, ManifestFile>> = {};
+      const files: Partial<Record<DesktopFileKey, DesktopFile>> = {};
       for (const key of FILE_KEYS) {
         const f = (d.files as Obj)[key];
-        if (f !== undefined && f !== null) files[key] = file(f);
+        if (f !== undefined && f !== null) files[key] = desktopFile(f, d.version as string, d.releasedAt as string);
       }
       desktop = {
         version: d.version as string,
@@ -175,6 +194,10 @@ export const APK_NOTE =
   "Android will ask you to allow installs from your browser the first time. Allow it, then open the file.";
 export const IOS_SOON = "Coming soon to the App Store";
 
+function desktopLink(id: DesktopFileKey, label: string, f: DesktopFile): DownloadLink {
+  return { kind: "file", id, label, url: f.url, size: f.size, sha256: f.sha256, version: f.version };
+}
+
 /** Every platform worth showing, in display order. Platforms that are not ready are left
  *  out, except iOS, which says it is coming soon. */
 export function platformOffers(m: Manifest | null): PlatformOffer[] {
@@ -186,18 +209,19 @@ export function platformOffers(m: Manifest | null): PlatformOffer[] {
     const links: DownloadLink[] = [];
     const arm = d.files["mac-arm64"];
     const intel = d.files["mac-x64"];
-    if (arm) links.push({ kind: "file", id: "mac-arm64", label: MAC_ARM_LABEL, version: d.version, ...arm });
-    if (intel) links.push({ kind: "file", id: "mac-x64", label: MAC_INTEL_LABEL, version: d.version, ...intel });
+    if (arm) links.push(desktopLink("mac-arm64", MAC_ARM_LABEL, arm));
+    if (intel) links.push(desktopLink("mac-x64", MAC_INTEL_LABEL, intel));
     if (links.length) out.push({ id: "mac", name: "macOS", status: "ready", links, notes: [] });
   }
 
+  // Shown whenever there is a Windows build, on its own version (it ships apart from macOS).
   const win = d?.files["win-x64"];
   if (d && win) {
     out.push({
       id: "windows",
       name: "Windows",
       status: "ready",
-      links: [{ kind: "file", id: "win-x64", label: "Download for Windows", version: d.version, ...win }],
+      links: [desktopLink("win-x64", "Download for Windows", win)],
       notes: d.signed.windows ? [] : [WINDOWS_NOTE],
     });
   }

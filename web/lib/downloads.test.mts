@@ -169,6 +169,46 @@ const ids = (m: Manifest | null) => platformOffers(m).map((o) => o.id);
   assert.deepEqual(ids(parsed(raw)), ["android", "ios"]);
 }
 
+// Platforms on their own versions: macOS 0.1.3 signed, Windows 0.1.4 unsigned. Each card
+// shows its own file's version and size; the section version is only the highest.
+{
+  const raw = full();
+  raw.desktop.version = "0.1.4";
+  raw.desktop.signed = { mac: true, windows: false };
+  raw.desktop.files["mac-arm64"] = { ...f("a.dmg", 121_967_568), version: "0.1.3", releasedAt: "2026-10-30T04:19:04Z" };
+  raw.desktop.files["mac-x64"] = { ...f("b.dmg", 127_891_165), version: "0.1.3", releasedAt: "2026-10-30T04:19:04Z" };
+  raw.desktop.files["win-x64"] = { ...f("c.exe", 90_000_000), version: "0.1.4", releasedAt: "2026-10-31T10:00:00Z" };
+  const m = parsed(raw);
+  assert.equal(m.desktop?.files["win-x64"]?.version, "0.1.4");
+  assert.equal(m.desktop?.files["mac-x64"]?.releasedAt, "2026-10-30T04:19:04Z");
+  const offers = platformOffers(m);
+  const win = offers.find((o) => o.id === "windows");
+  assert.deepEqual(win?.links.map((l) => l.kind === "file" && [l.label, l.version, l.size]), [["Download for Windows", "0.1.4", 90_000_000]]);
+  assert.deepEqual(win?.notes, [WINDOWS_NOTE]);
+  const mac = offers.find((o) => o.id === "mac");
+  assert.deepEqual(mac?.links.map((l) => l.kind === "file" && l.version), ["0.1.3", "0.1.3"]);
+
+  // The legacy shape (no per-file version) takes the section's version.
+  const legacy = full();
+  legacy.desktop.version = "0.1.3";
+  const lw = platformOffers(parsed(legacy)).find((o) => o.id === "windows")?.links[0];
+  assert.equal(lw?.kind === "file" && lw.version, "0.1.3");
+  assert.equal(parsed(legacy).desktop?.files["mac-arm64"]?.releasedAt, legacy.desktop.releasedAt);
+
+  // Windows only (no mac files yet) still shows the Windows button.
+  const winOnly = full();
+  winOnly.desktop.files = { "win-x64": { ...f("c.exe"), version: "0.1.4", releasedAt: "2026-10-31T10:00:00Z" } };
+  assert.deepEqual(ids(parsed(winOnly)), ["windows", "android", "ios"]);
+
+  // A malformed per-file version or date is a malformed manifest.
+  const badVersion = full();
+  badVersion.desktop.files["win-x64"].version = 4;
+  assert.equal(parseManifest(badVersion), null);
+  const badDate = full();
+  badDate.desktop.files["win-x64"].releasedAt = "soon";
+  assert.equal(parseManifest(badDate), null);
+}
+
 // Android: unsigned APK never offered; Play Store alone is enough; neither hides Android.
 {
   const raw = full();
