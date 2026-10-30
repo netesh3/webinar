@@ -283,7 +283,8 @@ Use dedicated project **`selfreminder-rnix`** (display name **Webinar Liv**):
    → Application type **Web application**.
 2. Authorized JavaScript origins: `https://webinarliv.com`,
    `https://www.webinarliv.com`,
-   `https://webinar-web.ganesh-s-p006.workers.dev`, plus
+   `https://webinar-web.<account subdomain>.workers.dev` (optional; the subdomain
+   belongs to the Cloudflare account in `vars.CLOUDFLARE_ACCOUNT_ID`), plus
    `http://localhost:3000` for local Next.
 3. Authorized redirect URIs — **must** include first-party login (the browser
    never hits `*.supabase.co`) plus Connect YouTube:
@@ -291,7 +292,7 @@ Use dedicated project **`selfreminder-rnix`** (display name **Webinar Liv**):
    ```text
    https://webinarliv.com/api/auth/google/callback
    https://www.webinarliv.com/api/auth/google/callback
-   https://webinar-web.ganesh-s-p006.workers.dev/api/auth/google/callback
+   https://webinar-web.<account subdomain>.workers.dev/api/auth/google/callback
    http://localhost:3000/api/auth/google/callback
    https://webinarliv.com/api/host/youtube/callback
    http://localhost:3000/api/host/youtube/callback
@@ -330,7 +331,7 @@ Project **webinarliv** (`zxkcwibeqdkiuugfilvg`) → Authentication:
    - Redirect URLs:
      - `https://webinarliv.com/auth/callback`
      - `https://www.webinarliv.com/auth/callback`
-     - `https://webinar-web.ganesh-s-p006.workers.dev/auth/callback`
+     - `https://webinar-web.<account subdomain>.workers.dev/auth/callback` (optional)
      - `http://localhost:3000/auth/callback` (local Next)
 
    See [`web/CLOUDFLARE.md`](../web/CLOUDFLARE.md) § Custom domain for Spaceship → Cloudflare NS + Worker attach.
