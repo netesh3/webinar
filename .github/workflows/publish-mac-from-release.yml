@@ -43,6 +43,36 @@ jobs:
           mkdir -p dist
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D dist
           ls -la dist
+      # Earlier Wrangler uploads left 0.1.4 objects without sha256 metadata; the
+      # publisher treats that as a conflict. Remove only this version's mac keys.
+      - name: Clear 0.1.4 mac objects without matching metadata
+        env:
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          export AWS_DEFAULT_REGION=auto AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required AWS_PAGER=""
+          endpoint="https://${R2_DOWNLOADS_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          keys=(
+            "desktop/${VERSION}/WebinarLiv-${VERSION}-mac-arm64.dmg"
+            "desktop/${VERSION}/WebinarLiv-${VERSION}-mac-x64.dmg"
+            "desktop/${VERSION}/latest-mac.yml"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.dmg"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.dmg.blockmap"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.zip"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.zip.blockmap"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.dmg"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.dmg.blockmap"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.zip"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.zip.blockmap"
+          )
+          for key in "${keys[@]}"; do
+            aws s3api delete-object --bucket "$R2_DOWNLOADS_BUCKET" --key "$key" --endpoint-url "$endpoint" >/dev/null
+            echo "deleted $key"
+          done
       - name: Publish
         env:
           R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
