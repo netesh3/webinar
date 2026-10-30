@@ -12,6 +12,7 @@ import { dropCache } from "@/lib/http";
 import type { Registration, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { heldRegistrations, joinKeyFromSearch } from "@/lib/guest-registration";
+import { onHostListsDropped } from "@/lib/host-list-cache";
 import { useSession } from "./providers";
 
 /* Which webinars is this person signed up for?
@@ -86,6 +87,24 @@ function loadOwned(accountId: string, gen: number): Promise<void> {
     });
   ownedFlight = { accountId, gen, promise };
   return promise;
+}
+
+/** Replace the account list in place. Does not blank the rows first — a focus
+ *  refresh must not flash the skeleton. */
+function refreshOwned(accountId: string): Promise<void> {
+  return api.myRegistrations(true).then((rows) => {
+    if (ownedSnap.accountId !== accountId && ownedSnap.accountId !== null) return;
+    rememberSeriesSlugs(rows);
+    publishOwned({
+      gen: ownedSnap.gen,
+      accountId,
+      rows: rows.map((r) => r.registration),
+      webinars: {
+        ...ownedSnap.webinars,
+        ...Object.fromEntries(rows.map((r) => [r.webinar.id, r.webinar])),
+      },
+    });
+  });
 }
 
 const KEY = "webcast.joinkeys.v1";
@@ -278,6 +297,17 @@ export function useRegistrations() {
     setAttempt((n) => n + 1);
   }, []);
 
+  const refresh = useCallback(() => {
+    setAttempt((n) => n + 1);
+    const accountId = account?.id;
+    if (!accountId || bypass) return;
+    void refreshOwned(accountId).catch(() => {
+      /* Silent: the visible list is still the last good answer, and the next
+       * look will try again. */
+    });
+  }, [account?.id, bypass]);
+  useEffect(() => onHostListsDropped(refresh), [refresh]);
+
   useEffect(() => {
     // No synchronous setState in here: the empty case is *derived* below, and
     // every write happens in a promise callback.
@@ -428,6 +458,7 @@ export function useRegistrations() {
     webinarFor,
     error,
     retry,
+    refresh,
     isRegistered,
     registrationFor,
     remember,

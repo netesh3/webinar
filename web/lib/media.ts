@@ -32,6 +32,7 @@ import {
 import {
   CAMERA_LAYERS,
   CAMERA_TOP,
+  PHONE_PIXEL_DENSITY,
   SHARE_FLOOR_DESKTOP,
   SHARE_FLOOR_MOBILE,
   SHARE_LAYERS,
@@ -368,14 +369,14 @@ export const DEFAULT_PREFERENCES: MediaPreferences = {
   lowLightAuto: true,
 };
 
-/* Phones count each CSS pixel as 1.5 device pixels, not the screen's real 3.
+/* Phones count each CSS pixel as PHONE_PIXEL_DENSITY device pixels, not the screen's real 3.
  *
  * With "screen", a 390-point-wide iPhone asks for 1170 pixels and so pulls the 1080p
  * layer — 2–3 Mbps onto a six-inch screen, over 4G, warming the phone and buffering
- * the moment the signal dips. At 1.5 a portrait stage asks for ~585 and gets 360p,
- * and a landscape or fullscreen one still reaches 1080p. Screen shares keep their own
- * 720p floor (shareLayers), so slide text is unaffected. */
-const PHONE_PIXEL_DENSITY = 1.5;
+ * the moment the signal dips. At 2 a portrait stage asks for ~780 and gets 720p
+ * (the featured speaker), and a landscape or fullscreen one still reaches 1080p.
+ * Capture stays 720p on phones (canCaptureCamera1080) so we do not encode empty
+ * 1080. Screen shares keep their own 720p floor (shareLayers). */
 
 /**
  * roomOptions builds the LiveKit Room configuration for one participant.

@@ -3,6 +3,12 @@
  * number — not the opaque cursor — so coming back to a tab paints that page. */
 
 import { dropCachePrefix } from "./http";
+import {
+  HOST_LIST_DROP_MESSAGE,
+  isHostListDropMessage,
+  isHostListDropNotice,
+  publishHostListDrop,
+} from "./host-list-drop";
 
 export const HOST_LIST_PREFIX = "host-webinars:";
 
@@ -53,16 +59,53 @@ export function rememberCursors(filter: string, next: (string | undefined)[]): v
 }
 
 export function onHostListsDropped(cb: () => void): () => void {
+  bindHostListDropListener();
   resets.add(cb);
   return () => {
     resets.delete(cb);
   };
 }
 
-/** Create, delete, start and end. The list and the webinar picker both go. */
-export function dropHostWebinarLists(): void {
+function dropLocalHostWebinarLists(): void {
   dropCachePrefix(HOST_LIST_PREFIX);
   cursors.clear();
   pages.clear();
   resets.forEach((cb) => cb());
+}
+
+function notifyOtherWindows(): void {
+  publishHostListDrop();
+  if (typeof window === "undefined") return;
+  try {
+    const opener = window.opener as Window | null;
+    if (opener && !opener.closed) {
+      opener.postMessage({ type: HOST_LIST_DROP_MESSAGE }, window.location.origin);
+    }
+  } catch {
+    // Opener gone or cross-origin.
+  }
+}
+
+let dropListenerBound = false;
+
+function bindHostListDropListener(): void {
+  if (dropListenerBound || typeof window === "undefined") return;
+  dropListenerBound = true;
+  window.addEventListener("storage", (event) => {
+    if (!isHostListDropNotice(event)) return;
+    dropLocalHostWebinarLists();
+  });
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (!isHostListDropMessage(event.data)) return;
+    dropLocalHostWebinarLists();
+  });
+}
+
+if (typeof window !== "undefined") bindHostListDropListener();
+
+/** Create, delete, start and end. The list and the webinar picker both go. */
+export function dropHostWebinarLists(): void {
+  dropLocalHostWebinarLists();
+  notifyOtherWindows();
 }

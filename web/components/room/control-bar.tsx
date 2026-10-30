@@ -708,6 +708,18 @@ export function ControlBar() {
     }
   }, [previewChrome, fileShare, localParticipant, notify]);
 
+  /* Desktop floating share bar (apps/desktop share-session): Stop sharing there
+   * must run the same teardown as the in-room button. */
+  useEffect(() => {
+    const d = (window as unknown as {
+      webinarlivDesktop?: { onStopShare?: (cb: () => void) => () => void };
+    }).webinarlivDesktop;
+    if (typeof d?.onStopShare !== "function") return;
+    return d.onStopShare(() => {
+      void stopSharing();
+    });
+  }, [stopSharing]);
+
   /* The browser ending the share — its own "Stop sharing", or the shared window closing.
    * LiveKit unpublishes the ended video itself but leaves the tab audio published and
    * capturing, which keeps the capture alive; sweep up the rest of it. */

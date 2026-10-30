@@ -74,7 +74,7 @@ import { useRoomHistory } from "@/lib/room-history-sync";
 import { applyCameraCodec, prioritiseAudio, useNetworkHealth } from "@/lib/network";
 import { av1RoomVerdict, parseAv1PublishMode, probeAv1, setAv1RoomVerdict } from "@/lib/codec-policy";
 import { formatElapsed } from "@/lib/format";
-import { afterWebinarEnd } from "@/lib/host-results";
+import { afterWebinarEnd, leaveRoomForResults } from "@/lib/host-results";
 import { Alert, Spinner } from "../controls";
 import { LockIcon, SignalIcon, SlidersIcon } from "../icons";
 import { useAppConfig, useToast } from "../providers";
@@ -2604,7 +2604,14 @@ function stopLocalCapture(room: Room, published: Set<LocalTrack>) {
 function HostResultsRedirect({ href }: { href: string }) {
   const router = useRouter();
   useEffect(() => {
-    router.replace(href);
+    let cancelled = false;
+    void (async () => {
+      if ((await leaveRoomForResults(href)) === "closed" || cancelled) return;
+      router.replace(href);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [router, href]);
   return (
     <main className="grid min-h-dvh place-items-center bg-stage">

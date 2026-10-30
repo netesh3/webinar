@@ -16,6 +16,8 @@ import {
 } from "@/lib/format";
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar";
 import { useNow } from "@/lib/clock";
+import { presentForHostList } from "@/lib/webinar-status";
+import { useVisibleRefresh } from "@/lib/visible-refresh";
 import type { Registration, Webinar } from "@/lib/api-types";
 
 /* Everything this person is signed up for.
@@ -44,22 +46,28 @@ export function MyWebinarsList({
 }: {
   othersOnly?: boolean;
 } = {}) {
-  const { registrations, webinarFor, error, retry } = useRegistrations();
+  const { registrations, webinarFor, error, retry, refresh } = useRegistrations();
   // Still needed for the "saved in this browser" nudge; the registration fetching it
   // used to do is now useRegistrations' job.
   const { account } = useSession();
+  const now = useNow(15_000);
+  useVisibleRefresh(refresh);
 
   const rows = useMemo(() => {
     if (registrations === null) return null;
 
     return registrations
-      .map((reg) => ({ reg, webinar: webinarFor(reg.webinarId) }))
+      .map((reg) => {
+        const found = webinarFor(reg.webinarId);
+        const webinar = found && now != null ? presentForHostList(found, now) : found;
+        return { reg, webinar };
+      })
       .filter((x): x is { reg: Registration; webinar: Webinar } => !!x.webinar)
       .filter((x) => !othersOnly || x.webinar.host.id !== account?.id)
       .sort(
         (a, b) => +new Date(a.webinar.startsAt) - +new Date(b.webinar.startsAt),
       );
-  }, [registrations, webinarFor, othersOnly, account?.id]);
+  }, [registrations, webinarFor, othersOnly, account?.id, now]);
 
   if (rows === null && error) {
     return (
@@ -100,9 +108,8 @@ export function MyWebinarsList({
     );
   }
 
-  // Split on the webinar's own status rather than the wall clock: reading the
-  // clock during render is impure, and the backend is the authority on whether a
-  // session has finished.
+  // Split on status, with a lapsed scheduled session treated as ended (useNow
+  // is the clock React may render). A live session stays live until a refetch.
   const upcoming = rows.filter((x) => x.webinar.status !== "ended");
   const past = rows.filter((x) => x.webinar.status === "ended");
 

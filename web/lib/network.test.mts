@@ -20,6 +20,7 @@ import {
   CAMERA_720,
   CAMERA_720_BITRATE,
   CAMERA_TOP,
+  PHONE_PIXEL_DENSITY,
   LADDER,
   SHARE_720_BITRATE,
   SHARE_FLOOR_DESKTOP,
@@ -587,9 +588,12 @@ console.log("\ncamera layer budgets");
   ok(
     CAMERA_TOP.encoding.maxBitrate >= 3_000_000 &&
       CAMERA_TOP.encoding.maxBitrate <= 3_800_000,
-    "camera 1080p is ~3.2 Mbps (under Zoom's ~3.8 Mbps Full HD send)",
+    "camera 1080p is ~3.2 Mbps (under Zoom's ~3.8 Mbps Full HD send; 5x cap vs 360p)",
     `${CAMERA_TOP.encoding.maxBitrate}`,
   );
+  eq(CAMERA_1080_BITRATE, 3_200_000, "camera 1080p stays at the no-cliff HD default");
+  eq(CAMERA_720_BITRATE, 2_400_000, "camera 720p bitrate is the phone/low-core default");
+  eq(PHONE_PIXEL_DENSITY, 2, "phones ask adaptiveStream for 2x CSS pixels (720p speaker, not 1080 over 4G)");
   eq(
     LADDER.full[2].maxBitrate,
     CAMERA_1080_BITRATE,

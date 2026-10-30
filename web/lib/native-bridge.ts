@@ -6,8 +6,9 @@
  * ordinary browsers, and in an ordinary browser window.Capacitor is undefined and every
  * function below is a no-op. The component that runs it is components/native-boot.tsx.
  *
- * The decisions (which URL an opened link should load, which pages keep the screen on)
- * are pure and tested in lib/native-bridge.test.mts.
+ * The decisions (which URL an opened link should load, which pages keep the screen on
+ * and ask the native shell for call-class radio/CPU/audio-session) are pure and tested
+ * in lib/native-bridge.test.mts.
  */
 
 /** Hosts the app may show. Mirrors capacitor.config.ts server.allowNavigation. */
@@ -120,6 +121,7 @@ type MessagingPlugin = {
 };
 type BrowserPlugin = { close: () => Promise<void> };
 type KeepAwakePlugin = { keepAwake: () => Promise<void>; allowSleep: () => Promise<void> };
+type CallQosPlugin = { setActive: (o: { on: boolean }) => Promise<void> };
 
 const LAUNCH_KEY = "webinarliv.native.launchUrl";
 const LAST_OPEN_KEY = "webinarliv.native.lastOpen";
@@ -348,9 +350,15 @@ export function startNativeBridge(): () => void {
   };
 }
 
-/** Keep the screen on (or let it sleep) for the page at `pathname`. */
+/** Keep the screen on (or let it sleep) for the page at `pathname`, and ask
+ *  the native shell for call-class resources (Android foreground service +
+ *  Wi-Fi/CPU locks, iOS videoChat audio session). No-op in a browser, and
+ *  no-op in an older app build that has no CallQos plugin — the site still
+ *  loads. */
 export function syncKeepAwake(pathname: string): void {
+  const on = keepsScreenAwake(pathname);
   const k = plugin("KeepAwake") as unknown as KeepAwakePlugin | null;
-  if (!k) return;
-  void (keepsScreenAwake(pathname) ? k.keepAwake() : k.allowSleep()).catch(() => {});
+  if (k) void (on ? k.keepAwake() : k.allowSleep()).catch(() => {});
+  const qos = plugin("CallQos") as unknown as CallQosPlugin | null;
+  if (qos) void qos.setActive({ on }).catch(() => {});
 }

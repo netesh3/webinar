@@ -22,6 +22,7 @@ import type { HostRecordingSummary, Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { canGoLive, goLiveWaitReason } from "@/lib/go-live";
 import { useNow } from "@/lib/clock";
+import { presentForHostList } from "@/lib/webinar-status";
 import { openPendingRoomTab, openRoomTab } from "@/lib/open-room";
 import { shareAttendeeLink } from "@/lib/share-attendee-link";
 import { deleteTitle, deleteWarning } from "@/lib/webinar-delete";
@@ -283,7 +284,10 @@ function SeriesGroup({
 }
 
 export function HostWebinarList({ webinars }: { webinars: Webinar[] }) {
-  const rows = webinars.filter((w) => w.status !== "ended");
+  const now = useNow(15_000);
+  const rows = webinars
+    .map((w) => (now == null ? w : presentForHostList(w, now)))
+    .filter((w) => w.status !== "ended");
 
   if (rows.length === 0) return <Empty title="Nothing coming up" />;
   return <HostWebinarRows webinars={rows} readOnly />;

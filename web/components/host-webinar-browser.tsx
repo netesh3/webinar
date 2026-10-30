@@ -39,7 +39,9 @@ import {
   type Webinar,
 } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
-import { presentForHostList } from "@/lib/webinar-status";
+import { hostListRowsForTab, presentForHostList } from "@/lib/webinar-status";
+import { useNow } from "@/lib/clock";
+import { useVisibleRefresh } from "@/lib/visible-refresh";
 import {
   filtersActive as hasFilters,
   listUrl,
@@ -374,11 +376,11 @@ export function HostWebinarBrowser({
   }, [typed, q, tab, from, to, recording, writeUrl]);
 
   const fetchPage = useCallback(
-    (f: Filters, next?: string): Promise<HostWebinarPage> => {
+    (f: Filters, next?: string, force = false): Promise<HostWebinarPage> => {
       const query = pageQuery(f, kind, next);
       return bypass
         ? Promise.resolve(bypassPage(query))
-        : api.hostWebinars(query);
+        : api.hostWebinars(query, force);
     },
     [bypass, kind],
   );
@@ -386,17 +388,17 @@ export function HostWebinarBrowser({
   /* Not async, and the state writes are inside .then() —
    * react-hooks/set-state-in-effect rejects an async function called from an
    * effect body, the same shape admin-screen.tsx's load has. */
-  const load = useCallback(() => {
+  const load = useCallback((force = false) => {
     /* Nothing to ask this endpoint for. Returning before the sequence number is
      * bumped deliberately leaves any reply still in the air free to land: it is
      * the answer for the tab behind this one, which is where a host goes back to. */
     if (!listKey || ownList(tab)) return;
     const hit = readCache<HostWebinarPage>(cacheKey, TTL_LIST);
-    if (hit?.fresh) return;
+    if (!force && hit?.fresh) return;
 
     const mine = ++seq.current;
     const cursor = rememberedCursors(listKey)[pageNow];
-    fetchPage({ tab, q, from, to, recording }, cursor)
+    fetchPage({ tab, q, from, to, recording }, cursor, force)
       .then((result) => {
         if (seq.current !== mine) return;
         setItems(result.items ?? []);
@@ -428,14 +430,17 @@ export function HostWebinarBrowser({
   }, [fetchPage, tab, q, from, to, recording, listKey, cacheKey, pageNow, noun]);
 
   const [listGen, setListGen] = useState(0);
-  useEffect(load, [load, reloadToken, listGen]);
+  useEffect(() => {
+    load();
+  }, [load, reloadToken, listGen]);
+
+  const refresh = useCallback(() => load(true), [load]);
+  useVisibleRefresh(refresh);
 
   useEffect(
     () =>
       onHostListsDropped(() => {
         setPage(0);
-        setItems(null);
-        setPending(true);
         setListGen((n) => n + 1);
       }),
     [],
@@ -490,6 +495,12 @@ export function HostWebinarBrowser({
     (key: string, total: number) => setAttendingSeen({ key, total }),
     [],
   );
+
+  const now = useNow(15_000);
+  const shown =
+    items == null || now == null || ownList(tab)
+      ? items
+      : hostListRowsForTab(items, tab, now);
 
   return (
     <>
@@ -609,18 +620,18 @@ export function HostWebinarBrowser({
           onClear={clearFilters}
           onTotal={onAttendingTotal}
         />
-      ) : items === null ? (
+      ) : shown === null ? (
         <div className="grid gap-3">
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
           <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
         </div>
-      ) : error && items.length === 0 && pageNow === 0 ? null : (
+      ) : error && shown.length === 0 && pageNow === 0 ? null : (
         <>
           {/* Dimmed rather than replaced with a spinner while a new filter is
               in flight: the rows underneath are still the answer to the last
               question, and blanking them makes the page jump on every
               keystroke. A cached page is shown as it is, then refreshed. */}
-          {items.length === 0 && pageNow === 0 ? (
+          {shown.length === 0 && pageNow === 0 ? (
             <EmptyList
               tab={tab}
               kind={kind}
@@ -628,7 +639,7 @@ export function HostWebinarBrowser({
               nothingAtAll={nothingAtAll}
               onClear={clearFilters}
             />
-          ) : items.length === 0 ? (
+          ) : shown.length === 0 ? (
             <Empty
               title={tab === "drafts" ? "No drafts on this page" : "Nobody on this page"}
               hint={
@@ -646,7 +657,7 @@ export function HostWebinarBrowser({
             <div
               className={pending ? "opacity-50 transition-opacity" : undefined}
             >
-              <HostWebinarRows webinars={items} recordings={recordings} />
+              <HostWebinarRows webinars={shown} recordings={recordings} />
             </div>
           )}
 
@@ -660,8 +671,8 @@ export function HostWebinarBrowser({
                 : pageNow + 1
             }
             pageSize={PAGE_SIZE}
-            start={items.length === 0 ? 0 : pageNow * PAGE_SIZE + 1}
-            end={items.length === 0 ? 0 : pageNow * PAGE_SIZE + items.length}
+            start={shown.length === 0 ? 0 : pageNow * PAGE_SIZE + 1}
+            end={shown.length === 0 ? 0 : pageNow * PAGE_SIZE + shown.length}
             total={total}
             busy={pending}
             onPrevious={() => goTo(pageNow - 1)}

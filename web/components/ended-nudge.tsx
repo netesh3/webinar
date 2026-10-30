@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { ButtonLink, Card } from "./ui";
 import { api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
 import { FOLLOW_UP_FETCH_LIMIT, recentFollowUps } from "@/lib/follow-up-nudge";
 import { formatRelative } from "@/lib/format";
+import { onHostListsDropped } from "@/lib/host-list-cache";
+import { useVisibleRefresh } from "@/lib/visible-refresh";
 
 /* On Hosting's Upcoming tab: the three webinars that just ended, and the one
  * next step. The first days after a webinar are when a follow-up works, and
@@ -16,19 +18,21 @@ import { formatRelative } from "@/lib/format";
 export function EndedNudge({ className = "" }: { className?: string }) {
   const titleId = useId();
   const [rows, setRows] = useState<Webinar[] | null>(null);
-  useEffect(() => {
+  const load = useCallback((force = false) => {
     if (isDevAuthBypassActive()) return;
-    let cancelled = false;
     api
-      .hostWebinars({ tab: "past", kind: "webinar", limit: FOLLOW_UP_FETCH_LIMIT })
+      .hostWebinars({ tab: "past", kind: "webinar", limit: FOLLOW_UP_FETCH_LIMIT }, force)
       .then((page) => {
-        if (!cancelled) setRows(recentFollowUps(page.items, Date.now()));
+        setRows(recentFollowUps(page.items, Date.now()));
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
   }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const refresh = useCallback(() => load(true), [load]);
+  useVisibleRefresh(refresh);
+  useEffect(() => onHostListsDropped(refresh), [refresh]);
   if (!rows || rows.length === 0) return null;
   return (
     <aside

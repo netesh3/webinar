@@ -104,6 +104,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/layout.test.mts
 	# In-app browser (Instagram/Facebook WebView) and phone detection.
 	cd web && node --experimental-strip-types --no-warnings lib/device.test.mts
+	# Native app link routing, keep-awake pages, and the CallQos hand-off.
+	cd web && node --experimental-strip-types --no-warnings lib/native-bridge.test.mts
 	# The load-test kit's read-out: real viewers always start where the join sent them.
 	cd web && node --experimental-strip-types --no-warnings lib/load-probe.test.mts
 	# The latency clock's time strip: the cells the load-test kit reads off the picture.
@@ -404,6 +406,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The host home's list filters in the URL: tab, search and dates survive a refresh or
 	# the back button, defaults stay out of the address, bad dates read as unset.
 	cd web && node --experimental-strip-types --no-warnings lib/host-list-url.test.mts
+	# Host list live-update: a lapsed scheduled row leaves Upcoming, and a create/end
+	# in another tab or the extra room window drops this tab's cached page.
+	cd web && node --experimental-strip-types --no-warnings lib/webinar-status.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/host-list-drop.test.mts
 	# The virtual background's presenter lock: a hand the mask cut off from the arm stays,
 	# other people (apart, beside, walking behind) still go.
 	cd web && node --experimental-strip-types --no-warnings lib/presenter-lock.test.mts

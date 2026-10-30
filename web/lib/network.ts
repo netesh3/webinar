@@ -395,8 +395,10 @@ const IDLE: NetworkHealth = {
  *
  * The bitrates keep each step at 5x or less (network.test.mts: no cliff between layers), so a
  * congested subscriber steps down one layer rather than falling from 1080p to a thumbnail.
- * 1080p ~3.2 Mbps sits under Zoom's documented ~3.8 Mbps Full HD send. maintain-framerate
- * still applies: faces prefer motion over a sharp slideshow.
+ * 1080p 3.2 Mbps is already at that 5x cap against 360p (Zoom Full HD send is ~3.8). Raising
+ * it further would punch a hole in the ladder; native desktop/phone QoS (CPU/GPU/radio) is
+ * what keeps this encode fed. maintain-framerate still applies: faces prefer motion over a
+ * sharp slideshow.
  *
  * A device that should not encode 1080 (canCaptureCamera1080) captures 720p and publishes
  * CAMERA_720 as its top layer, so its speaker tile is 720p rather than 360p.
@@ -405,10 +407,15 @@ const IDLE: NetworkHealth = {
 export const CAMERA_180_BITRATE = 200_000;
 /** Mid rung: grids of 3–9, spotlight beside content. */
 export const CAMERA_360_BITRATE = 640_000;
-/** The top layer of a device that captures 720p instead of 1080p. */
-export const CAMERA_720_BITRATE = 2_000_000;
-/** Featured-speaker 1080p — under Zoom's ~3.8 Mbps Full HD send floor. */
+/** The top layer of a device that captures 720p instead of 1080p (phones, <8 cores). */
+export const CAMERA_720_BITRATE = 2_400_000;
+/** Featured-speaker 1080p — at the 5x no-cliff cap against 360p, under Zoom's ~3.8 Mbps. */
 export const CAMERA_1080_BITRATE = 3_200_000;
+
+/** Device pixels per CSS pixel that a phone's adaptiveStream uses.
+ *  2: a 390-wide portrait stage asks for ~780 px (720p speaker), not 1080p
+ *  over cellular. Desktop still uses "screen" (the real devicePixelRatio). */
+export const PHONE_PIXEL_DENSITY = 2;
 
 export const CAMERA_LAYERS = [
   new VideoPreset(320, 180, CAMERA_180_BITRATE, 15),
@@ -451,7 +458,7 @@ export function cameraCapturePreset(): VideoPreset {
  * the conservative end for cameras and slightly generous for shares, where VP9 sharp at 1080p
  * already had a wide margin (48.6 dB on a still slide at 1.5 Mbps, share-mode.ts).
  *
- *   camera (AV1)  180p 140  360p 448  1080p 2240 (720p 1400)   full 2828 kbps (VP8 4040, -30%)
+ *   camera (AV1)  180p 140  360p 448  1080p 2240 (720p 1680)   full 2828 kbps (VP8 4040, -30%)
  *   share sharp   single 1080p@15  1750                          (VP9 2500, -30%)
  *   share video   single 1080p@30  2800                          (VP9 4000, -30%)
  */
