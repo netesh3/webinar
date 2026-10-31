@@ -330,6 +330,15 @@ meeting. End while ringing declines through the API.
   npm plugins in `packageClassList`, so before this change `CallQos` was never registered on
   iOS.
 
+**One ring per phone.** The calls API calls `pushVoIP` (`api/internal/api/call_voip.go`) for
+every ring and every end, and it sends through `sendVoIPCall` (`push_voip.go`). The FCM ring
+skips the iOS FCM tokens of an account that has a VoIP token
+(`store.PushMessage.SkipIOSWithVoIP`), so CallKit isn't doubled by an "is calling" banner.
+Inside the app, the page's incoming-call card (`web/components/incoming-call.tsx`) neither shows
+nor rings when `nativeRingsCalls()` (`web/lib/native-bridge.ts`) says the phone rings natively:
+the plugin is there, the API answered `sending: true` for this install's call token, and, on
+Android, notifications are on.
+
 **API config:** `APNS_KEY_P8` (the `.p8`, PEM or base64), `APNS_KEY_ID`, `APNS_TEAM_ID`
 (`GF5C6XT5S4`) and `APNS_ENV` (`production` by default, or `sandbox`), as repo secrets that
 `.github/workflows/cloudrun-deploy.yml` passes through. With none of them set, the boot log says

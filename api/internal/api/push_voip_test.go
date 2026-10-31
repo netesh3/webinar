@@ -170,12 +170,13 @@ func TestVoIPCallRingsThroughAPNs(t *testing.T) {
 	f.gone[voipToken("d")] = "Unregistered"
 	f.gone[voipToken("e")] = "BadDeviceToken"
 
-	payload := map[string]string{
+	payload := map[string]any{
 		"type": "incoming_call", "callId": "4b7e0f57-61d7-4a77-9c1e-0a8f0d8d0c11", "callerName": "Host Person",
-		"callerAvatarUrl": "", "meetingSlug": "abc-defg-hij", "topic": "Quick sync",
-		"joinUrl": "https://webinarliv.com/m/abc-defg-hij", "expiresAt": "2026-10-31T12:00:45Z",
+		"callerAvatarUrl": nil, "meetingSlug": "abc-defg-hij", "topic": "Quick sync",
+		"joinUrl": "/host/abc-defg-hij/room", "expiresAt": "2026-10-31T12:00:45Z",
 	}
-	api.SendVoIPCall(h.server, context.Background(), callee.ID, payload)
+	raw, _ := json.Marshal(payload)
+	api.PushVoIP(h.server, context.Background(), callee.ID, raw)
 	h.server.WaitBackground()
 
 	f.mu.Lock()
@@ -185,13 +186,13 @@ func TestVoIPCallRingsThroughAPNs(t *testing.T) {
 	}
 	for i, hd := range f.heads {
 		if hd.Get("apns-push-type") != "voip" || hd.Get("apns-topic") != "com.webinarliv.app.voip" ||
-			hd.Get("apns-priority") != "10" || hd.Get("apns-collapse-id") != payload["callId"] ||
+			hd.Get("apns-priority") != "10" || hd.Get("apns-collapse-id") != payload["callId"].(string) ||
 			!strings.HasPrefix(hd.Get("authorization"), "bearer ey") {
 			t.Fatalf("push %d headers %v", i, hd)
 		}
 		for k, want := range payload {
 			if f.bodies[i][k] != want {
-				t.Fatalf("push %d body[%s] = %v, want %q", i, k, f.bodies[i][k], want)
+				t.Fatalf("push %d body[%s] = %v, want %v", i, k, f.bodies[i][k], want)
 			}
 		}
 	}
@@ -215,7 +216,7 @@ func TestVoIPCallIsANoOpWhenOffOrWithoutAnIPhone(t *testing.T) {
 	}
 	u := h.signup("Off", "off-voip@example.com", false)
 	h.do(http.MethodPost, "/api/push/native", types.NativePushRegisterRequest{Platform: "ios_voip", Token: voipToken("f")})
-	api.SendVoIPCall(h.server, context.Background(), u.ID, map[string]string{"type": "call_ended", "callId": "x", "state": "missed"})
+	api.PushVoIP(h.server, context.Background(), u.ID, json.RawMessage(`{"type":"call_ended","callId":"x","state":"missed"}`))
 	h.server.WaitBackground()
 
 	// On, but the account has no iPhone.
@@ -226,12 +227,67 @@ func TestVoIPCallIsANoOpWhenOffOrWithoutAnIPhone(t *testing.T) {
 	api.UseVoIPSender(h.server, v)
 	h.logout()
 	other := h.signup("NoPhone", "nophone-voip@example.com", false)
-	api.SendVoIPCall(h.server, context.Background(), other.ID, map[string]string{"type": "incoming_call", "callId": "y"})
+	api.PushVoIP(h.server, context.Background(), other.ID, json.RawMessage(`{"type":"incoming_call","callId":"y"}`))
 	h.server.WaitBackground()
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.paths) != 0 {
 		t.Fatalf("APNs got %v", f.paths)
+	}
+}
+
+/* A real call, end to end: the iPhone rings through APNs VoIP (the calls API's pushVoIP hook),
+ * and its FCM token is left out of the ring so CallKit is not doubled by a banner; Android
+ * still gets its data message. The end reaches both. */
+func TestACallRingsAnIPhoneThroughVoIPAndNotFCM(t *testing.T) {
+	apns := newFakeVoIPAPNs(t)
+	fcm, sa := newFakeFCMService(t)
+	cfg := push.APNsConfig{KeyP8: apnsKeyPEM(t), KeyID: "ABC123DEFG", TeamID: "GF5C6XT5S4"}
+	h := newHarness(t, func(c *config.Config) {
+		c.FCMServiceAccountJSON = sa
+		c.APNsKeyP8, c.APNsKeyID, c.APNsTeamID = cfg.KeyP8, cfg.KeyID, cfg.TeamID
+	})
+	v, err := push.NewVoIPSenderFromConfig(cfg, apns.srv.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.UseVoIPSender(h.server, v)
+
+	_, callee, calleeAcct := callPair(t, h)
+	for _, r := range []types.NativePushRegisterRequest{
+		{Platform: "ios", Token: fcmToken("iphone")},
+		{Platform: "ios_voip", Token: voipToken("9")},
+		{Platform: "android", Token: fcmToken("pixel")},
+	} {
+		if res, raw := callee.do(http.MethodPost, "/api/push/native", r); res.StatusCode != http.StatusOK {
+			t.Fatalf("register %s: %d %s", r.Platform, res.StatusCode, raw)
+		}
+	}
+
+	c := h.startCall(types.StartCallRequest{CalleeUserID: calleeAcct.ID}, http.StatusCreated)
+	h.flushPush()
+	h.server.WaitBackground()
+
+	apns.mu.Lock()
+	if len(apns.bodies) != 1 || apns.bodies[0]["type"] != "incoming_call" || apns.bodies[0]["callId"] != c.CallID ||
+		apns.paths[0] != "/3/device/"+voipToken("9") || apns.heads[0].Get("apns-collapse-id") != c.CallID {
+		t.Fatalf("APNs ring %v %v", apns.paths, apns.bodies)
+	}
+	apns.mu.Unlock()
+	if sent := fcm.sentTo(); len(sent) != 1 || sent[0] != fcmToken("pixel") {
+		t.Fatalf("FCM ring went to %v, want only the Android phone", sent)
+	}
+
+	callee.callAction(c.CallID, "decline")
+	h.flushPush()
+	h.server.WaitBackground()
+	apns.mu.Lock()
+	if len(apns.bodies) != 2 || apns.bodies[1]["type"] != "call_ended" || apns.bodies[1]["state"] != "declined" {
+		t.Fatalf("APNs end %v", apns.bodies)
+	}
+	apns.mu.Unlock()
+	if sent := fcm.sentTo(); len(sent) != 3 {
+		t.Fatalf("FCM after the end: %v", sent)
 	}
 }

@@ -34,7 +34,7 @@ import (
  *     the edge viewers' SSE and the Postgres bus reused with a per-account topic);
  *   - their browsers through Web Push, and their app installs through FCM as a data message
  *     (store.PushMessage.DataOnly), both through the push outbox the other notifications use;
- *   - iOS VoIP (CallKit), through pushVoIP, which the native work fills in (call_voip.go).
+ *   - iOS VoIP (CallKit), through pushVoIP (call_voip.go, push_voip.go): straight to APNs.
  * The end goes the same three ways (types.CallEndedEvent), so every other device stops ringing.
  */
 

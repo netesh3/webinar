@@ -173,7 +173,7 @@ type VoIPToken struct {
 }
 
 /* NativeVoIPTokens lists an account's iOS VoIP tokens, newest first, for ringing an incoming
- * call (api/push_voip.go). The outbox never sends to these (migrations/0176). */
+ * call (api/push_voip.go). The outbox never sends to these (migrations/0177). */
 func (s *Store) NativeVoIPTokens(ctx context.Context, userID string) ([]VoIPToken, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id::text, token FROM native_push_tokens

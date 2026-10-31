@@ -143,6 +143,7 @@ type CallQosPlugin = { setActive: (o: { on: boolean }) => Promise<void> };
  * on Android 14+ asks once for the full-screen permission that lets a call take the lock screen. */
 type CallRingingPlugin = {
   getVoipToken?: () => Promise<{ token?: string }>;
+  canRing?: () => Promise<{ granted?: boolean }>;
   fullScreenIntent?: () => Promise<{ granted?: boolean; settings?: boolean }>;
   openFullScreenSettings?: () => Promise<void>;
   addListener: (event: string, fn: (data: never) => void) => Promise<Listener>;
@@ -313,7 +314,9 @@ async function syncOneToken(platform: string, tokenKey: string, syncedKey: strin
       body: JSON.stringify({ platform, token, appVersion: await appVersion() }),
     });
     if (res.ok) {
-      localStorage.setItem(syncedKey, JSON.stringify({ token, user, at: Date.now() }));
+      // sending: whether the API will push to this token (the native ringing check below).
+      const sending = ((await res.json().catch(() => null)) as { sending?: boolean } | null)?.sending === true;
+      localStorage.setItem(syncedKey, JSON.stringify({ token, user, at: Date.now(), sending }));
     }
   } catch {
     // Offline: the next page load tries again.
@@ -365,6 +368,21 @@ function keepToken(token: string | undefined, key = PUSH_TOKEN_KEY): void {
 /** Incoming calls (31 Oct 2026): the iOS VoIP token, an answered call's meeting, and on
  *  Android 14+ one ask for the full-screen permission (without it a call still rings, as a
  *  heads-up notification rather than over the lock screen). */
+let androidCanRing: boolean | null = null;
+
+/** Whether this app rings incoming calls natively (31 Oct 2026): the CallRinging plugin is
+ *  there, the API sends to this install's call token (iOS: the VoIP token; Android: the FCM
+ *  token), and on Android notifications are on. components/incoming-call.tsx then neither
+ *  shows nor rings its in-page card, so a call does not ring twice while the app is open. */
+export function nativeRingsCalls(): boolean {
+  if (!plugin("CallRinging")) return false;
+  const platform = cap()?.getPlatform?.();
+  if (platform !== "ios" && platform !== "android") return false;
+  const synced = readJSON<{ sending?: boolean }>(platform === "ios" ? VOIP_SYNCED_KEY : PUSH_SYNCED_KEY);
+  if (synced?.sending !== true) return false;
+  return platform === "ios" || androidCanRing !== false;
+}
+
 async function wireCalls(): Promise<Listener[]> {
   const calls = plugin("CallRinging") as unknown as CallRingingPlugin | null;
   if (!calls) return [];
@@ -380,6 +398,8 @@ async function wireCalls(): Promise<Listener[]> {
   try {
     const voip = await calls.getVoipToken?.();
     if (voip?.token) keepToken(voip.token, VOIP_TOKEN_KEY);
+    const ring = await calls.canRing?.();
+    if (ring) androidCanRing = ring.granted !== false;
     const fsi = await calls.fullScreenIntent?.();
     if (fsi && fsi.granted === false && fsi.settings && !localStorage.getItem(FSI_ASKED_KEY)) {
       localStorage.setItem(FSI_ASKED_KEY, "1");

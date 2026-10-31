@@ -205,15 +205,16 @@ func TestVoIPSendRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := VoIPPayload(map[string]string{
-		"type": "incoming_call", "callId": "c1", "callerName": "Pat", "joinUrl": "https://webinarliv.com/m/x",
-		"aps": "ignored",
-	})
-	if err != nil {
-		t.Fatal(err)
+	payload, callID, err := VoIPPayload(json.RawMessage(`{"type":"incoming_call","callId":"c1","callerName":"Pat",` +
+		`"callerAvatarUrl":null,"joinUrl":"/host/x/room","aps":"ignored"}`))
+	if err != nil || callID != "c1" {
+		t.Fatal(callID, err)
+	}
+	if _, _, err := VoIPPayload(json.RawMessage(`["not","an","object"]`)); err == nil {
+		t.Fatal("a non-object payload was accepted")
 	}
 	before := time.Now()
-	res := v.Send(context.Background(), testVoIP, payload, "c1")
+	res := v.Send(context.Background(), testVoIP, payload, callID)
 	if res.Outcome != Sent || res.Err != nil {
 		t.Fatalf("send: %+v", res)
 	}
@@ -245,7 +246,8 @@ func TestVoIPSendRequest(t *testing.T) {
 	if err := json.Unmarshal(f.body[0], &body); err != nil {
 		t.Fatal(err)
 	}
-	if body["type"] != "incoming_call" || body["callId"] != "c1" || body["callerName"] != "Pat" {
+	if body["type"] != "incoming_call" || body["callId"] != "c1" || body["callerName"] != "Pat" ||
+		body["callerAvatarUrl"] != nil || body["joinUrl"] != "/host/x/room" {
 		t.Fatalf("body %v", body)
 	}
 	if aps, ok := body["aps"].(map[string]any); !ok || len(aps) != 0 {

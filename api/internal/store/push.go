@@ -242,6 +242,11 @@ type PushMessage struct {
 	 * decides what to show. */
 	Data     map[string]string
 	DataOnly bool
+	/* SkipIOSWithVoIP leaves out the iOS FCM tokens of an account that has an iOS VoIP token
+	 * (31 Oct 2026): an incoming call rings those iPhones through PushKit and CallKit
+	 * (api/push_voip.go), and FCM's "is calling" banner would ring them twice. Only
+	 * QueuePushToUsers reads it. */
+	SkipIOSWithVoIP bool
 }
 
 func (m PushMessage) args() []any {
@@ -371,14 +376,17 @@ func (s *Store) QueuePushToUsers(ctx context.Context, userIDs []string, m PushMe
 		total += int(tag.RowsAffected())
 	}
 	if !m.NoNative {
+		nargs := append(append([]any{}, args...), m.SkipIOSWithVoIP)
 		tag, err := s.pool.Exec(ctx, `
 			WITH targets AS (
 			    SELECT t.id AS tid, ''::text AS join_key
 			      FROM native_push_tokens t
 			     WHERE t.user_id = ANY($12::uuid[]) AND t.platform <> 'ios_voip'
+			       AND NOT ($13::boolean AND t.platform = 'ios' AND EXISTS (
+			               SELECT 1 FROM native_push_tokens v WHERE v.user_id = t.user_id AND v.platform = 'ios_voip'))
 			       AND ($1 = 'test' OR NOT EXISTS (SELECT 1 FROM push_preferences p
 			                        WHERE p.user_id = t.user_id AND p.kind = $1 AND NOT p.enabled))
-			)`+pushNativeInsertSQL, args...)
+			)`+pushNativeInsertSQL, nargs...)
 		if err != nil {
 			return total, err
 		}

@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -18,6 +19,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * told when a call was answered, so it loads the meeting, and can ask about the full-screen
  * permission:
  *
+ *   canRing()               {granted}: whether notifications are on, so a call can ring
  *   fullScreenIntent()      {granted, settings}: whether a call may take the lock screen
  *                           (always true before Android 14), and whether there is a setting
  *                           to send the user to
@@ -70,6 +72,14 @@ public class CallRingingPlugin extends Plugin {
         if (Build.VERSION.SDK_INT < 34) return true;
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         return nm == null || nm.canUseFullScreenIntent();
+    }
+
+    /** Whether a call can ring at all: notifications are on for the app (Android 13+ asks). */
+    @PluginMethod
+    public void canRing(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("granted", NotificationManagerCompat.from(getContext()).areNotificationsEnabled());
+        call.resolve(ret);
     }
 
     @PluginMethod

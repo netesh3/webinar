@@ -7,9 +7,10 @@ import (
 
 /* pushVoIP is the iOS VoIP (PushKit / CallKit) half of a call's ring (31 Oct 2026, calls.go).
  *
- * A NO-OP HERE, ON PURPOSE. The APNs VoIP sender and the VoIP token storage are the native
- * work's (api/internal/push, the native token endpoints); that work replaces this body, and
- * may replace this whole file. The contract it can rely on:
+ * It sends the event straight to APNs as a VoIP push to each of the callee's iPhones
+ * (sendVoIPCall in push_voip.go, push/apns_voip.go; 31 Oct 2026), and the app hands it to
+ * CallKit (apps/mobile/ios/App/App/CallRingingPlugin.swift). Off without the APNS_* key. The
+ * contract:
  *
  *   - called once for every ring, right after the call is placed, with payload the
  *     types.IncomingCallEvent JSON ({"type":"incoming_call","callId":…,"callerName":…,
@@ -26,5 +27,5 @@ import (
  * (call_push.go, store.PushMessage.DataOnly), so Android and the iOS alert fallback do not
  * depend on this. */
 func (s *Server) pushVoIP(ctx context.Context, calleeUserID string, payload json.RawMessage) {
-	_, _, _ = ctx, calleeUserID, payload
+	s.sendVoIPCall(ctx, calleeUserID, payload)
 }

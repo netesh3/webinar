@@ -197,16 +197,17 @@ func (v *VoIPSender) forgetToken() {
 	v.mu.Unlock()
 }
 
-// VoIPPayload is the push body: the call's fields at the top level, beside an empty aps.
-func VoIPPayload(fields map[string]string) ([]byte, error) {
-	body := map[string]any{"aps": map[string]any{}}
-	for k, val := range fields {
-		if k == "aps" {
-			continue
-		}
-		body[k] = val
+/* VoIPPayload is the push body: the call event's JSON object (types.IncomingCallEvent or
+ * CallEndedEvent) with an empty aps beside its fields, and the call's ID for the collapse ID. */
+func VoIPPayload(event json.RawMessage) (body []byte, callID string, err error) {
+	var fields map[string]any
+	if err := json.Unmarshal(event, &fields); err != nil || fields == nil {
+		return nil, "", errors.New("voip payload must be a JSON object")
 	}
-	return json.Marshal(body)
+	fields["aps"] = map[string]any{}
+	callID, _ = fields["callId"].(string)
+	body, err = json.Marshal(fields)
+	return body, callID, err
 }
 
 /* NewVoIPRequest builds one APNs request. collapseID (the call's ID) makes a call_ended

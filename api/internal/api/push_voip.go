@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"sync"
@@ -19,24 +20,18 @@ import (
  * which rings like a phone call even when the app was killed. Android rings from an FCM data
  * message instead (apps/mobile/android/.../CallMessagingService.java); that is the FCM path.
  *
- * The hook. The calls API (feat/calling) calls s.pushVoIP(ctx, calleeUserID, payload) where a
- * call starts ringing and where it stops. That PR owns pushVoIP, and defines it as a no-op until
- * this one is in; this file owns sendVoIPCall and never defines pushVoIP, so the two merge in
- * either order without a conflict. Whichever lands second makes pushVoIP's body
- *
- *	s.sendVoIPCall(ctx, userID, payload)
- *
- * The payload is the shared contract, flat strings:
- *
- *	{"type":"incoming_call","callId","callerName","callerAvatarUrl","meetingSlug","topic","joinUrl","expiresAt"}
- *	{"type":"call_ended","callId","state"}
+ * The hook is pushVoIP (call_voip.go), which the calls API (calls.go) calls once per ring with
+ * the types.IncomingCallEvent JSON and once per end with the types.CallEndedEvent JSON; it hands
+ * both to sendVoIPCall. The FCM message for the same events (call_push.go) skips an iPhone
+ * account that has a VoIP token (store.PushMessage.SkipIOSWithVoIP), so CallKit's ring is not
+ * doubled by an "is calling" banner.
  *
  * Off without APNS_KEY_P8, APNS_KEY_ID and APNS_TEAM_ID: s.voip is nil, the boot log says so
  * once, ios_voip tokens are still stored, and sendVoIPCall does nothing. A token APNs reports
  * as Unregistered, BadDeviceToken or DeviceTokenNotForTopic is deleted. Nothing is queued or
  * retried: a call that does not ring within a few seconds has been given up on by the caller. */
 
-// voipPlatform is native_push_tokens.platform for an iOS PushKit token (migrations/0176).
+// voipPlatform is native_push_tokens.platform for an iOS PushKit token (migrations/0177).
 const voipPlatform = "ios_voip"
 
 // voipSendBudget bounds one call's sends to all of an account's iPhones.
@@ -67,10 +62,16 @@ func normalizeVoIPToken(token string) string {
 }
 
 /* sendVoIPCall rings (or, for call_ended, stops ringing) the account's iPhones. The tokens are
- * read with ctx; the sends run after it returns (inBackground), so a request handler is not
- * held up by APNs. No-op when VoIP is off or the account has no iPhone. */
-func (s *Server) sendVoIPCall(ctx context.Context, userID string, payload map[string]string) {
+ * read with ctx; the sends run after it returns (inBackground), so the caller is never held up
+ * by APNs, and nothing fails it: errors are logged. No-op when VoIP is off or the account has
+ * no iPhone. */
+func (s *Server) sendVoIPCall(ctx context.Context, userID string, payload json.RawMessage) {
 	if s.voip == nil || userID == "" {
+		return
+	}
+	body, callID, err := push.VoIPPayload(payload)
+	if err != nil {
+		s.log.Error("voip push: payload", "error", err)
 		return
 	}
 	tokens, err := s.store.NativeVoIPTokens(ctx, userID)
@@ -81,12 +82,10 @@ func (s *Server) sendVoIPCall(ctx context.Context, userID string, payload map[st
 	if len(tokens) == 0 {
 		return
 	}
-	body, err := push.VoIPPayload(payload)
-	if err != nil {
-		s.log.Error("voip push: payload", "error", err)
-		return
+	var head struct {
+		Type string `json:"type"`
 	}
-	kind, callID := payload["type"], payload["callId"]
+	_ = json.Unmarshal(payload, &head)
 	s.inBackground(func(bg context.Context) {
 		bg, cancel := context.WithTimeout(bg, voipSendBudget)
 		defer cancel()
@@ -107,7 +106,7 @@ func (s *Server) sendVoIPCall(ctx context.Context, userID string, payload map[st
 						s.log.Error("voip push: remove gone", "error", err)
 					}
 				default:
-					s.log.Warn("voip push: not delivered", "type", kind, "call", callID,
+					s.log.Warn("voip push: not delivered", "type", head.Type, "call", callID,
 						"status", res.Status, "error", res.Err)
 				}
 			}()
