@@ -140,7 +140,7 @@ func (s *Server) handleNativePushRegister(w http.ResponseWriter, r *http.Request
 	}
 	// FCM tokens are a few hundred URL-safe characters; anything else is not one.
 	if len(token) < 20 || len(token) > 4096 || strings.ContainsAny(token, " \t\r\n") || !utf8.ValidString(token) {
-		httpx.Fields(w, map[string]string{"token": "That is not a push token."})
+		httpx.Fields(w, map[string]string{"token": "That is not a push token."}) // #nosec G101 -- a validation message for the "token" field, not a credential
 		return
 	}
 	user := userFromContext(r.Context())
