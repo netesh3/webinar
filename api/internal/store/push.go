@@ -274,6 +274,10 @@ const pushNativeInsertSQL = `
 	 ORDER BY t.tid
 	ON CONFLICT (native_token_id, dedupe_key) WHERE dedupe_key IS NOT NULL AND native_token_id IS NOT NULL DO NOTHING`
 
+// pushReachableReg is which registrations r (of webinar w) a registrant push may reach: the
+// approved ones, and a meeting's lobby knocks (QueuePushToRegistrants).
+const pushReachableReg = `(r.state = 'approved' OR (w.kind = 'meeting' AND r.state = 'pending'))`
+
 /* QueuePushToRegistrants fans a message out to the approved registrants of a webinar — all of
  * them, or only registrationIDs when that is non-nil — and returns how many browsers got a row.
  *
@@ -281,14 +285,19 @@ const pushNativeInsertSQL = `
  * registration links, which are that webinar's explicit "tell me" and so are sent whatever
  * the account's settings say), and on their account's browsers when the registration has an
  * account and the account has not turned this kind off. The account's app installs
- * (native_push_tokens) are reached the same way as its browsers. */
+ * (native_push_tokens) are reached the same way as its browsers.
+ *
+ * A meeting's guests waiting in the lobby count too (31 Oct 2026): a knock is 'pending' until
+ * the host admits it, so somebody who knocked on a scheduled meeting before it began, and
+ * opted in from the waiting screen, is told it started (and reminded 15 minutes ahead). A
+ * webinar's 'pending' is a registration awaiting approval, which is still not told. */
 func (s *Store) QueuePushToRegistrants(ctx context.Context, slug string, registrationIDs []string, m PushMessage) (int, error) {
 	args := append(m.args(), slug, registrationIDs)
 	const regs = `
 		WITH regs AS (
 		    SELECT r.id, r.user_id, r.join_key
 		      FROM registrations r JOIN webinars w ON w.id = r.webinar_id
-		     WHERE w.slug = $10 AND r.state = 'approved'
+		     WHERE w.slug = $10 AND ` + pushReachableReg + `
 		       AND ($11::uuid[] IS NULL OR r.id = ANY($11::uuid[]))
 		)`
 	total := 0
@@ -381,7 +390,7 @@ func (s *Store) DuePushReminders(ctx context.Context, window time.Duration) ([]P
 		   AND w.starts_at <= now() + make_interval(secs => $1)
 		   AND EXISTS (
 		         SELECT 1 FROM registrations r
-		          WHERE r.webinar_id = w.id AND r.state = 'approved'
+		          WHERE r.webinar_id = w.id AND `+pushReachableReg+`
 		            AND (EXISTS (SELECT 1 FROM push_subscription_registrations l WHERE l.registration_id = r.id)
 		                 OR EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = r.user_id)
 		                 OR EXISTS (SELECT 1 FROM native_push_tokens t WHERE t.user_id = r.user_id)))

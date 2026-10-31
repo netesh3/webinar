@@ -5,7 +5,7 @@
  * lib/push-client.ts; the components are components/pwa.tsx.
  */
 
-import { isIOS } from "./device.ts";
+import { isAndroid, isIOS } from "./device.ts";
 
 /** What the page could detect about the browser. */
 export type PushEnv = {
@@ -112,4 +112,72 @@ export function subscribeBody(
 /** localStorage key remembering that this browser opted in for one registration. */
 export function optInKey(joinKey: string): string {
   return `webcast.push.reg.${joinKey}`;
+}
+
+/** How to allow notifications again once they were blocked, for this browser (31 Oct 2026).
+ *  A page cannot ask twice: only the person can undo a "Block", in the browser's settings. */
+export function unblockHint(ua: string, maxTouchPoints = 0): string {
+  if (isIOS(ua, maxTouchPoints)) return "Open Settings → Notifications, find Webinar Liv and turn on Allow Notifications.";
+  if (isAndroid(ua)) {
+    return "Tap ⋮ → Settings → Site settings → Notifications, find this site and choose Allow.";
+  }
+  if (/Firefox\//.test(ua)) {
+    return "Click the icon left of the address bar, clear the Notifications block, then reload.";
+  }
+  if (/Safari\//.test(ua) && !/Chrome\/|Chromium\/|Edg\//.test(ua)) {
+    return "Open Safari → Settings → Websites → Notifications, and set this site to Allow.";
+  }
+  return "Click the icon left of the address bar, set Notifications to Allow, then reload.";
+}
+
+/** localStorage key remembering "Not now" on the notify card for one webinar or meeting. */
+export function dismissKey(slug: string): string {
+  return `webcast.push.dismissed.${slug}`;
+}
+
+/** Where the page is running, as far as push goes. */
+export type PushHost =
+  /** An ordinary browser tab (or a Home Screen web app). */
+  | "browser"
+  /** Our phone app (the Capacitor shell's user agent): app push, for a signed-in account. */
+  | "phone-app"
+  /** Our desktop app (window.webinarlivDesktop): Electron has no push service. */
+  | "desktop-app";
+
+export function pushHost(input: { nativeAppUA: boolean; desktopBridge: boolean }): PushHost {
+  if (input.desktopBridge) return "desktop-app";
+  if (input.nativeAppUA) return "phone-app";
+  return "browser";
+}
+
+/** What the "Get notified when it starts" card after registering, or while waiting in a
+ *  meeting's lobby, shows (31 Oct 2026). The opt-in states, plus:
+ *
+ *   "app"          in our phone app, signed in: the app's own push already covers this
+ *                  session, so no browser prompt, just a line saying so
+ *   "unsupported"  this browser cannot get web push (an in-app browser, old iOS): say so,
+ *                  and where the reminder comes from instead
+ *
+ *  Hidden: inside the desktop app (Electron has no push, and there is no browser prompt to
+ *  offer), in the phone app signed out (app push is an account's), when the server has no
+ *  VAPID keys, and once "Not now" was pressed for this session, unless it is already on. */
+export type NotifyCardState = OptInState | "app" | "unsupported";
+
+export function notifyCardState(input: {
+  host: PushHost;
+  signedIn: boolean;
+  dismissed: boolean;
+  serverEnabled: boolean;
+  support: PushSupport;
+  permission: NotificationPermission;
+  subscribed: boolean;
+  busy?: boolean;
+}): NotifyCardState {
+  if (input.host === "desktop-app") return "hidden";
+  if (input.host === "phone-app") return input.signedIn && !input.dismissed ? "app" : "hidden";
+  if (!input.serverEnabled) return "hidden";
+  const s = optInState(input);
+  if (s === "on") return "on";
+  if (input.dismissed) return "hidden";
+  return s === "hidden" ? "unsupported" : s;
 }

@@ -1515,7 +1515,18 @@ function Confirmed({
           </div>
 
           {/* Asked here, after registering, and only on a press: never on page load. */}
-          {!ended && <PushOptIn joinKey={r.joinKey} meeting={w.kind === "meeting"} />}
+          {!ended && (
+            <PushOptIn
+              slug={w.id}
+              joinKey={r.joinKey}
+              meeting={w.kind === "meeting"}
+              fallback={
+                emailConfigured
+                  ? "Your confirmation email has your join link."
+                  : "Add it to your calendar below so you don't miss it."
+              }
+            />
+          )}
           {!ended && <div className="mb-3" />}
 
           <div className="grid grid-cols-2 gap-2">

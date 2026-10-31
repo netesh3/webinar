@@ -4,13 +4,18 @@
  */
 
 import {
+  dismissKey,
   iosVersion,
+  notifyCardState,
   optInKey,
   optInState,
+  pushHost,
   pushSupport,
   subscribeBody,
+  unblockHint,
   urlBase64ToUint8Array,
   type PushEnv,
+  type PushHost,
 } from "./push.ts";
 
 let passed = 0;
@@ -87,6 +92,55 @@ ok(
 ok("no joinKey field for an account", !("joinKey" in (subscribeBody({ endpoint: "https://e", keys: { p256dh: "p", auth: "a" } }, "UA") ?? {})));
 ok("incomplete subscription is null", subscribeBody({ endpoint: "https://e", keys: { p256dh: "p" } }, "UA") === null);
 ok("opt-in key", optInKey("ABC") === "webcast.push.reg.ABC");
+ok("dismiss key is per session", dismissKey("abc-123") === "webcast.push.dismissed.abc-123");
+
+// ---- where the page runs (31 Oct 2026)
+ok("a browser tab", pushHost({ nativeAppUA: false, desktopBridge: false }) === "browser");
+ok("the phone app", pushHost({ nativeAppUA: true, desktopBridge: false }) === "phone-app");
+ok("the desktop bridge wins", pushHost({ nativeAppUA: true, desktopBridge: true }) === "desktop-app");
+
+// ---- the notify card after registering / in the lobby
+const card = {
+  ...base,
+  host: "browser" as PushHost,
+  signedIn: false,
+  dismissed: false,
+};
+ok("browser, not asked: the button", notifyCardState(card) === "ask");
+ok("busy while subscribing", notifyCardState({ ...card, busy: true }) === "busy");
+ok("on", notifyCardState({ ...card, permission: "granted", subscribed: true }) === "on");
+ok("blocked says how to undo", notifyCardState({ ...card, permission: "denied" }) === "blocked");
+ok("iOS Safari tab: get the app", notifyCardState({ ...card, support: "ios-install" }) === "install");
+ok("no web push: says so", notifyCardState({ ...card, support: "unsupported" }) === "unsupported");
+ok("server without VAPID: nothing", notifyCardState({ ...card, serverEnabled: false }) === "hidden");
+ok("dismissed: nothing", notifyCardState({ ...card, dismissed: true }) === "hidden");
+ok("dismissed unsupported: nothing", notifyCardState({ ...card, dismissed: true, support: "unsupported" }) === "hidden");
+ok(
+  "dismissed but on still shows on",
+  notifyCardState({ ...card, dismissed: true, permission: "granted", subscribed: true }) === "on",
+);
+ok("phone app signed in: the app covers it", notifyCardState({ ...card, host: "phone-app", signedIn: true }) === "app");
+ok(
+  "phone app never shows the browser prompt, even with web push",
+  notifyCardState({ ...card, host: "phone-app", signedIn: false }) === "hidden",
+);
+ok(
+  "phone app, even with the server's VAPID off",
+  notifyCardState({ ...card, host: "phone-app", signedIn: true, serverEnabled: false }) === "app",
+);
+ok("phone app dismissed: nothing", notifyCardState({ ...card, host: "phone-app", signedIn: true, dismissed: true }) === "hidden");
+// ---- unblocking, per browser
+const CHROME_MAC =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const FIREFOX = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:131.0) Gecko/20100101 Firefox/131.0";
+ok("Mac Safari: Safari settings", unblockHint(MAC_SAFARI).startsWith("Open Safari → Settings"));
+ok("Chrome is not Safari", unblockHint(CHROME_MAC).includes("address bar"), unblockHint(CHROME_MAC));
+ok("Firefox", unblockHint(FIREFOX).includes("Notifications block"));
+ok("Android Chrome: site settings", unblockHint(ANDROID_CHROME).includes("Site settings"));
+ok("iPhone (Home Screen app): iOS Settings", unblockHint(IPHONE_17).startsWith("Open Settings → Notifications"));
+ok("iPad as a Mac: iOS Settings", unblockHint(IPAD_DESKTOP, 5).startsWith("Open Settings → Notifications"));
+
+ok("desktop app: nothing", notifyCardState({ ...card, host: "desktop-app", signedIn: true }) === "hidden");
 
 console.log(`push: ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

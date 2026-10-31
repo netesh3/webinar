@@ -21,6 +21,7 @@ import { attendeeJoinRefusal } from "@/lib/join-refusal";
 import { serverRetryDelayMs, serverWaitOf } from "@/lib/video-server";
 import { MEETING_POLL_MS, lobbyScreen, type LobbyScreen } from "@/lib/meeting-lobby";
 import { LobbyStatus, MeetingKnockForm } from "./meeting-door";
+import { PushOptIn } from "./pwa";
 
 /** Exchanges the caller's credential for a LiveKit token, then hands off to the
  *  room.
@@ -33,6 +34,7 @@ export function AttendeeRoomGate({
   topic,
   imageUrl,
   meeting = false,
+  upcoming = false,
 }: {
   slug: string;
   topic: string;
@@ -46,6 +48,9 @@ export function AttendeeRoomGate({
    *  the name field to knock with instead of "you're not registered". See
    *  components/meeting-door.tsx and lib/meeting-lobby.ts. */
   meeting?: boolean;
+  /** Not started yet when the page loaded (status "scheduled"). A meeting's waiting screen
+   *  then offers "Get notified when it starts" (components/pwa.tsx PushOptIn). */
+  upcoming?: boolean;
 }) {
   const router = useRouter();
   // Any tap on the way in ("Join again", "Try again") unlocks a <video> for Safari's sake.
@@ -284,6 +289,7 @@ export function AttendeeRoomGate({
       knockFresh ||
       lobby?.phase === "knock" ||
       (hydrated && status !== "loading" && directKey === null && !signedIn);
+    const waitingKey = directKey ?? reg?.joinKey;
     const afterKnock = () => {
       setKnockFresh(false);
       setKnockRefusal(null);
@@ -322,6 +328,12 @@ export function AttendeeRoomGate({
               <p className="text-[13.5px] text-ink-2">Connecting to the meeting…</p>
             </div>
           )}
+          {/* Knocked on a meeting that has not started (31 Oct 2026): the host may be a
+              while, so offer the "it started" push to the knock's key instead of asking the
+              guest to keep the tab open. Not once it is live: they go in in seconds. */}
+          {upcoming && waitingKey && error?.code === "waiting_for_host" && !needsKnock && !knockRefusal ? (
+            <PushOptIn slug={slug} joinKey={waitingKey} meeting />
+          ) : null}
         </Card>
       </main>
     );
