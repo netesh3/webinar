@@ -201,7 +201,7 @@ By hand, the same thing with the AWS CLI is `aws s3api copy-object` of each
    `downloads.webinarliv.com` (the `webinarliv.com` zone must be on Cloudflare). Cloudflare
    creates the DNS record and certificate. This is what makes the bucket publicly readable,
    and Cloudflare's cache honours the `Cache-Control` headers above. R2 still 404s `/`
-   (there is no index document setting). Deploy `deploy/cloudflare/downloads-root` so that
+   (there is no index document setting). Deploy `deploy/cloudflare/downloads-root` (CI does it: `.github/workflows/downloads-root-deploy.yml`, on changes under that folder or by hand) so that
    `/` 302s to `https://webinarliv.com/download` without touching `/latest.json` or the
    installers:
 

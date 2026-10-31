@@ -1,0 +1,59 @@
+# Deploy deploy/cloudflare/downloads-root to Cloudflare Workers: the tiny worker routed to
+# downloads.webinarliv.com/ (no path wildcard, so only "/") that 302s to the website's
+# /download page. The installers and latest.json stay on the R2 custom domain (docs/downloads.md).
+#
+# Secret (repo): CLOUDFLARE_API_TOKEN. Variable: CLOUDFLARE_ACCOUNT_ID (the company account
+# since 30 Oct 2026, docs/runbooks/cloudflare-account-move.md).
+#
+# No deploy guard: this worker does not touch live sessions.
+
+name: Deploy Downloads Root Worker (Cloudflare)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/cloudflare/downloads-root/**"
+      - ".github/workflows/downloads-root-deploy.yml"
+
+concurrency:
+  group: deploy-downloads-root
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/cloudflare/downloads-root
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check settings are present
+        run: |
+          set -euo pipefail
+          [ -n "${CLOUDFLARE_ACCOUNT_ID}" ] || { echo "::error::Repository variable CLOUDFLARE_ACCOUNT_ID is unset."; exit 1; }
+          [ -n "${CLOUDFLARE_API_TOKEN}" ] || { echo "::error::Secret CLOUDFLARE_API_TOKEN is unset."; exit 1; }
+
+      - name: Deploy worker
+        run: npx --yes wrangler@4 deploy
+
+      - name: Check the root redirects
+        run: |
+          set -euo pipefail
+          sleep 10
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://downloads.webinarliv.com/)
+          loc=$(curl -s -o /dev/null -w '%{redirect_url}' https://downloads.webinarliv.com/)
+          echo "GET / -> ${code} ${loc}"
+          [ "$code" = "302" ] || [ "$code" = "301" ] || { echo "::warning::downloads.webinarliv.com/ returned ${code}; routes can take a minute to apply"; }
