@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Alert, Spinner } from "./controls";
 import { useAppConfig } from "./providers";
 import { Button } from "./ui";
-import { startAppGoogleSignIn } from "@/lib/app-auth";
+import { pastedAppCode, startAppGoogleSignIn } from "@/lib/app-auth";
 import { safeAuthNext } from "@/lib/supabase";
 import { googleLoginHint } from "@/lib/webinar-register";
 
@@ -52,12 +52,16 @@ export function GoogleContinueButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [external, setExternal] = useState(false);
+  // A second click before the first has re-rendered the button disabled (31 Oct 2026).
+  const starting = useRef(false);
 
   if (!googleAuth) {
     return null;
   }
 
   async function start() {
+    if (starting.current) return;
+    starting.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -74,6 +78,8 @@ export function GoogleContinueButton({
           : "Could not start Google sign-in. Check your connection.",
       );
       setBusy(false);
+    } finally {
+      starting.current = false;
     }
   }
 
@@ -95,12 +101,61 @@ export function GoogleContinueButton({
         {busy ? "Redirecting…" : label}
       </Button>
       {external && !error && (
-        <p className="text-center text-[12.5px] text-ink-2">
-          Finish signing in with Google in your browser. You&rsquo;ll come straight back here.
-        </p>
+        <>
+          <p className="text-center text-[12.5px] text-ink-2">
+            Finish signing in with Google in your browser. You&rsquo;ll come straight back here.
+          </p>
+          <PasteAppCode />
+        </>
       )}
       {error && <Alert tone="error">{error}</Alert>}
     </div>
+  );
+}
+
+/* When webinarliv:// does not reach this copy of the app (31 Oct 2026: macOS can keep the
+ * scheme on an older or deleted copy after an update), /auth/app-return shows the code to
+ * copy. Pasted here it goes through /auth/complete as the link would. The code alone is
+ * useless without the verifier this app kept, so showing it in the browser is safe. */
+function PasteAppCode() {
+  const [value, setValue] = useState("");
+  const [invalid, setInvalid] = useState(false);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const code = pastedAppCode(value);
+    if (!code) {
+      setInvalid(true);
+      return;
+    }
+    // A full load, as the webinarliv:// link gives the page.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(`/auth/complete?code=${encodeURIComponent(code)}`);
+  }
+
+  return (
+    <details className="text-[12.5px] text-ink-2">
+      <summary className="cursor-pointer text-center">
+        Signed in in the browser but nothing happened? Paste the code
+      </summary>
+      <form onSubmit={submit} className="mt-2 flex gap-2">
+        <input
+          aria-label="Sign-in code from the browser"
+          className={`field min-w-0 flex-1 font-mono ${invalid ? "border-live" : ""}`}
+          autoComplete="off"
+          spellCheck={false}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setInvalid(false);
+          }}
+        />
+        <Button type="submit" variant="secondary">
+          Continue
+        </Button>
+      </form>
+      {invalid && <p className="mt-1 text-live">That doesn&rsquo;t look like a sign-in code.</p>}
+    </details>
   );
 }
 

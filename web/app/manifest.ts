@@ -15,9 +15,28 @@ import type { MetadataRoute } from "next";
  *
  * Deliberately minimal still. No screenshots, no shortcuts, no share_target: those change how
  * the app is presented in stores and OS menus, which is a product decision nobody has made.
+ *
+ * Installed copies must not capture links (31 Oct 2026). The site stopped offering the PWA
+ * (components/pwa.tsx), but old installs remain, and Chrome's link capturing can move a
+ * navigation (a desktop app's Google sign-in, say) into the PWA window and send it again. A
+ * Google callback sent twice failed the second time until api/auth_google_replay.go; that
+ * incident had another sender, but an installed copy should not be one. So:
+ *
+ *  - `handle_links: "not-preferred"`: a link to the site opens in the browser tab it was
+ *    clicked in, not in an installed app window. Not in Next's Manifest type yet, hence the
+ *    intersection; Next serialises the object as it is.
+ *  - `launch_handler: navigate-new`: when the app IS launched with a URL, it gets a window of
+ *    its own rather than taking over (focus-existing would drop the navigation, so a captured
+ *    /api/auth/google/callback would never run at all).
+ *
+ * Neither can carve /api/auth/* or /auth/* out of an install: scope is a path prefix that can
+ * only include, never exclude, and narrowing it from "/" would change what old installs are.
+ * Hence the callback copes with repeats instead of relying on this.
  */
-export default function manifest(): MetadataRoute.Manifest {
+export default function manifest(): MetadataRoute.Manifest & { handle_links: "preferred" | "not-preferred" | "auto" } {
   return {
+    handle_links: "not-preferred",
+    launch_handler: { client_mode: "navigate-new" },
     id: "/",
     name: "Webinar Liv",
     short_name: "Webinar Liv",

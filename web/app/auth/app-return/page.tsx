@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Spinner } from "@/components/controls";
+import { CopyField, Spinner } from "@/components/controls";
 import { Card } from "@/components/ui";
 import { appCompleteLink, parseReturnFragment } from "@/lib/app-auth";
 
@@ -15,9 +15,15 @@ import { appCompleteLink, parseReturnFragment } from "@/lib/app-auth";
  * it is worthless: redeeming it takes the verifier only the app holds.
  *
  * Browsers ask before opening an app, and some only from a click, so the button stays.
+ *
+ * And the code is shown, with Copy (31 Oct 2026): after an update macOS can keep webinarliv://
+ * pointed at an older or deleted copy of the app, so the link opens nothing. The desktop app's
+ * sign-in page takes the code pasted by hand (components/google-continue.tsx). Shown, it is
+ * still useless without the verifier the app kept.
  */
 export default function AppReturnPage() {
   const [link, setLink] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   const [failed, setFailed] = useState(false);
   const [app, setApp] = useState("");
 
@@ -33,6 +39,7 @@ export default function AppReturnPage() {
      * state has to be set here. */
     /* eslint-disable react-hooks/set-state-in-effect */
     setLink(next);
+    setCode(got.code);
     setFailed(!got.code);
     setApp(got.app);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -63,6 +70,15 @@ export default function AppReturnPage() {
               <p className="mt-4 text-[12px] text-ink-3">
                 Once the app has opened, you can close this tab.
               </p>
+            )}
+            {code && (
+              <div className="mt-5 border-t border-line pt-4 text-left">
+                <p className="mb-2 text-[12px] text-ink-2">
+                  Didn&rsquo;t open? Copy the code, then in the app choose &ldquo;Paste the
+                  code&rdquo; under Continue with Google.
+                </p>
+                <CopyField value={code} />
+              </div>
             )}
           </>
         ) : (

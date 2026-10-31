@@ -56,13 +56,16 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // Register webinarliv:// (the installers also register it; this covers
-// `npm start` and a moved app). macOS only accepts this after `ready`.
+// `npm start` and a moved app). macOS only accepts this after `ready`, so
+// there it runs from whenReady below, on every launch: the copy launched last
+// takes the scheme back from an older or deleted copy LaunchServices may still
+// hold after an update (31 Oct 2026). If it still cannot, the sign-in page's
+// "Paste the code" (web/components/google-continue.tsx) is the way back.
 function registerProtocol(): void {
-  if (process.defaultApp && process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
-  } else {
-    app.setAsDefaultProtocolClient(PROTOCOL);
-  }
+  const ok = process.defaultApp && process.argv.length >= 2
+    ? app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])])
+    : app.setAsDefaultProtocolClient(PROTOCOL);
+  if (!ok) console.warn(`[protocol] could not register ${PROTOCOL}://`);
 }
 if (process.platform !== "darwin") registerProtocol();
 

@@ -12,6 +12,7 @@ import {
   currentAppKind,
   makeVerifier,
   parseReturnFragment,
+  pastedAppCode,
   safeNextPath,
 } from "./app-auth.ts";
 
@@ -69,6 +70,13 @@ assert.equal(safeNextPath("//evil.example"), "/");
 assert.equal(safeNextPath("https://evil.example"), "/");
 assert.equal(safeNextPath("/\\evil.example"), "/");
 assert.equal(safeNextPath(null, "/host"), "/host");
+
+// A code pasted by hand (31 Oct 2026): trimmed, and only something shaped like a code.
+const hex = "a".repeat(64);
+assert.equal(pastedAppCode(`  ${hex}\n`), hex);
+assert.equal(pastedAppCode("short"), null);
+assert.equal(pastedAppCode(`${hex}&next=//evil`), null);
+assert.equal(pastedAppCode(""), null);
 
 // Outside an app (no window here) there is no hand-off: the web redirect is used.
 assert.equal(currentAppKind(), null);
