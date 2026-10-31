@@ -26,6 +26,7 @@ export default async function AttendeeRoomPage({
       // The gate is a meeting's lobby too: it polls "waiting for the host" and offers the
       // name field instead of registration. See components/meeting-door.tsx.
       meeting={webinar.kind === "meeting"}
+      upcoming={webinar.status === "scheduled"}
     />
   );
 }

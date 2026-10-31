@@ -491,3 +491,82 @@ func TestPushSubscriptionRenewal(t *testing.T) {
 		t.Fatalf("renewed browser not told: new=%d old=%d", f.count("new"), f.count("old"))
 	}
 }
+
+/* A meeting's guests are knocks, 'pending' until the host admits them (31 Oct 2026). One who
+ * knocked on a scheduled meeting before it began and opted in from the waiting screen is
+ * reminded 15 minutes ahead and told when it starts; one the host turned away is not, and
+ * neither is a webinar registration still waiting for approval. */
+func TestPushReachesMeetingLobbyKnocks(t *testing.T) {
+	h, f := newPushHarness(t)
+	host := meetingHost(t, h)
+	res, raw := h.do(http.MethodPost, "/api/host/webinars", types.WebinarInput{
+		Topic: "Planning", Kind: types.KindMeeting, Duration: 30, TimeZone: "UTC",
+		StartsAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	})
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("scheduled meeting: status %d body %s", res.StatusCode, raw)
+	}
+	var wb types.Webinar
+	h.decode(raw, &wb)
+	// An hour on, the clock has moved: it starts in five minutes.
+	if _, err := h.store.Pool().Exec(context.Background(),
+		`UPDATE webinars SET starts_at = now() + interval '5 minutes' WHERE slug = $1`, wb.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	waiting := h.mustKnock(wb.ID, "Asha")
+	turnedAway := h.mustKnock(wb.ID, "Ravi")
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/lobby/"+h.lobbyID(wb.ID, "Ravi")+"/deny", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("deny: status %d body %s", res.StatusCode, raw)
+	}
+
+	// A webinar with approval: a registration waiting for the host is not a lobby knock.
+	approval := h.newWebinar("Approval needed", func(in *types.WebinarInput) {
+		in.Approval = types.ApprovalManual
+	})
+	h.logout()
+	held := h.registerAs(approval.ID, "held@example.com")
+	var heldState, heldKey string
+	if err := h.store.Pool().QueryRow(context.Background(),
+		`SELECT state, coalesce(join_key, '') FROM registrations WHERE id = $1`, held.ID).Scan(&heldState, &heldKey); err != nil {
+		t.Fatal(err)
+	}
+	if heldState != string(types.RegPending) || heldKey == "" {
+		t.Fatalf("approval registration: state %q key %q, want pending with a key", heldState, heldKey)
+	}
+
+	// Each from its own browser, signed out: the join key is the only tie.
+	h.subscribe(f.browser(t, "asha", waiting.JoinKey), http.StatusOK)
+	h.subscribe(f.browser(t, "ravi", turnedAway.JoinKey), http.StatusOK)
+	h.subscribe(f.browser(t, "held", heldKey), http.StatusOK)
+
+	api.SweepPushReminders(h.server, context.Background())
+	h.flushPush()
+	if f.count("asha") != 1 {
+		t.Fatalf("waiting guest reminded %d times, want 1", f.count("asha"))
+	}
+	if f.count("ravi") != 0 || f.count("held") != 0 {
+		t.Fatalf("reminded a denied knock (%d) or an unapproved registration (%d)", f.count("ravi"), f.count("held"))
+	}
+
+	h.login(host.Email)
+	if res, raw := h.do(http.MethodPost, "/api/host/webinars/"+wb.ID+"/start", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d %s", res.StatusCode, raw)
+	}
+	h.flushPush()
+	if f.count("asha") != 2 {
+		t.Fatalf("waiting guest not told the meeting started: %d pushes", f.count("asha"))
+	}
+	if f.count("ravi") != 0 {
+		t.Fatal("a guest the host turned away was told the meeting started")
+	}
+	var url string
+	if err := h.store.Pool().QueryRow(context.Background(), `
+		SELECT m.url FROM push_messages m JOIN push_subscriptions s ON s.id = m.subscription_id
+		 WHERE s.endpoint LIKE '%/ep/asha' AND m.kind = 'meeting_started'`).Scan(&url); err != nil {
+		t.Fatal(err)
+	}
+	if url != "/webinars/"+wb.ID+"/room?k="+waiting.JoinKey {
+		t.Fatalf("join link: %q", url)
+	}
+}
