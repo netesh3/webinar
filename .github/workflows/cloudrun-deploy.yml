@@ -58,6 +58,9 @@
 #   VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT — optional; Web Push (install the app,
 #     "notify me when it starts"). All three or none: the API refuses a partial set. Generate the
 #     pair with `npx web-push generate-vapid-keys`; the subject is mailto:you@domain.
+#   APNS_KEY_P8 / APNS_KEY_ID / APNS_TEAM_ID — optional; direct APNs for iPhone VoIP
+#     (CallKit). Same AuthKey_XXXX.p8 as the APNs key uploaded to Firebase. Team ID is
+#     GF5C6XT5S4. All three or none.
 #   FCM_SERVICE_ACCOUNT_JSON — optional; native push to the Android and iOS apps through Firebase
 #     Cloud Messaging (api/internal/push/fcm.go). A Firebase service account's JSON key, as is or
 #     base64. Optional since the FCM_PROJECT_ID variable (29 Oct 2026), which needs no key; this
@@ -255,6 +258,10 @@ jobs:
       FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
       # Or no key: the Cloud Run identity's token from the metadata server (29 Oct 2026).
       FCM_PROJECT_ID: ${{ vars.FCM_PROJECT_ID }}
+      # Direct APNs for iPhone VoIP / CallKit (same .p8 as Firebase alert push).
+      APNS_KEY_P8: ${{ secrets.APNS_KEY_P8 }}
+      APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+      APNS_TEAM_ID: ${{ secrets.APNS_TEAM_ID }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}

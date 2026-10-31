@@ -28,6 +28,7 @@ apps/mobile/
     app/src/main/java/com/webinarliv/app/CallQos*.java       live-room FGS, Wi-Fi/CPU locks
   ios/App/                native iOS project (committed)
     App/AppDelegate.swift   audio session (background audio), APNs token hand-off
+    App/Info.plist          UIBackgroundModes: audio, remote-notification, voip (CallKit)
     App/CallQosPlugin.swift live-room videoChat audio session
     App/App.entitlements    Associated Domains (Universal Links, webcredentials), aps-environment
 web/                      (the site) pieces that only run inside the app
@@ -226,11 +227,13 @@ APNs itself.
      phase bundles the plist when it's there. Without it the app builds and push stays off.
    - CI (`.github/workflows/mobile-build.yml`): store them base64-encoded as the repo secrets
      `GOOGLE_SERVICES_JSON_BASE64` and `GOOGLE_SERVICE_INFO_PLIST_BASE64`.
-2. **APNs key into Firebase.** In the Apple Developer account, create an APNs Auth Key (`.p8`,
+2. **APNs key into Firebase, and the same key on the API for VoIP.** In the Apple Developer account, create an APNs Auth Key (`.p8`,
    under Keys, with Apple Push Notifications service). In Firebase, go to Project settings,
    then Cloud Messaging, then Apple app configuration, and upload the `.p8` with its Key ID and
-   your Team ID. The App ID needs the Push Notifications capability. The key stays in Firebase,
-   not in this repo or the API.
+   your Team ID. The App ID needs the Push Notifications capability. Alert push still goes
+   through FCM. Incoming-call VoIP is sent by the API straight to APNs, so the same `.p8`
+   is also the Cloud Run / GitHub secrets `APNS_KEY_P8`, `APNS_KEY_ID`, and
+   `APNS_TEAM_ID=GF5C6XT5S4`. Info.plist `UIBackgroundModes` includes `voip`.
 3. **Credential for the API: the Cloud Run identity, no key download.** Firebase lives in the
    API's own GCP project (`selfreminder-rnix`), and the Cloud Run runtime service account
    (`65278594492-compute@developer.gserviceaccount.com`) holds

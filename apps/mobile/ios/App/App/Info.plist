@@ -72,6 +72,9 @@
 	<array>
 		<string>audio</string>
 		<string>remote-notification</string>
+		<!-- Incoming-call VoIP push (PushKit + CallKit). Same APNs .p8 as alert
+		     push; the API sends to the {bundle-id}.voip topic. -->
+		<string>voip</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
