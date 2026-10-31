@@ -6,7 +6,7 @@
 #
 # - Windows (build-windows) always runs on GitHub's windows-latest: NSIS x64 installer,
 #   its blockmap and latest.yml. Unsigned until the Azure Trusted Signing secrets exist.
-# - macOS on GitHub-hosted macos-latest (build) is off until vars.GITHUB_HOSTED_DESKTOP=true:
+# - macOS on GitHub-hosted macos-latest (build) is off until vars.HOSTED_MAC_BUILD=true:
 #   the owner's Mac builds, signs, notarizes and publishes macOS with
 #   `scripts/downloads/publish.mjs desktop --platform mac`.
 #
@@ -89,11 +89,11 @@ jobs:
           node-version: 22
       - run: node --test scripts/downloads/publish.test.mjs
 
-  # GitHub-hosted macos-latest is off until vars.GITHUB_HOSTED_DESKTOP=true (the owner's
+  # GitHub-hosted macos-latest is off until vars.HOSTED_MAC_BUILD=true (the owner's
   # Mac builds, signs, notarizes and publishes macOS for now).
   build:
     name: build (mac)
-    if: ${{ !inputs.promote_tag && !inputs.publish_windows && vars.GITHUB_HOSTED_DESKTOP == 'true' }}
+    if: ${{ !inputs.promote_tag && !inputs.publish_windows && vars.HOSTED_MAC_BUILD == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -162,7 +162,7 @@ jobs:
             apps/desktop/release/*.blockmap
             apps/desktop/release/latest-mac.yml
 
-  # Windows always builds on GitHub's windows-latest, whatever GITHUB_HOSTED_DESKTOP says.
+  # Windows always builds on GitHub's windows-latest, whatever HOSTED_MAC_BUILD says.
   build-windows:
     name: build (windows)
     if: ${{ !inputs.promote_tag }}
@@ -239,7 +239,7 @@ jobs:
 
   release:
     name: draft release
-    # Whatever was built: Windows always, macOS only with GITHUB_HOSTED_DESKTOP.
+    # Whatever was built: Windows always, macOS only with HOSTED_MAC_BUILD.
     if: ${{ always() && startsWith(github.ref, 'refs/tags/desktop-v') && needs.build-windows.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     needs: [build, build-windows]
     runs-on: ubuntu-latest

@@ -144,7 +144,7 @@ signed release.
 
 - **Desktop, macOS:** on the owner's Mac, build, sign and notarize, then
   `node scripts/downloads/publish.mjs desktop --platform mac --version <version> --dir apps/desktop/release --signed-mac true`.
-  (With `vars.GITHUB_HOSTED_DESKTOP=true`, a `desktop-v<version>` tag also builds macOS on
+  (With `vars.HOSTED_MAC_BUILD=true`, a `desktop-v<version>` tag also builds macOS on
   macos-latest and the `publish` job publishes it.)
 - **Desktop, Windows:** bump `apps/desktop/package.json` and merge, then either push a
   `desktop-v<version>` tag, or run **Desktop build** by hand (Actions, Run workflow) on
