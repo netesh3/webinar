@@ -559,13 +559,18 @@ function PreviewStep({
  *  constraint it cannot satisfy, not a bug in this dialog. Dropping the hint
  *  outright on Safari — rather than substituting "monitor" or "window" — is what
  *  lets Safari's own native picker (which does list both) come up normally,
- *  which omitting `displaySurface` altogether is documented to do. */
+ *  which omitting `displaySurface` altogether is documented to do.
+ *
+ *  The hint is added to the capture's own size constraints (shareCaptureOptions), not
+ *  in place of them (31 Oct 2026). */
 export function displayMediaOptions(
   surface: Surface,
   mode: ShareMode,
 ): ScreenShareCaptureOptions {
-  const video = surface === "browser" && isSafari() ? true : { displaySurface: surface };
-  return { ...shareCaptureOptions(mode), video, controller: focusCapturedSurface() };
+  const base = shareCaptureOptions(mode);
+  const size = base.video === true || base.video === undefined ? {} : base.video;
+  const video = surface === "browser" && isSafari() ? base.video : { ...size, displaySurface: surface };
+  return { ...base, video, controller: focusCapturedSurface() };
 }
 
 /* Take the presenter to what they just shared.

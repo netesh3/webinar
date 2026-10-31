@@ -97,6 +97,27 @@ export function isMobileUA(ua: string, maxTouchPoints = 0): boolean {
   return isAndroid(ua) || isIOS(ua, maxTouchPoints) || /Mobile/i.test(ua);
 }
 
+/* Phone, tablet or desktop, for the decisions where a tablet is not a phone (31 Oct 2026).
+ *
+ * isMobileUA lumps them together, and a screen share was capped on that: an iPad presenting
+ * got the phone's capture. A tablet's screen is a laptop's, so it shares like one.
+ *   phone    iPhone / iPod, Android with "Mobile" (Android's own phone marker), any other
+ *            "Mobile" UA
+ *   tablet   iPad, iPadOS desktop mode (Macintosh + a touchscreen: macOS Safari reports
+ *            maxTouchPoints 0 even with a touch display attached), Android without "Mobile"
+ *   desktop  everything else
+ * Android tablets in Chrome's "desktop site" mode send a Linux desktop UA and land in desktop,
+ * which shares the same way, so the miss costs nothing. */
+export type FormFactor = "phone" | "tablet" | "desktop";
+
+export function deviceFormFactor(ua: string, maxTouchPoints = 0): FormFactor {
+  if (/iPhone|iPod/i.test(ua)) return "phone";
+  if (/iPad/i.test(ua)) return "tablet";
+  if (isAndroid(ua)) return /Mobile/i.test(ua) ? "phone" : "tablet";
+  if (/Macintosh/i.test(ua) && maxTouchPoints > 1) return "tablet";
+  return /Mobile/i.test(ua) ? "phone" : "desktop";
+}
+
 /** An Android intent: URL that opens `url` in Chrome from inside a WebView.
  *  Falls back to the same URL if Chrome is not installed. */
 export function androidChromeIntent(url: string): string {

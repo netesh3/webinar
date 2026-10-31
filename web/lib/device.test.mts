@@ -8,6 +8,7 @@ import {
   IOS_APP_ATTR,
   androidChromeIntent,
   appStoreBootScript,
+  deviceFormFactor,
   inAppBrowserName,
   iosAppFrom,
   isIOS,
@@ -88,6 +89,32 @@ assert.equal(isMobileUA(chromeAndroid), true);
 assert.equal(isMobileUA(safariIOS), true);
 assert.equal(isMobileUA(chromeMac), false);
 assert.equal(isIOS(chromeMac, 5), true, "iPadOS reports as a Mac with touch");
+
+// Phone, tablet or desktop (31 Oct 2026): a tablet is not a phone.
+const safariIPadDesktopMode =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15";
+const safariIPad =
+  "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+const chromeAndroidTablet =
+  "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36";
+const firefoxAndroidPhone = "Mozilla/5.0 (Android 14; Mobile; rv:131.0) Gecko/131.0 Firefox/131.0";
+const firefoxAndroidTablet = "Mozilla/5.0 (Android 14; Tablet; rv:131.0) Gecko/131.0 Firefox/131.0";
+const iPod =
+  "Mozilla/5.0 (iPod touch; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1";
+assert.equal(deviceFormFactor(safariIOS, 5), "phone");
+assert.equal(deviceFormFactor(iPod, 5), "phone");
+assert.equal(deviceFormFactor(chromeAndroid, 5), "phone");
+assert.equal(deviceFormFactor(firefoxAndroidPhone, 5), "phone");
+assert.equal(deviceFormFactor(safariIPad, 5), "tablet");
+assert.equal(deviceFormFactor(safariIPadDesktopMode, 5), "tablet", "iPadOS desktop mode: Mac UA + touch");
+assert.equal(deviceFormFactor(ourIPadApp, 5), "tablet");
+assert.equal(deviceFormFactor(chromeAndroidTablet, 10), "tablet", "Android without Mobile");
+assert.equal(deviceFormFactor(firefoxAndroidTablet, 10), "tablet");
+assert.equal(deviceFormFactor(safariIPadDesktopMode, 0), "desktop", "a Mac: maxTouchPoints 0");
+assert.equal(deviceFormFactor(safariIPadDesktopMode, 1), "desktop");
+assert.equal(deviceFormFactor(safariIPadDesktopMode), "desktop");
+assert.equal(deviceFormFactor(chromeMac, 0), "desktop");
+assert.equal(deviceFormFactor(""), "desktop");
 
 assert.equal(
   androidChromeIntent("https://webinarliv.com/webinars/abc?k=1#x"),

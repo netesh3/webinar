@@ -10,7 +10,8 @@ import {
 } from "livekit-client";
 import { currentDisplayMediaHints } from "./share-hints";
 import {
-  shareCaptureResolution,
+  isSafariUA,
+  shareCaptureConstraints,
   shareCodec,
   shareContentHint,
   shareDegradation,
@@ -44,7 +45,7 @@ import {
   shareLayers,
   shareTop,
 } from "./network";
-import { currentIsMobile } from "./device";
+import { currentIsMobile, deviceFormFactor } from "./device";
 import { av1Now, primeAv1Probes } from "./codec-policy";
 import { primeReceivePolicy } from "./receive-codecs";
 
@@ -124,8 +125,12 @@ export const SIMULCAST_LAYERS: VideoPreset[] = CAMERA_LAYERS;
  * It is switched to "motion" (smoother playback) only while the share is detected playing a
  * video — lib/auto-share-mode.ts — and back once it settles.
  *
- * Resolution: up to 1920x1080 as an ideal (SHARE_CAPTURE_MAX); Safari is left unconstrained;
- * phones get the floor.
+ * Resolution: up to 1920x1080, ideal and max (SHARE_CAPTURE_MAX), on desktops and tablets;
+ * 1280x720 on phones; Safari is left unconstrained (shareCaptureConstraints, share-mode.ts).
+ * The constraints go in `video`, not `resolution`: livekit-client turns `resolution` into
+ * ideal-only constraints, or max-only on Safari, and fills an undefined one with its own 1080p
+ * preset, which on Safari 18+ is the WebKit bug that captured a presenter at 640 wide
+ * (31 Oct 2026). `resolution` {0, 0} is its "uncapped": it adds nothing of its own.
  *
  * Audio IS captured, and it did not used to be. `audio: false` was defended here on the
  * grounds that presenters share slides and terminals more often than video — true, and
@@ -149,11 +154,8 @@ export function shareCaptureOptions(mode: ShareMode): ScreenShareCaptureOptions 
       autoGainControl: false,
     },
     contentHint: shareContentHint(mode),
-    resolution: shareCaptureResolution({
-      safari: isSafari(),
-      mobile: isMobilePublisher(),
-      mobileFloor: SHARE_FLOOR_MOBILE,
-    }),
+    video: shareVideoConstraints(),
+    resolution: { width: 0, height: 0 },
     // The picker hints, for the Chromium versions that know them (lib/share-hints.ts):
     // surfaceSwitching offers a control to swap the shared window mid-share instead of
     // stopping and starting again — which, in a webinar, means a gap the audience sees;
@@ -287,34 +289,31 @@ function isMac(): boolean {
   return /mac/i.test(platform);
 }
 
-/** Coarse mobile check for capture floors — phones rarely share, but must not go below 360p. */
-function isMobilePublisher(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  if (/android|iphone|ipod|ipad/i.test(ua)) return true;
-  // iPadOS 13+ may report as Macintosh with a touchscreen.
-  const maxTouch =
-    typeof navigator.maxTouchPoints === "number" ? navigator.maxTouchPoints : 0;
-  return /macintosh/i.test(ua) && maxTouch > 1;
+/* The share's `video` constraints: shareCaptureConstraints for this browser, or `true` (no
+ * constraints) on Safari. Phone, tablet and desktop are told apart (deviceFormFactor): a tablet
+ * shares like a desktop, a phone at 720p (31 Oct 2026). livekit-client's type for `video` only
+ * names displaySurface, but it hands the object to getDisplayMedia as the video constraints. */
+function shareVideoConstraints(): ScreenShareCaptureOptions["video"] {
+  if (typeof navigator === "undefined") return true;
+  const constraints = shareCaptureConstraints({
+    safari: isSafari(),
+    formFactor: deviceFormFactor(navigator.userAgent, navigator.maxTouchPoints ?? 0),
+  });
+  return constraints ? (constraints as ScreenShareCaptureOptions["video"]) : true;
 }
 
-/* Real Safari, which is asked only so a screen share can avoid constraining it.
+/* Real Safari, which is asked only so a screen share can avoid constraining it (isSafariUA in
+ * share-mode.ts has the test). iPad Safari, desktop mode included, is Safari here.
  *
- * The negative clauses are the whole test: Chrome, Edge, and every iOS browser put
- * "Safari" in their user agent, because on iOS they are all WebKit wearing a different
- * name. What survives the filter is Safari proper, desktop or mobile.
- *
- * Not narrowed to Safari 17, which is the version with the bug. A version test would need
- * maintaining as Safari moves, and being wrong in the cautious direction costs one
+ * Not narrowed to Safari 17, which is the version livekit-client exempts. A version test would
+ * need maintaining as Safari moves, and being wrong in the cautious direction costs one
  * presenter some CPU while being wrong in the other direction sends 250 people a
- * low-resolution slide. False on the server, where the answer is never used.
+ * low-resolution slide; Safari 27 still captured at 640 wide under constraints (31 Oct 2026).
+ * False on the server, where the answer is never used.
  */
 export function isSafari(): boolean {
   if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  return (
-    /safari/i.test(ua) && !/chrome|chromium|crios|fxios|edg|android/i.test(ua)
-  );
+  return isSafariUA(navigator.userAgent);
 }
 
 /** Re-export floors so callers/tests do not reach into network for capture constants alone. */
