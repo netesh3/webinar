@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import {
   SHARE_CAPTURE_MAX,
   SHARE_MODE_FPS,
-  shareCaptureResolution,
+  isSafariUA,
+  shareCaptureConstraints,
   shareCodec,
   shareContentHint,
   shareDegradation,
@@ -33,6 +34,7 @@ import {
   shareTop,
   summariseOutbound,
 } from "./network.ts";
+import { deviceFormFactor } from "./device.ts";
 
 // Sharp is the default and holds pixels; video holds frames.
 assert.equal(shareContentHint("sharp"), "detail");
@@ -64,16 +66,60 @@ assert.equal(shareModeOfHint("detail"), "sharp");
 assert.equal(shareModeOfHint(""), "sharp");
 assert.equal(shareModeOfHint(undefined), "sharp");
 
-// Capture: desktop up to 1080p, always at 30 fps (the mode can switch mid-share; sharp's
-// 15 fps is the encoder's cap); Safari unconstrained; phones at the floor.
-const desktop = { safari: false, mobile: false, mobileFloor: SHARE_FLOOR_MOBILE };
-assert.deepEqual(shareCaptureResolution(desktop), { width: 1920, height: 1080, frameRate: 30 });
-assert.equal(shareCaptureResolution({ ...desktop, safari: true }), undefined);
-assert.deepEqual(shareCaptureResolution({ ...desktop, mobile: true }), {
-  width: SHARE_FLOOR_MOBILE.width,
-  height: SHARE_FLOOR_MOBILE.height,
+// Capture: desktops and tablets up to 1080p, phones up to 720p, as ideal + max, always at
+// 30 fps (the mode can switch mid-share; sharp's 15 fps is the encoder's cap); Safari
+// unconstrained (WebKit bug 263015).
+const box = (w: number, h: number) => ({
+  width: { ideal: w, max: w },
+  height: { ideal: h, max: h },
   frameRate: 30,
 });
+assert.deepEqual(shareCaptureConstraints({ safari: false, formFactor: "desktop" }), box(1920, 1080));
+assert.deepEqual(shareCaptureConstraints({ safari: false, formFactor: "tablet" }), box(1920, 1080));
+assert.deepEqual(shareCaptureConstraints({ safari: false, formFactor: "phone" }), box(1280, 720));
+for (const formFactor of ["desktop", "tablet", "phone"] as const) {
+  assert.equal(shareCaptureConstraints({ safari: true, formFactor }), undefined, `Safari ${formFactor}`);
+  const c = shareCaptureConstraints({ safari: false, formFactor })!;
+  // The floor is a minimum, never the target: nobody is asked for 640x360 any more.
+  assert.ok(c.width.ideal > SHARE_FLOOR_MOBILE.width, `${formFactor}: above the phone floor`);
+  assert.ok(c.height.ideal >= SHARE_FLOOR_DESKTOP.height, `${formFactor}: at least 720p`);
+}
+
+// End to end per device class, UA + maxTouchPoints in, constraints out (31 Oct 2026).
+const capture = (ua: string, touch = 0) =>
+  shareCaptureConstraints({ safari: isSafariUA(ua), formFactor: deviceFormFactor(ua, touch) });
+// The production UA: Safari 27, a Mac UA. As an iPad (touch 5) it is a tablet, and a Safari
+// one, so unconstrained: the native size, never 640. Its form factor alone gives 1080p.
+const INCIDENT_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15";
+assert.equal(deviceFormFactor(INCIDENT_UA, 5), "tablet");
+assert.equal(isSafariUA(INCIDENT_UA), true);
+assert.equal(capture(INCIDENT_UA, 5), undefined, "iPad Safari: unconstrained");
+assert.deepEqual(
+  shareCaptureConstraints({ safari: false, formFactor: deviceFormFactor(INCIDENT_UA, 5) }),
+  box(1920, 1080),
+  "an iPad in desktop mode is a tablet: the 1080p ideal",
+);
+assert.equal(deviceFormFactor(INCIDENT_UA, 0), "desktop", "the same UA on a Mac (no touch)");
+assert.equal(capture(INCIDENT_UA, 0), undefined, "desktop Safari: unconstrained");
+assert.equal(capture(UA.safariMac), undefined, "desktop Safari 18: unconstrained");
+assert.deepEqual(capture(UA.chromeMac), box(1920, 1080), "desktop Chrome");
+assert.deepEqual(capture(UA.edgeWin), box(1920, 1080), "desktop Edge");
+assert.deepEqual(capture(UA.firefox), box(1920, 1080), "desktop Firefox");
+assert.deepEqual(capture(UA.chromeAndroid, 5), box(1280, 720), "Android phone");
+const ANDROID_TABLET =
+  "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+assert.deepEqual(capture(ANDROID_TABLET, 10), box(1920, 1080), "Android tablet");
+const IPHONE_SAFARI =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+assert.equal(deviceFormFactor(IPHONE_SAFARI, 5), "phone");
+assert.equal(capture(IPHONE_SAFARI, 5), undefined, "iPhone Safari: unconstrained (WebKit)");
+assert.equal(deviceFormFactor(UA.chromeIOS, 5), "phone");
+assert.deepEqual(capture(UA.chromeIOS, 5), box(1280, 720), "Chrome on iPhone (CriOS): the phone box");
+// Not Safari: Chrome and every iOS browser say "Safari" too.
+for (const ua of [UA.chromeMac, UA.edgeWin, UA.firefox, UA.chromeAndroid, UA.chromeIOS, ANDROID_TABLET]) {
+  assert.equal(isSafariUA(ua), false, ua);
+}
 assert.equal(SHARE_CAPTURE_MAX.height, SHARE_TOP.height, "capture ceiling is the 1080p top layer");
 
 // Layers: the 720p desktop floor, then the top (the 1080p capture). No layer below 720p.

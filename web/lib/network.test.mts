@@ -567,7 +567,7 @@ console.log("\nshare layer gaps");
   eq(
     SHARE_FLOOR_MOBILE.height,
     360,
-    "mobile capture/encode floor is 360p",
+    "phone encode floor is 360p",
   );
   eq(SHARE_TOP.height, 1080, "top share layer is 1080p");
   ok(

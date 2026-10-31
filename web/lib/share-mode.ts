@@ -30,6 +30,8 @@
  * Pure: no React, no DOM, so it runs under node tests.
  */
 
+import type { FormFactor } from "./device.ts";
+
 export type ShareMode = "sharp" | "video";
 
 /** The fps ceiling each mode publishes at. */
@@ -95,27 +97,64 @@ export function shareModeOfHint(hint: string | undefined): ShareMode {
   return hint === "motion" ? "video" : "sharp";
 }
 
-/* What resolution to ask getDisplayMedia for.
+/* What size to ask getDisplayMedia for.
  *
  * Always captured at video's frame rate (30), whatever the share starts in: the mode
  * can switch mid-share without a new capture, and sharp's 15 fps ceiling is applied
  * by the encoder (the layers' maxFramerate), not by the capture.
  *
- * Desktop: up to 1920x1080 as an IDEAL (livekit-client turns `resolution` into
- * ideal constraints outside Safari), so a smaller screen or window is not upscaled
- * and a larger one is captured at 1080p.
- * Safari: unconstrained — Safari 17 treats a resolution as a hard max and picked a
- * tiny one; see isSafari in media.ts.
- * Mobile: the 360p floor, phones rarely share. */
-export function shareCaptureResolution(
-  platform: { safari: boolean; mobile: boolean; mobileFloor: { width: number; height: number } },
-): { width: number; height: number; frameRate: number } | undefined {
+ * Desktop and tablet: 1920x1080 as both ideal and max (SHARE_CAPTURE_MAX). The browser keeps
+ *   the surface's own size up to that box, aspect ratio kept: a smaller window is not
+ *   upscaled, a larger screen comes down to 1080p.
+ * Phone: the same with a 1280x720 box (SHARE_CAPTURE_PHONE). Not more, for the reason the
+ *   phone camera is capped at 720p (cameraCapturePreset in network.ts): a phone encodes the
+ *   share next to its camera, on a shared or software encoder, and runs hot doing it.
+ * Safari (desktop or iPad): no size at all. WebKit bug 263015: any width/height constraint
+ *   on getDisplayMedia gives a low-resolution capture.
+ *
+ * Why this changed (31 Oct 2026). A production share from Safari 27 (UA "Macintosh ...
+ * Version/27.0 Safari/605.1.15") went out at 640x414 and 640x401: 640 wide, the surface's
+ * aspect kept, one H264 layer. This returned undefined for Safari, meaning "unconstrained",
+ * but livekit-client fills an undefined resolution with its 1080p preset on every Safari that
+ * is not 17.x (createScreenTracks, isSafari17Based) and hands it to Safari as max constraints:
+ * the WebKit bug, on exactly the browser it was meant to spare. And for a non-Safari phone OR
+ * tablet the old mobile branch asked for SHARE_FLOOR_MOBILE (640x360) as the TARGET.
+ * Now the constraints are ours, ideal + max, passed in the capture's `video` with resolution
+ * {0, 0}, which livekit-client reads as uncapped and leaves alone (shareCaptureOptions in
+ * media.ts), so Safari really is unconstrained.
+ *
+ * SHARE_FLOOR_MOBILE stays a floor, never a request: getDisplayMedia rejects `min`
+ * constraints outright (TypeError), so a floor cannot be asked for, only kept, and the share
+ * encoding is never scaled below its capture (shareLadder). */
+export const SHARE_CAPTURE_PHONE = { width: 1280, height: 720 } as const;
+
+export type ShareCaptureConstraints = {
+  width: { ideal: number; max: number };
+  height: { ideal: number; max: number };
+  frameRate: number;
+};
+
+export function shareCaptureConstraints(
+  platform: { safari: boolean; formFactor: FormFactor },
+): ShareCaptureConstraints | undefined {
   if (platform.safari) return undefined;
-  const frameRate = SHARE_MODE_FPS.video;
-  if (platform.mobile) {
-    return { width: platform.mobileFloor.width, height: platform.mobileFloor.height, frameRate };
-  }
-  return { ...SHARE_CAPTURE_MAX, frameRate };
+  const box = platform.formFactor === "phone" ? SHARE_CAPTURE_PHONE : SHARE_CAPTURE_MAX;
+  return {
+    width: { ideal: box.width, max: box.width },
+    height: { ideal: box.height, max: box.height },
+    frameRate: SHARE_MODE_FPS.video,
+  };
+}
+
+/* Real Safari, by user agent; isSafari in media.ts reads navigator into this.
+ *
+ * The negative clauses are the whole test: Chrome, Edge, and every iOS browser put
+ * "Safari" in their user agent, because on iOS they are all WebKit wearing a different
+ * name. What survives the filter is Safari proper, desktop or mobile. Touch is not looked
+ * at, so iPadOS desktop mode (a Mac UA) is Safari too, which for a share is right: it is
+ * WebKit, with WebKit's constraint bug. */
+export function isSafariUA(ua: string): boolean {
+  return /safari/i.test(ua) && !/chrome|chromium|crios|fxios|edg|android/i.test(ua);
 }
 
 /* Keep resolution, drop frame rate: how a sharp share is laid out on the wire.

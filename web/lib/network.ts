@@ -582,7 +582,8 @@ export function cameraEncodingPlan(
  *
  * Encode floors (publisher):
  *   desktop  never scale share content below 1280×720
- *   mobile   never below 640×360 (capture floor; getDisplayMedia is rare on phones)
+ *   phone    never below 640×360. A floor only: phones capture at up to 720p, tablets
+ *            like desktops (shareCaptureConstraints, share-mode.ts; 31 Oct 2026)
  *
  * Two layers, both readable: 720p (the desktop floor) and the 1080p capture. There used
  * to be a 360p@5fps layer under them for phone tiles, and production showed what it cost:
@@ -627,7 +628,7 @@ export function cameraEncodingPlan(
  */
 /** Desktop publisher must not encode share content below this. */
 export const SHARE_FLOOR_DESKTOP = { width: 1280, height: 720 } as const;
-/** Mobile publisher capture/encode floor (360p equivalent). */
+/** Phone publisher encode floor (360p equivalent). A minimum, never the capture target. */
 export const SHARE_FLOOR_MOBILE = { width: 640, height: 360 } as const;
 
 /** The 720p share layer: the lowest any viewer gets, still readable. H264's value. */
