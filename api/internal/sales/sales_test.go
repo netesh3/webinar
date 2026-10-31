@@ -12,6 +12,13 @@ func TestPromptQuotesTheChargedPricesAndEnforcedCaps(t *testing.T) {
 	p := SystemPrompt(18)
 	for _, plan := range billing.Plans {
 		inr, _ := plan.Price(billing.INR, billing.Monthly)
+		// The grandfathered Starter is never offered (31 Oct 2026).
+		if plan.Retired {
+			if strings.Contains(p, plan.Name) || strings.Contains(p, rupees(inr)) {
+				t.Errorf("%s is grandfathered, but the prompt offers it", plan.Name)
+			}
+			continue
+		}
 		switch {
 		case plan.ContactOnly && strings.Contains(p, rupees(inr)+"/month"):
 			t.Errorf("%s is sold by contacting us, but the prompt quotes %s/month", plan.Name, rupees(inr))
@@ -20,9 +27,20 @@ func TestPromptQuotesTheChargedPricesAndEnforcedCaps(t *testing.T) {
 		case !plan.ContactOnly && !strings.Contains(p, rupees(inr)+"/month"):
 			t.Errorf("%s: prompt does not quote %s/month", plan.Name, rupees(inr))
 		}
-		if !strings.Contains(p, plan.Name) || !strings.Contains(p, "up to "+itoa(plan.Attendees())+" live attendees") {
+		cap := "up to " + itoa(plan.Attendees()) + " live attendees"
+		if plan.ContactOnly {
+			cap = itoa(plan.Attendees()) + " or more live attendees"
+		}
+		if !strings.Contains(p, plan.Name) || !strings.Contains(p, cap) {
 			t.Errorf("%s: prompt does not state its cap of %d", plan.Name, plan.Attendees())
 		}
+		if !strings.Contains(p, "up to "+itoa(plan.StageSeats())+" people on stage") {
+			t.Errorf("%s: prompt does not state its stage of %d", plan.Name, plan.StageSeats())
+		}
+	}
+	// Yearly is never "months free" any more (31 Oct 2026).
+	if strings.Contains(p, "months free") {
+		t.Error("prompt still says yearly is months free")
 	}
 	if !strings.Contains(p, "18% GST") {
 		t.Error("GST rate missing")

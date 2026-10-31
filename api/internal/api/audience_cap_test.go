@@ -38,8 +38,9 @@ func TestExpectedAudience(t *testing.T) {
 	}
 }
 
-/* A webinar admits 50 unless the host chooses otherwise, never more than 300 whatever the plan,
- * and an admin can set one webinar's ceiling up to 1000, which the host may then use. */
+/* A webinar admits 50 unless the host chooses otherwise, never more than its plan's cap under
+ * MAX_ATTENDEES (500 in tests), and an admin can set one webinar's ceiling up to 1000, which
+ * the host may then use. */
 func TestWebinarAudienceCap(t *testing.T) {
 	h := newHarness(t)
 	coach := h.signup("Seats Coach", "seats-coach@test.dev", true)
@@ -55,9 +56,9 @@ func TestWebinarAudienceCap(t *testing.T) {
 	}
 
 	h.login("seats-coach@test.dev")
-	big := h.newWebinar("Big room", func(in *types.WebinarInput) { in.AttendeeLimit = 500 })
-	if big.AttendeeLimit != types.MaxWebinarAudience {
-		t.Fatalf("attendeeLimit asked 500 on enterprise = %d, want %d", big.AttendeeLimit, types.MaxWebinarAudience)
+	big := h.newWebinar("Big room", func(in *types.WebinarInput) { in.AttendeeLimit = 900 })
+	if big.AttendeeLimit != 500 {
+		t.Fatalf("attendeeLimit asked 900 on enterprise = %d, want MAX_ATTENDEES's 500", big.AttendeeLimit)
 	}
 
 	// Only an admin sets the override.
@@ -103,8 +104,8 @@ func TestWebinarAudienceCap(t *testing.T) {
 	}
 	var cleared types.Webinar
 	h.decode(raw, &cleared)
-	if cleared.AudienceCapOverride != 0 || cleared.AttendeeLimit != types.MaxWebinarAudience {
-		t.Fatalf("after clearing: override %d limit %d, want 0 and %d", cleared.AudienceCapOverride, cleared.AttendeeLimit, types.MaxWebinarAudience)
+	if cleared.AudienceCapOverride != 0 || cleared.AttendeeLimit != 500 {
+		t.Fatalf("after clearing: override %d limit %d, want 0 and 500", cleared.AudienceCapOverride, cleared.AttendeeLimit)
 	}
 }
 

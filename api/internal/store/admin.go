@@ -327,8 +327,124 @@ func (s *Store) ConvertAIDefaultOff(ctx context.Context) error {
 	return err
 }
 
-// PlanTiers is every tier an admin configures, "" being no plan.
-var PlanTiers = []types.Plan{"", types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise}
+/* PricingV3SQL moves the plan ids up one name and sets what the four plans on sale include
+ * (migrations/0179, 31 Oct 2026): see that file for each step. A subscriber keeps every switch
+ * their tier gave them, as an override where the new tier leaves it out.
+ *
+ * One shot: migrations/0179 runs it, and a store test checks this text still matches. Tests
+ * apply it to data written in the old shape. */
+const PricingV3SQL = `-- 1. Plan ids move up one name, so every subscriber keeps exactly the limits they have:
+--    professional (200 attendees) -> starter, business (300) -> professional,
+--    enterprise (500) -> business. In this order, so no id is ever held by two tiers at once.
+UPDATE subscriptions         SET plan = 'starter'      WHERE plan = 'professional';
+UPDATE subscriptions         SET plan = 'professional' WHERE plan = 'business';
+UPDATE subscriptions         SET plan = 'business'     WHERE plan = 'enterprise';
+UPDATE billing_orders        SET plan = 'starter'      WHERE plan = 'professional';
+UPDATE billing_orders        SET plan = 'professional' WHERE plan = 'business';
+UPDATE billing_orders        SET plan = 'business'     WHERE plan = 'enterprise';
+UPDATE billing_subscriptions SET plan = 'starter'      WHERE plan = 'professional';
+UPDATE billing_subscriptions SET plan = 'professional' WHERE plan = 'business';
+UPDATE billing_subscriptions SET plan = 'business'     WHERE plan = 'enterprise';
+UPDATE plan_features         SET plan = 'starter'      WHERE plan = 'professional';
+UPDATE plan_features         SET plan = 'professional' WHERE plan = 'business';
+UPDATE plan_features         SET plan = 'business'     WHERE plan = 'enterprise';
+UPDATE plan_limits           SET plan = 'starter'      WHERE plan = 'professional';
+UPDATE plan_limits           SET plan = 'professional' WHERE plan = 'business';
+UPDATE plan_limits           SET plan = 'business'     WHERE plan = 'enterprise';
+UPDATE ai_default_off_undo   SET plan = 'starter'      WHERE plan = 'professional';
+UPDATE ai_default_off_undo   SET plan = 'professional' WHERE plan = 'business';
+UPDATE ai_default_off_undo   SET plan = 'business'     WHERE plan = 'enterprise';
+
+-- 2. What the four plans on sale include (store.TierFeatures). Starter and no plan keep theirs.
+CREATE TEMP TABLE pricing_v3_tiers (plan text, feature text, enabled boolean) ON COMMIT DROP;
+INSERT INTO pricing_v3_tiers (plan, feature, enabled)
+SELECT p.plan, f.feature, f.feature = ANY (p.features)
+  FROM (VALUES
+          ('basic',        ARRAY['cloud_recording']),
+          ('professional', ARRAY['cloud_recording', 'whatsapp_crm']),
+          ('business',     ARRAY['cloud_recording', 'whatsapp_crm', 'simulive', 'replay_engage', 'zoom',
+                                 'ai', 'ai_knowledge', 'simulive_auto', 'followup_send', 'repurpose']),
+          ('enterprise',   ARRAY['cloud_recording', 'whatsapp_crm', 'simulive', 'replay_engage', 'zoom',
+                                 'ai', 'ai_knowledge', 'simulive_auto', 'followup_send', 'repurpose'])
+       ) AS p (plan, features)
+ CROSS JOIN unnest(ARRAY['cloud_recording', 'whatsapp_crm', 'simulive', 'replay_engage', 'zoom',
+                         'ai', 'ai_knowledge', 'simulive_auto', 'followup_send', 'repurpose']) AS f (feature);
+
+-- 3. A subscriber whose tier gave them a switch the new tier leaves out keeps it as their own
+--    override, unless it was turned off for them.
+UPDATE users u
+   SET features = u.features || ARRAY(
+         SELECT pf.feature
+           FROM plan_features pf
+           JOIN pricing_v3_tiers t ON t.plan = pf.plan AND t.feature = pf.feature AND NOT t.enabled
+          WHERE pf.plan = effective_plan(u.id) AND pf.enabled
+            AND NOT (pf.feature = ANY (u.features)) AND NOT (pf.feature = ANY (u.features_off))
+          ORDER BY pf.feature)
+ WHERE EXISTS (
+         SELECT 1
+           FROM plan_features pf
+           JOIN pricing_v3_tiers t ON t.plan = pf.plan AND t.feature = pf.feature AND NOT t.enabled
+          WHERE pf.plan = effective_plan(u.id) AND pf.enabled
+            AND NOT (pf.feature = ANY (u.features)) AND NOT (pf.feature = ANY (u.features_off)));
+
+-- 4. The new tiers start with what their neighbours have of every other switch (whiteboard,
+--    meetings, captions); then every tier on sale gets its own switches.
+INSERT INTO plan_features (plan, feature, enabled)
+SELECT 'basic', feature, enabled FROM plan_features
+ WHERE plan = 'professional' AND feature NOT IN (SELECT feature FROM pricing_v3_tiers)
+ON CONFLICT (plan, feature) DO NOTHING;
+INSERT INTO plan_features (plan, feature, enabled)
+SELECT 'enterprise', feature, enabled FROM plan_features
+ WHERE plan = 'business' AND feature NOT IN (SELECT feature FROM pricing_v3_tiers)
+ON CONFLICT (plan, feature) DO NOTHING;
+DELETE FROM plan_features pf
+ USING pricing_v3_tiers t
+ WHERE t.plan = pf.plan AND t.feature = pf.feature AND NOT t.enabled;
+INSERT INTO plan_features (plan, feature, enabled)
+SELECT plan, feature, true FROM pricing_v3_tiers WHERE enabled
+ON CONFLICT (plan, feature) DO UPDATE SET enabled = true;
+
+-- 5. Never in a tier: clips (no plan sells highlights or reels), instant sessions and HLS
+--    delivery (an admin's switches for one host). Hosts an admin gave them keep them.
+DELETE FROM plan_features WHERE feature IN ('clips', 'instant_webinar', 'hls_delivery');
+
+-- 6. Recording storage for the two new tiers; the renamed ones carried theirs over.
+INSERT INTO plan_limits (plan, limit_key, value) VALUES
+    ('basic',      'recording_storage_bytes', 5::bigint   * 1024 * 1024 * 1024),
+    ('enterprise', 'recording_storage_bytes', 500::bigint * 1024 * 1024 * 1024)
+ON CONFLICT (plan, limit_key) DO NOTHING;`
+
+// ConvertPricingV3 applies PricingV3SQL. Tests only.
+func (s *Store) ConvertPricingV3(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, PricingV3SQL)
+	return err
+}
+
+// PlanTiers is every tier an admin configures, "" being no plan, in the order the plans are
+// sold, with the grandfathered Starter last.
+var PlanTiers = []types.Plan{"", types.PlanBasic, types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise, types.PlanStarter}
+
+/* TierFeatures is what each plan on sale includes of the switches the pricing page sells, as
+ * migrations/0179 set it (31 Oct 2026). An admin can still change a tier (PUT
+ * /api/admin/plan-features) and any host's overrides; this is the launch matrix, which a test
+ * checks against the migrated database and against the pricing page (web/lib/plans.ts
+ * TIER_FEATURES). Switches outside TieredFeatures (whiteboard, meetings, captions) are on in
+ * every tier and are not listed. */
+var TierFeatures = map[types.Plan][]string{
+	types.PlanBasic:        {types.FeatureCloudRecording},
+	types.PlanProfessional: {types.FeatureCloudRecording, types.FeatureWhatsAppCRM},
+	types.PlanBusiness:     businessTierFeatures,
+	types.PlanEnterprise:   businessTierFeatures,
+}
+
+var businessTierFeatures = []string{
+	types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureSimulive, types.FeatureReplayEngage,
+	types.FeatureZoom, types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,
+	types.FeatureFollowupSend, types.FeatureRepurpose,
+}
+
+// TieredFeatures is every switch TierFeatures decides: the ones the plans on sale differ by.
+var TieredFeatures = businessTierFeatures
 
 // PlanFeatures is the tier matrix: which features each plan includes, in PlanTiers order.
 func (s *Store) PlanFeatures(ctx context.Context) ([]types.PlanFeatures, error) {

@@ -37,25 +37,47 @@ func TestPlanSetsTheAttendeeCeiling(t *testing.T) {
 		return acct
 	}
 	setPlan("platinum", http.StatusUnprocessableEntity)
-	if acct := setPlan(types.PlanEnterprise, http.StatusOK); acct.Plan != types.PlanEnterprise || acct.AttendeeCap != 500 {
-		t.Fatalf("after enterprise: plan %q cap %d", acct.Plan, acct.AttendeeCap)
+	// Every plan id an admin may assign, the grandfathered Starter included.
+	for _, p := range []types.Plan{types.PlanBasic, types.PlanStarter, types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise} {
+		if acct := setPlan(p, http.StatusOK); acct.Plan != p || acct.AttendeeCap != types.PlanAttendeeCap(p) {
+			t.Fatalf("admin sets %s: plan %q cap %d", p, acct.Plan, acct.AttendeeCap)
+		}
 	}
-
 	h.login("plan-coach@test.dev")
+
+	/* (31 Oct 2026) Each plan's cap is its webinars' ceiling, under MAX_ATTENDEES (500 in
+	 * the test config): Basic 100, Starter 200, Professional 300, Business 500, Enterprise
+	 * 1,000 (so 500 here). No flat 300 per webinar any more. */
 	in := cloudInput(wb.Topic, wb.StartsAt, false)
-	in.AttendeeLimit = 500
-	res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID, in)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("raise limit: status %d body %s", res.StatusCode, raw)
-	}
 	var raised types.Webinar
-	h.decode(raw, &raised)
-	// Enterprise allows 500, but no webinar admits more than one video box serves.
-	if raised.AttendeeLimit != types.MaxWebinarAudience {
-		t.Fatalf("attendeeLimit on enterprise = %d, want %d", raised.AttendeeLimit, types.MaxWebinarAudience)
+	for _, c := range []struct {
+		plan       types.Plan
+		cap, limit int
+	}{
+		{types.PlanBasic, 100, 100},
+		{types.PlanStarter, 200, 200},
+		{types.PlanProfessional, 300, 300},
+		{types.PlanBusiness, 500, 500},
+		{types.PlanEnterprise, 1000, 500},
+	} {
+		if _, err := h.store.SetUserPlan(t.Context(), coach.ID, c.plan); err != nil {
+			t.Fatal(err)
+		}
+		if acct := h.me(); acct.Plan != c.plan || acct.AttendeeCap != c.cap {
+			t.Fatalf("after %s: plan %q cap %d, want %d", c.plan, acct.Plan, acct.AttendeeCap, c.cap)
+		}
+		in.AttendeeLimit = 1000
+		res, raw := h.do(http.MethodPatch, "/api/host/webinars/"+wb.ID, in)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("raise limit on %s: status %d body %s", c.plan, res.StatusCode, raw)
+		}
+		h.decode(raw, &raised)
+		if raised.AttendeeLimit != c.limit {
+			t.Fatalf("attendeeLimit on %s = %d, want %d", c.plan, raised.AttendeeLimit, c.limit)
+		}
 	}
 
-	// Downgraded after scheduling: the stored 300 no longer admits 300.
+	// Downgraded after scheduling: the stored 500 no longer admits 500.
 	h.login("neeraj@acme.dev")
 	if acct := setPlan("", http.StatusOK); acct.Plan != "" || acct.AttendeeCap != types.PlanLaunchAttendees {
 		t.Fatalf("after removing the plan: plan %q cap %d", acct.Plan, acct.AttendeeCap)
@@ -67,7 +89,7 @@ func TestPlanSetsTheAttendeeCeiling(t *testing.T) {
 	h.rooms.mu.Lock()
 	h.rooms.count = types.PlanLaunchAttendees + 5
 	h.rooms.mu.Unlock()
-	res, raw = h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/join", types.JoinRequest{JoinKey: reg.JoinKey})
+	res, raw := h.do(http.MethodPost, "/api/webinars/"+wb.ID+"/join", types.JoinRequest{JoinKey: reg.JoinKey})
 	if res.StatusCode != http.StatusConflict {
 		t.Fatalf("join at the launch cap after a downgrade: status %d body %s, want 409", res.StatusCode, raw)
 	}

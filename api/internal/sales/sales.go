@@ -49,11 +49,12 @@ var Facts = []string{
 	"Before a webinar: a registration page with your own questions, and email and WhatsApp reminders that fill the room.",
 	"During a webinar: polls, quizzes, upvoted Q&A, chat, reactions, raised hands, bringing attendees on stage, a shared whiteboard, screen share, and recording. You can also stream live to YouTube, LinkedIn Live, Instagram Live and Facebook Live at the same time.",
 	"After a webinar: every attendee gets an Engagement Score from 0 to 100 built from watch time (40), polls (15), quiz accuracy (10), chat (10), Q&A (10), reactions (5), raised hand (5) and survey (5). Tools you didn't use don't count against anyone.",
-	"Follow-up by engagement group: send an offer to the most engaged, a replay to the rest, and a note to no-shows. Drips, a chatbot and one shared inbox are included on Business and Enterprise.",
+	"Follow-up by engagement group: send an offer to the most engaged, a replay to the rest, and a note to no-shows. WhatsApp automations, campaigns, follow-ups and scheduling, with drips, a chatbot and one shared inbox, are included from Professional up.",
+	"Business and Enterprise add simulive (a recording played as a live session), AI recaps, an AI knowledge base, AI follow-up drafts and Zoom.",
 	"WhatsApp reminders use your own WhatsApp Business number through Meta's official sign-up. Meta bills message fees to your own WhatsApp Business account; Webinar Liv does not mark them up.",
 	"You own your contacts and data: export registrants, attendance and chat as CSV at any time.",
 	"Buying: choose a plan on the pricing page, pay with UPI, cards, netbanking or wallets through Razorpay, and host access turns on immediately — no waiting for approval.",
-	"Free trial: 7 days on the monthly Professional and Business plans paid in INR. It needs a card or UPI, with a ₹5 authorisation that is refunded; the first charge is on day 8 unless cancelled before. Yearly plans and USD payments are paid upfront. One free trial per person.",
+	"Free trial: 7 days on the monthly Basic, Professional and Business plans paid in INR. It needs a card or UPI, with a ₹5 authorisation that is refunded; the first charge is on day 8 unless cancelled before. Yearly plans and USD payments are paid upfront. One free trial per person.",
 	"GSTIN can be added at checkout for the invoice.",
 	"Support email: " + types.ContactSupport + ". Invoices, payments and refunds: " + types.ContactBilling + ".",
 }
@@ -72,23 +73,24 @@ Rules:
 - Hand the conversation to a person when: the visitor asks for a person; they want custom pricing, a discount, a refund, a dedicated server, a custom domain, an invoice question beyond GST, a partnership, or a contract; they report a problem with their account or a payment; or the FACTS do not answer the question.
   To hand off, reply with exactly this on the first line: [HANDOFF] followed by a short reason for the team, e.g. "[HANDOFF] wants custom pricing for 1,200 students". Write nothing else.
 
-PLANS (prices before tax; yearly is about two months free`)
+PLANS (prices before tax; a yearly plan is paid once for the year`)
 	if gstPercent > 0 {
 		fmt.Fprintf(&b, "; %d%% GST is added to INR prices at checkout", gstPercent)
 	}
 	b.WriteString("):\n")
-	for _, p := range billing.Plans {
+	// Plans on sale only: the grandfathered Starter is never offered (31 Oct 2026).
+	for _, p := range billing.OnSale() {
 		if p.ContactOnly {
 			// Not sold online: no price to quote, so a question about it reaches a person.
-			fmt.Fprintf(&b, "- %s (%s): up to %d live attendees per webinar; priced on request, so hand off for a quote. Includes: %s.\n",
-				p.Name, p.Who, p.Attendees(), strings.Join(p.Features, "; "))
+			fmt.Fprintf(&b, "- %s (%s): %d or more live attendees per webinar and up to %d people on stage; priced on request, so hand off for a quote. Includes: %s.\n",
+				p.Name, p.Who, p.Attendees(), p.StageSeats(), strings.Join(p.Features, "; "))
 			continue
 		}
 		inr, _ := p.Price(billing.INR, billing.Monthly)
 		inrYear, _ := p.Price(billing.INR, billing.Yearly)
 		usd, _ := p.Price(billing.USD, billing.Monthly)
-		fmt.Fprintf(&b, "- %s (%s): up to %d live attendees per webinar; %s/month or %s/year; or $%d/month. Includes: %s.\n",
-			p.Name, p.Who, p.Attendees(), rupees(inr), rupees(inrYear), usd/100, strings.Join(p.Features, "; "))
+		fmt.Fprintf(&b, "- %s (%s): up to %d live attendees per webinar and up to %d people on stage; %s/month or %s/year; or $%d/month. Includes: %s.\n",
+			p.Name, p.Who, p.Attendees(), p.StageSeats(), rupees(inr), rupees(inrYear), usd/100, strings.Join(p.Features, "; "))
 	}
 	b.WriteString("\nFACTS:\n")
 	for _, f := range Facts {

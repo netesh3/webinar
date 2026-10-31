@@ -37,10 +37,12 @@ import (
 var gstinPattern = regexp.MustCompile(`^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$`)
 
 func (s *Server) billingCatalogue() types.BillingCatalogue {
-	plans := make([]types.BillingPlan, 0, len(billing.Plans))
-	for _, p := range billing.Plans {
+	// Grandfathered plans (Starter) are not listed: nobody new may buy them.
+	onSale := billing.OnSale()
+	plans := make([]types.BillingPlan, 0, len(onSale))
+	for _, p := range onSale {
 		bp := types.BillingPlan{
-			ID: string(p.ID), Name: p.Name, Who: p.Who, Attendees: p.Attendees(),
+			ID: string(p.ID), Name: p.Name, Who: p.Who, Attendees: p.Attendees(), Stage: p.StageSeats(),
 			Features: p.AllFeatures(), Popular: p.Popular, ContactOnly: p.ContactOnly,
 			Prices: []types.BillingPrice{},
 		}
@@ -52,7 +54,7 @@ func (s *Server) billingCatalogue() types.BillingCatalogue {
 						if list := p.List(cur, per); list > amt {
 							price.List = list
 							price.DiscountPercent = billing.DiscountPercent(amt, list)
-							price.Promo = billing.PromoLabel(cur)
+							price.Badge = billing.OffLabel(price.DiscountPercent)
 						}
 						bp.Prices = append(bp.Prices, price)
 					}
@@ -97,7 +99,21 @@ func (s *Server) handleCreateBillingOrder(w http.ResponseWriter, r *http.Request
 	if req.Currency == "" {
 		req.Currency = billing.INR
 	}
-	quote, err := billing.NewQuote(req.Plan, req.Period, strings.ToUpper(req.Currency), s.cfg.BillingGSTPercent)
+	user := userFromContext(r.Context())
+	/* A grandfathered plan (Starter) is priced only for an account already on it, renewing
+	 * at the price it has; anyone else is told it is no longer sold. */
+	current, err := s.store.PlanForUser(r.Context(), user.ID)
+	if err != nil {
+		s.fail(w, r, "billing: current plan", err)
+		return
+	}
+	quote, err := billing.NewQuoteFor(req.Plan, req.Period, strings.ToUpper(req.Currency), s.cfg.BillingGSTPercent,
+		req.Plan != "" && string(current) == req.Plan)
+	if errors.Is(err, billing.ErrRetired) {
+		httpx.Error(w, http.StatusUnprocessableEntity, "plan_retired",
+			"That plan is no longer offered. Pick one of the plans on the pricing page.")
+		return
+	}
 	if errors.Is(err, billing.ErrContactOnly) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "contact_sales",
 			"This plan is set up with our team. Write to us and we'll get you started.")
@@ -113,7 +129,6 @@ func (s *Server) handleCreateBillingOrder(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	user := userFromContext(r.Context())
 	order, err := s.billing.CreateOrder(r.Context(), billing.OrderRequest{
 		Amount:   quote.Total,
 		Currency: quote.Currency,

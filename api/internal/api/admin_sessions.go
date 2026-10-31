@@ -152,7 +152,7 @@ func (s *Server) handleAdminSetWebinarStatus(w http.ResponseWriter, r *http.Requ
 }
 
 /* handleAdminSetAudienceCap is PATCH /api/admin/webinars/{slug}/audience-cap: an admin's
- * ceiling for one webinar's audience, in place of types.MaxWebinarAudience and the plan's cap.
+ * ceiling for one webinar's audience, in place of the usual one (the plan's cap under MAX_ATTENDEES).
  *
  * A number (1..MaxAudienceOverride) is also the webinar's attendee limit from then on: an admin
  * raising a webinar to 800 means 800 seats, not permission the host has to notice and use. Null

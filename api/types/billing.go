@@ -16,18 +16,20 @@ type BillingPrice struct {
 	List int64 `json:"list,omitempty"`
 	// DiscountPercent is Amount below List, rounded down; 0 with no List.
 	DiscountPercent int `json:"discountPercent,omitempty"`
-	// Promo names the offer List is shown against, e.g. "Early bird"; empty with no List.
-	Promo string `json:"promo,omitempty"`
+	// Badge is the saving as the page shows it, "60% OFF" (billing.OffLabel); empty with no List.
+	Badge string `json:"badge,omitempty"`
 }
 
 type BillingPlan struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	Who       string         `json:"who"`
-	Attendees int            `json:"attendees"`
-	Features  []string       `json:"features"`
-	Popular   bool           `json:"popular,omitempty"`
-	Prices    []BillingPrice `json:"prices"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Who       string `json:"who"`
+	Attendees int    `json:"attendees"`
+	// Stage is the plan's cap on people on stage at once (types.PlanStageCap).
+	Stage    int            `json:"stage"`
+	Features []string       `json:"features"`
+	Popular  bool           `json:"popular,omitempty"`
+	Prices   []BillingPrice `json:"prices"`
 	// ContactOnly is a plan sold by talking to us: no prices, no buy or trial.
 	ContactOnly bool `json:"contactOnly,omitempty"`
 }

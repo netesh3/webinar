@@ -193,13 +193,13 @@
 }
 
 @media (min-width: 700px) {
-  .lp .plans-4 {
+  .lp .plans.plans-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1180px) {
-  .lp .plans-4 {
+  .lp .plans.plans-4 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: stretch;
   }
@@ -433,8 +433,67 @@ html[data-theme="dark"] .lp .pl-table thead th.pl-pop {
     font-size: 14px;
   }
 
-  /* The notes double a row's height on a phone; the /features page carries them. */
+  /* The notes double a row's height on a phone; the /features page carries them, and the
+   * row's title attribute keeps them as a tooltip. */
   .lp .pl-table th small {
     display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ compare all features
+ * (31 Oct 2026) The header carries each plan's name, price and button, and sticks under the
+ * top nav (h-14) while the table scrolls. A wide screen fits the table, so its wrapper does not
+ * scroll and the header sticks to the page; a phone scrolls the table sideways instead, with
+ * the feature column pinned, and the header stays at the table's top. */
+.lp .pl-table thead th {
+  vertical-align: bottom;
+}
+
+.lp .pl-table thead th .pl-head-name,
+.lp .pl-table thead th .pl-head-price,
+.lp .pl-table thead th .pl-head-cta {
+  display: block;
+}
+
+.lp .pl-table thead th .pl-head-price {
+  margin: 2px 0 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.lp .pl-table thead th .pl-head-cta .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (min-width: 900px) {
+  .lp .pl-table-wrap {
+    overflow: visible;
+  }
+
+  .lp .pl-table thead th {
+    top: 56px;
+    box-shadow: 0 1px 0 var(--line);
+  }
+
+  .lp .pl-table thead th:first-child {
+    border-top-left-radius: 18px;
+  }
+
+  .lp .pl-table thead th:last-child {
+    border-top-right-radius: 18px;
+  }
+}
+
+@media (max-width: 699px) {
+  .lp .pl-table thead th .pl-head-price {
+    font-size: 12px;
+  }
+
+  .lp .pl-table thead th .pl-head-cta .btn {
+    padding-inline: 6px;
+    font-size: 12.5px;
   }
 }

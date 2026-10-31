@@ -24,11 +24,12 @@ import {
   FeatureAI,
   FeatureInstantWebinar,
   MaxMediaQuotaMB,
-  MaxWebinarAudience,
+  PlanBasic,
   PlanBusiness,
   PlanEnterprise,
   PlanLaunchAttendees,
   PlanProfessional,
+  PlanStarter,
   type AccountKind,
   type AdminAccountCounts,
   type AdminUser,
@@ -38,19 +39,25 @@ import {
   type Webinar,
 } from "@/lib/api-types";
 
-// The tier matrix's columns, in order; "" is no plan.
+/* The tier matrix's columns, in order; "" is no plan. Every tier the server has (store.PlanTiers):
+ * saving the matrix replaces it whole, so a tier left out here would be emptied. Starter is the
+ * grandfathered ₹3,999 plan, kept for its subscribers (31 Oct 2026). */
 const TIER_COLUMNS: { plan: Plan | ""; label: string }[] = [
   { plan: "", label: "No plan" },
+  { plan: PlanBasic, label: "Basic" },
   { plan: PlanProfessional, label: "Professional" },
   { plan: PlanBusiness, label: "Business" },
   { plan: PlanEnterprise, label: "Enterprise" },
+  { plan: PlanStarter, label: "Starter (old)" },
 ];
 
 // What the plan select offers, with each plan's attendee cap (types.PlanAttendeeCap).
 const PLAN_LABEL: Record<Plan, string> = {
-  [PlanProfessional]: "Professional · 200",
-  [PlanBusiness]: "Business · 300",
-  [PlanEnterprise]: "Enterprise · 500",
+  [PlanBasic]: "Basic · 100",
+  [PlanProfessional]: "Professional · 300",
+  [PlanBusiness]: "Business · 500",
+  [PlanEnterprise]: "Enterprise · 1,000",
+  [PlanStarter]: "Starter (grandfathered) · 200",
 };
 import { formatDay, formatTimeRange, tzLabel } from "@/lib/format";
 import { paginate } from "@/lib/paginate";
@@ -1857,7 +1864,7 @@ function AudienceCapSelect({
   return (
     <select
       aria-label={`Audience ceiling for ${webinar.topic}`}
-      title={`${webinar.attendeeLimit} seats now. An admin ceiling replaces the usual ${MaxWebinarAudience} and the plan's cap.`}
+      title={`${webinar.attendeeLimit} seats now. An admin ceiling replaces the plan's cap.`}
       value={current > 0 ? String(current) : ""}
       disabled={saving}
       onChange={(e) => {

@@ -7,7 +7,7 @@ import { TopNav } from "@/components/top-nav";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Webinar Liv plans for coaches, teachers and academies. Pay with UPI, cards or netbanking and start hosting straight away.",
+    "Webinar Liv plans for coaches, teachers and academies: Basic, Professional, Business and Enterprise, in INR or USD, with a 7-day free trial. Compare every feature, pay with UPI, cards or netbanking and start hosting straight away.",
   alternates: { canonical: "/pricing" },
 };
 

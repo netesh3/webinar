@@ -5,7 +5,8 @@ import { TRIAL, availability, featureGroups, pricingHref } from "@/lib/plans";
 
 /* /features: every shipped feature, grouped, with the plan each is on. The sections and
  * the plan badges come from lib/plans.ts (COMPARISON), the same rows as the pricing
- * table, so the two pages cannot disagree. */
+ * table, so the two pages cannot disagree. (31 Oct 2026: no clips or instant sessions, which
+ * no plan sells.) */
 
 export function FeaturesPage() {
   const groups = featureGroups();
@@ -23,7 +24,8 @@ export function FeaturesPage() {
               </h1>
               <p className="hero-lede">
                 Live webinars, meetings and simulive in the browser. Registration, reminders and engagement scoring
-                built in. AI that drafts your recaps, answers and follow-ups, and turns sessions into content.
+                built in. On Business and up, AI that drafts your recaps, answers and follow-ups, and turns sessions
+                into content.
               </p>
               <div className="cta-row">
                 <Link className="btn btn-primary btn-lg" href="/signup">

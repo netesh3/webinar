@@ -989,7 +989,7 @@ type Webinar struct {
 	GuestJoinAllowed bool `json:"guestJoinAllowed"`
 	AttendeeLimit    int  `json:"attendeeLimit"`
 	/* AudienceCapOverride is an admin's per-webinar ceiling (1..MaxAudienceOverride) in place
-	 * of the usual MaxWebinarAudience and plan cap; 0 when none is set. Only an admin sets it
+	 * of the usual ceiling (the plan cap under MAX_ATTENDEES); 0 when none is set. Only an admin sets it
 	 * (PATCH /api/admin/webinars/{slug}/audience-cap), and the host's own limit may then go
 	 * up to it. */
 	AudienceCapOverride int              `json:"audienceCapOverride,omitempty"`
@@ -1338,8 +1338,10 @@ type Account struct {
  * Requires is in effect only with all of them (EffectiveFeatures).
  *
  * Every AI-backed switch (ai, ai_knowledge, simulive_auto, followup_send, repurpose, clips)
- * is PerHost: off for every host on every plan, in no plan tier, and turned on only by an
- * admin for one host (migrations/0159, which kept them for hosts an admin had given ai).
+ * was PerHost from migrations/0159 (which kept them for hosts an admin had given ai). Since
+ * 31 Oct 2026 (migrations/0179) the AI switches but clips are in the Business and Enterprise
+ * tiers again: the pricing page sells them there. clips, hls_delivery and instant_webinar stay
+ * PerHost: in no tier, off for every host until an admin turns one on for that host.
  */
 const (
 	/* FeatureWhatsAppCRM is the host CRM surface: contact tags and notes, sharing
@@ -1369,7 +1371,8 @@ const (
 	 * few minutes' warning, so instant sessions are an admin's per-host switch).
 	 *
 	 * Off — the default, in every plan — means every session is scheduled first.
-	 * See migrations/0073 and 0152. */
+	 * See migrations/0073 and 0152. PerHost since 31 Oct 2026: for internal testing, never
+	 * sold, so no plan tier may include it. */
 	FeatureInstantWebinar = "instant_webinar"
 	/* FeatureZoom lets a host connect Zoom and run a session there.
 	 *
@@ -1393,9 +1396,9 @@ const (
 	 * features after it. Each call counts against the monthly AI caps
 	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
 	 *
-	 * Opt-in: off for every account on every plan until an admin turns it on for that host
-	 * (Admin -> Accounts). No plan tier may include it (Feature.PerHost, migrations/0159).
-	 * 0126 had it on in every tier; 0127 took that back (2026-10-22). Off means no AI
+	 * In the Business and Enterprise tiers (31 Oct 2026, migrations/0179); off on the others
+	 * until an admin turns it on for that host (Admin -> Accounts). 0126 had it on in every
+	 * tier, 0127 took that back (2026-10-22) and 0159 made it per host only. Off means no AI
 	 * buttons, the AI routes answer 403 feature_off, and no recap is made. */
 	FeatureAI = "ai"
 	/* FeatureReplayEngage replays the original session's engagement in a simulive: the chat,
@@ -1423,16 +1426,16 @@ const (
 	 * open to every host before this switch existed. Its job is turning them off. */
 	FeatureMeetings = "meetings"
 	/* FeatureAIKnowledge is the AI knowledge library (documents, links, past answers) and
-	 * the Q&A drafts grounded in it. Needs FeatureAI. Off by default, per host only
-	 * (migrations/0159). Off: no library, and Q&A drafts are
+	 * the Q&A drafts grounded in it. Needs FeatureAI. In Business and up (migrations/0179).
+	 * Off: no library, and Q&A drafts are
 	 * written from the topic and description only. */
 	FeatureAIKnowledge = "ai_knowledge"
 	/* FeatureSimuliveAuto is Auto mode: the assistant answering a simulive's questions by
 	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive, in effect only with all
-	 * three. Off by default, per host only (migrations/0159). */
+	 * three. In Business and up (migrations/0179). */
 	FeatureSimuliveAuto = "simulive_auto"
 	/* FeatureFollowupSend is sending the AI follow-up drafts by email or WhatsApp from
-	 * Results. Needs FeatureAI. Off by default, per host only (migrations/0159). Off: the drafts are
+	 * Results. Needs FeatureAI. In Business and up (migrations/0179). Off: the drafts are
 	 * still written, to copy or export, and the send routes answer 403 feature_off. */
 	FeatureFollowupSend = "followup_send"
 	/* FeatureCaptions is live server captions in the room (the caption agent). ON by default
@@ -1495,8 +1498,9 @@ type Feature struct {
 	 * effect, whatever its own setting says: EffectiveFeatures drops it from the account. */
 	Requires []string `json:"requires,omitempty"`
 	/* PerHost is a switch no plan tier may include: off for every host on every plan until
-	 * an admin turns it on for that host (an override). Every AI-backed switch is one
-	 * (migrations/0159); the plan matrix refuses them (422 per_host_feature). */
+	 * an admin turns it on for that host (an override). clips, hls_delivery and
+	 * instant_webinar are (31 Oct 2026, migrations/0179); the plan matrix refuses them (422
+	 * per_host_feature). */
 	PerHost bool `json:"perHost,omitempty"`
 }
 
@@ -1521,8 +1525,9 @@ var Features = []Feature{
 	{
 		Key:         FeatureInstantWebinar,
 		Label:       "Instant meetings/webinars (warm-up)",
-		Description: "Let this host start a meeting or webinar immediately, without scheduling it. For testing: on an on-demand video server the room waits a couple of minutes while the server starts. Off means every session is scheduled first.",
+		Description: "Let this host start a meeting or webinar immediately, without scheduling it. For testing: on an on-demand video server the room waits a couple of minutes while the server starts. Off means every session is scheduled first. Per host only, never in a plan.",
 		Group:       FeatureGroupSessions,
+		PerHost:     true,
 	},
 	{
 		Key:   FeatureJoinWithoutRegistration,
@@ -1549,41 +1554,36 @@ var Features = []Feature{
 	{
 		Key:         FeatureAI,
 		Label:       "AI writing",
-		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap, hot-lead reasons and follow-up drafts after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. Off by default for every plan; off means no AI anywhere.",
+		Description: "Let this host draft webinar titles, descriptions, registration copy and social posts with AI, and get an AI recap, hot-lead reasons and follow-up drafts after every session (each room has an AI switch, on by default). Counts against the monthly AI limit. In Business and Enterprise; off means no AI anywhere.",
 		Group:       FeatureGroupAI,
-		PerHost:     true,
 	},
 	{
 		Key:         FeatureAIKnowledge,
 		Label:       "AI knowledge",
-		Description: "The AI knowledge library (documents, links, past answers) and Q&A drafts grounded in it. Off by default, in effect only with AI. Off: no library, and drafts use the topic only.",
+		Description: "The AI knowledge library (documents, links, past answers) and Q&A drafts grounded in it. In Business and Enterprise, in effect only with AI. Off: no library, and drafts use the topic only.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI},
-		PerHost:     true,
 	},
 	{
 		Key:         FeatureSimuliveAuto,
 		Label:       "Simulive Auto mode",
-		Description: "Let the AI assistant answer a simulive's questions by itself. Off by default, in effect only with AI, Simulive and Simulive engagement replay.",
+		Description: "Let the AI assistant answer a simulive's questions by itself. In Business and Enterprise, in effect only with AI, Simulive and Simulive engagement replay.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI, FeatureReplayEngage, FeatureSimulive},
-		PerHost:     true,
 	},
 	{
 		Key:         FeatureFollowupSend,
 		Label:       "Send follow-ups",
-		Description: "Let this host send the AI follow-up drafts by email or WhatsApp from Results. Off by default, in effect only with AI. Off leaves the drafts to copy or export.",
+		Description: "Let this host send the AI follow-up drafts by email or WhatsApp from Results. In Business and Enterprise, in effect only with AI. Off leaves the drafts to copy or export.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI},
-		PerHost:     true,
 	},
 	{
 		Key:         FeatureRepurpose,
 		Label:       "Repurpose content",
-		Description: "Let this host turn an ended session's transcript into draft blog posts, newsletters, a long-form whitepaper draft and LinkedIn, X and Instagram posts, in a brand voice they set. Drafts for the host to review. Counts against the monthly AI limit; in effect only with AI. Off by default.",
+		Description: "Let this host turn an ended session's transcript into draft blog posts, newsletters, a long-form whitepaper draft and LinkedIn, X and Instagram posts, in a brand voice they set. Drafts for the host to review. Counts against the monthly AI limit; in effect only with AI. In Business and Enterprise.",
 		Group:       FeatureGroupAI,
 		Requires:    []string{FeatureAI},
-		PerHost:     true,
 	},
 	// Delivery and recording.
 	{
@@ -1595,7 +1595,7 @@ var Features = []Feature{
 	{
 		Key:         FeatureClips,
 		Label:       "Highlight clips",
-		Description: "Suggest the best moments and reels of a recorded session (from reactions, chat, questions, polls and what was said, picked by AI) and let this host make them into captioned vertical, square and wide videos with suggested post text, made on the video server between sessions. Counts against the monthly AI limit and the host's recording storage; in effect only with AI and Cloud recording. Off by default.",
+		Description: "Suggest the best moments and reels of a recorded session (from reactions, chat, questions, polls and what was said, picked by AI) and let this host make them into captioned vertical, square and wide videos with suggested post text, made on the video server between sessions. Counts against the monthly AI limit and the host's recording storage; in effect only with AI and Cloud recording. Off by default and per host only: not sold on any plan.",
 		Group:       FeatureGroupDelivery,
 		Requires:    []string{FeatureAI, FeatureCloudRecording},
 		PerHost:     true,
@@ -4136,8 +4136,9 @@ type SetUserStageCapRequest struct {
 	StageCap *int `json:"stageCap"`
 }
 
-// MaxStageCapOverride is the largest stage an admin may allow one account.
-const MaxStageCapOverride = 25
+// MaxStageCapOverride is the largest stage an admin may allow one account: Enterprise's
+// (PlanStageCap), so an override can match it (31 Oct 2026; was 25).
+const MaxStageCapOverride = 100
 
 // SetUserMeetingCapRequest is PATCH /api/admin/users/{id}/meeting-cap. Null goes back to the plan.
 type SetUserMeetingCapRequest struct {
@@ -4152,23 +4153,25 @@ type SetUserMaxDurationRequest struct {
 }
 
 /* Plan is a paid tier. Empty is the launch default: no subscription, and the
- * attendee ceiling every beta host has. See PlanAttendeeCap. */
+ * attendee ceiling every beta host has. See PlanAttendeeCap.
+ *
+ * The lineup from 31 Oct 2026 is Basic, Professional, Business and Enterprise. Starter is
+ * grandfathered: the plan the first subscribers bought as "Professional" (₹3,999, 200
+ * attendees, 3 on stage), renamed by migrations/0179 so they keep their limits and price
+ * while Professional moves up. It is never offered to a new buyer (billing.Plan.Retired). */
 type Plan string
 
 const (
+	PlanBasic        Plan = "basic"
 	PlanProfessional Plan = "professional"
 	PlanBusiness     Plan = "business"
 	PlanEnterprise   Plan = "enterprise"
+	// PlanStarter is grandfathered: kept for its existing subscribers, sold to nobody new.
+	PlanStarter Plan = "starter"
 )
 
 // PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
 const PlanLaunchAttendees = 200
-
-/* MaxWebinarAudience is the most attendees one webinar admits, whatever the plan: what one
- * video box serves straight to its audience alongside other sessions (2026-10-25: 130 viewers
- * through the CDN froze in waves, while the box itself served every test cleanly). An admin
- * can raise one webinar past it, up to MaxAudienceOverride (AudienceCapOverride). */
-const MaxWebinarAudience = 300
 
 // MaxAudienceOverride is the largest per-webinar ceiling an admin may set.
 const MaxAudienceOverride = 1000
@@ -4178,14 +4181,24 @@ type SetAudienceCapRequest struct {
 	AudienceCap *int `json:"audienceCap"`
 }
 
-// PlanAttendeeCap is the most concurrent attendees a plan's webinars admit, before
-// the server's own MAX_ATTENDEES ceiling. Matches the pricing page.
+/* PlanAttendeeCap is the most concurrent attendees one of a plan's webinars admits, under
+ * the server's own MAX_ATTENDEES (api.attendeeCeiling). Matches the pricing page.
+ *
+ * (31 Oct 2026) The plan cap is now the per-webinar ceiling: the flat 300 per webinar
+ * (MaxWebinarAudience, 25 Oct 2026) is gone, so Business admits 500 and Enterprise 1,000
+ * where MAX_ATTENDEES allows. An admin's per-webinar AudienceCapOverride still replaces it. */
 func PlanAttendeeCap(p Plan) int {
 	switch p {
-	case PlanBusiness:
+	case PlanBasic:
+		return 100
+	case PlanStarter:
+		return 200
+	case PlanProfessional:
 		return 300
-	case PlanEnterprise:
+	case PlanBusiness:
 		return 500
+	case PlanEnterprise:
+		return 1000
 	default:
 		return PlanLaunchAttendees
 	}
@@ -4197,14 +4210,17 @@ func PlanAttendeeCap(p Plan) int {
  * The stage, not the audience, is what costs: every stage member receives every other
  * one, so SFU traffic grows with the square of the stage (a 10-person stage sends ~70-200
  * Mbps, against ~5-15 for 3; edge audiences are on the CDN and do not count). No plan is
- * the Professional number, as for attendees. */
+ * the Basic number. An admin's per-account override (users.stage_cap) replaces it. */
 func PlanStageCap(p Plan) int {
 	switch p {
-	case PlanBusiness:
+	case PlanProfessional:
 		return 5
-	case PlanEnterprise:
+	case PlanBusiness:
 		return 10
+	case PlanEnterprise:
+		return 100
 	default:
+		// Basic, grandfathered Starter, and no plan.
 		return 3
 	}
 }
@@ -4220,10 +4236,17 @@ func PlanMeetingCap(_ Plan) int {
 	return 10
 }
 
-// Valid is true for a paid plan.
+// Valid is true for a paid plan, the grandfathered Starter included.
 func (p Plan) Valid() bool {
-	return p == PlanProfessional || p == PlanBusiness || p == PlanEnterprise
+	switch p {
+	case PlanBasic, PlanProfessional, PlanBusiness, PlanEnterprise, PlanStarter:
+		return true
+	}
+	return false
 }
+
+// PlanIDsText is the valid plan ids in words, for an error message.
+const PlanIDsText = "basic, professional, business, enterprise, starter, or empty for none"
 
 /* WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
  * page needs to decide whether to ask a signed-in person for their phone and for
