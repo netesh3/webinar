@@ -461,6 +461,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/server-clock.test.mts
 	# The broadcast player's sound: tried first after a Join tap, muted only when refused.
 	cd web && node --experimental-strip-types --no-warnings lib/autoplay-sound.test.mts
+	# play() and Room.startAudio() settle: a refusal shows the sound pill, not an unhandled rejection.
+	cd web && node --experimental-strip-types --no-warnings lib/media-play.test.mts
+	# Element fullscreen: standard, webkit-prefixed, and an iPhone with neither.
+	cd web && node --experimental-strip-types --no-warnings lib/fullscreen-api.test.mts
 	# The admin cost calculator: transfer pools, render concurrency, the AI cap, recording sizes.
 	cd web && node --experimental-strip-types --no-warnings lib/cost-calculator.test.mts
 	# Cost by host: recorded usage priced at those rates, the pool shared by GB, the platform share.

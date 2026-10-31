@@ -21,6 +21,7 @@ import {
   type RefObject,
 } from "react";
 import { API_BASE, ApiError, api } from "@/lib/api";
+import { guardStartAudio, playMedia } from "@/lib/media-play";
 import { disconnectVerdict } from "@/lib/disconnect-reason";
 import {
   planRecovery,
@@ -145,7 +146,8 @@ export function CdnAttendeeRoom({
   const [room] = useState(() => {
     // Weak devices take the VP8 / H264 backup instead of decoding AV1 (lib/receive-codecs.ts).
     void primeReceivePolicy("participant");
-    return new Room();
+    // startAudio settles on every call, LiveKit's own included (lib/media-play.ts).
+    return guardStartAudio(new Room());
   });
 
   const [failure, setFailure] = useState<string | null>(null);
@@ -1214,7 +1216,16 @@ function HlsPlayer({
     video.muted = !video.muted;
     userMuted.current = video.muted;
     setIsMuted(video.muted);
-    if (!video.muted) void video.play();
+    if (video.muted) return;
+    /* Settled (lib/media-play.ts): a bare `void video.play()` here was an unhandled
+     * NotAllowedError when the browser refused (31 Oct 2026). Refused, back to muted and
+     * still playing, so the sound button stays there to tap. */
+    void playMedia(video).then((outcome) => {
+      if (outcome !== "refused") return;
+      video.muted = true;
+      setIsMuted(true);
+      void playMedia(video);
+    });
   };
 
   return (
