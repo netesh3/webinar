@@ -11,6 +11,8 @@
  * in lib/native-bridge.test.mts.
  */
 
+import { appParentPath, nativeBackAction } from "./app-back.ts";
+
 /** Hosts the app may show. Mirrors capacitor.config.ts server.allowNavigation. */
 const SITE = "https://webinarliv.com";
 
@@ -51,6 +53,20 @@ export function routeForOpenedUrl(raw: string): string | null {
     return `${u.pathname}${u.search}${u.hash}`;
   }
   return u.toString();
+}
+
+/** Absolute URL to load in the app WebView, or null to leave it (system browser).
+ *  Rooms, manage, join — anything on webinarliv.com. Zoom, WhatsApp, Google stay out. */
+export function inAppDestination(raw: string): string | null {
+  const route = routeForOpenedUrl(raw);
+  if (!route) return null;
+  return route.startsWith("/") ? `${SITE}${route}` : route;
+}
+
+/** A target=_blank click that must stay in the WebView. Null means don't intercept. */
+export function inAppClickUrl(href: string, target: string | null): string | null {
+  if (target !== "_blank" && target !== "_new") return null;
+  return inAppDestination(href);
 }
 
 /** What an opened route means for a system-browser hand-off (29 Oct 2026):
@@ -172,6 +188,39 @@ async function wireDeepLinks(): Promise<Listener | null> {
     // No launch URL: an ordinary start from the icon.
   }
   return app.addListener("appUrlOpen", (e) => open(e.url));
+}
+
+/** Android hardware back. Listening disables the default (exit), so we must handle
+ *  the root ourselves. iOS has no hardware back; the in-app Back control covers it. */
+async function wireBackButton(): Promise<Listener | null> {
+  const app = plugin("App") as unknown as {
+    addListener: (
+      event: "backButton",
+      fn: (e: { canGoBack?: boolean }) => void,
+    ) => Promise<Listener>;
+    exitApp?: () => Promise<void>;
+  } | null;
+  if (!app?.addListener) return null;
+  try {
+    return await app.addListener("backButton", (e) => {
+      const action = nativeBackAction({
+        canGoBack: e.canGoBack === true,
+        pathname: window.location.pathname,
+      });
+      if (action === "history") {
+        window.history.back();
+        return;
+      }
+      if (action === "parent") {
+        const parent = appParentPath(window.location.pathname);
+        if (parent) window.location.assign(parent);
+        return;
+      }
+      void app.exitApp?.();
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** The native share sheet behind navigator.share, so the site's existing Share buttons
@@ -335,13 +384,33 @@ async function wirePush(): Promise<Listener[]> {
   return listeners;
 }
 
+/** Same-origin target=_blank (Join stage, Rejoin, Enter room) would otherwise
+ *  open Safari / Chrome from the Capacitor WebView. Capture so Next.js doesn't. */
+function wireInAppClicks(): () => void {
+  const onClick = (e: MouseEvent) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const el = e.target;
+    if (!(el instanceof Element)) return;
+    const a = el.closest("a");
+    if (!a) return;
+    const dest = inAppClickUrl(a.href, a.getAttribute("target"));
+    if (!dest) return;
+    e.preventDefault();
+    window.location.assign(dest);
+  };
+  document.addEventListener("click", onClick, true);
+  return () => document.removeEventListener("click", onClick, true);
+}
+
 /** Wire everything once per page load. Returns the teardown. */
 export function startNativeBridge(): () => void {
   if (!isNativeApp()) return () => {};
   document.documentElement.dataset.nativeApp = cap()?.getPlatform?.() ?? "native";
   wireShare();
-  const pending: Promise<Listener | Listener[] | null>[] = [wireDeepLinks(), wirePush()];
+  const unwireClicks = wireInAppClicks();
+  const pending: Promise<Listener | Listener[] | null>[] = [wireDeepLinks(), wirePush(), wireBackButton()];
   return () => {
+    unwireClicks();
     for (const p of pending) {
       void p.then((l) => {
         for (const one of Array.isArray(l) ? l : l ? [l] : []) void one.remove();

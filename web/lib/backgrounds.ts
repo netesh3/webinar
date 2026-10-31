@@ -21,6 +21,8 @@ import {
   type DownloadProgress,
   type LoadingView,
 } from "./background-loading.ts";
+import { isIOS } from "./device.ts";
+import { publishSize } from "./frame-orientation.ts";
 import type {
   Background,
   SegmenterOptions,
@@ -579,9 +581,21 @@ export function backgroundsSupported(): boolean {
   return supported;
 }
 
-/** Kill switch on and this browser can run the effect path. */
+/** iPhone/iPad WebKit captures landscape and drops CVO on a processed track, so
+ *  blur and stills publish on their side. Hide the controls and skip the processor. */
+export function backgroundsBlockedOnIOS(ua: string, maxTouchPoints = 0): boolean {
+  return isIOS(ua, maxTouchPoints);
+}
+
+function backgroundsAllowedOnThisDevice(): boolean {
+  if (typeof navigator === "undefined") return true;
+  return !backgroundsBlockedOnIOS(navigator.userAgent || "", navigator.maxTouchPoints || 0);
+}
+
+/** Kill switch on, this browser can run the effect path, and this device is not
+ *  an iPhone/iPad (those rotate a processed camera 90°). */
 export function backgroundsAvailable(): boolean {
-  return virtualBackgroundsEnabled() && backgroundsSupported();
+  return virtualBackgroundsEnabled() && backgroundsAllowedOnThisDevice() && backgroundsSupported();
 }
 
 function probeSupport(): boolean {
@@ -638,12 +652,22 @@ export function useVirtualBackgroundsEnabled(): boolean {
   return virtualBackgroundsEnabled();
 }
 
+/** True on iPhone/iPad. Server and first paint are false so hydration matches. */
+export function useBackgroundsBlockedOnIOS(): boolean {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => backgroundsBlockedOnIOS(navigator.userAgent || "", navigator.maxTouchPoints || 0),
+    () => false,
+  );
+}
+
 /** Feature is enabled and this browser can run it. */
 export function useBackgroundsAvailable(): boolean {
-  // Both hooks every render: `&&` would skip the second whenever the first is false.
+  // Every hook every render: `&&` would skip later ones whenever an earlier is false.
   const enabled = useVirtualBackgroundsEnabled();
   const supported = useBackgroundsSupported();
-  return enabled && supported;
+  const blocked = useBackgroundsBlockedOnIOS();
+  return enabled && supported && !blocked;
 }
 
 type Wrapper = Pick<
@@ -919,7 +943,74 @@ async function createSoftProcessor(
     ...listeners,
   });
   softRetried.set(soft, status.attempt);
-  return new SoftBackgroundProcessor(soft, new ProcessorWrapper(soft as never, "soft-background"));
+  const wrapper = new ProcessorWrapper(soft as never, "soft-background");
+  wireUprightFallback(wrapper);
+  return new SoftBackgroundProcessor(soft, wrapper);
+}
+
+/* ProcessorWrapper's canvas.captureStream fallback draws every processed frame into a
+ * canvas it sizes to the dummy <video>'s videoWidth×videoHeight. On an iPhone that is the
+ * landscape sensor, so a portrait processed frame is stretched sideways. After init (and
+ * each restart) we redraw at the processed aspect, scaled to the camera's long side. */
+function wireUprightFallback(wrapper: Wrapper): void {
+  const origInit = wrapper.init.bind(wrapper);
+  wrapper.init = async (opts: Parameters<Wrapper["init"]>[0]) => {
+    await origInit(opts);
+    rewireFallbackCanvas(wrapper);
+  };
+  const origRestart = wrapper.restart.bind(wrapper);
+  wrapper.restart = async (opts: Parameters<Wrapper["restart"]>[0]) => {
+    await origRestart(opts);
+    rewireFallbackCanvas(wrapper);
+  };
+}
+
+function rewireFallbackCanvas(wrapper: Wrapper): void {
+  const w = wrapper as unknown as {
+    useStreamFallback?: boolean;
+    frameCallback?: (frame: VideoFrame) => void;
+    displayCanvas?: HTMLCanvasElement;
+    renderContext?: CanvasRenderingContext2D;
+    processingEnabled?: boolean;
+    transformer: {
+      transform: (frame: VideoFrame, c: TransformStreamDefaultController<VideoFrame>) => void;
+    };
+    sourceDummy?: HTMLVideoElement;
+  };
+  if (!w.useStreamFallback) return;
+  w.frameCallback = (frame: VideoFrame) => {
+    if (!w.processingEnabled || !frame) {
+      frame.close();
+      return;
+    }
+    const controller = {
+      enqueue: (processedFrame: VideoFrame) => {
+        if (!w.renderContext || !w.displayCanvas) {
+          processedFrame.close();
+          return;
+        }
+        const camera = w.sourceDummy;
+        const size = publishSize(
+          { w: processedFrame.displayWidth, h: processedFrame.displayHeight },
+          {
+            w: camera?.videoWidth || processedFrame.displayWidth,
+            h: camera?.videoHeight || processedFrame.displayHeight,
+          },
+        );
+        if (w.displayCanvas.width !== size.w || w.displayCanvas.height !== size.h) {
+          w.displayCanvas.width = size.w;
+          w.displayCanvas.height = size.h;
+        }
+        w.renderContext.drawImage(processedFrame, 0, 0, size.w, size.h);
+        processedFrame.close();
+      },
+    } as TransformStreamDefaultController<VideoFrame>;
+    try {
+      w.transformer.transform(frame, controller);
+    } catch {
+      frame.close();
+    }
+  };
 }
 
 /* LiveKit's built-in BackgroundProcessor ("livekit" engine).
@@ -1196,9 +1287,12 @@ export function useVirtualBackground(
     let cancelled = false;
     const background = backgroundFor(choice);
     const lowLightOnly = choice.mode === "none";
-    /* Kill-switched prefs may still hold blur/low-light from an earlier build; ignore
-     * them rather than attaching or reporting a fake WebGL2 failure. */
-    const wanted = virtualBackgroundsEnabled() && (choice.mode !== "none" || lit);
+    /* Kill-switched or iPhone prefs may still hold blur/low-light; ignore them
+     * rather than attaching a processor that would rotate the camera 90°. */
+    const wanted =
+      virtualBackgroundsEnabled() &&
+      backgroundsAllowedOnThisDevice() &&
+      (choice.mode !== "none" || lit);
 
     const onFrame = ({ totalMs, segmentMs }: { totalMs: number; segmentMs: number }) => {
       if (!mounted.current) return;
@@ -1335,6 +1429,18 @@ export function useVirtualBackground(
       if (cancelled) return;
       await attaching.get(track)?.catch(() => {});
       if (cancelled) return;
+
+      /* iPhone: a leftover processor from persisted blur prefs would stay
+       * landscape. Take it off rather than adopting it. */
+      if (!backgroundsAllowedOnThisDevice()) {
+        if (track.getProcessor()) await detachProcessor(track);
+        if (cancelled) return;
+        softCurrent.current = null;
+        liveKitCurrent.current = null;
+        publishFrameCost(null);
+        publishStatus({ phase: "idle", error: null, retryable: false });
+        return;
+      }
 
       const existing = track.getProcessor();
 

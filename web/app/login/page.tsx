@@ -15,7 +15,12 @@ export default function LoginPage() {
   // in the browser after the first paint.
   return (
     <LoginSessionGate>
-      <main className="mx-auto flex w-full max-w-6xl flex-1 items-start justify-center px-4 py-10 sm:px-5">
+      <main
+        className="mx-auto flex w-full max-w-6xl flex-1 items-start justify-center px-4 py-10 sm:px-5"
+        style={{
+          paddingTop: "max(2.5rem, calc(env(safe-area-inset-top, 0px) + 1.5rem))",
+        }}
+      >
         <Suspense
           fallback={
             <Card className="h-80 w-full max-w-sm animate-pulse">

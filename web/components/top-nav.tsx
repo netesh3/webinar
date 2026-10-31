@@ -104,7 +104,7 @@ export function TopNav() {
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (
-    <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface/95 backdrop-blur">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-5">
         <Link
           href={homeHrefFor(account?.canHost === true)}

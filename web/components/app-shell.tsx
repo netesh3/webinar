@@ -24,7 +24,8 @@ import { noteAttendeeVisit } from "@/lib/host-welcome";
 import { toggleSidebar } from "@/lib/sidebar";
 import { AccountAvatar } from "./account-avatar";
 import { HostAlerts } from "./host-alerts";
-import { BookmarkIcon, CalendarIcon, CameraIcon, ClapperIcon, MaterialIcon, MenuIcon, SettingsIcon, SparklesIcon, UsersIcon, WhatsAppIcon } from "./icons";
+import { appParentPath } from "@/lib/app-back";
+import { ArrowLeftIcon, BookmarkIcon, CalendarIcon, CameraIcon, ClapperIcon, MaterialIcon, MenuIcon, SettingsIcon, SparklesIcon, UsersIcon, WhatsAppIcon } from "./icons";
 import { useAppConfig, useSession } from "./providers";
 import { useRegistrations } from "./registrations";
 import { useTheme } from "./theme";
@@ -80,6 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const name = appName || "Webinar Liv";
   const home = account ? appHome(account.canHost) : "/";
+  const backHref = appParentPath(pathname);
 
   useEffect(() => {
     if (account && !account.canHost) noteAttendeeVisit();
@@ -106,6 +108,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <header className="sb-mbar">
+        {backHref && (
+          <Link href={backHref} className="sb-menu" aria-label="Back">
+            <ArrowLeftIcon className="size-5" />
+          </Link>
+        )}
         <button
           type="button"
           className="sb-menu"

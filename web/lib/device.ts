@@ -67,6 +67,15 @@ export function iosAppFrom(platform: string | null, ua: string): boolean {
  * .ios-app-hidden / .ios-app-only). */
 export const IOS_APP_ATTR = "data-ios-app";
 
+/** Viewport extras for the Capacitor app. iOS zooms the document when a focused
+ *  field is under 16px; the live room is `overflow: hidden`, so there is no
+ *  pinch-out. Locking scale on the native UA stops that without disabling zoom
+ *  on Safari. Pair with the 16px field rule in globals.css. */
+export function nativeAppViewport(ua: string): { maximumScale: 1; userScalable: false } | Record<string, never> {
+  if (!isNativeAppUA(ua)) return {};
+  return { maximumScale: 1, userScalable: false };
+}
+
 /** The inline script for <head>: marks <html> in the iOS app. Same test as isIOSAppUA,
  *  inlined because it runs before any bundle. */
 export function appStoreBootScript(): string {

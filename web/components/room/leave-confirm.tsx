@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { bindOutsideDismiss } from "@/lib/outside-dismiss";
+import { useCompact } from "@/lib/compact";
 
 /* Are you sure you want to leave — for everybody who is not the host.
  *
@@ -52,6 +54,7 @@ export function LeaveConfirm({
 }) {
   const panel = useRef<HTMLDivElement | null>(null);
   const confirm = useRef<HTMLButtonElement | null>(null);
+  const compact = useCompact();
 
   useEffect(() => {
     if (!open) return;
@@ -63,29 +66,35 @@ export function LeaveConfirm({
         onClose();
       }
     };
-    const onDown = (e: PointerEvent) => {
-      if (panel.current?.contains(e.target as Node)) return;
+    window.addEventListener("keydown", onKey);
+    const stopOutside = bindOutsideDismiss({
+      contains: (node) => !!panel.current?.contains(node),
       // The Leave button toggles this open; ignoring its own click is what stops the
       // close-then-reopen flicker. Same guard as HostLeaveMenu's.
-      if ((e.target as HTMLElement).closest?.("[data-leave-trigger]")) return;
-      onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onDown);
+      ignoreClosest: "[data-leave-trigger]",
+      onOutside: onClose,
+    });
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onDown);
+      stopOutside();
     };
   }, [open, onClose]);
 
-  /* Focus moves to Leave, not to Cancel.
+  /* Focus moves to Leave, not to Cancel — on a keyboard.
    *
    * The usual advice for a destructive confirmation is to focus the safe option, and it is
    * the wrong advice here: this popover only exists because somebody pressed Leave, so
    * confirming is what they asked for and Return should do it. Escape and click-away are both
-   * one action from cancelling, and neither needs focus to work. */
+   * one action from cancelling, and neither needs focus to work.
+   *
+   * On a phone, focusing the button scrolls the overflow-hidden room and the
+   * confirm lands off the tap target, which is why Leave looked broken in the app. */
   useEffect(() => {
-    if (open) confirm.current?.focus();
+    if (!open) return;
+    if (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches) {
+      return;
+    }
+    confirm.current?.focus();
   }, [open]);
 
   if (!open) return null;
@@ -95,7 +104,16 @@ export function LeaveConfirm({
       ref={panel}
       role="dialog"
       aria-label={meeting ? "Leave the meeting" : "Leave the webinar"}
-      className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
+      className={
+        compact
+          ? "room-dark fixed right-2 z-[80] w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
+          : "room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
+      }
+      style={
+        compact
+          ? { bottom: "calc(3.75rem + env(safe-area-inset-bottom, 0px))" }
+          : undefined
+      }
     >
       <div className="px-3.5 pt-3 pb-2.5">
         <p className="text-[13.5px] font-semibold text-ink">

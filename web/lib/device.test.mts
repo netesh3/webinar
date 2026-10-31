@@ -14,6 +14,7 @@ import {
   isIOSAppUA,
   isMobileUA,
   isNativeAppUA,
+  nativeAppViewport,
 } from "./device.ts";
 
 const instagramAndroid =
@@ -77,6 +78,11 @@ function bootMarks(ua: string): boolean {
 for (const ua of [ourIOSApp, ourIPadApp, ourAndroidApp, ourDesktopApp, safariIOS, chromeAndroid, ""]) {
   assert.equal(bootMarks(ua), isIOSAppUA(ua), `boot script vs isIOSAppUA for ${ua || "(empty)"}`);
 }
+
+assert.deepEqual(nativeAppViewport(ourIOSApp), { maximumScale: 1, userScalable: false });
+assert.deepEqual(nativeAppViewport(ourAndroidApp), { maximumScale: 1, userScalable: false });
+assert.deepEqual(nativeAppViewport(safariIOS), {});
+assert.deepEqual(nativeAppViewport(chromeMac), {});
 
 assert.equal(isMobileUA(chromeAndroid), true);
 assert.equal(isMobileUA(safariIOS), true);

@@ -189,6 +189,7 @@ export function WebinarRoom({
    *  were (lib/rejoin.ts). */
   rejoined?: boolean;
 }) {
+  const router = useRouter();
   const { ready: prefsReady } = useMediaPreferences();
   const { telemetryEnabled } = useAppConfig();
 
@@ -454,6 +455,7 @@ export function WebinarRoom({
       initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
+      onBack={() => router.push(door === "stage" ? `/host/${slug}` : `/webinars/${slug}`)}
       onDemoted={webinarUsesCdn || webinarUsesEdge ? handleDemoted : undefined}
       freshCredential={freshCredential}
       // Only the room this page opened with: a promotion or demotion later in the session
@@ -528,6 +530,7 @@ function RoomSession({
   initialImageUrl,
   joinKey,
   onLeave,
+  onBack,
   onDemoted,
   freshCredential,
   rejoined,
@@ -539,6 +542,7 @@ function RoomSession({
   initialImageUrl?: string;
   joinKey?: string;
   onLeave: () => void;
+  onBack: () => void;
   onDemoted?: () => void;
   freshCredential: Credential;
   rejoined: boolean;
@@ -656,6 +660,7 @@ function RoomSession({
           setEntry(choices);
           setChecked(true);
         }}
+        onBack={onBack}
       />
     );
   }
@@ -1842,12 +1847,16 @@ function ConnectedRoom({
     /* Leave normally completes in onDisconnected. A room that is already down — waiting to
      * reconnect, or between retries — emits nothing on disconnect(), so it is completed here,
      * or the button did nothing. The connect effect checks `leaving` too, so a later wake or
-     * retry does not bring them back. */
+     * retry does not bring them back.
+     *
+     * A share on the phone can leave disconnect() hanging (ReplayKit / WKWebView). If the
+     * SFU never emits Disconnected, still walk them out so Leave is never a stuck button. */
     if (room.state === ConnectionState.Disconnected) {
       completeLeave();
       return;
     }
     void disconnect();
+    window.setTimeout(() => completeLeave(), 2000);
   }, [disconnect, room, completeLeave]);
 
   // The server's view of the room, for the host only. It is the one list that

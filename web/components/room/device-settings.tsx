@@ -2,7 +2,7 @@
 
 import { useRoomContext } from "@livekit/components-react";
 import { useEffect, useState } from "react";
-import { useVirtualBackgroundsEnabled } from "@/lib/backgrounds";
+import { useBackgroundsBlockedOnIOS, useVirtualBackgroundsEnabled } from "@/lib/backgrounds";
 import { useChatSound } from "@/lib/chat-notify";
 import { deviceLabel, supportsOutputSelection, useDevices } from "@/lib/media";
 import { useWaitingTune } from "@/lib/waiting-tune";
@@ -31,6 +31,7 @@ export function DeviceSettings() {
   const room = useRoomContext();
   const { prefs, updatePrefs, permissions } = useRoomUI();
   const effectsEnabled = useVirtualBackgroundsEnabled();
+  const iosBlocked = useBackgroundsBlockedOnIOS();
   const { devices, refresh } = useDevices(true);
   const chatSound = useChatSound();
   const waitingTune = useWaitingTune();
@@ -173,7 +174,7 @@ export function DeviceSettings() {
               upload struggles and comes back when it recovers. The reading is below.
             </p>
 
-            {effectsEnabled && (
+            {effectsEnabled && !iosBlocked && (
               <>
                 <div className="border-t border-line pt-3">
                   <BackgroundPicker />
