@@ -801,6 +801,148 @@ export interface VerifyBillingPaymentResponse {
 }
 
 //////////
+// source: calls.go
+
+/**
+ * CallState is where a call is. Every call starts ringing and ends in exactly one of the
+ * other four; a transition is only ever out of ringing.
+ */
+export type CallState = string;
+export const CallRinging: CallState = "ringing";
+export const CallAccepted: CallState = "accepted";
+export const CallDeclined: CallState = "declined";
+export const CallCancelled: CallState = "cancelled";
+/**
+ * CallMissed is a call nobody answered within CallRingSeconds.
+ */
+export const CallMissed: CallState = "missed";
+/**
+ * CallRingSeconds is how long a call rings before it is missed.
+ */
+export const CallRingSeconds = 45;
+/**
+ * The "type" of a call event: the realtime event, the web push data and the FCM data.
+ */
+export const CallEventIncoming = "incoming_call";
+/**
+ * The "type" of a call event: the realtime event, the web push data and the FCM data.
+ */
+export const CallEventEnded = "call_ended";
+/**
+ *  StartCallRequest is POST /api/calls. Without MeetingSlug the API creates an instant meeting
+ *  * for the call; with one, the caller must host (or co-host) that meeting.
+ */
+export interface StartCallRequest {
+  calleeUserId: string;
+  meetingSlug?: string;
+}
+/**
+ * StartCallResponse is the call just placed, ringing until ExpiresAt.
+ */
+export interface StartCallResponse {
+  callId: string;
+  meetingSlug: string;
+  /**
+   * JoinURL is the callee's way in (a path on the site), the same one the ring carries.
+   */
+  joinUrl: string;
+  /**
+   * ExpiresAt is RFC3339: when the call stops ringing and is missed.
+   */
+  expiresAt: string;
+  /**
+   * MeetingCreated is true when the API made an instant meeting for this call. The caller
+   * starts it (POST /api/host/webinars/{slug}/start) and opens its room.
+   */
+  meetingCreated: boolean;
+}
+/**
+ * Call is GET /api/calls/{id}, and the answer to accept, decline and cancel.
+ */
+export interface Call {
+  callId: string;
+  state: CallState;
+  meetingSlug: string;
+  topic: string;
+  /**
+   * JoinURL is the callee's personal way into the meeting (a path on the site).
+   */
+  joinUrl: string;
+  expiresAt: string;
+  /**
+   * CallerName and CalleeName are display names, never addresses.
+   */
+  callerName: string;
+  calleeName: string;
+  /**
+   * Role is the asker's side of the call: "caller" or "callee".
+   */
+  role: string;
+}
+/**
+ *  CallConflict is the 409 of accept, decline or cancel on a call that already ended another
+ *  * way: an APIError ("call_ended") with the call as it now stands.
+ */
+export interface CallConflict {
+  error: string;
+  message: string;
+  call: Call;
+}
+/**
+ *  IncomingCallEvent rings the callee: the realtime event on GET /api/me/events, the web push's
+ *  * data and the FCM data message, the same fields everywhere. Type is CallEventIncoming.
+ */
+export interface IncomingCallEvent {
+  type: string;
+  callId: string;
+  callerName: string;
+  /**
+   * CallerAvatarURL is the caller's photo when it is a public URL, else null.
+   */
+  callerAvatarUrl: string | null;
+  meetingSlug: string;
+  topic: string;
+  /**
+   * JoinURL is a path on the site ("/host/<slug>/room").
+   */
+  joinUrl: string;
+  /**
+   * ExpiresAt is RFC3339.
+   */
+  expiresAt: string;
+}
+/**
+ *  CallEndedEvent stops the ringing on the callee's other devices and tells the caller how it
+ *  * went. Type is CallEventEnded; State is accepted, declined, cancelled or missed.
+ */
+export interface CallEndedEvent {
+  type: string;
+  callId: string;
+  state: CallState;
+}
+/**
+ *  Contact is somebody the host may call (GET /api/contacts?q=): never an address, except the
+ *  * one the host typed in full, which is echoed back so the row can say what matched.
+ */
+export interface Contact {
+  userId: string;
+  name: string;
+  avatarUrl?: string;
+  initials: string;
+  hue: string;
+  /**
+   * Email is set only on an exact address match, and is the address the host typed.
+   */
+  email?: string;
+}
+/**
+ * ContactsResponse is GET /api/contacts.
+ */
+export interface ContactsResponse {
+  contacts: Contact[];
+}
+
+//////////
 // source: captions_language.go
 
 /**
@@ -3084,6 +3226,12 @@ export const PushApprovalRequested: PushKind = "approval_requested";
  */
 export const PushOpsAlert: PushKind = "ops_alert";
 /**
+ *  Somebody is calling this account into a meeting (31 Oct 2026, docs/calling.md). The
+ * 	 * ring itself, and the "call ended" that stops it on the other devices. Urgent, 45 s to
+ * 	 * live, tagged "call-<id>". On by default like every kind.
+ */
+export const PushIncomingCall: PushKind = "incoming_call";
+/**
  * "Send test notification" in Settings. Not a preference: it always goes.
  */
 export const PushTest: PushKind = "test";
@@ -3188,6 +3336,12 @@ export interface PushPayload {
   renotify?: boolean;
   icon?: string;
   badge?: string;
+  /**
+   *  Data is the machine half of a push the service worker acts on rather than only shows
+   * 	 * (31 Oct 2026): for PushIncomingCall it is the IncomingCallEvent or CallEndedEvent, as
+   * 	 * strings (callerAvatarUrl "" for none), the same map the apps get as FCM data.
+   */
+  data?: { [key: string]: string};
 }
 /**
  *  NativePushRegisterRequest is POST /api/push/native (29 Oct 2026): the Android or iOS app

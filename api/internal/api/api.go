@@ -192,6 +192,8 @@ type Server struct {
 	salesMsgLimit   *httpx.RateLimiter
 	// aiWriteLimit caps a host's AI drafts a minute ("Write with AI" and the like).
 	aiWriteLimit *httpx.RateLimiter
+	// contactsLimit caps one account's GET /api/contacts searches (calls.go).
+	contactsLimit *httpx.RateLimiter
 
 	// rt carries session events to edge-delivery viewers (edge.go). Never nil.
 	rt *realtime.Bus
@@ -415,6 +417,9 @@ func (s *Server) Routes() http.Handler {
 		// Web Push: the public key, subscribe/unsubscribe (an account or a registration),
 		// and the signed-in account's preferences and test button. See push.go.
 		s.mountPush(r)
+		// Calling another account into a meeting, and the account's own event stream that
+		// rings its open tabs (calls.go, docs/calling.md).
+		s.mountCalls(r)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Post("/billing/orders", s.handleCreateBillingOrder)

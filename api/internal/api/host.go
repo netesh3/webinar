@@ -270,6 +270,18 @@ func (s *Server) handleCreateWebinar(w http.ResponseWriter, r *http.Request) {
  * Shared with handleCopyWebinar so a copy passes exactly the checks a new webinar
  * does: the plan's attendee ceiling, the feature switches, the Zoom venue. */
 func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user store.User, in types.WebinarInput) (types.Webinar, bool) {
+	return s.createWebinarWith(w, r, user, in, createOptions{})
+}
+
+// createOptions are the few ways a create made by the server differs from the schedule form's.
+type createOptions struct {
+	/* forCall is the instant meeting POST /api/calls makes (calls.go, 31 Oct 2026). Calling
+	 * is for any host who may hold meetings, so it does not ask for the instant switch that
+	 * "Start a meeting" does; everything else a create checks still applies. */
+	forCall bool
+}
+
+func (s *Server) createWebinarWith(w http.ResponseWriter, r *http.Request, user store.User, in types.WebinarInput, opts createOptions) (types.Webinar, bool) {
 	/* Before the lead check. An instant create has no time picker, so a
 	 * soon start must come back as "this account cannot", not as "schedule it
 	 * at least 15 minutes from now". */
@@ -289,7 +301,7 @@ func (s *Server) createWebinar(w http.ResponseWriter, r *http.Request, user stor
 	if in.Kind == types.KindSimulive && !s.requireHostFeature(w, r, user.ID, types.FeatureSimulive) {
 		return types.Webinar{}, false
 	}
-	if in.Instant && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
+	if in.Instant && !opts.forCall && !s.requireHostFeature(w, r, user.ID, types.FeatureInstantWebinar) {
 		return types.Webinar{}, false
 	}
 	// An instant one starts at once, so refuse it here rather than leave a new row

@@ -164,6 +164,9 @@ func SetPushEndpointCheck(s *Server, f func(string) error) { s.pushEndpointOK = 
 // FlushPush sends every push message that is due, now.
 func FlushPush(s *Server, ctx context.Context) { s.flushPush(ctx) }
 
+// SweepCalls ends the calls whose ring ran out, as the tick does (calls.go).
+func SweepCalls(s *Server, ctx context.Context) { s.sweepCalls(ctx) }
+
 // SweepPushReminders queues the 15-minute reminders that are due.
 func SweepPushReminders(s *Server, ctx context.Context) { s.sweepPushReminders(ctx) }
 

@@ -113,6 +113,15 @@ type NativeMessage struct {
 	Tag     string
 	TTL     time.Duration
 	Urgency string
+	// Data is more FCM data next to url, kind and tag (31 Oct 2026, calling): string values only,
+	// as FCM requires. It never overrides those three.
+	Data map[string]string
+	/* DataOnly sends a data message (31 Oct 2026, calling): no notification block, so Android
+	 * wakes the app (priority HIGH) to draw its own UI, an incoming-call screen, rather than
+	 * the system drawing a banner. iOS does not wake a killed app for a data message, so with
+	 * a Title it still gets an APNs alert (apns-push-type alert, priority 10) as the fallback,
+	 * and with no Title a silent background push (content-available). */
+	DataOnly bool
 }
 
 // FCMSender posts to FCM's v1 send endpoint.
@@ -280,9 +289,16 @@ func fcmPayload(t NativeTarget, m NativeMessage) ([]byte, error) {
 	if ttl > 0 {
 		expiration = strconv.FormatInt(time.Now().Add(time.Duration(ttl)*time.Second).Unix(), 10)
 	}
-	data := map[string]string{"url": m.URL, "kind": m.Kind}
+	data := map[string]string{}
+	for k, v := range m.Data {
+		data[k] = v
+	}
+	data["url"], data["kind"] = m.URL, m.Kind
 	if m.Tag != "" {
 		data["tag"] = m.Tag
+	}
+	if m.DataOnly {
+		return fcmDataPayload(t, m, data, ttl, expiration)
 	}
 	android := map[string]any{
 		"priority": androidPriority,
@@ -306,6 +322,41 @@ func fcmPayload(t NativeTarget, m NativeMessage) ([]byte, error) {
 		"apns": map[string]any{
 			"headers": apnsHeaders,
 			"payload": map[string]any{"aps": map[string]any{"sound": "default"}},
+		},
+	}
+	return json.Marshal(map[string]any{"message": msg})
+}
+
+/* fcmDataPayload is the v1 body of a DataOnly message: Android high priority and no
+ * notification anywhere; iOS the alert fallback, or a background push without a title. */
+func fcmDataPayload(t NativeTarget, m NativeMessage, data map[string]string, ttl int64, expiration string) ([]byte, error) {
+	apnsHeaders := map[string]string{"apns-expiration": expiration}
+	aps := map[string]any{}
+	if m.Title != "" {
+		apnsHeaders["apns-push-type"], apnsHeaders["apns-priority"] = "alert", "10"
+		aps["alert"] = map[string]string{"title": m.Title, "body": m.Body}
+		aps["sound"] = "default"
+	} else {
+		apnsHeaders["apns-push-type"], apnsHeaders["apns-priority"] = "background", "5"
+		aps["content-available"] = 1
+	}
+	if m.Tag != "" {
+		collapse := m.Tag
+		if len(collapse) > 64 {
+			collapse = collapse[:64]
+		}
+		apnsHeaders["apns-collapse-id"] = collapse
+	}
+	msg := map[string]any{
+		"token": t.Token,
+		"data":  data,
+		"android": map[string]any{
+			"priority": "HIGH",
+			"ttl":      strconv.FormatInt(ttl, 10) + "s",
+		},
+		"apns": map[string]any{
+			"headers": apnsHeaders,
+			"payload": map[string]any{"aps": aps},
 		},
 	}
 	return json.Marshal(map[string]any{"message": msg})

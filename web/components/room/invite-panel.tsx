@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CopyIcon, SendIcon, ShareIcon } from "../icons";
 import { useShareOrigin, useToast } from "../providers";
+import { CallSomeoneButton } from "./call-someone";
 import { useRoomUI } from "./context";
 
 /* Invite, from inside the room.
@@ -149,8 +150,11 @@ export function InviteMenu({
  * there for the audience as much as the host for the reason InviteMenu gives. */
 export function ShareLinkFooter() {
   const [open, setOpen] = useState(false);
+  // A meeting's host and co-hosts (who have its lobby) may also ring somebody in (31 Oct 2026).
+  const { lobby } = useRoomUI();
   return (
     <div className="relative shrink-0 border-t border-line p-2" data-invite-anchor>
+      {lobby ? <CallSomeoneButton /> : null}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

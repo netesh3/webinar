@@ -53,6 +53,8 @@ var pushKindsOrder = []struct {
 	{types.PushWebinarReminder, false, false},
 	{types.PushReplayReady, false, false},
 	{types.PushMeetingStarted, false, false},
+	// Being called into a meeting (calls.go). Anyone with an account can be called.
+	{types.PushIncomingCall, false, false},
 	{types.PushLobbyKnock, true, false},
 	{types.PushApprovalRequested, true, false},
 	{types.PushRecapReady, true, false},
@@ -658,7 +660,7 @@ func (s *Server) sendPushGroup(ctx context.Context, group []store.ClaimedPush) {
 	for i, c := range group {
 		payload, _ := json.Marshal(types.PushPayload{
 			Kind: c.Kind, Title: clip(c.Title, 120), Body: clip(c.Body, 300), URL: c.URL,
-			Tag: c.Tag, Renotify: c.Tag != "", Icon: pushIcon, Badge: pushBadge,
+			Tag: c.Tag, Renotify: c.Tag != "", Icon: pushIcon, Badge: pushBadge, Data: c.Data,
 		})
 		res := s.push.Send(ctx, push.Target{Endpoint: c.Endpoint, P256dh: c.P256dh, Auth: c.Auth},
 			push.Message{Payload: payload, TTL: c.TTL, Urgency: c.Urgency})
@@ -752,6 +754,7 @@ func (s *Server) sendNativeGroup(ctx context.Context, group []store.ClaimedNativ
 		res := s.fcm.Send(ctx, push.NativeTarget{Token: c.Token, Platform: c.Platform}, push.NativeMessage{
 			Kind: string(c.Kind), Title: clip(c.Title, 120), Body: clip(c.Body, 300),
 			URL: s.nativeURL(c.URL), Tag: c.Tag, TTL: c.TTL, Urgency: c.Urgency,
+			Data: c.Data, DataOnly: c.DataOnly,
 		})
 		switch res.Outcome {
 		case push.Sent:

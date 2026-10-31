@@ -247,6 +247,8 @@ func (s *Server) runRealtime(ctx context.Context) bool {
 	s.realtimeJob(ctx, "outbox", mailFlushBudget, s.flushOutbox)
 	// Web Push: the 15-minute reminders coming due, then everything queued (push.go).
 	s.realtimeJob(ctx, "push reminders", realtimeJobBudget, s.sweepPushReminders)
+	// Calls nobody answered in time become missed, before the push flush tells their phones.
+	s.realtimeJob(ctx, "calls", realtimeJobBudget, s.sweepCalls)
 	s.realtimeJob(ctx, "push", pushFlushBudget, s.flushPush)
 	// The CRM's drips, bots and WhatsApp outbox, on what is left of the lane. See Engage.Tick.
 	s.engage.Tick(ctx)

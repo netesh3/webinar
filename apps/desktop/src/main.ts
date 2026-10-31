@@ -255,6 +255,22 @@ app.whenReady().then(() => {
     }
     void shell.openExternal(url);
   });
+  /* An incoming call is ringing in this window (web/components/incoming-call.tsx, 31 Oct 2026):
+   * flash it and bounce the dock until the ring stops. Attention only, never focus: a call
+   * must not pull somebody's typing into another window. */
+  let dockBounce: number | null = null;
+  ipcMain.on("webinarliv:ring-attention", (event, on: unknown) => {
+    if (!isSiteUrl(senderUrl(event))) return;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (on === true) {
+      if (win && !win.isFocused()) win.flashFrame(true);
+      if (process.platform === "darwin" && app.dock && dockBounce === null) dockBounce = app.dock.bounce("critical");
+      return;
+    }
+    win?.flashFrame(false);
+    if (dockBounce !== null && app.dock) app.dock.cancelBounce(dockBounce);
+    dockBounce = null;
+  });
   ipcMain.on("webinarliv:focus", (event) => {
     if (!isSiteUrl(senderUrl(event))) return;
     const win = BrowserWindow.fromWebContents(event.sender);

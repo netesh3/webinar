@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -233,6 +234,14 @@ type PushMessage struct {
 	 * that nothing would send. (29 Oct 2026) */
 	NoWeb    bool
 	NoNative bool
+	/* Data is machine data the receiver acts on (31 Oct 2026, calling): the web push payload
+	 * carries it as "data", and the apps get it as FCM data next to url and kind. DataOnly
+	 * makes the apps' message a high-priority FCM data message with no notification block,
+	 * so the app draws its own UI (a ringing screen) instead of the system drawing a banner;
+	 * see push.NativeMessage.DataOnly. Browsers ignore DataOnly: the service worker always
+	 * decides what to show. */
+	Data     map[string]string
+	DataOnly bool
 }
 
 func (m PushMessage) args() []any {
@@ -252,24 +261,31 @@ func (m PushMessage) args() []any {
 	if url == "" {
 		url = "/"
 	}
-	return []any{string(m.Kind), m.Title, m.Body, url, m.Tag, urgency, int(m.TTL / time.Second), dedupe, due}
+	var data []byte
+	if len(m.Data) > 0 {
+		data, _ = json.Marshal(m.Data)
+	}
+	return []any{string(m.Kind), m.Title, m.Body, url, m.Tag, urgency, int(m.TTL / time.Second), dedupe, due,
+		data, m.DataOnly}
 }
 
-// The INSERT both fan-outs end in. $1..$9 are PushMessage.args; the source provides sid and
+// The INSERT both fan-outs end in. $1..$11 are PushMessage.args; the source provides sid and
 // join_key (empty when there is none to put in the URL).
 const pushInsertSQL = `
-	INSERT INTO push_messages (subscription_id, kind, title, body, url, tag, urgency, ttl_sec, dedupe_key, due_at)
+	INSERT INTO push_messages (subscription_id, kind, title, body, url, tag, urgency, ttl_sec, dedupe_key, due_at,
+	                           data, data_only)
 	SELECT DISTINCT ON (t.sid) t.sid, $1, $2, $3, replace($4, '{joinKey}', t.join_key), $5, $6, $7, $8,
-	       coalesce($9::timestamptz, now())
+	       coalesce($9::timestamptz, now()), $10::jsonb, $11
 	  FROM targets t
 	 ORDER BY t.sid
 	ON CONFLICT (subscription_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`
 
 // The same for app installs: the source provides tid (a native_push_tokens id) and join_key.
 const pushNativeInsertSQL = `
-	INSERT INTO push_messages (native_token_id, kind, title, body, url, tag, urgency, ttl_sec, dedupe_key, due_at)
+	INSERT INTO push_messages (native_token_id, kind, title, body, url, tag, urgency, ttl_sec, dedupe_key, due_at,
+	                           data, data_only)
 	SELECT DISTINCT ON (t.tid) t.tid, $1, $2, $3, replace($4, '{joinKey}', t.join_key), $5, $6, $7, $8,
-	       coalesce($9::timestamptz, now())
+	       coalesce($9::timestamptz, now()), $10::jsonb, $11
 	  FROM targets t
 	 ORDER BY t.tid
 	ON CONFLICT (native_token_id, dedupe_key) WHERE dedupe_key IS NOT NULL AND native_token_id IS NOT NULL DO NOTHING`
@@ -297,8 +313,8 @@ func (s *Store) QueuePushToRegistrants(ctx context.Context, slug string, registr
 		WITH regs AS (
 		    SELECT r.id, r.user_id, r.join_key
 		      FROM registrations r JOIN webinars w ON w.id = r.webinar_id
-		     WHERE w.slug = $10 AND ` + pushReachableReg + `
-		       AND ($11::uuid[] IS NULL OR r.id = ANY($11::uuid[]))
+		     WHERE w.slug = $12 AND ` + pushReachableReg + `
+		       AND ($13::uuid[] IS NULL OR r.id = ANY($13::uuid[]))
 		)`
 	total := 0
 	if !m.NoWeb {
@@ -345,7 +361,7 @@ func (s *Store) QueuePushToUsers(ctx context.Context, userIDs []string, m PushMe
 			WITH targets AS (
 			    SELECT ps.id AS sid, ''::text AS join_key
 			      FROM push_subscriptions ps
-			     WHERE ps.user_id = ANY($10::uuid[])
+			     WHERE ps.user_id = ANY($12::uuid[])
 			       AND ($1 = 'test' OR NOT EXISTS (SELECT 1 FROM push_preferences p
 			                        WHERE p.user_id = ps.user_id AND p.kind = $1 AND NOT p.enabled))
 			)`+pushInsertSQL, args...)
@@ -359,7 +375,7 @@ func (s *Store) QueuePushToUsers(ctx context.Context, userIDs []string, m PushMe
 			WITH targets AS (
 			    SELECT t.id AS tid, ''::text AS join_key
 			      FROM native_push_tokens t
-			     WHERE t.user_id = ANY($10::uuid[])
+			     WHERE t.user_id = ANY($12::uuid[])
 			       AND ($1 = 'test' OR NOT EXISTS (SELECT 1 FROM push_preferences p
 			                        WHERE p.user_id = t.user_id AND p.kind = $1 AND NOT p.enabled))
 			)`+pushNativeInsertSQL, args...)
@@ -429,6 +445,9 @@ type ClaimedPush struct {
 	// TTL is what is left of the message's time to live.
 	TTL      time.Duration
 	Attempts int
+	// Data and DataOnly are PushMessage's (31 Oct 2026).
+	Data     map[string]string
+	DataOnly bool
 }
 
 /* ClaimDuePush takes up to limit due messages for sending, high urgency first.
@@ -461,7 +480,7 @@ func (s *Store) ClaimDuePush(ctx context.Context, limit int) ([]ClaimedPush, err
 		RETURNING m.id::text, m.subscription_id::text, ps.endpoint, ps.p256dh, ps.auth,
 		          m.kind, m.title, m.body, m.url, m.tag, m.urgency,
 		          greatest(0, extract(epoch FROM m.due_at + make_interval(secs => m.ttl_sec) - now()))::int,
-		          m.attempts`, limit)
+		          m.attempts, m.data, m.data_only`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -471,15 +490,29 @@ func (s *Store) ClaimDuePush(ctx context.Context, limit int) ([]ClaimedPush, err
 		var c ClaimedPush
 		var kind string
 		var ttl int
+		var data []byte
 		if err := rows.Scan(&c.ID, &c.SubscriptionID, &c.Endpoint, &c.P256dh, &c.Auth,
-			&kind, &c.Title, &c.Body, &c.URL, &c.Tag, &c.Urgency, &ttl, &c.Attempts); err != nil {
+			&kind, &c.Title, &c.Body, &c.URL, &c.Tag, &c.Urgency, &ttl, &c.Attempts, &data, &c.DataOnly); err != nil {
 			return nil, err
 		}
+		c.Data = pushData(data)
 		c.Kind = types.PushKind(kind)
 		c.TTL = time.Duration(ttl) * time.Second
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// pushData reads push_messages.data: a JSON object of strings, or nothing.
+func pushData(raw []byte) map[string]string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var out map[string]string
+	if json.Unmarshal(raw, &out) != nil {
+		return nil
+	}
+	return out
 }
 
 // PushSent records a delivery: the message is done and the endpoint is healthy again.
