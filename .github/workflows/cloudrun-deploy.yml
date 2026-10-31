@@ -58,14 +58,16 @@
 #   VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT — optional; Web Push (install the app,
 #     "notify me when it starts"). All three or none: the API refuses a partial set. Generate the
 #     pair with `npx web-push generate-vapid-keys`; the subject is mailto:you@domain.
-#   APNS_KEY_P8 / APNS_KEY_ID / APNS_TEAM_ID — optional; direct APNs for iPhone VoIP
-#     (CallKit). Same AuthKey_XXXX.p8 as the APNs key uploaded to Firebase. Team ID is
-#     GF5C6XT5S4. All three or none.
 #   FCM_SERVICE_ACCOUNT_JSON — optional; native push to the Android and iOS apps through Firebase
 #     Cloud Messaging (api/internal/push/fcm.go). A Firebase service account's JSON key, as is or
 #     base64. Optional since the FCM_PROJECT_ID variable (29 Oct 2026), which needs no key; this
 #     wins when both are set. Neither, the apps' tokens are stored and nothing is sent to them
 #     (apps/mobile/README.md).
+#   APNS_KEY_P8 / APNS_KEY_ID / APNS_TEAM_ID / APNS_ENV — optional (31 Oct 2026); iOS VoIP pushes
+#     that ring the app for an incoming call, straight to APNs (api/internal/push/apns_voip.go).
+#     The APNs auth key (.p8, PEM or base64; the same key uploaded into Firebase works), its
+#     10-character key ID, the team ID GF5C6XT5S4, and production (default) or sandbox. The first
+#     three together or none; unset, iOS calls do not ring (Android rings through FCM).
 #   META_WEBHOOK_VERIFY_TOKEN — must match the Verify token on the Meta app's
 #     WhatsApp webhook, whose callback is {API}/api/webhooks/whatsapp
 #   ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET / ZOOM_REDIRECT_URL / ZOOM_TOKEN_KEY —
@@ -258,10 +260,11 @@ jobs:
       FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
       # Or no key: the Cloud Run identity's token from the metadata server (29 Oct 2026).
       FCM_PROJECT_ID: ${{ vars.FCM_PROJECT_ID }}
-      # Direct APNs for iPhone VoIP / CallKit (same .p8 as Firebase alert push).
+      # iOS VoIP push for incoming calls, straight to APNs (31 Oct 2026). Optional; unset, off.
       APNS_KEY_P8: ${{ secrets.APNS_KEY_P8 }}
       APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
       APNS_TEAM_ID: ${{ secrets.APNS_TEAM_ID }}
+      APNS_ENV: ${{ secrets.APNS_ENV }}
       CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
       WEB_BASE_URL: ${{ secrets.WEB_BASE_URL }}
       APP_NAME: ${{ vars.APP_NAME }}

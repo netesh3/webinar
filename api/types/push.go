@@ -125,9 +125,11 @@ type PushPayload struct {
  * hands over its FCM registration token for the signed-in account. Sent after the app gets a
  * token, again on sign-in, and whenever Firebase rotates the token. */
 type NativePushRegisterRequest struct {
-	// Platform is "ios" or "android".
+	// Platform is "ios" or "android", or "ios_voip" for the iOS app's PushKit token, which is
+	// only ever sent incoming calls, straight through APNs (31 Oct 2026).
 	Platform string `json:"platform"`
-	// Token is the FCM registration token (on iOS too: Firebase maps it to the APNs token).
+	// Token is the FCM registration token (on iOS too: Firebase maps it to the APNs token), or
+	// the hex PushKit token for "ios_voip".
 	Token string `json:"token"`
 	// AppVersion is the app's version string, for support. Optional.
 	AppVersion string `json:"appVersion,omitempty"`

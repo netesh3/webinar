@@ -138,6 +138,15 @@ type MessagingPlugin = {
 type BrowserPlugin = { close: () => Promise<void> };
 type KeepAwakePlugin = { keepAwake: () => Promise<void>; allowSleep: () => Promise<void> };
 type CallQosPlugin = { setActive: (o: { on: boolean }) => Promise<void> };
+/* Incoming calls (31 Oct 2026; apps/mobile CallRingingPlugin.swift / .java). The ringing is
+ * native; the page sends the iOS VoIP token to the API, loads an answered call's joinUrl, and
+ * on Android 14+ asks once for the full-screen permission that lets a call take the lock screen. */
+type CallRingingPlugin = {
+  getVoipToken?: () => Promise<{ token?: string }>;
+  fullScreenIntent?: () => Promise<{ granted?: boolean; settings?: boolean }>;
+  openFullScreenSettings?: () => Promise<void>;
+  addListener: (event: string, fn: (data: never) => void) => Promise<Listener>;
+};
 
 const LAUNCH_KEY = "webinarliv.native.launchUrl";
 const LAST_OPEN_KEY = "webinarliv.native.lastOpen";
@@ -242,6 +251,10 @@ const PUSH_ASKED_KEY = "webinarliv.native.pushAsked";
 const PUSH_TOKEN_KEY = "webinarliv.native.pushToken";
 /** What the API last accepted: {token, user, at}. */
 const PUSH_SYNCED_KEY = "webinarliv.native.pushSynced";
+/** The iOS install's PushKit token, and what the API last accepted of it (31 Oct 2026). */
+const VOIP_TOKEN_KEY = "webinarliv.native.voipToken";
+const VOIP_SYNCED_KEY = "webinarliv.native.voipSynced";
+const FSI_ASKED_KEY = "webinarliv.native.fullScreenAsked";
 /** Re-send a token the API already has once a day, so a lost row heals by itself. */
 const PUSH_RESYNC_MS = 24 * 60 * 60_000;
 
@@ -278,13 +291,20 @@ async function appVersion(): Promise<string> {
   }
 }
 
-/** Hands the install's token to the API for the signed-in account (POST /api/push/native). */
+/** Hands the install's tokens to the API for the signed-in account (POST /api/push/native):
+ *  the FCM token, and on iOS the VoIP token as platform ios_voip. */
 async function syncPushToken(): Promise<void> {
-  const user = signedInUser;
-  const token = localStorage.getItem(PUSH_TOKEN_KEY) ?? "";
   const platform = cap()?.getPlatform?.();
-  if (!user || !token || (platform !== "ios" && platform !== "android")) return;
-  if (!pushNeedsSync(readJSON(PUSH_SYNCED_KEY), token, user, Date.now())) return;
+  if (platform !== "ios" && platform !== "android") return;
+  await syncOneToken(platform, PUSH_TOKEN_KEY, PUSH_SYNCED_KEY);
+  if (platform === "ios") await syncOneToken("ios_voip", VOIP_TOKEN_KEY, VOIP_SYNCED_KEY);
+}
+
+async function syncOneToken(platform: string, tokenKey: string, syncedKey: string): Promise<void> {
+  const user = signedInUser;
+  const token = localStorage.getItem(tokenKey) ?? "";
+  if (!user || !token) return;
+  if (!pushNeedsSync(readJSON(syncedKey), token, user, Date.now())) return;
   try {
     const res = await fetch("/api/push/native", {
       method: "POST",
@@ -293,7 +313,7 @@ async function syncPushToken(): Promise<void> {
       body: JSON.stringify({ platform, token, appVersion: await appVersion() }),
     });
     if (res.ok) {
-      localStorage.setItem(PUSH_SYNCED_KEY, JSON.stringify({ token, user, at: Date.now() }));
+      localStorage.setItem(syncedKey, JSON.stringify({ token, user, at: Date.now() }));
     }
   } catch {
     // Offline: the next page load tries again.
@@ -316,26 +336,61 @@ export function setNativeSessionUser(userID: string | null): void {
  *  which needs the session that is about to end). No-op outside the app or without a token. */
 export async function unregisterNativePush(): Promise<void> {
   if (!isNativeApp()) return;
-  const token = localStorage.getItem(PUSH_TOKEN_KEY) ?? "";
+  const tokens = [PUSH_TOKEN_KEY, VOIP_TOKEN_KEY]
+    .map((k) => localStorage.getItem(k) ?? "")
+    .filter(Boolean);
   localStorage.removeItem(PUSH_SYNCED_KEY);
+  localStorage.removeItem(VOIP_SYNCED_KEY);
   signedInUser = null;
-  if (!token) return;
-  try {
-    await fetch("/api/push/native", {
-      method: "DELETE",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
-  } catch {
-    // Signed out anyway; the token moves to whoever signs in next on this install.
+  for (const token of tokens) {
+    try {
+      await fetch("/api/push/native", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+    } catch {
+      // Signed out anyway; the token moves to whoever signs in next on this install.
+    }
   }
 }
 
-function keepToken(token: string | undefined): void {
+function keepToken(token: string | undefined, key = PUSH_TOKEN_KEY): void {
   if (!token) return;
-  localStorage.setItem(PUSH_TOKEN_KEY, token);
+  localStorage.setItem(key, token);
   syncSoon();
+}
+
+/** Incoming calls (31 Oct 2026): the iOS VoIP token, an answered call's meeting, and on
+ *  Android 14+ one ask for the full-screen permission (without it a call still rings, as a
+ *  heads-up notification rather than over the lock screen). */
+async function wireCalls(): Promise<Listener[]> {
+  const calls = plugin("CallRinging") as unknown as CallRingingPlugin | null;
+  if (!calls) return [];
+  const listeners = await Promise.all([
+    calls.addListener("callAccepted", (e: { joinUrl?: string }) => {
+      if (e.joinUrl) open(e.joinUrl);
+    }),
+    calls.addListener("voipToken", (e: { token?: string }) => {
+      if (e.token) keepToken(e.token, VOIP_TOKEN_KEY);
+      else localStorage.removeItem(VOIP_TOKEN_KEY);
+    }),
+  ]);
+  try {
+    const voip = await calls.getVoipToken?.();
+    if (voip?.token) keepToken(voip.token, VOIP_TOKEN_KEY);
+    const fsi = await calls.fullScreenIntent?.();
+    if (fsi && fsi.granted === false && fsi.settings && !localStorage.getItem(FSI_ASKED_KEY)) {
+      localStorage.setItem(FSI_ASKED_KEY, "1");
+      if (window.confirm("To ring over the lock screen when somebody calls you, allow full-screen notifications for Webinar Liv. Open settings?")) {
+        await calls.openFullScreenSettings?.();
+      }
+    }
+  } catch (err) {
+    console.warn("[webinarliv-app] calls unavailable:", err);
+  }
+  return listeners;
 }
 
 /** Native push through Firebase Cloud Messaging: asks once, gets the install's FCM token,
@@ -408,7 +463,7 @@ export function startNativeBridge(): () => void {
   document.documentElement.dataset.nativeApp = cap()?.getPlatform?.() ?? "native";
   wireShare();
   const unwireClicks = wireInAppClicks();
-  const pending: Promise<Listener | Listener[] | null>[] = [wireDeepLinks(), wirePush(), wireBackButton()];
+  const pending: Promise<Listener | Listener[] | null>[] = [wireDeepLinks(), wirePush(), wireBackButton(), wireCalls()];
   return () => {
     unwireClicks();
     for (const p of pending) {

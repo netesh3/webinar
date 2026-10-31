@@ -161,6 +161,10 @@ type Server struct {
 	// background tracks after-response work (the welcome email's send). See inBackground.
 	background sync.WaitGroup
 
+	// voip rings the iOS app for an incoming call through APNs (push_voip.go); nil when the
+	// APNS_* key is unset. (31 Oct 2026)
+	voip *push.VoIPSender
+
 	// engage is the WhatsApp CRM, or NoEngage. See engage.go; set by UseEngage.
 	engage Engage
 

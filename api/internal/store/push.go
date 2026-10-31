@@ -168,12 +168,12 @@ func (s *Store) RemovePushSubscription(ctx context.Context, endpoint, userID, re
 }
 
 // PushDeviceCount is how many browsers, and app installs (native_push_tokens), an account is
-// subscribed on.
+// subscribed on. An iOS install's VoIP token is the same phone as its FCM token: not counted.
 func (s *Store) PushDeviceCount(ctx context.Context, userID string) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx, `
 		SELECT (SELECT count(*) FROM push_subscriptions WHERE user_id = $1)
-		     + (SELECT count(*) FROM native_push_tokens WHERE user_id = $1)`, userID).Scan(&n)
+		     + (SELECT count(*) FROM native_push_tokens WHERE user_id = $1 AND platform <> 'ios_voip')`, userID).Scan(&n)
 	return n, err
 }
 
@@ -336,7 +336,7 @@ func (s *Store) QueuePushToRegistrants(ctx context.Context, slug string, registr
 		// An app install is always an account's, so only the account half applies.
 		tag, err := s.pool.Exec(ctx, regs+`, targets AS (
 		    SELECT t.id AS tid, regs.join_key
-		      FROM regs JOIN native_push_tokens t ON t.user_id = regs.user_id
+		      FROM regs JOIN native_push_tokens t ON t.user_id = regs.user_id AND t.platform <> 'ios_voip'
 		     WHERE NOT EXISTS (SELECT 1 FROM push_preferences p
 		                        WHERE p.user_id = regs.user_id AND p.kind = $1 AND NOT p.enabled)
 		)`+pushNativeInsertSQL, args...)
@@ -375,7 +375,7 @@ func (s *Store) QueuePushToUsers(ctx context.Context, userIDs []string, m PushMe
 			WITH targets AS (
 			    SELECT t.id AS tid, ''::text AS join_key
 			      FROM native_push_tokens t
-			     WHERE t.user_id = ANY($12::uuid[])
+			     WHERE t.user_id = ANY($12::uuid[]) AND t.platform <> 'ios_voip'
 			       AND ($1 = 'test' OR NOT EXISTS (SELECT 1 FROM push_preferences p
 			                        WHERE p.user_id = t.user_id AND p.kind = $1 AND NOT p.enabled))
 			)`+pushNativeInsertSQL, args...)
@@ -409,7 +409,7 @@ func (s *Store) DuePushReminders(ctx context.Context, window time.Duration) ([]P
 		          WHERE r.webinar_id = w.id AND `+pushReachableReg+`
 		            AND (EXISTS (SELECT 1 FROM push_subscription_registrations l WHERE l.registration_id = r.id)
 		                 OR EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = r.user_id)
-		                 OR EXISTS (SELECT 1 FROM native_push_tokens t WHERE t.user_id = r.user_id)))
+		                 OR EXISTS (SELECT 1 FROM native_push_tokens t WHERE t.user_id = r.user_id AND t.platform <> 'ios_voip')))
 		 ORDER BY w.starts_at
 		 LIMIT 200`, window.Seconds())
 	if err != nil {

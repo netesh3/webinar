@@ -165,3 +165,39 @@ func (s *Store) NativePushFailures(ctx context.Context, tokenID string) (int, er
 	}
 	return n, err
 }
+
+// VoIPToken is one iOS install's PushKit token (platform 'ios_voip', 31 Oct 2026).
+type VoIPToken struct {
+	ID    string
+	Token string
+}
+
+/* NativeVoIPTokens lists an account's iOS VoIP tokens, newest first, for ringing an incoming
+ * call (api/push_voip.go). The outbox never sends to these (migrations/0176). */
+func (s *Store) NativeVoIPTokens(ctx context.Context, userID string) ([]VoIPToken, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::text, token FROM native_push_tokens
+		 WHERE user_id = $1::uuid AND platform = 'ios_voip'
+		 ORDER BY updated_at DESC
+		 LIMIT 20`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []VoIPToken
+	for rows.Next() {
+		var t VoIPToken
+		if err := rows.Scan(&t.ID, &t.Token); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// NativeVoIPSent records that APNs took a call push for this token.
+func (s *Store) NativeVoIPSent(ctx context.Context, tokenID string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE native_push_tokens SET last_ok_at = now(), failures = 0 WHERE id = $1`, tokenID)
+	return err
+}

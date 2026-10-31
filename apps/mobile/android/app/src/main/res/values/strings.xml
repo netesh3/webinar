@@ -6,4 +6,12 @@
     <string name="custom_url_scheme">com.webinarliv.app</string>
     <string name="call_qos_channel">Live session</string>
     <string name="call_qos_notification">In a live webinar — tap to return</string>
+    <!-- Incoming calls (CallRinging.java; 31 Oct 2026). -->
+    <string name="call_channel">Incoming calls</string>
+    <string name="call_channel_description">Rings when somebody calls you on Webinar Liv</string>
+    <string name="call_unknown_caller">Webinar Liv call</string>
+    <string name="call_incoming_video">Incoming video call</string>
+    <string name="call_no_longer_ringing">That call has ended.</string>
+    <string name="call_accept">Accept</string>
+    <string name="call_decline">Decline</string>
 </resources>
