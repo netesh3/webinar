@@ -424,14 +424,74 @@ func (s *Store) ConvertPricingV3(ctx context.Context) error {
 // sold, with the grandfathered Starter last.
 var PlanTiers = []types.Plan{"", types.PlanBasic, types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise, types.PlanStarter}
 
+/* PricingGatesSQL tightens the tiers after 0179 (migrations/0180, 1 Nov 2026): server captions
+ * for Business, Enterprise and the grandfathered Starter only, cloud recording from Professional
+ * up, and the storage per plan. A subscriber keeps, as an override, a switch their tier gave
+ * them and their tier now leaves out.
+ *
+ * One shot: migrations/0180 runs it, and a store test checks this text still matches. Tests
+ * apply it to data written in the old shape. */
+const PricingGatesSQL = `CREATE TEMP TABLE pricing_gates_tiers (plan text, feature text, enabled boolean) ON COMMIT DROP;
+INSERT INTO pricing_gates_tiers (plan, feature, enabled) VALUES
+    ('',             'captions',        false),
+    ('basic',        'captions',        false),
+    ('professional', 'captions',        false),
+    ('business',     'captions',        true),
+    ('enterprise',   'captions',        true),
+    ('starter',      'captions',        true),
+    ('basic',        'cloud_recording', false),
+    ('professional', 'cloud_recording', true),
+    ('business',     'cloud_recording', true),
+    ('enterprise',   'cloud_recording', true);
+
+-- 1. A subscriber keeps what their tier gave them and their new tier does not, as an override.
+UPDATE users u
+   SET features = u.features || ARRAY(
+         SELECT pf.feature
+           FROM plan_features pf
+           JOIN pricing_gates_tiers t ON t.plan = pf.plan AND t.feature = pf.feature AND NOT t.enabled
+          WHERE pf.plan = effective_plan(u.id) AND pf.plan <> '' AND pf.enabled
+            AND NOT (pf.feature = ANY (u.features)) AND NOT (pf.feature = ANY (u.features_off))
+          ORDER BY pf.feature)
+ WHERE EXISTS (
+         SELECT 1
+           FROM plan_features pf
+           JOIN pricing_gates_tiers t ON t.plan = pf.plan AND t.feature = pf.feature AND NOT t.enabled
+          WHERE pf.plan = effective_plan(u.id) AND pf.plan <> '' AND pf.enabled
+            AND NOT (pf.feature = ANY (u.features)) AND NOT (pf.feature = ANY (u.features_off)));
+
+-- 2. The tiers.
+DELETE FROM plan_features pf
+ USING pricing_gates_tiers t
+ WHERE t.plan = pf.plan AND t.feature = pf.feature AND NOT t.enabled;
+INSERT INTO plan_features (plan, feature, enabled)
+SELECT plan, feature, true FROM pricing_gates_tiers WHERE enabled
+ON CONFLICT (plan, feature) DO UPDATE SET enabled = true;
+
+-- 3. Storage per plan. Starter and no plan are left as they are.
+INSERT INTO plan_limits (plan, limit_key, value) VALUES
+    ('basic',        'recording_storage_bytes', 2::bigint   * 1024 * 1024 * 1024),
+    ('professional', 'recording_storage_bytes', 10::bigint  * 1024 * 1024 * 1024),
+    ('business',     'recording_storage_bytes', 100::bigint * 1024 * 1024 * 1024),
+    ('enterprise',   'recording_storage_bytes', 500::bigint * 1024 * 1024 * 1024)
+ON CONFLICT (plan, limit_key) DO UPDATE SET value = EXCLUDED.value;`
+
+// ConvertPricingGates applies PricingGatesSQL. Tests only.
+func (s *Store) ConvertPricingGates(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, PricingGatesSQL)
+	return err
+}
+
 /* TierFeatures is what each plan on sale includes of the switches the pricing page sells, as
- * migrations/0179 set it (31 Oct 2026). An admin can still change a tier (PUT
- * /api/admin/plan-features) and any host's overrides; this is the launch matrix, which a test
- * checks against the migrated database and against the pricing page (web/lib/plans.ts
- * TIER_FEATURES). Switches outside TieredFeatures (whiteboard, meetings, captions) are on in
- * every tier and are not listed. */
+ * migrations/0179 and 0180 set it (31 Oct and 1 Nov 2026). An admin can still change a tier
+ * (PUT /api/admin/plan-features) and any host's overrides; this is the launch matrix, which a
+ * test checks against the migrated database and against the pricing page (web/lib/plans.ts
+ * TIER_FEATURES). Switches outside TieredFeatures (whiteboard, meetings) are on in every tier
+ * and are not listed. 0180 made captions a tiered one (Business and up) and moved cloud
+ * recording to Professional and up. */
 var TierFeatures = map[types.Plan][]string{
-	types.PlanBasic:        {types.FeatureCloudRecording},
+	// Basic sells none of the tiered switches (cloud recording left it in 0180).
+	types.PlanBasic:        {},
 	types.PlanProfessional: {types.FeatureCloudRecording, types.FeatureWhatsAppCRM},
 	types.PlanBusiness:     businessTierFeatures,
 	types.PlanEnterprise:   businessTierFeatures,
@@ -440,8 +500,11 @@ var TierFeatures = map[types.Plan][]string{
 var businessTierFeatures = []string{
 	types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureSimulive, types.FeatureReplayEngage,
 	types.FeatureZoom, types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,
-	types.FeatureFollowupSend, types.FeatureRepurpose,
+	types.FeatureFollowupSend, types.FeatureRepurpose, types.FeatureCaptions,
 }
+
+// PricingV3Features is the switches migrations/0179 set: TieredFeatures but captions (0180).
+var PricingV3Features = businessTierFeatures[:len(businessTierFeatures)-1]
 
 // TieredFeatures is every switch TierFeatures decides: the ones the plans on sale differ by.
 var TieredFeatures = businessTierFeatures

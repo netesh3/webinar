@@ -141,14 +141,14 @@ func TestRecordingQuotaByPlanAndOverride(t *testing.T) {
 		trial bool
 		want  int64
 	}{
-		// 31 Oct 2026 (migrations/0179): the ids moved up, and their storage with them.
+		// migrations/0179 moved the ids up with their storage; 0180 (1 Nov 2026) set the plans on sale.
 		{"", false, 2 * gib},
-		{types.PlanBasic, false, 5 * gib},
+		{types.PlanBasic, false, 2 * gib},
 		{types.PlanStarter, false, 10 * gib},
-		{types.PlanProfessional, false, 50 * gib},
-		{types.PlanBusiness, false, 200 * gib},
+		{types.PlanProfessional, false, 10 * gib},
+		{types.PlanBusiness, false, 100 * gib},
 		{types.PlanEnterprise, false, 500 * gib},
-		{types.PlanBusiness, true, 50 * gib}, // a trial is Professional
+		{types.PlanBusiness, true, 10 * gib}, // a trial is Professional
 	}
 	for _, c := range cases {
 		if _, err := h.store.SetUserPlan(ctx, host.ID, c.plan); err != nil {

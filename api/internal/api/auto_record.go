@@ -145,6 +145,12 @@ func (s *Server) maybeAutoRecord(ctx context.Context, slug string) bool {
 			markAutoRecordDone(slug)
 			return false
 		}
+		if errors.Is(err, errStorageFull) {
+			// The host's storage is full (1 Nov 2026): not retried, it would only fail again.
+			s.log.Info("auto record: storage full, not recording", "slug", wb.ID, "host", wb.Host.ID)
+			markAutoRecordDone(slug)
+			return false
+		}
 		s.log.Warn("auto record: could not start; retrying later", "slug", wb.ID, "error", err)
 		if relErr := s.store.ReleaseAutoRecording(ctx, wb.ID, id); relErr != nil {
 			s.log.Warn("auto record: release claim", "slug", wb.ID, "error", relErr)

@@ -43,7 +43,7 @@ func (s *Server) billingCatalogue() types.BillingCatalogue {
 	for _, p := range onSale {
 		bp := types.BillingPlan{
 			ID: string(p.ID), Name: p.Name, Who: p.Who, Attendees: p.Attendees(), Stage: p.StageSeats(),
-			Features: p.AllFeatures(), Popular: p.Popular, ContactOnly: p.ContactOnly,
+			Lead: p.Lead, Features: p.AllFeatures(), Popular: p.Popular, ContactOnly: p.ContactOnly,
 			Prices: []types.BillingPrice{},
 		}
 		if !p.ContactOnly {

@@ -25,7 +25,17 @@ import (
 
 // connectWhatsApp completes the callback the Embedded Signup dialog would have
 // finished, which is what makes the host's number route and their sends billable.
+/* connectWhatsApp connects the signed-in host's WhatsApp, and gives them WhatsApp the way a
+ * Professional plan does (whatsapp_crm): since 1 Nov 2026 nothing is sent on WhatsApp without
+ * it. A test of a host without it uses connectWhatsAppOnly. */
 func connectWhatsApp(t *testing.T, h *harness) {
+	t.Helper()
+	connectWhatsAppOnly(t, h)
+	forceFeature(t, h, h.me().ID, types.FeatureWhatsAppCRM, true)
+}
+
+// connectWhatsAppOnly connects WhatsApp and changes nothing else about the host.
+func connectWhatsAppOnly(t *testing.T, h *harness) {
 	t.Helper()
 	res, raw := h.do(http.MethodPost, "/api/host/whatsapp/callback", types.WhatsAppCallbackRequest{
 		Code: "code-from-dialog", WABAID: testMetaWABAID, PhoneNumberID: testMetaPhoneID,
@@ -195,10 +205,15 @@ func TestCRMSendRefusals(t *testing.T) {
 	wb := autoWebinar(t, h, "Refusing to send")
 	contact := registerOptedIn(t, h, wb.ID)
 
+	// Without WhatsApp on the plan (Professional and up, 1 Nov 2026) nothing is sent.
+	send := types.CRMSendRequest{Template: testTemplateUtility, Language: "en_US", Params: []string{"T"}}
+	res, raw := h.do(http.MethodPost, "/api/host/crm/contacts/"+contact.ID+"/send", send)
+	h.wantError(res, raw, http.StatusForbidden, "whatsapp_plan")
+	forceFeature(t, h, h.me().ID, types.FeatureWhatsAppCRM, true)
+
 	// Before connecting, nothing can be sent by anybody — and the message says which
 	// of the three possible problems it is.
-	res, raw := h.do(http.MethodPost, "/api/host/crm/contacts/"+contact.ID+"/send",
-		types.CRMSendRequest{Template: testTemplateUtility, Language: "en_US", Params: []string{"T"}})
+	res, raw = h.do(http.MethodPost, "/api/host/crm/contacts/"+contact.ID+"/send", send)
 	if res.StatusCode != http.StatusUnprocessableEntity || errorCode(t, raw) != "whatsapp_not_connected" {
 		t.Fatalf("not connected: status %d code %q body %s", res.StatusCode, errorCode(t, raw), raw)
 	}
@@ -312,6 +327,7 @@ func TestCRMSendRefusals(t *testing.T) {
 	// And another host's contact id is a 404, not a refusal that confirms it exists.
 	h.logout()
 	h.login("lucia@cabify.com")
+	forceFeature(t, h, h.me().ID, types.FeatureWhatsAppCRM, true)
 	res, raw = h.do(http.MethodPost, "/api/host/crm/contacts/"+contact.ID+"/send",
 		types.CRMSendRequest{Template: testTemplateUtility, Language: "en_US", Params: []string{"T"}})
 	if res.StatusCode != http.StatusNotFound {

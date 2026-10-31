@@ -189,6 +189,10 @@ func (s *Module) handleSetCRMReminders(w http.ResponseWriter, r *http.Request) {
 			// Off. Recorded by being absent, so "not configured" is one state.
 			continue
 		}
+		// WhatsApp reminders are sold from Professional up (1 Nov 2026).
+		if !whatsAppPlanAllowed(w, user) {
+			return
+		}
 		if user.WhatsAppToken == "" {
 			httpx.Error(w, http.StatusUnprocessableEntity, "whatsapp_not_connected",
 				"Connect your WhatsApp Business account before choosing templates.")

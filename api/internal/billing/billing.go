@@ -57,9 +57,14 @@ type Plan struct {
 	ID   types.Plan
 	Name string
 	Who  string
-	// Features after the attendee and stage lines, which AllFeatures supplies.
+	/* Lead is the card's bold first line, before the limits: "Everything in Basic, plus:", and
+	 * "Includes:" on the first plan (1 Nov 2026, in the style of zoom.us/pricing). */
+	Lead string
+	// Features are what the plan adds, after the limit lines AllFeatures supplies.
 	Features []string
-	Popular  bool
+	// StorageGB is the plan's storage (plan_limits recording_storage_bytes, migrations/0180).
+	StorageGB int
+	Popular   bool
 	// Monthly price per currency, minor units. Yearly is about ten times this; see yearly.
 	Monthly map[string]int64
 	/* ListMonthly is the monthly list price the real one is shown against, struck through,
@@ -110,8 +115,12 @@ func (p Plan) Attendees() int { return types.PlanAttendeeCap(p.ID) }
 // StageSeats is the plan's enforced cap on people on stage at once, the host included.
 func (p Plan) StageSeats() int { return types.PlanStageCap(p.ID) }
 
-// AllFeatures is the pricing page's list: the attendee and stage caps first, then the rest.
-// A contact-only plan's attendee cap is where it starts ("1,000+ attendees").
+// MeetingSeats is the plan's enforced meeting size, the host included.
+func (p Plan) MeetingSeats() int { return types.PlanMeetingCap(p.ID) }
+
+/* AllFeatures is the pricing page's list after the Lead: the attendee, stage and meeting caps
+ * and the storage, then what the plan adds. A contact-only plan's attendee cap is where it
+ * starts ("1,000+ attendees"). web/lib/plans.ts cardLines writes the same lines. */
 func (p Plan) AllFeatures() []string {
 	attendees := fmt.Sprintf("Up to %s attendees", thousands(p.Attendees()))
 	if p.ContactOnly {
@@ -120,7 +129,18 @@ func (p Plan) AllFeatures() []string {
 	return append([]string{
 		attendees,
 		fmt.Sprintf("Up to %s people on stage", thousands(p.StageSeats())),
+		fmt.Sprintf("Meetings of up to %s people", thousands(p.MeetingSeats())),
+		fmt.Sprintf("%s GB storage", thousands(p.StorageGB)),
 	}, p.Features...)
+}
+
+// Summary is the plan in one line, for the sales assistant: its lead and what it adds.
+func (p Plan) Summary() string {
+	adds := strings.Join(p.Features, "; ")
+	if strings.HasPrefix(p.Lead, "Everything in") {
+		return strings.TrimSuffix(p.Lead, ":") + " " + adds
+	}
+	return adds
 }
 
 // thousands writes 1000 as "1,000".
@@ -147,12 +167,14 @@ var Plans = []Plan{
 		ID:   types.PlanBasic,
 		Name: "Basic",
 		Who:  "For coaches running their first webinars",
+		Lead: "Includes:",
 		Features: []string{
 			"Webinars with registration pages",
-			"Email reminders before and follow-ups after",
+			"Email confirmations and reminders",
 			"Engagement for every attendee",
 			"Webinar Engagement Score",
 		},
+		StorageGB:   2,
 		Monthly:     map[string]int64{INR: 2_999_00, USD: 39_00},
 		ListMonthly: map[string]int64{INR: 7_499_00, USD: 99_00},
 	},
@@ -161,34 +183,43 @@ var Plans = []Plan{
 		Name:    "Professional",
 		Who:     "For coaches selling programs every week",
 		Popular: true,
+		Lead:    "Everything in Basic, plus:",
 		Features: []string{
-			"Everything in Basic",
+			"Cloud recording",
 			"WhatsApp automations and campaigns",
 			"WhatsApp follow-ups and scheduling",
 		},
-		Monthly: map[string]int64{INR: 9_999_00, USD: 149_00},
+		StorageGB: 10,
+		Monthly:   map[string]int64{INR: 9_999_00, USD: 149_00},
+		// 60% OFF, as on every paid plan (1 Nov 2026).
+		ListMonthly: map[string]int64{INR: 24_999_00, USD: 375_00},
 	},
 	{
 		ID:   types.PlanBusiness,
 		Name: "Business",
 		Who:  "For academies and teams with big launches",
+		Lead: "Everything in Professional, plus:",
 		Features: []string{
-			"Everything in Professional",
 			"Simulive: recordings played as live",
+			"Server live captions",
 			"AI recaps, knowledge base and follow-ups",
+			"Chat spam filter",
 			"Zoom and every advanced feature",
 		},
-		Monthly: map[string]int64{INR: 24_999_00, USD: 349_00},
+		StorageGB:   100,
+		Monthly:     map[string]int64{INR: 24_999_00, USD: 349_00},
+		ListMonthly: map[string]int64{INR: 62_499_00, USD: 875_00},
 	},
 	{
 		ID:   types.PlanEnterprise,
 		Name: "Enterprise",
 		Who:  "For institutions and very large audiences",
+		Lead: "Everything in Business, plus:",
 		Features: []string{
-			"Everything in Business",
 			"Customised for your organisation",
 			"Priority support and onboarding",
 		},
+		StorageGB: 500,
 		// Kept for an admin-assigned plan's records; never charged online.
 		Monthly:     map[string]int64{INR: 39_999_00, USD: 499_00},
 		ContactOnly: true,
@@ -199,13 +230,15 @@ var Plans = []Plan{
 		ID:   types.PlanStarter,
 		Name: "Starter",
 		Who:  "For coaches and consultants",
+		Lead: "Includes:",
 		Features: []string{
 			"Registration pages & email reminders",
 			"Polls, quizzes, Q&A and recording",
 			"Engagement Score",
 		},
-		Monthly: map[string]int64{INR: 3_999_00, USD: 49_00},
-		Retired: true,
+		StorageGB: 10,
+		Monthly:   map[string]int64{INR: 3_999_00, USD: 49_00},
+		Retired:   true,
 	},
 }
 

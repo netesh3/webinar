@@ -1,18 +1,21 @@
 # Pricing proposal (2026-10-24)
 
-> **Superseded on 31 Oct 2026 by the owner's lineup, now live** (`PLANS_STATUS = "live"`):
+> **Superseded on 31 Oct 2026 by the owner's lineup, now live** (`PLANS_STATUS = "live"`), with
+> the gates of 1 Nov 2026 (migrations/0180):
 >
 > | | Basic | Professional | Business | Enterprise |
 > |---|---|---|---|---|
-> | Monthly | ₹2,999 (list ₹7,499, 60% OFF) / $39 (list $99) | ₹9,999 / $149 | ₹24,999 / $349 | Contact us |
+> | Monthly (every paid plan 60% OFF its list) | ₹2,999 (list ₹7,499) / $39 (list $99) | ₹9,999 (list ₹24,999) / $149 (list $375) | ₹24,999 (list ₹62,499) / $349 (list $875) | Contact us |
 > | Yearly charge (unchanged rule) | ₹29,988 / $390 | ₹99,948 / $1,490 | ₹2,49,948 / $3,490 | — |
 > | Yearly list (charge ÷ 0.2, "80% OFF") | ₹1,49,940 / $1,950 | ₹4,99,740 / $7,450 | ₹12,49,740 / $17,450 | — |
-> | Attendees / stage | 100 / 3 | 300 / 5 | 500 / 10 | 1,000+ / 100 |
-> | Adds | webinars, email reminders and follow-ups, engagement, Engagement Score | WhatsApp automations, campaigns, follow-ups, scheduling | simulive, AI, Zoom, the rest | customisation |
+> | Attendees / stage / per meeting | 100 / 3 / 10 | 300 / 5 / 20 | 500 / 10 / 100 | 1,000+ / 100 / 300 |
+> | Storage (uploads and recordings) | 2 GB | 10 GB | 100 GB | 500 GB |
+> | Adds | webinars, email confirmations and reminders, engagement, Engagement Score; captions on the speaker's device; local recording | cloud recording, WhatsApp automations, campaigns, follow-ups, scheduling | simulive, server live captions, AI, chat spam filter, Zoom | customisation |
 >
-> Server: `billing.Plans`, `types.PlanAttendeeCap` / `PlanStageCap`, and migrations/0179 (plan ids
-> moved up one name, so the old Professional is the grandfathered `starter`; the tier matrix is
-> `store.TierFeatures`). Page: `web/lib/plans.ts`, held to the server by
+> Server: `billing.Plans`, `types.PlanAttendeeCap` / `PlanStageCap` / `PlanMeetingCap`,
+> migrations/0179 (plan ids moved up one name, so the old Professional is the grandfathered
+> `starter`) and 0180 (captions, cloud recording and storage by plan); the tier matrix is
+> `store.TierFeatures`. Page: `web/lib/plans.ts`, held to the server by
 > `api/internal/billing/web_plans_test.go`. Attendee-hours, AI credits and add-ons below were never
 > built and are not sold. The rest of this document is the 24 Oct proposal, kept for its costs.
 

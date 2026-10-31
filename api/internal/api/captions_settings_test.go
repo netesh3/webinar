@@ -52,6 +52,7 @@ func withCaptions(in *types.WebinarInput) { in.Options.Captions = true }
 func TestScheduledCaptionsUseTheServerWithAIOff(t *testing.T) {
 	h := newHarness(t, captionsConfig)
 	h.signup("Captions No AI", "capset-noai@test.dev", true)
+	serverCaptionsHost(t, h)
 
 	wb := h.liveWebinar("Captions without AI", withCaptions)
 	room := "webinar_" + wb.ID
@@ -105,6 +106,7 @@ func TestScheduledCaptionsFallBackOnDeviceWithoutTheFeature(t *testing.T) {
 func TestHostJoinRetriesAFailedCaptionDispatch(t *testing.T) {
 	h := newHarness(t, captionsConfig)
 	h.signup("Captions Retry", "capset-retry@test.dev", true)
+	serverCaptionsHost(t, h)
 	h.rooms.mu.Lock()
 	h.rooms.dispatchErr = errors.New("agent dispatch unavailable")
 	h.rooms.mu.Unlock()
@@ -132,6 +134,7 @@ func TestHostJoinRetriesAFailedCaptionDispatch(t *testing.T) {
 func TestUntickingLiveCaptionsTurnsThemOff(t *testing.T) {
 	h := newHarness(t, captionsConfig)
 	h.signup("Captions Edit", "capset-edit@test.dev", true)
+	serverCaptionsHost(t, h)
 
 	// Scheduled: the option and the control follow each other both ways.
 	wb := h.newWebinar("Captions edit", withCaptions)

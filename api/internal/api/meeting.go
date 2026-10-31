@@ -34,7 +34,7 @@ import (
  * the pending-registration mechanism manual approval already uses — see store/meeting_lobby.go
  * for why that, and not a table of its own.
  *
- * THE SIZE IS THE WHOLE ROOM. meetingCapForHost (10 by default, an admin up to 50) counts
+ * THE SIZE IS THE WHOLE ROOM. meetingCapForHost (the plan's, 10 to 300, or an admin's up to 300) counts
  * everyone present including the host, and it is checked twice: when the host admits (so the
  * host is told the meeting is full while they can still do something about it) and again when
  * the admitted guest actually joins (because admitting is not attending, and five admitted

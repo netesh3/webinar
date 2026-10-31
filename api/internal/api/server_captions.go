@@ -117,8 +117,12 @@ func (s *Server) handleHostServerCaptions(w http.ResponseWriter, r *http.Request
 			"A simulive shows its recording's own captions. There's nothing live to caption.")
 		return
 	}
-	// The host's switch (types.FeatureCaptions); the room falls back to on-device captions.
-	if req.On && !s.requireHostFeature(w, r, wb.Host.ID, types.FeatureCaptions) {
+	/* The host's switch (types.FeatureCaptions): Business and Enterprise since 1 Nov 2026
+	 * (migrations/0180). Without it the browser turns on captions made on each speaker's
+	 * device instead (caption-overlay.tsx), and says why with this message. */
+	if req.On && !s.hostHas(r.Context(), wb.Host.ID, types.FeatureCaptions) {
+		httpx.Error(w, http.StatusForbidden, "feature_off",
+			"Server captions are on the Business and Enterprise plans.")
 		return
 	}
 	dispatcher, ok := dispatcherFor(sfu)

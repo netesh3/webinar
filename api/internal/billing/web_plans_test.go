@@ -69,11 +69,16 @@ func TestWebPlansMatchTheServer(t *testing.T) {
 		if inr, usd, _ := money("list"); inr != p.ListMonthly[billing.INR] || usd != p.ListMonthly[billing.USD] {
 			t.Errorf("%s list: web ₹%d $%d, server ₹%d $%d", p.ID, inr/100, usd/100, p.ListMonthly[billing.INR]/100, p.ListMonthly[billing.USD]/100)
 		}
-		for key, want := range map[string]int{"attendees": p.Attendees(), "stage": p.StageSeats(), "meetingCap": types.PlanMeetingCap(p.ID)} {
+		for key, want := range map[string]int{
+			"attendees": p.Attendees(), "stage": p.StageSeats(), "meetingCap": p.MeetingSeats(), "recordingGb": p.StorageGB,
+		} {
 			m := reInt(key).FindStringSubmatch(b)
 			if m == nil || m[1] != strconv.Itoa(want) {
 				t.Errorf("%s %s: web %v, server %d", p.ID, key, m, want)
 			}
+		}
+		if !strings.Contains(b, "\n    lead: \""+p.Lead+"\",") {
+			t.Errorf("%s lead: web has none or another, server %q", p.ID, p.Lead)
 		}
 		h := b[strings.Index(b, "highlights: ["):]
 		h = h[:strings.Index(h, "]")]

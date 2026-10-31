@@ -277,6 +277,7 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
                     {cta === "trial" ? `Start ${catalogue?.trialDays}-day free trial` : `Buy ${plan.name}`}
                   </button>
                 )}
+                {plan.lead && <p className="plan-lead">{plan.lead}</p>}
                 <ul className="ticks">
                   {plan.features.map((feature) => (
                     <li key={feature}>{feature}</li>
@@ -287,8 +288,11 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
           })}
         </div>
 
-        <p className="pricing-foot">
-          <a href="#compare">Compare all features ↓</a>
+        <p className="pl-compare-cta">
+          {/* As prominent as the trial button (1 Nov 2026): the full table is the next question. */}
+          <a className="btn btn-primary btn-lg" href="#compare">
+            Compare all features ↓
+          </a>
         </p>
 
         <ol className="buy-steps reveal" aria-label="How buying works">
@@ -357,10 +361,10 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
 /* Rendered before the catalogue loads so the section has its shape. Names only —
  * the prices stay blank until the server's arrive. */
 const PLACEHOLDER_PLANS: BillingPlan[] = [
-  { id: "basic", name: "Basic", who: "For coaches running their first webinars", attendees: 0, stage: 0, features: [], prices: [] },
-  { id: "professional", name: "Professional", who: "For coaches selling programs every week", attendees: 0, stage: 0, features: [], prices: [], popular: true },
-  { id: "business", name: "Business", who: "For academies and teams with big launches", attendees: 0, stage: 0, features: [], prices: [] },
-  { id: "enterprise", name: "Enterprise", who: "For institutions and very large audiences", attendees: 0, stage: 0, features: [], prices: [] },
+  { id: "basic", name: "Basic", who: "For coaches running their first webinars", attendees: 0, stage: 0, lead: "", features: [], prices: [] },
+  { id: "professional", name: "Professional", who: "For coaches selling programs every week", attendees: 0, stage: 0, lead: "", features: [], prices: [], popular: true },
+  { id: "business", name: "Business", who: "For academies and teams with big launches", attendees: 0, stage: 0, lead: "", features: [], prices: [] },
+  { id: "enterprise", name: "Enterprise", who: "For institutions and very large audiences", attendees: 0, stage: 0, lead: "", features: [], prices: [] },
 ];
 
 // ------------------------------------------------------------------ free trial

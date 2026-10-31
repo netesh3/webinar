@@ -115,6 +115,11 @@ func (s *Server) spamCheck(ctx context.Context, wb types.Webinar, from wireSende
 	if from.Role != types.RoleAttendee || id == "" || text == "" {
 		return
 	}
+	/* (1 Nov 2026) The whole filter, rules included, is sold with AI on Business and up: a host
+	 * without the ai switch (from the plan or an admin) gets no filtering. Chat is unchanged. */
+	if !wb.Controls.AIAvailable {
+		return
+	}
 	prior := s.spamSession(wb.ID).history.observe(from.Identity, text, time.Now())
 	res := spamScore(text, st.AllowLinks, prior)
 	if res.Score < spamSuspectAt {

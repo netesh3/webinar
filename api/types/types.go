@@ -1438,9 +1438,10 @@ const (
 	 * Results. Needs FeatureAI. In Business and up (migrations/0179). Off: the drafts are
 	 * still written, to copy or export, and the send routes answer 403 feature_off. */
 	FeatureFollowupSend = "followup_send"
-	/* FeatureCaptions is live server captions in the room (the caption agent). ON by default
-	 * in every tier (migrations/0142). Off: turning server captions on is refused 403
-	 * feature_off and the room falls back to on-device captions in the browser. */
+	/* FeatureCaptions is live server captions in the room (the caption agent). In the Business,
+	 * Enterprise and grandfathered Starter tiers since 1 Nov 2026 (migrations/0180; every tier
+	 * had it from 0142). Off: turning server captions on is refused 403 feature_off and the
+	 * room falls back to captions made on each speaker's device, which every plan has. */
 	FeatureCaptions = "captions"
 	/* FeatureHLSDelivery puts this host's webinars on edge delivery on the GCP and DigitalOcean
 	 * video servers: the audience watches the HLS stream (~2–3 s behind) from the video server
@@ -1609,8 +1610,8 @@ var Features = []Feature{
 	},
 	{
 		Key:         FeatureCaptions,
-		Label:       "Server captions (English)",
-		Description: "Live English captions from the server's caption agent when the host turns captions on. On by default. Off falls back to captions on each speaker's device.",
+		Label:       "Server captions",
+		Description: "Live captions from the server's caption agent, in the webinar's captions language, when the host turns captions on. In Business and Enterprise (and the grandfathered Starter). Off falls back to captions made on each speaker's device.",
 		Group:       FeatureGroupDelivery,
 	},
 	// Integrations.
@@ -4145,8 +4146,9 @@ type SetUserMeetingCapRequest struct {
 	MeetingCap *int `json:"meetingCap"`
 }
 
-// MaxMeetingCapOverride is the most people an admin may allow in one account's meetings.
-const MaxMeetingCapOverride = 50
+// MaxMeetingCapOverride is the most people an admin may allow in one account's meetings:
+// Enterprise's (PlanMeetingCap), so an override can match it (1 Nov 2026; was 50).
+const MaxMeetingCapOverride = 300
 
 type SetUserMaxDurationRequest struct {
 	MaxDurationMin *int `json:"maxDurationMin"`
@@ -4227,13 +4229,23 @@ func PlanStageCap(p Plan) int {
 
 /* PlanMeetingCap is the most people in one meeting at once, host included, on a plan.
  *
- * The same on every plan for now: 10, with an admin raising a particular account up to
- * MaxMeetingCapOverride. Separate from PlanStageCap on purpose — a meeting is all stage, so its
- * size is the whole room, and webinars keep their own stage caps. In a meeting each person
- * downloads at most a page of grid tiles (180p past nine), so traffic grows with the room,
- * not with its square as a webinar stage's does. */
-func PlanMeetingCap(_ Plan) int {
-	return 10
+ * (1 Nov 2026) Per plan: Basic 10, Professional 20, Business 100, Enterprise 300; the
+ * grandfathered Starter and no plan keep 10. An admin can still set a particular account's,
+ * up to MaxMeetingCapOverride. Separate from PlanStageCap on purpose — a meeting is all stage,
+ * so its size is the whole room, and webinars keep their own stage caps. In a meeting each
+ * person downloads at most a page of grid tiles (180p past nine), so traffic grows with the
+ * room, not with its square as a webinar stage's does. */
+func PlanMeetingCap(p Plan) int {
+	switch p {
+	case PlanProfessional:
+		return 20
+	case PlanBusiness:
+		return 100
+	case PlanEnterprise:
+		return 300
+	default:
+		return 10
+	}
 }
 
 // Valid is true for a paid plan, the grandfathered Starter included.

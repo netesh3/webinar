@@ -86,6 +86,7 @@ func TestAISwitchKeepsATranscriptWithCaptionsHidden(t *testing.T) {
 	h := newHarness(t, captionsConfig)
 	email := "aisw-transcript@test.dev"
 	h.signup("AI Transcript Host", email, true)
+	serverCaptionsHost(t, h)
 	enableAI(t, h, email)
 	ctx := context.Background()
 

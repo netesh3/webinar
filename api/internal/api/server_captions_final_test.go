@@ -53,11 +53,13 @@ func TestCaptionDispatchMarksLoadTestsToSkipTheFinalPass(t *testing.T) {
 	ctx := context.Background()
 	// One live session per host: each webinar has its own, and each host turns captions on.
 	h.signup("Dispatch Host", "srvcap-skip@test.dev", true)
+	serverCaptionsHost(t, h)
 	real := h.liveWebinar("Real captions", nil)
 	if res, _, raw := h.setServerCaptions(real.ID, true); res.StatusCode != http.StatusOK {
 		t.Fatalf("captions on (real): %d %s", res.StatusCode, raw)
 	}
 	h.signup("Dispatch LT Host", "srvcap-skip-lt@loadtest.invalid", true)
+	serverCaptionsHost(t, h)
 	test := h.liveWebinar("Load test captions", nil)
 	if err := h.store.SetLoadTest(ctx, test.ID, 5, ""); err != nil {
 		t.Fatalf("mark load test: %v", err)

@@ -212,6 +212,10 @@ func (s *Store) PendingWhatsApp(ctx context.Context, limit int) ([]WhatsAppOutbo
 		   AND c.whatsapp_opt_in_at IS NOT NULL
 		   AND (c.whatsapp_opt_out_at IS NULL OR c.whatsapp_opt_in_at > c.whatsapp_opt_out_at)
 		   AND u.whatsapp_access_token <> '' AND u.whatsapp_phone_number_id <> ''
+		   /* WhatsApp is sold from Professional up (1 Nov 2026): a host without whatsapp_crm,
+		    * from their plan or an admin's override, sends nothing on WhatsApp. Left pending
+		    * like the rest, so an upgrade sends what is still due. */
+		   AND 'whatsapp_crm' = ANY (effective_features(effective_plan(u.id), u.features, u.features_off))
 		   AND (n.webinar_id IS NULL OR EXISTS (
 		         SELECT 1 FROM webinars w
 		          WHERE w.id = n.webinar_id

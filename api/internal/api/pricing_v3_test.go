@@ -31,18 +31,26 @@ func TestTierMatrixIsTheLaunchMatrix(t *testing.T) {
 				t.Errorf("%s includes %s = %v, want %v", plan, k, got, !got)
 			}
 		}
-		// The switches every tier has: whiteboard, meetings, captions.
-		for _, k := range []string{types.FeatureWhiteboard, types.FeatureMeetings, types.FeatureCaptions} {
+		// The switches every tier has: whiteboard and meetings.
+		for _, k := range []string{types.FeatureWhiteboard, types.FeatureMeetings} {
 			if !slices.Contains(byPlan[plan], k) {
 				t.Errorf("%s lost %s", plan, k)
 			}
 		}
 	}
-	// The grandfathered tier keeps what Professional had before (none of the new switches).
-	for _, k := range store.TieredFeatures {
+	// The grandfathered tier keeps what Professional had before: none of the new switches, and
+	// server captions, which it had from 0142 (migrations/0180 keeps them).
+	for _, k := range store.PricingV3Features {
 		if slices.Contains(byPlan[types.PlanStarter], k) {
 			t.Errorf("starter gained %s", k)
 		}
+	}
+	if !slices.Contains(byPlan[types.PlanStarter], types.FeatureCaptions) {
+		t.Error("starter lost server captions")
+	}
+	// No plan captions on each speaker's device (1 Nov 2026).
+	if slices.Contains(byPlan[""], types.FeatureCaptions) {
+		t.Error("no plan still has server captions")
 	}
 	for _, tier := range tiers {
 		for _, k := range []string{types.FeatureClips, types.FeatureInstantWebinar, types.FeatureHLSDelivery} {
@@ -63,9 +71,9 @@ func TestEntitlementsPerPlan(t *testing.T) {
 		attendees, stage, meets int
 	}{
 		{types.PlanBasic, false, false, false, 100, 3, 10},
-		{types.PlanProfessional, true, false, false, 300, 5, 10},
-		{types.PlanBusiness, true, true, true, 500, 10, 10},
-		{types.PlanEnterprise, true, true, true, 1000, 100, 10},
+		{types.PlanProfessional, true, false, false, 300, 5, 20},
+		{types.PlanBusiness, true, true, true, 500, 10, 100},
+		{types.PlanEnterprise, true, true, true, 1000, 100, 300},
 	} {
 		acct := h.signup("Tier "+string(c.plan), "tier-v3-"+string(c.plan)+"@test.dev", true)
 		if _, err := h.store.SetUserPlan(ctx, acct.ID, c.plan); err != nil {
@@ -76,8 +84,8 @@ func TestEntitlementsPerPlan(t *testing.T) {
 			types.FeatureWhatsAppCRM: c.whatsapp, types.FeatureAI: c.ai, types.FeatureAIKnowledge: c.ai,
 			types.FeatureFollowupSend: c.ai, types.FeatureRepurpose: c.ai, types.FeatureSimulive: c.simulive,
 			types.FeatureReplayEngage: c.simulive, types.FeatureSimuliveAuto: c.ai && c.simulive,
-			types.FeatureZoom: c.ai, types.FeatureCloudRecording: true, types.FeatureClips: false,
-			types.FeatureInstantWebinar: false, types.FeatureHLSDelivery: false,
+			types.FeatureZoom: c.ai, types.FeatureCloudRecording: c.whatsapp, types.FeatureClips: false,
+			types.FeatureInstantWebinar: false, types.FeatureHLSDelivery: false, types.FeatureCaptions: c.ai,
 		} {
 			if hasFeature(me.Features, k) != want {
 				t.Errorf("%s host: %s = %v, want %v (%v)", c.plan, k, !want, want, me.Features)
@@ -193,9 +201,9 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 			DELETE FROM plan_limits WHERE plan IN ('basic', 'enterprise');
 			INSERT INTO plan_limits (plan, limit_key, value) VALUES
 			    ('starter',      'recording_storage_bytes', 10::bigint  * 1024 * 1024 * 1024),
-			    ('professional', 'recording_storage_bytes', 50::bigint  * 1024 * 1024 * 1024),
-			    ('business',     'recording_storage_bytes', 200::bigint * 1024 * 1024 * 1024),
-			    ('basic',        'recording_storage_bytes', 5::bigint   * 1024 * 1024 * 1024),
+			    ('professional', 'recording_storage_bytes', 10::bigint  * 1024 * 1024 * 1024),
+			    ('business',     'recording_storage_bytes', 100::bigint * 1024 * 1024 * 1024),
+			    ('basic',        'recording_storage_bytes', 2::bigint   * 1024 * 1024 * 1024),
 			    ('enterprise',   'recording_storage_bytes', 500::bigint * 1024 * 1024 * 1024)
 			ON CONFLICT (plan, limit_key) DO UPDATE SET value = EXCLUDED.value`)
 	})
@@ -233,6 +241,9 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 	}
 
 	if err := h.store.ConvertPricingV3(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.store.ConvertPricingGates(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -294,8 +305,8 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 			t.Errorf("tier %s has no whiteboard after the migration: %v", tier.Plan, tier.Features)
 		}
 	}
-	// Storage moved with the ids; the new tiers have their own.
-	for id, gib := range map[string]int64{pro.ID: 10, biz.ID: 50, ent.ID: 200} {
+	// Storage moved with the ids, then 0180 set the plans on sale (Professional 10, Business 100).
+	for id, gib := range map[string]int64{pro.ID: 10, biz.ID: 10, ent.ID: 100} {
 		var q int64
 		if err := h.store.Pool().QueryRow(ctx, `SELECT plan_recording_quota_bytes($1::uuid)`, id).Scan(&q); err != nil {
 			t.Fatal(err)

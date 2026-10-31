@@ -17,6 +17,7 @@ import { Alert, Spinner } from "@/components/controls";
 import { useSession, useToast } from "@/components/providers";
 import { ApiError } from "@/lib/api";
 import {
+  FeatureWhatsAppCRM,
   RecipeHotLeads,
   SlotReminder,
   type CRMMergeField,
@@ -115,6 +116,8 @@ export const ScheduleMessagesTab = forwardRef<
   const { account } = useSession();
   const { notify } = useToast();
   const connected = Boolean(account?.whatsapp?.connected);
+  // WhatsApp messages need the plan's WhatsApp (Professional and up, 1 Nov 2026).
+  const whatsappAllowed = (account?.features ?? []).includes(FeatureWhatsAppCRM);
   const coachName = account?.whatsapp?.verifiedName || account?.name || "You";
   const [slots, setSlots] = useState<MessageSlot[] | null>(null);
   const [templates, setTemplates] = useState<CRMTemplate[]>([]);
@@ -403,6 +406,7 @@ export const ScheduleMessagesTab = forwardRef<
           fields={previewFields}
           templates={templates}
           connected={connected}
+          whatsappAllowed={whatsappAllowed}
           coachName={coachName}
           topic={webinar?.topic ?? ""}
           whenText={when}

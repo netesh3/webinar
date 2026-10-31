@@ -206,6 +206,10 @@ func (s *Module) SendFollowupWhatsApp(ctx context.Context, host store.User, slug
 	skip := func(reason string) types.FollowupWAResult {
 		return types.FollowupWAResult{Status: types.FollowupStatusSkipped, Reason: reason}
 	}
+	// WhatsApp is sold from Professional up (1 Nov 2026), whatever else is switched on.
+	if !host.HasFeature(types.FeatureWhatsAppCRM) {
+		return skip(types.FollowupReasonPlan)
+	}
 	text := strings.TrimSpace(in.Text)
 	if text == "" {
 		return skip(types.FollowupReasonEmpty)

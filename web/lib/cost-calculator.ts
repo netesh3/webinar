@@ -101,14 +101,14 @@ export const DEFAULT_FEATURES: Record<FeatureKey, boolean> = {
   edgeShare: false,
 };
 
-/** Recording storage quota by plan (migrations 0148 and 0179), GiB. The attendee cap picks the
- *  plan; Starter is the grandfathered ₹3,999 plan (31 Oct 2026). */
+/** Storage quota by plan (migrations 0148, 0179 and 0180), GiB: recordings and uploaded videos
+ *  together. The attendee cap picks the plan; Starter is the grandfathered ₹3,999 plan. */
 export const RECORDING_QUOTAS: { plan: string; cap: number | null; gib: number }[] = [
   { plan: "No plan", cap: null, gib: 2 },
-  { plan: "Basic", cap: 100, gib: 5 },
+  { plan: "Basic", cap: 100, gib: 2 },
   { plan: "Starter", cap: 200, gib: 10 },
-  { plan: "Professional", cap: 300, gib: 50 },
-  { plan: "Business", cap: 500, gib: 200 },
+  { plan: "Professional", cap: 300, gib: 10 },
+  { plan: "Business", cap: 500, gib: 100 },
   { plan: "Enterprise", cap: 1000, gib: 500 },
 ];
 

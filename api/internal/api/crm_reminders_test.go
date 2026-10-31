@@ -109,6 +109,14 @@ func TestCRMReminderSettings(t *testing.T) {
 		t.Error("no merge fields offered; the picker would have nothing to fill {{1}} with")
 	}
 
+	// Without WhatsApp on the plan (Professional and up, 1 Nov 2026), no template at all.
+	plan := types.CRMRemindersRequest{Reminders: []types.CRMReminder{{
+		Kind: types.NotifyWhatsAppConfirmed, Template: testTemplateUtility, Language: "en_US", Params: []string{"name"},
+	}}}
+	res, raw = h.do(http.MethodPut, "/api/host/crm/reminders", plan)
+	h.wantError(res, raw, http.StatusForbidden, "whatsapp_plan")
+	forceFeature(t, h, h.me().ID, types.FeatureWhatsAppCRM, true)
+
 	// A template cannot be chosen before there is an account to read templates from.
 	res, raw = h.do(http.MethodPut, "/api/host/crm/reminders", types.CRMRemindersRequest{
 		Reminders: []types.CRMReminder{{
