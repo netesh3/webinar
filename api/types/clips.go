@@ -12,7 +12,8 @@ package types
 /* FeatureClips is the switch: suggested highlights on a session's recording, and the clips
  * made from them. Needs FeatureAI (the picks count against the monthly AI caps) and
  * FeatureCloudRecording (there is no recording without it). Off for every account until an
- * admin turns it on for a host (Admin -> Accounts), because absent means off. */
+ * admin turns it on for a host (Admin -> Accounts), because absent means off. Not sold on any
+ * plan (31 Oct 2026): PerHost, so no tier may include it. */
 const FeatureClips = "clips"
 
 // AIFeatureHighlights is the ai_usage feature name for picking a recording's highlights.

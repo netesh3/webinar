@@ -154,14 +154,14 @@ assert.equal(withDefaults({ provider: "hetzner" }).provider, "do");
 // standard delivery use a 1.75 GB/h composite with a worker.
 const edgeOnly = calculateCost({ ...DEFAULT_INPUTS, meetingsPerMonth: 0 });
 assert.equal(line(edgeOnly, "rec-worker"), 0);
-// Held: 30 days (30 ÷ 30.42 months) plus 20% kept 3 months longer, under Business's 50 GiB.
+// Held: 30 days (30 ÷ 30.42 months) plus 20% kept 3 months longer, under Professional's 50 GiB.
 const held = 30 / (365 / 12) + 0.2 * 3;
 near(line(edgeOnly, "rec-storage"), 12 * edgeGbPerViewerHour(1000, 96) * held * 0.015, 1e-6);
 const std = calculateCost({ ...DEFAULT_INPUTS, meetingsPerMonth: 0, delivery: "webrtc" });
 near(line(std, "rec-storage"), 12 * 1.75 * held * 0.015, 1e-6);
 near(line(std, "rec-worker"), 8 * (1.5 + 10 / 60) * 0.0625, 1e-6);
 // The defaults record ~50 GB a month: Keep longer stops at the quota (50 GiB on a 300 plan).
-assert.equal(d.storage.plan, "Business");
+assert.equal(d.storage.plan, "Professional");
 near(d.storage.quotaGb, 50 * 1.073741824, 1e-9);
 near(d.storage.heldGb, d.storage.quotaGb, 1e-9);
 near(line(d, "rec-storage"), 50 * 1.073741824 * 0.015, 1e-6);
@@ -169,16 +169,16 @@ near(line(d, "rec-storage"), 50 * 1.073741824 * 0.015, 1e-6);
 const over = calculateCost({ ...DEFAULT_INPUTS, planAttendeeCap: 200 });
 assert.equal(over.storage.overQuota, true);
 near(over.storage.heldGb, (12 * edgeGbPerViewerHour(1000, 96) + 25 * 1.75) * (30 / (365 / 12)), 1e-6);
-// Enterprise's 200 GiB holds it all.
+// Business's 200 GiB holds it all.
 const ent = calculateCost({ ...DEFAULT_INPUTS, planAttendeeCap: 500 });
 near(ent.storage.heldGb, (12 * edgeGbPerViewerHour(1000, 96) + 25 * 1.75) * held, 1e-6);
-// Worst case: every coach fills the quota. 2 / 10 / 50 / 200 GiB at R2's $0.015.
+// Worst case: every coach fills the quota. 2 / 5 / 10 / 50 / 200 / 500 GiB at R2's $0.015 (31 Oct 2026).
 const worst = quotaWorstCase(DEFAULT_INPUTS);
-assert.deepEqual(worst.map((w) => w.plan), ["No plan", "Professional", "Business", "Enterprise"]);
-near(worst[3].usd, 200 * 1.073741824 * 0.015, 1e-9);
-near(worst[3].platformUsd, worst[3].usd * 20, 1e-9);
-assert.equal(quotaFor(300).plan, "Business");
-assert.equal(quotaFor(123).plan, "Business");
+assert.deepEqual(worst.map((w) => w.plan), ["No plan", "Basic", "Starter", "Professional", "Business", "Enterprise"]);
+near(worst[4].usd, 200 * 1.073741824 * 0.015, 1e-9);
+near(worst[4].platformUsd, worst[4].usd * 20, 1e-9);
+assert.equal(quotaFor(300).plan, "Professional");
+assert.equal(quotaFor(123).plan, "Professional");
 near(d.recordedHours, 37);
 // Share recorded scales it.
 const halfRec = calculateCost({ ...DEFAULT_INPUTS, recordMeetingsPercent: 50 });

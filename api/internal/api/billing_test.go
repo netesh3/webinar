@@ -175,12 +175,12 @@ func TestBuyingAPlanTurnsHostingOn(t *testing.T) {
 		t.Fatalf("host API before paying: %d, want 403", res.StatusCode)
 	}
 
-	co := h.buy("business", billing.Monthly, billing.INR)
+	co := h.buy("professional", billing.Monthly, billing.INR)
 	// The SERVER priced it: ₹9,999 + 18% GST, and that is what Razorpay was asked for.
 	if co.Subtotal != 9_999_00 || co.Tax != 1_799_82 || co.Amount != 11_798_82 || co.KeyID != rzpKeyID {
 		t.Fatalf("checkout: %+v", co)
 	}
-	if got := fake.order(co.OrderID); got.Amount != co.Amount || got.Currency != "INR" || got.Notes["plan"] != "business" {
+	if got := fake.order(co.OrderID); got.Amount != co.Amount || got.Currency != "INR" || got.Notes["plan"] != "professional" {
 		t.Fatalf("razorpay was asked for %+v", got)
 	}
 
@@ -194,7 +194,7 @@ func TestBuyingAPlanTurnsHostingOn(t *testing.T) {
 	}
 	var vr types.VerifyBillingPaymentResponse
 	h.decode(raw, &vr)
-	if !vr.Account.CanHost || vr.Billing.Plan != "business" || !vr.Billing.Active || vr.Billing.Attendees != 300 {
+	if !vr.Account.CanHost || vr.Billing.Plan != "professional" || !vr.Billing.Active || vr.Billing.Attendees != 300 {
 		t.Fatalf("verify response: %+v", vr)
 	}
 	until, _ := time.Parse(time.RFC3339, vr.Billing.PaidUntil)
@@ -261,7 +261,7 @@ func TestWebhookAloneTurnsHostingOn(t *testing.T) {
 	h, _ := billingHarness(t)
 	h.signup("Tab Closer", "closer@example.com", false)
 	co := h.buy("professional", billing.Monthly, billing.USD)
-	if co.Tax != 0 || co.Amount != 49_00 {
+	if co.Tax != 0 || co.Amount != 149_00 {
 		t.Fatalf("USD has no GST: %+v", co)
 	}
 
@@ -342,13 +342,25 @@ func TestCatalogueAndRefusals(t *testing.T) {
 	}
 	var cat types.BillingCatalogue
 	h.decode(raw, &cat)
-	if !cat.Enabled || cat.GSTPercent != 18 || len(cat.Plans) != 3 || len(cat.Plans[0].Prices) != 4 {
+	// Basic, Professional, Business and Enterprise: the grandfathered Starter is not offered.
+	if !cat.Enabled || cat.GSTPercent != 18 || len(cat.Plans) != 4 || len(cat.Plans[0].Prices) != 4 {
 		t.Fatalf("catalogue: %+v", cat)
+	}
+	for i, id := range []string{"basic", "professional", "business", "enterprise"} {
+		if cat.Plans[i].ID != id {
+			t.Fatalf("catalogue plan %d = %q, want %q", i, cat.Plans[i].ID, id)
+		}
+	}
+	for i, want := range [][2]int{{100, 3}, {300, 5}, {500, 10}, {1000, 100}} {
+		if p := cat.Plans[i]; p.Attendees != want[0] || p.Stage != want[1] {
+			t.Errorf("%s caps = %d / %d, want %d / %d", p.ID, p.Attendees, p.Stage, want[0], want[1])
+		}
 	}
 	if strings.Contains(string(raw), rzpSecret) {
 		t.Fatal("catalogue leaks the key secret")
 	}
-	// Early-bird list prices beside the charged ones; Enterprise is contact-only.
+	/* List prices beside the charged ones (31 Oct 2026): Basic monthly at 60% OFF, every
+	 * yearly price at 80% OFF its charge / 0.2; Enterprise is contact-only. */
 	list := map[string]int64{}
 	pct := map[string]int{}
 	for _, p := range cat.Plans {
@@ -356,12 +368,8 @@ func TestCatalogueAndRefusals(t *testing.T) {
 			key := p.ID + "/" + pr.Currency + "/" + pr.Period
 			list[key] = pr.List
 			pct[key] = pr.DiscountPercent
-			wantPromo := "Early bird"
-			if pr.Currency == "INR" {
-				wantPromo = "Early bird · India special offer"
-			}
-			if pr.Promo != wantPromo {
-				t.Errorf("%s promo %q, want %q", key, pr.Promo, wantPromo)
+			if want := billing.OffLabel(pr.DiscountPercent); pr.Badge != want {
+				t.Errorf("%s badge %q, want %q", key, pr.Badge, want)
 			}
 		}
 		if p.ID == "enterprise" && (!p.ContactOnly || len(p.Prices) != 0) {
@@ -369,10 +377,12 @@ func TestCatalogueAndRefusals(t *testing.T) {
 		}
 	}
 	for key, want := range map[string]int64{
-		"professional/INR/monthly": 9_999_00, "professional/USD/monthly": 99_00,
-		"business/INR/monthly": 24_999_00, "business/USD/monthly": 399_00,
-		"professional/USD/yearly": 990_00, "business/USD/yearly": 3_990_00,
-		"professional/INR/yearly": 99_948_00, "business/INR/yearly": 249_948_00,
+		"basic/INR/monthly": 7_499_00, "basic/USD/monthly": 99_00,
+		"professional/INR/monthly": 0, "professional/USD/monthly": 0,
+		"business/INR/monthly": 0, "business/USD/monthly": 0,
+		"basic/INR/yearly": 1_49_940_00, "basic/USD/yearly": 1_950_00,
+		"professional/INR/yearly": 4_99_740_00, "professional/USD/yearly": 7_450_00,
+		"business/INR/yearly": 12_49_740_00, "business/USD/yearly": 17_450_00,
 	} {
 		if list[key] != want {
 			t.Errorf("list price %s = %d, want %d", key, list[key], want)
@@ -380,9 +390,9 @@ func TestCatalogueAndRefusals(t *testing.T) {
 	}
 	// The saving, computed from the two prices and rounded down.
 	for key, want := range map[string]int{
-		"professional/USD/monthly": 50, "professional/INR/monthly": 60,
-		"business/USD/monthly": 50, "business/INR/monthly": 60,
-		"business/USD/yearly": 50,
+		"basic/USD/monthly": 60, "basic/INR/monthly": 60, "professional/INR/monthly": 0,
+		"basic/INR/yearly": 80, "basic/USD/yearly": 80, "professional/INR/yearly": 80,
+		"business/USD/yearly": 80, "business/INR/yearly": 80,
 	} {
 		if pct[key] != want {
 			t.Errorf("saving %s = %d%%, want %d%%", key, pct[key], want)
@@ -439,7 +449,7 @@ func TestBillingOffWithoutKeys(t *testing.T) {
  *
  * The purchase writes the account's subscription, and that subscription is the
  * attendee ceiling the rest of the API enforces (see attendeeCeiling). So a
- * Business buyer schedules 300 seats where they had 200 before paying, and still
+ * Professional buyer schedules 300 seats where they had 200 before paying, and still
  * not 301 — the pricing page's number and the enforced one are the same number.
  */
 func TestBuyingAPlanSetsItsAttendeeCeiling(t *testing.T) {
@@ -453,7 +463,7 @@ func TestBuyingAPlanSetsItsAttendeeCeiling(t *testing.T) {
 		t.Fatalf("no plan: asked for 300, got %d, want the launch cap %d", before.AttendeeLimit, types.PlanLaunchAttendees)
 	}
 
-	co := h.buy("business", billing.Monthly, billing.INR)
+	co := h.buy("professional", billing.Monthly, billing.INR)
 	res, raw := h.do(http.MethodPost, "/api/billing/verify", types.VerifyBillingPaymentRequest{
 		OrderID: co.OrderID, PaymentID: "pay_biz",
 		Signature: billing.Sign(rzpSecret, []byte(co.OrderID+"|pay_biz")),
@@ -463,13 +473,13 @@ func TestBuyingAPlanSetsItsAttendeeCeiling(t *testing.T) {
 	}
 	var vr types.VerifyBillingPaymentResponse
 	h.decode(raw, &vr)
-	if vr.Account.Plan != types.PlanBusiness || vr.Account.AttendeeCap != 300 || vr.Billing.Attendees != 300 {
+	if vr.Account.Plan != types.PlanProfessional || vr.Account.AttendeeCap != 300 || vr.Billing.Attendees != 300 {
 		t.Fatalf("after paying: account plan %q cap %d, billing attendees %d", vr.Account.Plan, vr.Account.AttendeeCap, vr.Billing.Attendees)
 	}
 
 	after := h.newWebinar("After paying", func(in *types.WebinarInput) { in.AttendeeLimit = 400 })
 	if after.AttendeeLimit != 300 {
-		t.Fatalf("business: asked for 400, got %d, want 300", after.AttendeeLimit)
+		t.Fatalf("professional: asked for 400, got %d, want 300", after.AttendeeLimit)
 	}
 
 	// The catalogue advertises exactly the enforced cap.
@@ -478,8 +488,15 @@ func TestBuyingAPlanSetsItsAttendeeCeiling(t *testing.T) {
 	h.decode(raw, &cat)
 	for _, p := range cat.Plans {
 		want := types.PlanAttendeeCap(types.Plan(p.ID))
-		if p.Attendees != want || p.Features[0] != fmt.Sprintf("Up to %d attendees", want) {
+		line := fmt.Sprintf("Up to %d attendees", want)
+		if p.ContactOnly {
+			line = "1,000+ attendees"
+		}
+		if p.Attendees != want || p.Features[0] != line {
 			t.Fatalf("catalogue %s says %d / %q, enforced cap is %d", p.ID, p.Attendees, p.Features[0], want)
+		}
+		if stage := types.PlanStageCap(types.Plan(p.ID)); p.Stage != stage || p.Features[1] != fmt.Sprintf("Up to %d people on stage", stage) {
+			t.Fatalf("catalogue %s says stage %d / %q, enforced cap is %d", p.ID, p.Stage, p.Features[1], stage)
 		}
 	}
 }

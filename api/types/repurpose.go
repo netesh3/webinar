@@ -11,8 +11,9 @@ package types
  * the edits. See api/internal/api/repurpose.go. */
 
 /* FeatureRepurpose is the switch: the Repurpose card in AI insights and the brand voice.
- * Needs FeatureAI (every call counts against the monthly AI caps). Off for every account
- * until an admin turns it on for a host (Admin -> Accounts), because absent means off. */
+ * Needs FeatureAI (every call counts against the monthly AI caps). In the Business and
+ * Enterprise tiers (31 Oct 2026, migrations/0179); an admin can turn it on for a host on
+ * another plan (Admin -> Accounts). */
 const FeatureRepurpose = "repurpose"
 
 // AIFeatureRepurpose is the ai_usage feature name for every repurposing call.

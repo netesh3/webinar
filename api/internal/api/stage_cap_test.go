@@ -11,7 +11,9 @@ import (
 
 func TestPlanStageCap(t *testing.T) {
 	for plan, want := range map[types.Plan]int{
-		"": 3, types.PlanProfessional: 3, types.PlanBusiness: 5, types.PlanEnterprise: 10,
+		// 31 Oct 2026: Basic 3, Professional 5, Business 10, Enterprise 100; Starter keeps 3.
+		"": 3, types.PlanBasic: 3, types.PlanStarter: 3, types.PlanProfessional: 5,
+		types.PlanBusiness: 10, types.PlanEnterprise: 100,
 	} {
 		if got := types.PlanStageCap(plan); got != want {
 			t.Errorf("PlanStageCap(%q) = %d, want %d", plan, got, want)

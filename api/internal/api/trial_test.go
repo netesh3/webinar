@@ -105,6 +105,7 @@ func TestTrialStartsChargesAndHalts(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Business is ₹24,999 since 31 Oct 2026.
 	code, co, raw := h.startTrial("business")
 	if code != http.StatusCreated {
 		t.Fatalf("start trial: %d %s", code, raw)
@@ -113,8 +114,8 @@ func TestTrialStartsChargesAndHalts(t *testing.T) {
 	req := fake.subs[co.SubscriptionID]
 	plan := fake.plans[req.PlanID]
 	fake.mu.Unlock()
-	// Monthly, ₹9,999 + 18% GST, first charge seven days out, notifying the buyer.
-	if plan.Period != "monthly" || plan.Interval != 1 || plan.Item.Amount != 11_798_82 || plan.Item.Currency != "INR" {
+	// Monthly, ₹24,999 + 18% GST, first charge seven days out, notifying the buyer.
+	if plan.Period != "monthly" || plan.Interval != 1 || plan.Item.Amount != 29_498_82 || plan.Item.Currency != "INR" {
 		t.Fatalf("razorpay plan = %+v", plan)
 	}
 	if d := time.Until(time.Unix(req.StartAt, 0)); d < 7*24*time.Hour-time.Minute || d > 7*24*time.Hour+time.Minute {
@@ -126,7 +127,7 @@ func TestTrialStartsChargesAndHalts(t *testing.T) {
 	if req.TotalCount != billing.TrialTotalCount || !req.CustomerNotify || req.Notes["plan"] != "business" || req.Notes["user_id"] == "" {
 		t.Fatalf("subscription request = %+v", req)
 	}
-	if co.Amount != 11_798_82 || co.KeyID != rzpKeyID || co.TrialEndsAt == "" {
+	if co.Amount != 29_498_82 || co.KeyID != rzpKeyID || co.TrialEndsAt == "" {
 		t.Fatalf("trial checkout = %+v", co)
 	}
 

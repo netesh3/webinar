@@ -11,6 +11,8 @@ import { CheckoutError, authoriseTrial, formatMoney, payWithRazorpay } from "@/l
 import { useSession } from "@/components/providers";
 import { CONTACT, mailto } from "@/lib/contact";
 import { IOS_APP_PLANS_NOTE, useIOSApp } from "@/components/ios-app";
+import { CompareTable, YearlyLabel, type CompareHead } from "@/components/marketing/plans-ui";
+import type { Plan } from "@/lib/plans";
 
 /* The pricing section, and buying from it.
  *
@@ -55,15 +57,15 @@ function priceOf(plan: BillingPlan, currency: Currency, period: Period): number 
   return plan.prices.find((p) => p.currency === currency && p.period === period)?.amount;
 }
 
-/* The regular price the early-bird one is shown against, struck through, and how
- * far below it the real price is — both from the server. Display only. */
+/* The list price the real one is shown against, struck through, and its badge ("60% OFF",
+ * and "80% OFF" on every yearly price since 31 Oct 2026) — both from the server. Display only. */
 function listOf(
   plan: BillingPlan,
   currency: Currency,
   period: Period,
-): { list: number; pct: number; promo: string } | undefined {
+): { list: number; badge: string } | undefined {
   const p = plan.prices.find((x) => x.currency === currency && x.period === period);
-  return p?.list && p.discountPercent ? { list: p.list, pct: p.discountPercent, promo: p.promo ?? "" } : undefined;
+  return p?.list && p.discountPercent ? { list: p.list, badge: p.badge ?? `${p.discountPercent}% OFF` } : undefined;
 }
 
 function longDate(iso: string): string {
@@ -140,7 +142,40 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
     router.push(`/signup?next=${encodeURIComponent(pricingHref(intent))}`);
   };
 
+  /* The "Compare all features" table's sticky header: the price for the chosen period and
+   * currency, from the server's catalogue, and the same button as the plan's card. The rows
+   * come from lib/plans.ts, which a Go test holds to the server's plans. (31 Oct 2026) */
+  const compareHead = (p: Plan): CompareHead => {
+    const plan = catalogue?.plans.find((x) => x.id === p.server);
+    if (!plan || planCta(plan, period, currency, catalogue) === "contact") {
+      return {
+        price: plan ? "Custom pricing" : " ",
+        cta: (
+          <a className="btn btn-ghost btn-sm" href={mailto(CONTACT.hello, `${p.name} plan`)}>
+            Contact us
+          </a>
+        ),
+      };
+    }
+    const amount = priceOf(plan, currency, period);
+    const cta = planCta(plan, period, currency, catalogue);
+    const shown = amount === undefined ? undefined : period === "yearly" ? Math.round(amount / 12) : amount;
+    return {
+      price: shown === undefined ? " " : `${formatMoney(shown, currency)}/mo`,
+      cta: (
+        <button
+          type="button"
+          className={plan.popular ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
+          onClick={() => buy(plan)}
+        >
+          {cta === "trial" ? "Free trial" : "Buy"}
+        </button>
+      ),
+    };
+  };
+
   return (
+    <>
     <section className="section pricing ios-app-hidden" id="pricing" aria-labelledby="pricing-title">
       <div className="wrap">
         <div className="section-head reveal">
@@ -159,7 +194,7 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
                 Monthly
               </button>
               <button type="button" role="radio" aria-checked={period === "yearly"} onClick={() => setPeriod("yearly")}>
-                Yearly <span className="save">2 months free</span>
+                <YearlyLabel />
               </button>
             </div>
             <div className="billing" role="radiogroup" aria-label="Currency">
@@ -179,7 +214,7 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
           </p>
         )}
 
-        <div className="plans" aria-busy={!catalogue}>
+        <div className="plans plans-4" aria-busy={!catalogue}>
           {(catalogue?.plans ?? PLACEHOLDER_PLANS).map((plan) => {
             const cta = planCta(plan, period, currency, catalogue);
             const amount = catalogue ? priceOf(plan, currency, period) : undefined;
@@ -206,12 +241,10 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
                   <>
                     {listPerMonth !== undefined && regular ? (
                       <p className="price-was">
-                        <s aria-label={`Regular price ${formatMoney(listPerMonth, currency)} a month`}>
+                        <s aria-label={`List price ${formatMoney(listPerMonth, currency)} a month`}>
                           {formatMoney(listPerMonth, currency)}
                         </s>
-                        <span className="promo">
-                          {regular.promo ? `${regular.promo} · ` : ""}Save {regular.pct}%
-                        </span>
+                        <span className="promo">{regular.badge}</span>
                       </p>
                     ) : null}
                     <p className="price">
@@ -253,6 +286,10 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
             );
           })}
         </div>
+
+        <p className="pricing-foot">
+          <a href="#compare">Compare all features ↓</a>
+        </p>
 
         <ol className="buy-steps reveal" aria-label="How buying works">
           <li>
@@ -309,15 +346,21 @@ function PricingSection({ autoBuy }: { autoBuy?: BuyIntent | null }) {
         />
       )}
     </section>
+    {/* Not in the iOS app, like the cards (guideline 3.1.1). */}
+    <div className="ios-app-hidden">
+      <CompareTable head={compareHead} />
+    </div>
+    </>
   );
 }
 
 /* Rendered before the catalogue loads so the section has its shape. Names only —
  * the prices stay blank until the server's arrive. */
 const PLACEHOLDER_PLANS: BillingPlan[] = [
-  { id: "professional", name: "Professional", who: "For coaches and consultants", attendees: 0, features: [], prices: [] },
-  { id: "business", name: "Business", who: "For coaches selling programs", attendees: 0, features: [], prices: [], popular: true },
-  { id: "enterprise", name: "Enterprise", who: "For academies and teams", attendees: 0, features: [], prices: [] },
+  { id: "basic", name: "Basic", who: "For coaches running their first webinars", attendees: 0, stage: 0, features: [], prices: [] },
+  { id: "professional", name: "Professional", who: "For coaches selling programs every week", attendees: 0, stage: 0, features: [], prices: [], popular: true },
+  { id: "business", name: "Business", who: "For academies and teams with big launches", attendees: 0, stage: 0, features: [], prices: [] },
+  { id: "enterprise", name: "Enterprise", who: "For institutions and very large audiences", attendees: 0, stage: 0, features: [], prices: [] },
 ];
 
 // ------------------------------------------------------------------ free trial

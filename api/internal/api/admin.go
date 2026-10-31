@@ -397,7 +397,7 @@ func (s *Server) handleSetPlanFeatures(w http.ResponseWriter, r *http.Request) {
 	for _, t := range body.Tiers {
 		if t.Plan != "" && !t.Plan.Valid() {
 			httpx.Error(w, http.StatusUnprocessableEntity, "invalid_plan",
-				"Plan is professional, business, enterprise, or empty for none.")
+				"Plan is "+types.PlanIDsText+".")
 			return
 		}
 		for _, f := range t.Features {

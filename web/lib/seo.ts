@@ -94,7 +94,7 @@ function latest(dates: string[]): string | undefined {
 const changed = (p: Post) => p.updated ?? p.date;
 
 /** Every public page, then every post. `indexable` is lib/plans' indexable(): the
- *  proposal pages (/features, /pricing/proposed) are noindex until it is true. */
+ *  proposal page /features is noindex until it is true (/pricing/proposed redirects to /pricing since 31 Oct 2026). */
 export function sitemapEntries(
   origin: string,
   posts: readonly Post[],
@@ -106,7 +106,6 @@ export function sitemapEntries(
     ...(opts.indexable
       ? [
           { path: "/features", lastModified: MARKETING_UPDATED, changeFrequency: "weekly" as const, priority: 0.8 },
-          { path: "/pricing/proposed", lastModified: MARKETING_UPDATED, changeFrequency: "weekly" as const, priority: 0.7 },
         ]
       : []),
     { path: "/signup", lastModified: MARKETING_UPDATED, changeFrequency: "monthly", priority: 0.8 },

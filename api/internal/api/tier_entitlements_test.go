@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -97,8 +98,8 @@ func TestPlanDecidesFeaturesAndOverridesWin(t *testing.T) {
 	}
 	h.login("neeraj@acme.dev")
 	got := adminPlanFeatures(t, h, http.MethodGet, nil, http.StatusOK)
-	if len(got.Tiers) != 4 || got.Tiers[0].Plan != "" || !slices.Contains(got.Tiers[0].Features, types.FeatureWhiteboard) {
-		t.Fatalf("seeded matrix = %+v, want four tiers starting with no plan, whiteboard on", got.Tiers)
+	if len(got.Tiers) != len(store.PlanTiers) || got.Tiers[0].Plan != "" || !slices.Contains(got.Tiers[0].Features, types.FeatureWhiteboard) {
+		t.Fatalf("seeded matrix = %+v, want every tier starting with no plan, whiteboard on", got.Tiers)
 	}
 
 	adminPlanFeatures(t, h, http.MethodPut, types.PlanFeaturesBody{Tiers: []types.PlanFeatures{

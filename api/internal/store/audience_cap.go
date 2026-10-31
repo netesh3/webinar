@@ -9,7 +9,7 @@ import (
 
 /* ExpectedAudience is how many attendees a webinar admits at once: its own attendee_limit,
  * under the ceiling it is held to. `ceiling` is the plan's (api.attendeeCeiling: the plan cap,
- * MAX_ATTENDEES and types.MaxWebinarAudience); an admin's AudienceCapOverride replaces it.
+ * under MAX_ATTENDEES); an admin's AudienceCapOverride replaces it.
  *
  * The one number the join check counts against, the host sees as "N / limit", and the video
  * box placement (a webinar's share of what one box serves) reads as the webinar's size. Never

@@ -652,15 +652,19 @@ export interface BillingPrice {
    */
   discountPercent?: number /* int */;
   /**
-   * Promo names the offer List is shown against, e.g. "Early bird"; empty with no List.
+   * Badge is the saving as the page shows it, "60% OFF" (billing.OffLabel); empty with no List.
    */
-  promo?: string;
+  badge?: string;
 }
 export interface BillingPlan {
   id: string;
   name: string;
   who: string;
   attendees: number /* int */;
+  /**
+   * Stage is the plan's cap on people on stage at once (types.PlanStageCap).
+   */
+  stage: number /* int */;
   features: string[];
   popular?: boolean;
   prices: BillingPrice[];
@@ -1271,7 +1275,8 @@ export interface ClipMakeNowResponse {
  *  FeatureClips is the switch: suggested highlights on a session's recording, and the clips
  *  * made from them. Needs FeatureAI (the picks count against the monthly AI caps) and
  *  * FeatureCloudRecording (there is no recording without it). Off for every account until an
- *  * admin turns it on for a host (Admin -> Accounts), because absent means off.
+ *  * admin turns it on for a host (Admin -> Accounts), because absent means off. Not sold on any
+ *  * plan (31 Oct 2026): PerHost, so no tier may include it.
  */
 export const FeatureClips = "clips";
 /**
@@ -3654,8 +3659,9 @@ export interface RecordingPurgeStatus {
 
 /**
  *  FeatureRepurpose is the switch: the Repurpose card in AI insights and the brand voice.
- *  * Needs FeatureAI (every call counts against the monthly AI caps). Off for every account
- *  * until an admin turns it on for a host (Admin -> Accounts), because absent means off.
+ *  * Needs FeatureAI (every call counts against the monthly AI caps). In the Business and
+ *  * Enterprise tiers (31 Oct 2026, migrations/0179); an admin can turn it on for a host on
+ *  * another plan (Admin -> Accounts).
  */
 export const FeatureRepurpose = "repurpose";
 /**
@@ -5700,7 +5706,7 @@ export interface Webinar {
   attendeeLimit: number /* int */;
   /**
    *  AudienceCapOverride is an admin's per-webinar ceiling (1..MaxAudienceOverride) in place
-   * 	 * of the usual MaxWebinarAudience and plan cap; 0 when none is set. Only an admin sets it
+   * 	 * of the usual ceiling (the plan cap under MAX_ATTENDEES); 0 when none is set. Only an admin sets it
    * 	 * (PATCH /api/admin/webinars/{slug}/audience-cap), and the host's own limit may then go
    * 	 * up to it.
    */
@@ -6114,7 +6120,8 @@ export const FeatureJoinWithoutRegistration = "join_without_registration";
  * 	 * few minutes' warning, so instant sessions are an admin's per-host switch).
  * 	 *
  * 	 * Off — the default, in every plan — means every session is scheduled first.
- * 	 * See migrations/0073 and 0152.
+ * 	 * See migrations/0073 and 0152. PerHost since 31 Oct 2026: for internal testing, never
+ * 	 * sold, so no plan tier may include it.
  */
 export const FeatureInstantWebinar = "instant_webinar";
 /**
@@ -6144,9 +6151,9 @@ export const FeatureWhiteboard = "whiteboard";
  * 	 * features after it. Each call counts against the monthly AI caps
  * 	 * (AI_HOST_MONTHLY_USD per host, AI_MONTHLY_USD in all).
  * 	 *
- * 	 * Opt-in: off for every account on every plan until an admin turns it on for that host
- * 	 * (Admin -> Accounts). No plan tier may include it (Feature.PerHost, migrations/0159).
- * 	 * 0126 had it on in every tier; 0127 took that back (2026-10-22). Off means no AI
+ * 	 * In the Business and Enterprise tiers (31 Oct 2026, migrations/0179); off on the others
+ * 	 * until an admin turns it on for that host (Admin -> Accounts). 0126 had it on in every
+ * 	 * tier, 0127 took that back (2026-10-22) and 0159 made it per host only. Off means no AI
  * 	 * buttons, the AI routes answer 403 feature_off, and no recap is made.
  */
 export const FeatureAI = "ai";
@@ -6182,20 +6189,20 @@ export const FeatureSimulive = "simulive";
 export const FeatureMeetings = "meetings";
 /**
  *  FeatureAIKnowledge is the AI knowledge library (documents, links, past answers) and
- * 	 * the Q&A drafts grounded in it. Needs FeatureAI. Off by default, per host only
- * 	 * (migrations/0159). Off: no library, and Q&A drafts are
+ * 	 * the Q&A drafts grounded in it. Needs FeatureAI. In Business and up (migrations/0179).
+ * 	 * Off: no library, and Q&A drafts are
  * 	 * written from the topic and description only.
  */
 export const FeatureAIKnowledge = "ai_knowledge";
 /**
  *  FeatureSimuliveAuto is Auto mode: the assistant answering a simulive's questions by
  * 	 * itself. Needs FeatureAI, FeatureReplayEngage and FeatureSimulive, in effect only with all
- * 	 * three. Off by default, per host only (migrations/0159).
+ * 	 * three. In Business and up (migrations/0179).
  */
 export const FeatureSimuliveAuto = "simulive_auto";
 /**
  *  FeatureFollowupSend is sending the AI follow-up drafts by email or WhatsApp from
- * 	 * Results. Needs FeatureAI. Off by default, per host only (migrations/0159). Off: the drafts are
+ * 	 * Results. Needs FeatureAI. In Business and up (migrations/0179). Off: the drafts are
  * 	 * still written, to copy or export, and the send routes answer 403 feature_off.
  */
 export const FeatureFollowupSend = "followup_send";
@@ -6270,8 +6277,9 @@ export interface Feature {
   requires?: string[];
   /**
    *  PerHost is a switch no plan tier may include: off for every host on every plan until
-   * 	 * an admin turns it on for that host (an override). Every AI-backed switch is one
-   * 	 * (migrations/0159); the plan matrix refuses them (422 per_host_feature).
+   * 	 * an admin turns it on for that host (an override). clips, hls_delivery and
+   * 	 * instant_webinar are (31 Oct 2026, migrations/0179); the plan matrix refuses them (422
+   * 	 * per_host_feature).
    */
   perHost?: boolean;
 }
@@ -9436,9 +9444,10 @@ export interface SetUserStageCapRequest {
   stageCap?: number /* int */;
 }
 /**
- * MaxStageCapOverride is the largest stage an admin may allow one account.
+ * MaxStageCapOverride is the largest stage an admin may allow one account: Enterprise's
+ * (PlanStageCap), so an override can match it (31 Oct 2026; was 25).
  */
-export const MaxStageCapOverride = 25;
+export const MaxStageCapOverride = 100;
 /**
  * SetUserMeetingCapRequest is PATCH /api/admin/users/{id}/meeting-cap. Null goes back to the plan.
  */
@@ -9455,22 +9464,25 @@ export interface SetUserMaxDurationRequest {
 /**
  *  Plan is a paid tier. Empty is the launch default: no subscription, and the
  *  * attendee ceiling every beta host has. See PlanAttendeeCap.
+ *  *
+ *  * The lineup from 31 Oct 2026 is Basic, Professional, Business and Enterprise. Starter is
+ *  * grandfathered: the plan the first subscribers bought as "Professional" (₹3,999, 200
+ *  * attendees, 3 on stage), renamed by migrations/0179 so they keep their limits and price
+ *  * while Professional moves up. It is never offered to a new buyer (billing.Plan.Retired).
  */
 export type Plan = string;
+export const PlanBasic: Plan = "basic";
 export const PlanProfessional: Plan = "professional";
 export const PlanBusiness: Plan = "business";
 export const PlanEnterprise: Plan = "enterprise";
 /**
+ * PlanStarter is grandfathered: kept for its existing subscribers, sold to nobody new.
+ */
+export const PlanStarter: Plan = "starter";
+/**
  * PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
  */
 export const PlanLaunchAttendees = 200;
-/**
- *  MaxWebinarAudience is the most attendees one webinar admits, whatever the plan: what one
- *  * video box serves straight to its audience alongside other sessions (2026-10-25: 130 viewers
- *  * through the CDN froze in waves, while the box itself served every test cleanly). An admin
- *  * can raise one webinar past it, up to MaxAudienceOverride (AudienceCapOverride).
- */
-export const MaxWebinarAudience = 300;
 /**
  * MaxAudienceOverride is the largest per-webinar ceiling an admin may set.
  */
@@ -9481,6 +9493,10 @@ export const MaxAudienceOverride = 1000;
 export interface SetAudienceCapRequest {
   audienceCap?: number /* int */;
 }
+/**
+ * PlanIDsText is the valid plan ids in words, for an error message.
+ */
+export const PlanIDsText = "basic, professional, business, enterprise, starter, or empty for none";
 /**
  *  WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
  *  * page needs to decide whether to ask a signed-in person for their phone and for

@@ -3382,9 +3382,9 @@ func TestAttendeeLimitDefaultsAndClamps(t *testing.T) {
 		t.Fatalf("create with 5000: status %d body %s", res.StatusCode, raw)
 	}
 	h.decode(raw, &wb)
-	// MAX_ATTENDEES is 500 and the plan allows 500, but no webinar admits more than 300.
-	if wb.AttendeeLimit != types.MaxWebinarAudience {
-		t.Errorf("5000 seats came back as %d, want the %d per-webinar ceiling", wb.AttendeeLimit, types.MaxWebinarAudience)
+	// Enterprise allows 1,000 (31 Oct 2026), so MAX_ATTENDEES (500 here) is the ceiling.
+	if wb.AttendeeLimit != 500 {
+		t.Errorf("5000 seats came back as %d, want the 500 MAX_ATTENDEES ceiling", wb.AttendeeLimit)
 	}
 }
 

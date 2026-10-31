@@ -40,7 +40,7 @@ for (const indexable of [false, true]) {
   }
   // Proposal pages only once the prices are live.
   assert.equal(paths.includes("/features"), indexable);
-  assert.equal(paths.includes("/pricing/proposed"), indexable);
+  assert.equal(paths.includes("/pricing/proposed"), false);
 
   // Never a private route, the duplicate homepage, or the Zoom reviewers' test plan.
   for (const path of paths) assert.ok(!isPrivatePath(path), `sitemap lists private ${path}`);

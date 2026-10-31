@@ -53,8 +53,9 @@ export const COSTS = {
     "workers, recording) for each webinar this host runs.",
   mediaQuota: "Object storage at ≈ $0.006 per GB per month — 1 GB is about a cent a month.",
   plan:
-    "Sets the attendee and stage caps, so the worst-case hour: e.g. Enterprise, 500 attendees " +
-    "on Edge ≈ $5.50–17/hour of CDN plus a 10-person stage (≈ $3–10/hour on GCP).",
+    "Sets the attendee and stage caps, so the worst-case hour: e.g. Business, 500 attendees " +
+    "on Edge ≈ $5.50–17/hour of CDN plus a 10-person stage (≈ $3–10/hour on GCP). Enterprise " +
+    "allows 1,000 and a 100-person stage.",
   videoServer:
     "DigitalOcean Bangalore (default): ≈ $0.125/hour while the box is up, transfer pooled. " +
     "Mumbai (GCP): stage traffic ≈ $0.12/GB and an Edge egress worker ≈ $0.18/hour per live " +

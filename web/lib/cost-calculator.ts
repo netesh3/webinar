@@ -101,12 +101,15 @@ export const DEFAULT_FEATURES: Record<FeatureKey, boolean> = {
   edgeShare: false,
 };
 
-/** Recording storage quota by plan (migration 0148), GiB. The attendee cap picks the plan. */
+/** Recording storage quota by plan (migrations 0148 and 0179), GiB. The attendee cap picks the
+ *  plan; Starter is the grandfathered ₹3,999 plan (31 Oct 2026). */
 export const RECORDING_QUOTAS: { plan: string; cap: number | null; gib: number }[] = [
   { plan: "No plan", cap: null, gib: 2 },
-  { plan: "Professional", cap: 200, gib: 10 },
-  { plan: "Business", cap: 300, gib: 50 },
-  { plan: "Enterprise", cap: 500, gib: 200 },
+  { plan: "Basic", cap: 100, gib: 5 },
+  { plan: "Starter", cap: 200, gib: 10 },
+  { plan: "Professional", cap: 300, gib: 50 },
+  { plan: "Business", cap: 500, gib: 200 },
+  { plan: "Enterprise", cap: 1000, gib: 500 },
 ];
 
 export const GROUP_LABELS: Record<CostGroup, string> = {
@@ -434,8 +437,9 @@ export const PRESETS: Record<Preset, { label: string; usage: Partial<CostInputs>
   },
 };
 
-/** Attendee caps by plan tier (launch pricing). */
-export const PLAN_CAPS = [200, 300, 500] as const;
+/** Attendee caps by plan tier (types.PlanAttendeeCap, 31 Oct 2026): Basic, the grandfathered
+ *  Starter, Professional, Business, Enterprise. */
+export const PLAN_CAPS = [100, 200, 300, 500, 1000] as const;
 
 export const DEFAULT_INPUTS: CostInputs = {
   provider: "do",
@@ -705,7 +709,7 @@ export function boxRunHours(p: ProviderRates, platformSessionHours: number, plat
 
 /** The plan the attendee cap stands for, and its recording quota in GB. */
 export function quotaFor(cap: number): { plan: string; gb: number } {
-  const q = RECORDING_QUOTAS.find((x) => x.cap === cap) ?? RECORDING_QUOTAS[2];
+  const q = RECORDING_QUOTAS.find((x) => x.cap === cap) ?? RECORDING_QUOTAS[3];
   return { plan: q.plan, gb: q.gib * GIB };
 }
 

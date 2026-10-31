@@ -10,11 +10,11 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* AI is off by default for every host on every plan (migrations/0159): no plan tier includes
- * an AI-backed switch, a new host has none of them, and an admin's per-host grant is the only
- * way one comes on. */
+/* AI comes with Business and Enterprise (31 Oct 2026, migrations/0179); on every other plan
+ * it is off until an admin grants it to one host. clips, HLS delivery and instant sessions are
+ * per host only: no plan tier includes them and the plan matrix refuses them. */
 
-// perHostKeys is every switch no plan may include: the AI-backed ones.
+// perHostKeys is every switch no plan may include.
 func perHostKeys() []string {
 	var out []string
 	for _, f := range types.Features {
@@ -25,31 +25,21 @@ func perHostKeys() []string {
 	return out
 }
 
-// needsAI reports whether a switch is AI or needs it, directly or through another switch.
-func needsAI(key string) bool {
-	if key == types.FeatureAI {
-		return true
-	}
-	f, _ := types.FeatureByKey(key)
-	return slices.ContainsFunc(f.Requires, needsAI)
-}
+// aiSwitches is every AI-backed switch the Business tier sells (clips is not sold).
+var aiSwitches = []string{types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,
+	types.FeatureFollowupSend, types.FeatureRepurpose}
 
-func TestEveryAIFeatureIsPerHost(t *testing.T) {
-	for _, f := range types.Features {
-		// HLS delivery is the one per-host switch that is not AI (29 Oct 2026): an admin's call.
-		if want := f.Group == types.FeatureGroupAI || needsAI(f.Key) || f.Key == types.FeatureHLSDelivery; f.PerHost != want {
-			t.Errorf("%s: PerHost = %v, want %v (AI-backed switches and HLS delivery are per host only)", f.Key, f.PerHost, want)
-		}
-	}
-	for _, k := range []string{types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,
-		types.FeatureFollowupSend, types.FeatureRepurpose, types.FeatureClips} {
-		if !types.PerHostFeature(k) {
-			t.Errorf("%s is not PerHost", k)
-		}
+func TestPerHostSwitches(t *testing.T) {
+	want := []string{types.FeatureInstantWebinar, types.FeatureClips, types.FeatureHLSDelivery}
+	got := perHostKeys()
+	slices.Sort(want)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("PerHost switches = %v, want %v (clips, HLS delivery and instant sessions)", got, want)
 	}
 }
 
-func TestNewHostsHaveNoAIOnAnyPlanUntilAnAdminGrantsIt(t *testing.T) {
+func TestAIComesWithBusinessAndUp(t *testing.T) {
 	h := newHarness(t)
 	ctx := t.Context()
 
@@ -60,29 +50,37 @@ func TestNewHostsHaveNoAIOnAnyPlanUntilAnAdminGrantsIt(t *testing.T) {
 	for _, tier := range tiers {
 		for _, k := range perHostKeys() {
 			if slices.Contains(tier.Features, k) {
-				t.Errorf("plan %q includes %s; no plan may include an AI switch", tier.Plan, k)
+				t.Errorf("plan %q includes %s; no plan may include a per-host switch", tier.Plan, k)
 			}
 		}
 	}
 
-	hosts := map[types.Plan]types.Account{}
+	// One host moved through every plan (six signups would hit the signup rate limit).
+	acct := h.signup("AI Tiers", "ai-tiers@test.dev", true)
 	for _, plan := range store.PlanTiers {
-		acct := h.signup("AI Off "+string(plan), "ai-off-"+string(plan)+"@test.dev", true)
-		if plan != "" {
-			if _, err := h.store.SetUserPlan(ctx, acct.ID, plan); err != nil {
-				t.Fatal(err)
+		if _, err := h.store.SetUserPlan(ctx, acct.ID, plan); err != nil {
+			t.Fatal(err)
+		}
+		me := meAccount(t, h)
+		sells := plan == types.PlanBusiness || plan == types.PlanEnterprise
+		for _, k := range aiSwitches {
+			if k == types.FeatureSimuliveAuto {
+				continue // also needs replay_engage and simulive, which Business has too
+			}
+			if hasFeature(me.Features, k) != sells {
+				t.Errorf("new host on plan %q: has %s = %v, want %v: %v", plan, k, !sells, sells, me.Features)
 			}
 		}
-		hosts[plan] = acct
-		me := meAccount(t, h)
 		for _, k := range perHostKeys() {
 			if hasFeature(me.Features, k) {
 				t.Errorf("new host on plan %q has %s: %v", plan, k, me.Features)
 			}
 		}
-		// And the server refuses, not only the screen: AI writing answers feature_off.
-		res, raw := h.do(http.MethodPost, "/api/host/ai/webinar-setup", map[string]string{"brief": "A talk"})
-		h.wantError(res, raw, http.StatusForbidden, "feature_off")
+		if !sells {
+			// And the server refuses, not only the screen: AI writing answers feature_off.
+			res, raw := h.do(http.MethodPost, "/api/host/ai/webinar-setup", map[string]string{"brief": "A talk"})
+			h.wantError(res, raw, http.StatusForbidden, "feature_off")
+		}
 	}
 
 	if _, _, err := h.store.PromoteAdmins(ctx, []string{"neeraj@acme.dev"}); err != nil {
@@ -100,26 +98,43 @@ func TestNewHostsHaveNoAIOnAnyPlanUntilAnAdminGrantsIt(t *testing.T) {
 		return a
 	}
 
-	// An admin turns AI on for one host: that host has it, nobody else on the plan does.
-	biz := hosts[types.PlanBusiness]
-	a := grant(biz.ID, types.FeatureGrant{Feature: types.FeatureAI, Enabled: true})
+	// An admin turns AI on for one Basic host: that host has it, nobody else on the plan does.
+	basic := acct
+	other := h.signup("AI Other", "ai-other@test.dev", true)
+	for id, plan := range map[string]types.Plan{basic.ID: types.PlanBasic, other.ID: types.PlanBasic} {
+		if _, err := h.store.SetUserPlan(ctx, id, plan); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.login("neeraj@acme.dev")
+	a := grant(basic.ID, types.FeatureGrant{Feature: types.FeatureAI, Enabled: true})
 	if !hasFeature(a.Features, types.FeatureAI) || hasFeature(a.Features, types.FeatureAIKnowledge) {
 		t.Fatalf("after granting ai: %v, want ai and no ai_knowledge (its own grant)", a.Features)
 	}
-	a = grant(biz.ID, types.FeatureGrant{Feature: types.FeatureAIKnowledge, Enabled: true})
-	if !hasFeature(a.Features, types.FeatureAIKnowledge) {
-		t.Fatalf("after granting ai_knowledge: %v", a.Features)
-	}
-	if u, err := h.store.UserByID(ctx, hosts[types.PlanProfessional].ID); err != nil || u.HasFeature(types.FeatureAI) {
+	if u, err := h.store.UserByID(ctx, other.ID); err != nil || u.HasFeature(types.FeatureAI) {
 		t.Fatalf("another host has ai after one grant (err %v)", err)
 	}
-	// Plan default (Inherit) is off.
-	a = grant(biz.ID, types.FeatureGrant{Feature: types.FeatureAI, Inherit: true})
-	if hasFeature(a.Features, types.FeatureAI) || hasFeature(a.Features, types.FeatureAIKnowledge) {
+	// Plan default (Inherit) on Basic is off again.
+	a = grant(basic.ID, types.FeatureGrant{Feature: types.FeatureAI, Inherit: true})
+	if hasFeature(a.Features, types.FeatureAI) {
 		t.Fatalf("after inherit: %v, want no AI", a.Features)
 	}
+	// A Business host an admin turns AI off for has none, whatever the tier says.
+	if _, err := h.store.SetUserPlan(ctx, other.ID, types.PlanBusiness); err != nil {
+		t.Fatal(err)
+	}
+	a = grant(other.ID, types.FeatureGrant{Feature: types.FeatureAI, Enabled: false})
+	if hasFeature(a.Features, types.FeatureAI) || hasFeature(a.Features, types.FeatureAIKnowledge) {
+		t.Fatalf("business host with ai off: %v, want no AI", a.Features)
+	}
+	// clips stays an admin's grant for one host.
+	h.exec(`UPDATE users SET features = features || ARRAY['cloud_recording'] WHERE id = '` + basic.ID + `'`)
+	grant(basic.ID, types.FeatureGrant{Feature: types.FeatureAI, Enabled: true})
+	if a = grant(basic.ID, types.FeatureGrant{Feature: types.FeatureClips, Enabled: true}); !hasFeature(a.Features, types.FeatureClips) {
+		t.Fatalf("after granting clips: %v", a.Features)
+	}
 
-	// The plan matrix refuses an AI switch in any tier, and writes nothing.
+	// The plan matrix refuses a per-host switch in any tier, and writes nothing.
 	for _, k := range perHostKeys() {
 		res, raw := h.do(http.MethodPut, "/api/admin/plan-features", types.PlanFeaturesBody{Tiers: []types.PlanFeatures{
 			{Plan: types.PlanEnterprise, Features: []string{types.FeatureWhiteboard, k}},
@@ -140,6 +155,9 @@ func TestNewHostsHaveNoAIOnAnyPlanUntilAnAdminGrantsIt(t *testing.T) {
 /* migrations/0159 on the old shape: the AI sub-switches in every tier (0142) and an admin who
  * had ticked ai in Professional. A host an admin gave ai keeps everything AI they had; one
  * who had AI only from their plan loses it; the undo puts it all back. */
+// aiSwitches0159 is the switches migrations/0159 took out of the tiers.
+var aiSwitches0159 = []string{"ai", "ai_knowledge", "simulive_auto", "followup_send", "repurpose", "clips"}
+
 func TestAIDefaultOffMigrationKeepsAdminGrants(t *testing.T) {
 	h := newHarness(t)
 	ctx := t.Context()
@@ -184,7 +202,7 @@ func TestAIDefaultOffMigrationKeepsAdminGrants(t *testing.T) {
 		}
 		var out []string
 		for _, k := range u.Features {
-			if types.PerHostFeature(k) {
+			if slices.Contains(aiSwitches0159, k) {
 				out = append(out, k)
 			}
 		}
@@ -224,7 +242,7 @@ func TestAIDefaultOffMigrationKeepsAdminGrants(t *testing.T) {
 	}
 	for _, tier := range tiers {
 		for _, k := range tier.Features {
-			if types.PerHostFeature(k) {
+			if slices.Contains(aiSwitches0159, k) {
 				t.Errorf("plan %q still includes %s", tier.Plan, k)
 			}
 		}

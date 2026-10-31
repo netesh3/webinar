@@ -128,7 +128,7 @@ func TestCopyWebinarIsTheHostsAndRespectsThePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := h.newWebinar("Big room", func(in *types.WebinarInput) { in.AttendeeLimit = 500 })
-	if src.AttendeeLimit != types.MaxWebinarAudience {
+	if src.AttendeeLimit != 500 {
 		t.Fatalf("source limit = %d", src.AttendeeLimit)
 	}
 	if _, err := h.store.SetUserPlan(t.Context(), host.ID, ""); err != nil {
