@@ -56,6 +56,9 @@ type ClaimedNativePush struct {
 	Urgency  string
 	TTL      time.Duration
 	Attempts int
+	// Data and DataOnly are PushMessage's (31 Oct 2026).
+	Data     map[string]string
+	DataOnly bool
 }
 
 // ClaimDueNativePush is ClaimDuePush for installs: the same lease, order and expiry.
@@ -84,7 +87,7 @@ func (s *Store) ClaimDueNativePush(ctx context.Context, limit int) ([]ClaimedNat
 		RETURNING m.id::text, t.id::text, t.token, t.platform,
 		          m.kind, m.title, m.body, m.url, m.tag, m.urgency,
 		          greatest(0, extract(epoch FROM m.due_at + make_interval(secs => m.ttl_sec) - now()))::int,
-		          m.attempts`, limit)
+		          m.attempts, m.data, m.data_only`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +97,12 @@ func (s *Store) ClaimDueNativePush(ctx context.Context, limit int) ([]ClaimedNat
 		var c ClaimedNativePush
 		var kind string
 		var ttl int
+		var data []byte
 		if err := rows.Scan(&c.ID, &c.TokenID, &c.Token, &c.Platform,
-			&kind, &c.Title, &c.Body, &c.URL, &c.Tag, &c.Urgency, &ttl, &c.Attempts); err != nil {
+			&kind, &c.Title, &c.Body, &c.URL, &c.Tag, &c.Urgency, &ttl, &c.Attempts, &data, &c.DataOnly); err != nil {
 			return nil, err
 		}
+		c.Data = pushData(data)
 		c.Kind = types.PushKind(kind)
 		c.TTL = time.Duration(ttl) * time.Second
 		out = append(out, c)

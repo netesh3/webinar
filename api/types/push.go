@@ -25,6 +25,10 @@ const (
 	PushApprovalRequested PushKind = "approval_requested"
 	// Admins: an operator alert (the on-demand video server could not start).
 	PushOpsAlert PushKind = "ops_alert"
+	/* Somebody is calling this account into a meeting (31 Oct 2026, docs/calling.md). The
+	 * ring itself, and the "call ended" that stops it on the other devices. Urgent, 45 s to
+	 * live, tagged "call-<id>". On by default like every kind. */
+	PushIncomingCall PushKind = "incoming_call"
 	// "Send test notification" in Settings. Not a preference: it always goes.
 	PushTest PushKind = "test"
 )
@@ -111,6 +115,10 @@ type PushPayload struct {
 	Renotify bool     `json:"renotify,omitempty"`
 	Icon     string   `json:"icon,omitempty"`
 	Badge    string   `json:"badge,omitempty"`
+	/* Data is the machine half of a push the service worker acts on rather than only shows
+	 * (31 Oct 2026): for PushIncomingCall it is the IncomingCallEvent or CallEndedEvent, as
+	 * strings (callerAvatarUrl "" for none), the same map the apps get as FCM data. */
+	Data map[string]string `json:"data,omitempty"`
 }
 
 /* NativePushRegisterRequest is POST /api/push/native (29 Oct 2026): the Android or iOS app

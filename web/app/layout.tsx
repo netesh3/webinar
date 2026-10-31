@@ -4,6 +4,7 @@ import { Fraunces, Geist, Outfit } from "next/font/google";
 import Script from "next/script";
 import { AppProviders } from "@/components/providers";
 import { PhonePrompt } from "@/components/phone-prompt";
+import { IncomingCall } from "@/components/incoming-call";
 import { SiteBanner } from "@/components/site-banner";
 import { api } from "@/lib/api";
 import { siteOrigin } from "@/lib/site-origin";
@@ -162,6 +163,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <SiteBanner />
           {children}
           <PhonePrompt />
+          {/* Somebody calling this account into a meeting: on every page (docs/calling.md). */}
+          <IncomingCall />
           {/* The mobile app's push token follows the signed-in account (no-op elsewhere). */}
           <NativeSessionSync />
         </AppProviders>

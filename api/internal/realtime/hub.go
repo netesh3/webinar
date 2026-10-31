@@ -21,6 +21,7 @@ package realtime
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 )
@@ -204,16 +205,29 @@ func (h *Hub) Count(slug string) int {
 }
 
 // Total is how many subscribers this process holds across every webinar: the edge viewers
-// connected to this instance (the webinarliv.edge_viewers gauge).
+// connected to this instance (the webinarliv.edge_viewers gauge). A signed-in tab's own
+// stream (UserTopic) is not a viewer and is left out.
 func (h *Hub) Total() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	n := 0
-	for _, set := range h.subs {
+	for slug, set := range h.subs {
+		if strings.HasPrefix(slug, userTopicPrefix) {
+			continue
+		}
 		n += len(set)
 	}
 	return n
 }
+
+/* userTopicPrefix marks a per-account topic (31 Oct 2026, calling). The hub keys subscribers
+ * by webinar slug; a slug never has a colon, so "user:<id>" cannot collide with one, and the
+ * Bus carries these events between instances exactly as it carries a webinar's. */
+const userTopicPrefix = "user:"
+
+// UserTopic is the hub topic for one account's open tabs: GET /api/me/events subscribes to
+// it, and an event published to it reaches every tab that account has open, on any instance.
+func UserTopic(userID string) string { return userTopicPrefix + userID }
 
 // Active reports whether this process has any subscriber at all.
 func (h *Hub) Active() bool {

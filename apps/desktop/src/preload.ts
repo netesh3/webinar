@@ -20,6 +20,8 @@
  *   closeRoomWindow(url)        close this extra room window and load Results
  *                               in the main window (host webinar end)
  *   onStopShare(cb)             Stop sharing from the floating share bar
+ *   ringAttention(on: boolean)  an incoming call is ringing (web/lib/ringtone.ts): flash
+ *                               the window and bounce the dock until it stops (31 Oct 2026)
  *
  * The page does not have to call anything: a small main-world script below
  * detects a call by itself (a held screen wake lock, which the live rooms take
@@ -75,6 +77,9 @@ if (isSitePage()) {
     },
     openConnect(url: unknown) {
       if (typeof url === "string") ipcRenderer.send("webinarliv:open-connect", url);
+    },
+    ringAttention(on: unknown) {
+      ipcRenderer.send("webinarliv:ring-attention", on === true);
     },
     closeRoomWindow(url: unknown) {
       if (typeof url !== "string") return Promise.resolve(false);

@@ -82,6 +82,10 @@ self.addEventListener("push", (event) => {
   } catch {
     data = { body: event.data ? event.data.text() : "" };
   }
+  if (data.kind === "incoming_call" && data.data && typeof data.data === "object") {
+    event.waitUntil(onCallPush(data));
+    return;
+  }
   const title = data.title || "Webinar Liv";
   const options = {
     body: data.body || "",
@@ -98,7 +102,138 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+// ------------------------------------------------------------------ calls
+
+/* Somebody calling this account into a meeting (31 Oct 2026, docs/calling.md). The push's
+ * data is the call event as strings (types.PushPayload.Data): an incoming_call rings, a
+ * call_ended with the same tag ("call-<id>") stops it. A tab in front already rings on its
+ * own (components/incoming-call.tsx, from the account's event stream), so the worker only
+ * tells it, and draws nothing over it. */
+
+/** A path on this site, never another origin (lib/calls.ts isSitePath). */
+function sitePath(url) {
+  return typeof url === "string" && url.startsWith("/") && !url.startsWith("//") && !url.includes("\\");
+}
+
+async function tellTabs(call) {
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const client of windows) client.postMessage({ call });
+  return windows;
+}
+
+async function closeCallNotifications(tag) {
+  const shown = await self.registration.getNotifications({ tag });
+  for (const n of shown) n.close();
+}
+
+async function onCallPush(data) {
+  const call = data.data;
+  const tag = data.tag || `call-${call.callId}`;
+  const windows = await tellTabs(call);
+  const inFront = windows.some((c) => c.focused);
+  if (call.type === "call_ended") {
+    await closeCallNotifications(tag);
+    if (data.title) {
+      // Not answered: a missed call stays in the tray.
+      return self.registration.showNotification(data.title, {
+        body: data.body || "",
+        icon: data.icon || "/icons/icon-192.png",
+        badge: data.badge || "/icons/badge-96.png",
+        tag,
+        data: { url: "/", kind: "incoming_call" },
+      });
+    }
+    if (inFront) return undefined;
+    // Answered or declined elsewhere. A push must show something, so a quiet line, briefly.
+    await self.registration.showNotification("Call ended", { tag, silent: true, data: { url: "/" } });
+    await new Promise((r) => setTimeout(r, 3000));
+    return closeCallNotifications(tag);
+  }
+  if (call.type !== "incoming_call" || !sitePath(call.joinUrl)) return undefined;
+  const expired = Date.parse(call.expiresAt) <= Date.now();
+  if (inFront && !expired) return undefined;
+  if (expired) {
+    return self.registration.showNotification(`Missed call from ${call.callerName || "someone"}`, {
+      body: call.topic || "",
+      icon: data.icon || "/icons/icon-192.png",
+      tag,
+      data: { url: "/" },
+    });
+  }
+  return self.registration.showNotification(data.title || `${call.callerName || "Someone"} is calling`, {
+    body: data.body || call.topic || "",
+    icon: (call.callerAvatarUrl && call.callerAvatarUrl.startsWith("https://") && call.callerAvatarUrl) || data.icon || "/icons/icon-192.png",
+    badge: data.badge || "/icons/badge-96.png",
+    tag,
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [400, 200, 400, 200, 400],
+    actions: [
+      { action: "accept", title: "Accept" },
+      { action: "decline", title: "Decline" },
+    ],
+    data: { url: call.joinUrl, kind: "incoming_call", call },
+  });
+}
+
+async function focusOrOpen(path) {
+  const target = new URL(sitePath(path) ? path : "/", self.location.origin);
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const client of windows) {
+    if (new URL(client.url).pathname === target.pathname && "focus" in client) return client.focus();
+  }
+  // A tab of the site is in the background: take it to the call rather than opening another.
+  for (const client of windows) {
+    if ("navigate" in client && "focus" in client) {
+      try {
+        const moved = await client.navigate(target.href);
+        if (moved) return moved.focus();
+      } catch {
+        // An uncontrolled tab cannot be navigated from here; open a new one.
+      }
+    }
+  }
+  if (self.clients.openWindow) return self.clients.openWindow(target.href);
+  return undefined;
+}
+
+/* Accept (the button, or a tap on the ring itself) answers and opens the meeting; Decline
+ * answers and opens nothing. The session cookie goes with the request: the API and the site
+ * share an origin in production (web/worker.ts), and next dev proxies /api the same way. */
+async function answerCall(call, action) {
+  const verb = action === "decline" ? "decline" : "accept";
+  let res = null;
+  try {
+    res = await fetch(`/api/calls/${encodeURIComponent(call.callId)}/${verb}`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    res = null;
+  }
+  await tellTabs({ type: "call_ended", callId: call.callId, state: verb === "decline" ? "declined" : "accepted" });
+  if (verb === "decline") return undefined;
+  if (res && res.ok) {
+    let joinUrl = call.joinUrl;
+    try {
+      const body = await res.json();
+      if (sitePath(body.joinUrl)) joinUrl = body.joinUrl;
+    } catch {
+      // The ring's own link is the same one.
+    }
+    return focusOrOpen(joinUrl);
+  }
+  // Over already (hung up, missed), or signed out: open the site, which says so.
+  return focusOrOpen("/");
+}
+
 self.addEventListener("notificationclick", (event) => {
+  const nd = event.notification.data || {};
+  if (nd.kind === "incoming_call" && nd.call && nd.call.type === "incoming_call") {
+    event.notification.close();
+    event.waitUntil(answerCall(nd.call, event.action));
+    return;
+  }
   event.notification.close();
   const raw = (event.notification.data && event.notification.data.url) || "/";
   let target;

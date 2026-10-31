@@ -307,6 +307,7 @@ const LABELS: Record<string, { label: string; description: string }> = {
   webinar_reminder: { label: "15 minutes before", description: "A reminder before a webinar you registered for." },
   replay_ready: { label: "Recording available", description: "When the replay of a webinar you registered for is up." },
   meeting_started: { label: "Meeting started", description: "When a meeting you were invited to starts." },
+  incoming_call: { label: "Calls", description: "Ring this device when somebody calls you into a meeting." },
   lobby_knock: { label: "Someone in the lobby", description: "Somebody is waiting to join your meeting and you're not in it." },
   approval_requested: { label: "Registrations to approve", description: "A new registration for a webinar that needs approval." },
   recap_ready: { label: "Recap ready", description: "Your session's AI recap is ready." },
