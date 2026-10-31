@@ -26,10 +26,15 @@ apps/mobile/
   android/                native Android project (committed)
     app/src/main/java/com/webinarliv/app/AppInfoPlugin.java  tells the page whether push is built in
     app/src/main/java/com/webinarliv/app/CallQos*.java       live-room FGS, Wi-Fi/CPU locks
+    app/src/main/java/com/webinarliv/app/CallRinging*.java   incoming calls (see Incoming calls)
+    app/src/main/java/com/webinarliv/app/CallMessagingService.java, CallActionReceiver.java,
+      IncomingCallActivity.java                              FCM call messages, Decline, call screen
   ios/App/                native iOS project (committed)
     App/AppDelegate.swift   audio session (background audio), APNs token hand-off
     App/Info.plist          UIBackgroundModes: audio, remote-notification, voip (CallKit)
     App/CallQosPlugin.swift live-room videoChat audio session
+    App/CallRingingPlugin.swift  incoming calls: PushKit + CallKit (see Incoming calls)
+    App/SceneDelegate.swift AppBridgeViewController registers the app's own plugins
     App/App.entitlements    Associated Domains (Universal Links, webcredentials), aps-environment
 web/                      (the site) pieces that only run inside the app
   lib/native-bridge.ts      deep links, push registration, share shim, keep-awake
@@ -248,6 +253,97 @@ APNs itself.
 4. Check it: sign in on a phone, then use Settings, then Notifications, then Send test
    notification. That queues one notification to every browser and install of the account.
 
+## Incoming calls
+
+(31 Oct 2026.) A host can call another Webinar Liv user. The calls API and the in-page ringing
+are the web app's; this is the phone ringing like a phone call, including when the app was
+killed. The payload is the same JSON on both platforms:
+
+```
+{"type":"incoming_call","callId","callerName","callerAvatarUrl","meetingSlug","topic","joinUrl","expiresAt"}
+{"type":"call_ended","callId","state"}
+```
+
+**Answer and Decline authenticate natively, with the WebView's own session cookie** (Android:
+`CookieManager.getCookie("https://webinarliv.com")`; iOS: `WKWebsiteDataStore.default()`'s
+cookie store, HttpOnly included). They POST `https://webinarliv.com/api/calls/{id}/accept` or
+`/decline` straight from native code, so Decline works from the lock screen with no page
+loaded, and Answer works on a cold start. Going through the page instead would need the page
+loaded and signed in before either button could do anything. Answer then hands the answer's
+`joinUrl` to the page through the `CallRinging` plugin's `callAccepted` event (kept until the
+page listens), and `web/lib/native-bridge.ts` loads it like any opened link. No third-party
+plugin: npm has none for Capacitor 8 that is maintained (ionic-callkit is a beta,
+capacitor-voip-ios and capacitor-plugin-callkit-voip stop at Capacitor 4 and 5), so both
+platforms use a small plugin in the app target.
+
+**Android** (`CallRinging.java`). The API sends an FCM data message (no notification block,
+high priority); `CallMessagingService` subclasses `@capacitor-firebase/messaging`'s
+`MessagingService` and replaces it in the manifest (`tools:node="remove"`), because a data
+message reaches only one service, in the app's process, even when the app was swiped away. Call
+messages (`type` in the data, or the JSON in a `payload` key) ring natively; everything else
+goes to the plugin unchanged. `incoming_call` posts a `NotificationCompat.CallStyle`
+notification (the system call notification on API 31+; on older versions, a `CATEGORY_CALL`
+notification with Answer and Decline buttons) on the `webinarliv.incoming_call.v1` channel
+(high importance, the default ringtone looping with `FLAG_INSISTENT`, vibration). Its
+full-screen intent is `IncomingCallActivity`, which shows over the lock screen and turns the
+screen on. It times out at `expiresAt`. `call_ended` cancels it. Answer opens `MainActivity`,
+which accepts and loads the meeting. Decline is a broadcast (`CallActionReceiver`) and doesn't
+open the app. There's no phoneCall foreground service: a CallStyle notification with a
+full-screen intent doesn't need one, and the meeting runs in the WebView.
+
+- **Full-screen permission (Android 14+).** `USE_FULL_SCREEN_INTENT` is granted by default on
+  older versions. On 14+ the user has to allow it (Settings, Apps, Webinar Liv, Full-screen
+  notifications), and Play grants it by default only to calling and alarm apps. The page checks
+  `canUseFullScreenIntent` once and, when it's off, asks whether to open that setting. Without
+  it the call still rings as a heads-up notification with Answer and Decline, just not over the
+  lock screen. Play Console needs the full-screen intent declaration (App content) for calling.
+- `POST_NOTIFICATIONS` (Android 13+) is the push prompt the app already shows. Without it
+  nothing rings.
+
+**iOS** (`CallRingingPlugin.swift`). PushKit, not FCM: iOS rings a killed app only for a VoIP
+push, and FCM can't send one. `AppDelegate` registers a `PKPushRegistry` (`.voIP`) at launch.
+The page reads the token (`getVoipToken`, and the `voipToken` event when it changes) and posts
+it to `POST /api/push/native` as `platform: "ios_voip"`, next to the FCM token, after sign-in
+and once a day, the same way the FCM token goes. It's deleted on sign-out. The API sends the
+call straight to APNs (`api/internal/push/apns_voip.go`). Every VoIP push is reported to
+CallKit straight away (`reportNewIncomingCall`), because iOS kills an app that doesn't report
+one. `call_ended`, an expired call, or a call that already ended is reported and ended at once.
+The provider uses the app's display name ("Webinar Liv"), the `CallKitIcon` template image,
+video, one call group, and generic handles. A call nobody answers ends as unanswered at
+`expiresAt`. Answer accepts through the API, fulfils the action, hands `joinUrl` to the page,
+and then ends the CallKit call after a moment, so WebKit owns the audio session for the
+meeting. End while ringing declines through the API.
+
+- **APNs.** Token auth with the team's APNs auth key (`.p8`), the same kind of key uploaded into
+  Firebase (that one can be reused). One key covers every topic of the team's apps, VoIP
+  included, so **no VoIP certificate** is needed. Apple requires the VoIP topic to be the bundle
+  ID plus `.voip`: `com.webinarliv.app.voip`. Requests use `apns-push-type: voip`, priority 10,
+  and about 45 s expiration. `Unregistered`, `BadDeviceToken` and `DeviceTokenNotForTopic`
+  delete the token.
+- **Capabilities.** Push Notifications (already on the App ID and in `App.entitlements`), and
+  Background Modes with `voip` (now in `Info.plist` next to `audio` and `remote-notification`).
+  CallKit and PushKit need no other entitlement. A development-signed build's VoIP token is
+  sandbox-only: it rings only with `APNS_ENV=sandbox`. TestFlight and App Store builds are
+  production.
+- The app's own plugins (`CallQosPlugin`, `CallRingingPlugin`) are registered in
+  `AppBridgeViewController.capacitorDidLoad` (`SceneDelegate.swift`). `cap sync` lists only
+  npm plugins in `packageClassList`, so before this change `CallQos` was never registered on
+  iOS.
+
+**One ring per phone.** The calls API calls `pushVoIP` (`api/internal/api/call_voip.go`) for
+every ring and every end, and it sends through `sendVoIPCall` (`push_voip.go`). The FCM ring
+skips the iOS FCM tokens of an account that has a VoIP token
+(`store.PushMessage.SkipIOSWithVoIP`), so CallKit isn't doubled by an "is calling" banner.
+Inside the app, the page's incoming-call card (`web/components/incoming-call.tsx`) neither shows
+nor rings when `nativeRingsCalls()` (`web/lib/native-bridge.ts`) says the phone rings natively:
+the plugin is there, the API answered `sending: true` for this install's call token, and, on
+Android, notifications are on.
+
+**API config:** `APNS_KEY_P8` (the `.p8`, PEM or base64), `APNS_KEY_ID`, `APNS_TEAM_ID`
+(`GF5C6XT5S4`) and `APNS_ENV` (`production` by default, or `sandbox`), as repo secrets that
+`.github/workflows/cloudrun-deploy.yml` passes through. With none of them set, the boot log says
+`voip push off` once, and iOS calls don't ring. Android rings through FCM either way.
+
 ## Deep-link setup (placeholders)
 
 Both files are served by Workers Assets straight from `web/public/.well-known/`, before the
@@ -314,7 +410,9 @@ SHA-256 to `assetlinks.json` too for App Links to verify on sideloaded installs.
 1. **Apple:** Team ID. Register the App ID `com.webinarliv.app` with the Push Notifications and
    Associated Domains capabilities. Create an App Store Connect app record. Provide an Apple
    Distribution certificate and App Store provisioning profile, or an App Store Connect API key.
-   Create an APNs Auth Key (`.p8`) and upload it into Firebase (see Push notifications).
+   Create an APNs Auth Key (`.p8`) and upload it into Firebase (see Push notifications). For
+   incoming calls on iOS, store the same key (or another APNs key) as the repo secrets
+   `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID` and optionally `APNS_ENV` (see Incoming calls).
 2. **Google:** a Play Console app for `com.webinarliv.app`, an upload keystore (plus its
    passwords and alias) enrolled in Play App Signing, the **app signing key's SHA-256** for
    `assetlinks.json`, and a Firebase project with an Android and an iOS app, which gives

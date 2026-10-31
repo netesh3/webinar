@@ -262,10 +262,13 @@ done
 # Or no key (29 Oct 2026): the Firebase project ID, and the API takes its token from the Cloud Run
 # metadata server for the runtime service account. The JSON key wins when both are set.
 [[ -n "${FCM_PROJECT_ID:-}" ]] && ENV_VARS+=("FCM_PROJECT_ID=${FCM_PROJECT_ID}")
-# Direct APNs (VoIP / CallKit incoming calls). Same .p8 as alert push. All three or none.
+# iOS VoIP push for incoming calls (api/internal/push/apns_voip.go; 31 Oct 2026): the APNs auth
+# key (.p8 PEM or base64; the env file JSON-encodes its newlines), its key ID, the team ID and
+# production|sandbox. Unset, iOS calls do not ring; a partial set is logged and left off.
 [[ -n "${APNS_KEY_P8:-}" ]] && ENV_VARS+=("APNS_KEY_P8=${APNS_KEY_P8}")
 [[ -n "${APNS_KEY_ID:-}" ]] && ENV_VARS+=("APNS_KEY_ID=${APNS_KEY_ID}")
 [[ -n "${APNS_TEAM_ID:-}" ]] && ENV_VARS+=("APNS_TEAM_ID=${APNS_TEAM_ID}")
+[[ -n "${APNS_ENV:-}" ]] && ENV_VARS+=("APNS_ENV=${APNS_ENV}")
 [[ -n "${SUPPORT_EMAIL:-}" ]] && ENV_VARS+=("SUPPORT_EMAIL=${SUPPORT_EMAIL}")
 [[ -n "${SMTP_HOST:-}" ]] && ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
 [[ -n "${SMTP_PORT:-}" ]] && ENV_VARS+=("SMTP_PORT=${SMTP_PORT}")

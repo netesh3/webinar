@@ -60,6 +60,8 @@ func (s *Server) pushIncomingCall(ctx context.Context, c store.Call, ev types.In
 		Body: body, URL: ev.JoinURL, Tag: callTag(c.ID),
 		Urgency: "high", TTL: ttl, DedupeKey: "call:" + c.ID,
 		Data: callPushData(ev), DataOnly: true,
+		// An iPhone with a VoIP token rings through CallKit instead (push_voip.go).
+		SkipIOSWithVoIP: s.voip != nil,
 	})
 }
 

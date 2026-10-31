@@ -13,6 +13,7 @@ import {
   secondsLeft,
   type CallEvent,
 } from "@/lib/calls";
+import { nativeRingsCalls } from "@/lib/native-bridge";
 import { startRinging } from "@/lib/ringtone";
 import { AccountAvatar } from "./account-avatar";
 import { MaterialIcon } from "./icons";
@@ -98,11 +99,16 @@ export function IncomingCall() {
   const call = live.length > 0 ? live[live.length - 1] : null;
   const callId = call?.callId ?? null;
 
+  /* In the Android / iOS app the phone rings the call natively (CallKit, or the app's call
+   * notification), even while the app is open: the card neither shows nor rings there, so the
+   * call does not ring twice (lib/native-bridge.ts nativeRingsCalls; 31 Oct 2026). */
+  const native = mounted && nativeRingsCalls();
+
   // Ring while there is a call to answer; a new call restarts the ring.
   useEffect(() => {
-    if (!callId) return;
+    if (!callId || native) return;
     return startRinging();
-  }, [callId]);
+  }, [callId, native]);
 
   // The service worker answered from the notification: the stream says so too, but this is
   // quicker and works while the stream reconnects.
@@ -116,7 +122,7 @@ export function IncomingCall() {
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
   }, []);
 
-  if (!mounted || !call) return null;
+  if (!mounted || !call || native) return null;
 
   const drop = (id: string) => setRinging((list) => list.filter((c) => c.callId !== id));
 

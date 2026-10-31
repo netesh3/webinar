@@ -113,24 +113,31 @@ Push kind `types.PushIncomingCall = "incoming_call"`, a Settings → Notificatio
   (`apns-push-type: alert`, priority 10) as the fallback; one with no title (the silent
   `call_ended` for accepted/declined) is `apns-push-type: background` with `content-available`.
 
-### For the native work (hook names and fields)
+### Native ringing (hook names and fields)
+
+The phones' side is in `apps/mobile/README.md`, "Incoming calls" (31 Oct 2026).
 
 - **`func (s *Server) pushVoIP(ctx context.Context, calleeUserID string, payload json.RawMessage)`**
-  in `api/internal/api/call_voip.go` — a no-op today. Called once per ring with the
-  `incoming_call` JSON, and once per end with the `call_ended` JSON (so CallKit can end a call
-  still ringing). Replace the body (or the whole file) with the APNs VoIP send. Don't fail the
-  caller; log errors.
+  in `api/internal/api/call_voip.go`. It's called once per ring with the `incoming_call` JSON,
+  and once per end with the `call_ended` JSON, so CallKit can end a call that is still ringing.
+  It hands both to `sendVoIPCall` (`push_voip.go`), which sends a VoIP push straight to APNs
+  (`api/internal/push/apns_voip.go`) for each of the callee's `ios_voip` tokens. That runs in
+  the background, and errors are logged, never returned. With no `APNS_*` key, it does nothing.
 - **`store.PushMessage.DataOnly bool`** and **`store.PushMessage.Data map[string]string`**
-  (`push_messages.data_only`, `push_messages.data`), carried to
-  **`push.NativeMessage.DataOnly` / `.Data`** by `sendNativeGroup`. FCM data keys: `type`,
-  `callId`, `callerName`, `callerAvatarUrl` (`""` for none), `meetingSlug`, `topic`, `joinUrl`,
-  `expiresAt` (or `type`, `callId`, `state` for `call_ended`), plus `url`, `kind`, `tag`.
-- The app answers with `POST /api/calls/{id}/accept` or `/decline` (session cookie in the
-  WebView), then opens `joinUrl` (already a seat on the panel, so opening it works even before
-  the accept lands).
-- In the foreground the WebView's own card (`incoming-call.tsx`) also rings, from the event
-  stream. If the native ringing screen is up at the same time, the app can answer there; the
-  card stops on the `call_ended` it causes.
+  (`push_messages.data_only`, `push_messages.data`) are carried to
+  **`push.NativeMessage.DataOnly` / `.Data`** by `sendNativeGroup`.
+  - FCM data keys for `incoming_call`: `type`, `callId`, `callerName`, `callerAvatarUrl` (`""`
+    for none), `meetingSlug`, `topic`, `joinUrl`, `expiresAt`, plus `url`, `kind`, `tag`.
+  - For `call_ended`: `type`, `callId`, `state`.
+  - The Android app rings these natively (`CallMessagingService`).
+- **`store.PushMessage.SkipIOSWithVoIP`**: the ring's FCM rows leave out the iOS FCM tokens of an
+  account that has an `ios_voip` token, so an iPhone rings once (CallKit), not also with the
+  "is calling" alert fallback.
+- The apps answer natively with `POST /api/calls/{id}/accept` or `/decline`, using the WebView's
+  session cookie, then open `joinUrl`.
+- In the app, the WebView's own card (`incoming-call.tsx`) neither shows nor rings while
+  `nativeRingsCalls()` (`web/lib/native-bridge.ts`) is true, so a call rings once even with the
+  app open.
 
 ## Realtime to open tabs: why a per-account SSE stream
 

@@ -79,6 +79,7 @@ const (
 )
 
 func newPushSender(s *Server) {
+	newVoIPSender(s) // iOS incoming calls, straight to APNs (push_voip.go; 31 Oct 2026)
 	// The service account JSON wins; else FCM_PROJECT_ID sends with the Cloud Run identity's
 	// token from the metadata server (29 Oct 2026); else off.
 	if f, err := push.NewFCMSenderFromConfig(s.cfg.FCMServiceAccountJSON, s.cfg.FCMProjectID, nil); err != nil {
@@ -123,7 +124,7 @@ func (s *Server) mountPush(r chi.Router) {
 }
 
 // nativePlatforms are the platforms POST /api/push/native accepts.
-var nativePlatforms = map[string]bool{"ios": true, "android": true}
+var nativePlatforms = map[string]bool{"ios": true, "android": true, voipPlatform: true}
 
 /* handleNativePushRegister is POST /api/push/native. The token is stored even while native
  * sending is off (no FCM key yet), so the installs are there the moment it is switched on;
@@ -137,8 +138,11 @@ func (s *Server) handleNativePushRegister(w http.ResponseWriter, r *http.Request
 	platform := strings.ToLower(strings.TrimSpace(req.Platform))
 	token := strings.TrimSpace(req.Token)
 	if !nativePlatforms[platform] {
-		httpx.Fields(w, map[string]string{"platform": "Must be ios or android."})
+		httpx.Fields(w, map[string]string{"platform": "Must be ios, android or ios_voip."})
 		return
+	}
+	if platform == voipPlatform {
+		token = normalizeVoIPToken(token)
 	}
 	// FCM tokens are a few hundred URL-safe characters; anything else is not one.
 	if len(token) < 20 || len(token) > 4096 || strings.ContainsAny(token, " \t\r\n") || !utf8.ValidString(token) {
@@ -151,7 +155,11 @@ func (s *Server) handleNativePushRegister(w http.ResponseWriter, r *http.Request
 		s.fail(w, r, "native push register", err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, types.NativePushRegisterResponse{Status: "ok", Sending: s.fcm != nil})
+	sending := s.fcm != nil
+	if platform == voipPlatform {
+		sending = s.voip != nil
+	}
+	httpx.JSON(w, http.StatusOK, types.NativePushRegisterResponse{Status: "ok", Sending: sending})
 }
 
 // handleNativePushUnregister is DELETE /api/push/native: the app signing out.

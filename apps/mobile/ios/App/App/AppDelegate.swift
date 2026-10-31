@@ -9,6 +9,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         configureAudioSession()
+        // Incoming calls: PushKit must be registered at launch, or a VoIP push that woke the
+        // app is never delivered (CallRingingPlugin.swift; 31 Oct 2026).
+        CallRinging.shared.start()
         return true
     }
 

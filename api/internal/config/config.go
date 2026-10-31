@@ -111,6 +111,18 @@ type Config struct {
 	 * Empty (the default) with no JSON key means native sending is off. */
 	FCMProjectID string
 
+	/* The APNs auth key for iOS VoIP pushes, which ring the app for an incoming call
+	 * (api/internal/push/apns_voip.go; 31 Oct 2026). APNsKeyP8 is the .p8 file (PEM, or the
+	 * same base64), APNsKeyID its 10-character ID, APNsTeamID the developer team (GF5C6XT5S4)
+	 * and APNsEnv "production" (the default; TestFlight and the App Store) or "sandbox" (a
+	 * development-signed build). FCM cannot send VoIP pushes, so this is the one place the API
+	 * speaks APNs itself. All empty means VoIP is off and the API says so once at boot; a
+	 * partial or unparsable key is logged and treated as off rather than refusing to boot. */
+	APNsKeyP8  string
+	APNsKeyID  string
+	APNsTeamID string
+	APNsEnv    string
+
 	/* CaptionsSecret switches on server-side live captions (deploy/captions): the shared
 	 * secret the caption agent sends in X-Captions-Secret to POST /api/internal/captions,
 	 * /captions/status and /transcripts. Empty means those endpoints do not exist and
@@ -581,6 +593,10 @@ func Load() (Config, error) {
 		VAPIDSubject:            strings.TrimSpace(env("VAPID_SUBJECT", "")),
 		FCMServiceAccountJSON:   strings.TrimSpace(env("FCM_SERVICE_ACCOUNT_JSON", "")),
 		FCMProjectID:            strings.TrimSpace(env("FCM_PROJECT_ID", "")),
+		APNsKeyP8:               strings.TrimSpace(env("APNS_KEY_P8", "")),
+		APNsKeyID:               strings.TrimSpace(env("APNS_KEY_ID", "")),
+		APNsTeamID:              strings.TrimSpace(env("APNS_TEAM_ID", "")),
+		APNsEnv:                 strings.TrimSpace(env("APNS_ENV", "")),
 		CaptionsSecret:          strings.TrimSpace(env("CAPTIONS_SECRET", "")),
 		CaptionsAgentName:       strings.TrimSpace(env("CAPTIONS_AGENT_NAME", "webinar-captions")),
 		CaptionsProvider:        loadCaptionsProvider(),
@@ -976,6 +992,11 @@ func (c Config) validate() error {
 // Push is the Web Push identity; Enabled() is false when the VAPID variables are unset.
 func (c Config) Push() push.Config {
 	return push.Config{PublicKey: c.VAPIDPublicKey, PrivateKey: c.VAPIDPrivateKey, Subject: c.VAPIDSubject}
+}
+
+// APNsVoIP is the APNs auth key for iOS VoIP pushes; Configured() is false when it is unset.
+func (c Config) APNsVoIP() push.APNsConfig {
+	return push.APNsConfig{KeyP8: c.APNsKeyP8, KeyID: c.APNsKeyID, TeamID: c.APNsTeamID, Env: c.APNsEnv}
 }
 
 // listenAddr prefers ADDR; if unset, honors Cloud Run's PORT (a bare number).

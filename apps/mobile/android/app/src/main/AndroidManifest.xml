@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -65,6 +66,35 @@
             android:name=".CallQosService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Incoming calls (CallRinging.java; 31 Oct 2026). CallMessagingService takes FCM's
+             messages instead of @capacitor-firebase/messaging's MessagingService (removed here),
+             rings for call messages even when the app was swiped away, and passes everything
+             else on to the plugin. -->
+        <service
+            android:name="io.capawesome.capacitorjs.plugins.firebase.messaging.MessagingService"
+            tools:node="remove" />
+        <service
+            android:name=".CallMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Decline, from the notification or the call screen, without opening the app. -->
+        <receiver
+            android:name=".CallActionReceiver"
+            android:exported="false" />
+        <!-- The full-screen incoming call, over the lock screen. -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.webinarliv.app.call"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
     </application>
 
     <!-- Permissions -->
@@ -89,6 +119,12 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- Push (Android 13+ runtime prompt); @capacitor-firebase/messaging's FCM library also merges it. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Incoming calls (31 Oct 2026): the call screen over the lock screen (Android 14+ asks
+         the user; CallRingingPlugin.openFullScreenSettings), and vibration before Android 8's
+         notification channels. No phoneCall foreground service: a CallStyle notification with
+         a full-screen intent needs none, and the meeting itself runs in the WebView. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Not required: attendees without a camera can still watch and talk. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
