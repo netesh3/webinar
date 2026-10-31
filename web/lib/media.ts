@@ -38,8 +38,10 @@ import {
   SHARE_FLOOR_MOBILE,
   SHARE_LAYERS,
   SHARE_TOP,
-  cameraCapturePreset,
+  SPEECH_AUDIO,
+  cameraCaptureOptions,
   cameraPublishDefaults,
+  currentCameraPlan,
   shareCodecOfTrack,
   shareEncodingPlan,
   shareLayers,
@@ -49,7 +51,7 @@ import { currentIsMobile, deviceFormFactor } from "./device";
 import { av1Now, primeAv1Probes } from "./codec-policy";
 import { primeReceivePolicy } from "./receive-codecs";
 
-export { canCaptureCamera1080, cameraCapturePreset } from "./network";
+export { canCaptureCamera1080, cameraCaptureOptions, cameraCapturePreset } from "./network";
 
 /* Capture and publish quality.
  *
@@ -89,9 +91,11 @@ export { canCaptureCamera1080, cameraCapturePreset } from "./network";
  * track, which costs a keyframe and a visible cut for the audience — during the moment the
  * connection is already struggling. The ladder works on the live sender's encodings instead.
  *
- * Low-power / mobile publishers skip the 1080p capture ideal via `cameraCapturePreset()` —
+ * Low-power publishers and tablets skip the 1080p capture ideal via `cameraCapturePreset()` —
  * they still publish the same three-rung ladder shape so applyLadder indexing stays shared,
- * but their top encoding is CAMERA_720, so we do not ask a phone to encode empty 1080.
+ * but their top encoding is CAMERA_720. Phones go further (31 Oct 2026): a capture CAPPED at
+ * 720p and a 150 / 450 / 1200 kbps ladder at "low" priority, so the voice is never queued behind
+ * the camera (cameraPlanFor in network.ts, which has the meeting-1865 numbers).
  */
 export const CAPTURE = CAMERA_TOP;
 
@@ -387,7 +391,9 @@ export function roomOptions(
   prefs: MediaPreferences,
   canPublish: boolean,
 ): RoomOptions {
-  const capture = cameraCapturePreset();
+  // Phone, tablet or desktop: what the camera captures, publishes and adapts on (network.ts).
+  const plan = currentCameraPlan();
+  const capture = plan.top;
   const phone = currentIsMobile();
   // Answered while the pre-join screen is up; the room applies it to the publish defaults when
   // it arrives (the AV1 effect in webinar-room.tsx), before or after the first camera publish.
@@ -409,9 +415,10 @@ export function roomOptions(
     adaptiveStream: { pixelDensity: phone ? PHONE_PIXEL_DENSITY : "screen" },
     dynacast: true,
 
+    // The ideal resolution, and on a phone hard caps beside it (cameraCaptureOptions).
     videoCaptureDefaults: {
       deviceId: prefs.videoInput,
-      resolution: capture.resolution,
+      ...cameraCaptureOptions(plan),
     },
 
     audioCaptureDefaults: {
@@ -430,8 +437,10 @@ export function roomOptions(
       // Simulcast matters most in exactly this shape of call: one publisher,
       // many subscribers on wildly different networks.
       simulcast: true,
-      videoSimulcastLayers: SIMULCAST_LAYERS,
-      // Top encoding: 1080p, or 720p on a device that captures 720 (cameraCapturePreset).
+      // A phone's own lighter layers (PHONE_CAMERA_LAYERS), everyone else's SIMULCAST_LAYERS.
+      videoSimulcastLayers: plan.layers,
+      // Top encoding: 1080p, or 720p on a device that captures 720 (cameraCapturePreset); a
+      // phone's 720p at 1.2 Mbps, 24 fps, "low" priority.
       videoEncoding: capture.encoding,
 
       /* What to give up first when there is not enough upstream.
@@ -445,7 +454,7 @@ export function roomOptions(
        * options (sharePublishOptions): "sharp" is contentHint "detail" + maintain-resolution,
        * where dropping frames to hold the pixels is what keeps a terminal legible.
        */
-      degradationPreference: "maintain-framerate",
+      degradationPreference: plan.degradationPreference,
 
       /* A screen share is not a camera and must not be encoded like one.
        *
@@ -489,10 +498,14 @@ export function roomOptions(
        *          multiplied by every publisher for every one of five hundred subscribers.
        *          The trade is a presenter playing a music clip through their microphone,
        *          which is rare enough to be the right thing to lose.
+       *
+       * And a fourth, on the sender: "high" priority (SPEECH_AUDIO), against the camera's "low",
+       * so a full uplink queues video and not voice. meeting-1865 (31 Oct 2026) was two phones
+       * whose 1080p camera crowded their audio out until it arrived ~100 ms late and robotic.
        */
       red: true,
       dtx: true,
-      audioPreset: AudioPresets.speech,
+      audioPreset: SPEECH_AUDIO,
     },
 
     audioOutput: prefs.audioOutput

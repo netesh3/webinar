@@ -1,13 +1,16 @@
 "use client";
 
 import {
+  AudioPresets,
   ConnectionQuality,
   RoomEvent,
   Track,
   VideoPreset,
+  type AudioPreset,
   type LocalVideoTrack,
   type RemoteVideoTrack,
   type Room,
+  type VideoCaptureOptions,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -25,6 +28,7 @@ import {
   type ShareMode,
 } from "./share-mode.ts";
 import {
+  bandwidthLimitedShare,
   cpuLimitedShare,
   governorStep,
   initialGovernor,
@@ -35,6 +39,7 @@ import {
 } from "./adapt-governor.ts";
 import { effectsPausedForCpu, effectsWanted, setEffectsPausedForCpu } from "./cpu-relief.ts";
 import { demoteAv1 } from "./codec-policy.ts";
+import { deviceFormFactor, type FormFactor } from "./device.ts";
 import { initialStall, sampleSender, stallStep, type StallState } from "./codec-watchdog.ts";
 
 /* Watching the connection, and doing something about it.
@@ -126,6 +131,8 @@ const TIERS: PublishTier[] = ["full", "reduced", "minimal"];
  *               sender — app-limited, estimate pinned near its own rate — is not locked out.
  *   cpu         share of the window the encoder spent qualityLimitationReason "cpu", 0..1,
  *               from qualityLimitationDurations (worst sender).
+ *   bandwidth   the same for "bandwidth": the encoder held under its target by the pacer. Only
+ *               the phone camera ladder reads it (see phoneCamera).
  *
  * Down triggers fire after `forMs` continuously at or above `atLeast`; a `severe` one also
  * ignores the cool-down and the oscillation hold. Up needs every `up` condition for `cleanMs`.
@@ -134,7 +141,10 @@ const TIERS: PublishTier[] = ["full", "reduced", "minimal"];
  *              down (any, held)                          up (all, for cleanMs)
  *   camera     loss ≥ 2% 4s | ≥ 10% 2s (severe)          loss ≤ 0.5%, rttExcess ≤ 80 ms,
  *              rttExcess ≥ 200 ms 4s | jitter ≥ 100 ms 6s jitter ≤ 30 ms, headroom ≥ 30%  — 20 s
- *   share      loss ≥ 5% 4s | ≥ 15% 2s (severe)          loss ≤ 1%, rttExcess ≤ 80 ms,
+ *   phone cam  loss ≥ 1% 4s | ≥ 5% 2s (severe)           loss ≤ 0.5%, rttExcess ≤ 60 ms,
+ *              rttExcess ≥ 120 ms 4s | jitter ≥ 60 ms 4s jitter ≤ 25 ms, headroom ≥ 30%,
+ *              bandwidth ≥ 50% 6s | cpu ≥ 50% 4s          bandwidth ≤ 10%, cpu ≤ 10%     — 30 s
+ *   share     loss ≥ 5% 4s | ≥ 15% 2s (severe)          loss ≤ 1%, rttExcess ≤ 80 ms,
  *              rttExcess ≥ 400 ms 4s | jitter ≥ 150 ms 6s jitter ≤ 50 ms, headroom ≥ 30%  — 20 s
  *   cpu        cpu ≥ 50% 6s | ≥ 90% 4s (severe)          cpu ≤ 5%                           — 30 s
  *   all        cool-down 10 s after any move; 3 moves in 2 min → no step-up for 2 min.
@@ -163,6 +173,42 @@ export const ADAPT = {
     ],
     // The step up is itself a bandwidth increase; doing it eagerly recreates the congestion.
     cleanMs: 20_000,
+    cooldownMs: 10_000,
+    oscillation: { changes: 3, windowMs: 120_000, holdMs: 120_000 },
+  },
+  /* The camera ladder on a PHONE (31 Oct 2026): the same rungs (PHONE_LADDER), lower triggers.
+   *
+   * meeting-1865: two iPhones, server-side loss under 1%, RTT 25–76 ms, and still robotic audio,
+   * because the phone's own uplink and encoder were full of camera. None of the camera triggers
+   * above fire on numbers like that. On a phone the camera and the voice share one radio and one
+   * SoC, so the camera gives way at the first sign of pressure, not at the point where video
+   * visibly breaks: loss from 1%, queueing from 120 ms, jitter from 60 ms, and the encoder itself
+   * reporting it is limited (qualityLimitationDurations "bandwidth" or "cpu" for half the window —
+   * Chrome / Android; WebKit does not report them, so on an iPhone those two have no vote).
+   * Every step down turns the 720p layer off first (reduced), which is ~2/3 of what a phone sends.
+   *
+   * Hysteresis kept: each clear sits well inside its trigger, and the way back up waits 30 s
+   * instead of 20, since re-adding 1.2 Mbps on a phone is what recreates the trouble. */
+  phoneCamera: {
+    maxLevel: 2,
+    down: [
+      { signal: "loss", atLeast: 1, forMs: 4000 },
+      { signal: "loss", atLeast: 5, forMs: 2000, severe: true },
+      { signal: "rttExcess", atLeast: 120, forMs: 4000 },
+      { signal: "jitter", atLeast: 60, forMs: 4000 },
+      // 6 s, not 4: the first seconds after a publish are the estimator ramping, not congestion.
+      { signal: "bandwidth", atLeast: 0.5, forMs: 6000 },
+      { signal: "cpu", atLeast: 0.5, forMs: 4000 },
+    ],
+    up: [
+      { signal: "loss", atMost: 0.5 },
+      { signal: "rttExcess", atMost: 60 },
+      { signal: "jitter", atMost: 25 },
+      { signal: "headroom", atLeast: 0.3 },
+      { signal: "bandwidth", atMost: 0.1 },
+      { signal: "cpu", atMost: 0.1 },
+    ],
+    cleanMs: 30_000,
     cooldownMs: 10_000,
     oscillation: { changes: 3, windowMs: 120_000, holdMs: 120_000 },
   },
@@ -205,6 +251,7 @@ export const ADAPT = {
 } as const satisfies {
   sampleMs: number;
   camera: GovernorConfig;
+  phoneCamera: GovernorConfig;
   share: GovernorConfig;
   cpu: GovernorConfig & { cameraFps: readonly number[]; shareFps: Record<ShareMode, readonly number[]> };
 };
@@ -431,23 +478,162 @@ export const CAMERA_720 = new VideoPreset(1280, 720, CAMERA_720_BITRATE, 30);
  * ladder but start with the 1080 rung off so they encode 360+720 only.
  */
 export function canCaptureCamera1080(): boolean {
-  if (typeof navigator === "undefined") return true;
-  if (typeof navigator.userAgent === "string") {
-    const ua = navigator.userAgent;
-    if (/android|iphone|ipod|ipad/i.test(ua)) return false;
-    const maxTouch =
-      typeof navigator.maxTouchPoints === "number" ? navigator.maxTouchPoints : 0;
-    if (/macintosh/i.test(ua) && maxTouch > 1) return false;
-  }
-  const cores = navigator.hardwareConcurrency ?? 0;
+  return canCaptureCamera1080For(currentCameraDevice());
+}
+
+/** The same gate, pure: what the browser says about itself in, the answer out. */
+export function canCaptureCamera1080For(device: CameraDevice): boolean {
+  const { ua, maxTouchPoints, cores } = device;
+  if (/android|iphone|ipod|ipad/i.test(ua)) return false;
+  if (/macintosh/i.test(ua) && maxTouchPoints > 1) return false;
   if (cores > 0 && cores < 8) return false;
   return true;
 }
 
-/** Capture resolution and top encoding — 1080 when allowed, else 720. */
+/** Capture resolution and top encoding: 1080 when allowed, else 720; a phone's lighter
+ *  PHONE_CAMERA_TOP (cameraPlanFor). */
 export function cameraCapturePreset(): VideoPreset {
-  return canCaptureCamera1080() ? CAMERA_TOP : CAMERA_720;
+  return currentCameraPlan().top;
 }
+
+/* A phone publishes a lighter camera, and its voice comes first (31 Oct 2026).
+ *
+ * meeting-1865 (31 Oct 2026, 09:47–10:01 UTC): two iPhones in a meeting, one in the iOS app's
+ * WKWebView, one in Mobile Safari, and audio "breaking up and sometimes robotic". The SFU saw a
+ * healthy path (loss < 1%, jitter 11–22 ms, RTT 25–76 ms, score 4.1–4.5, direct UDP), and both
+ * phones publishing a 1920×1080 camera with 320×180 / 640×360 / 1920×1080 layers. From 10:00 the
+ * host's audio arrived 85–107 ms late against its own sender clock with NACKs at 9/s: the phone's
+ * uplink and encoder were full of camera, and the voice queued behind it.
+ *
+ * Why a phone was at 1080p at all: the capture asked for 1280×720 as an IDEAL only (livekit-client
+ * turns `resolution` into plain, ideal constraints) and nothing capped it. iOS is free to answer
+ * an ideal with its 1080p format, and LiveKit sizes the layers from getSettings(), so 1080p is what
+ * was encoded and announced. And the budget was a desktop's: 200 + 640 + 2400 = 3.24 Mbps of
+ * camera next to ~50 kbps of voice.
+ *
+ * The phone plan:
+ *   capture   1280×720 ideal at 24 fps, and a MAX of 1280 on both sides and 30 fps, so no
+ *             camera can hand back 1080p again. Both sides because WebKit applies width/height
+ *             to the frame as held, and a portrait phone is 720×1280.
+ *   publish   180p@15 150 kbps, 360p@20 450 kbps, 720p@24 1.2 Mbps: 1.8 Mbps in all, -44%.
+ *             The top layer is the capture, 1280×720, rather than 960×540: livekit-client's top
+ *             encoding is always the unscaled track, so a 540p top would mean a 540p capture,
+ *             which Android cameras mostly do not have natively. 1.2 Mbps over 24 fps is what a
+ *             desktop's 720p gets per frame at 30, and a phone's face is a 720p picture at most
+ *             on anybody's screen. Steps stay under 5x (2.7x, 3x): no cliff between layers.
+ *   priority  camera "low" on every encoding, audio "high" (SPEECH_AUDIO): the pacer sends voice
+ *             first when the radio is full. prioritiseShare re-asserts the camera's after publish.
+ *   ladder    ADAPT.phoneCamera: steps down sooner, top layer off first.
+ *   degrade   maintain-framerate, as every camera.
+ * Tablets and desktops are unchanged: an iPad or an Android tablet keeps 720p at 2.4 Mbps, a
+ * desktop 1080p (or 720p under 8 cores). deviceFormFactor (device.ts) tells them apart; the iOS
+ * app's WKWebView and iOS Chrome say iPhone like Safari does, so all three are phones. */
+export const PHONE_CAMERA_180_BITRATE = 150_000;
+export const PHONE_CAMERA_360_BITRATE = 450_000;
+export const PHONE_CAMERA_TOP_BITRATE = 1_200_000;
+export const PHONE_CAMERA_FPS = 24;
+
+export const PHONE_CAMERA_LAYERS = [
+  new VideoPreset(320, 180, PHONE_CAMERA_180_BITRATE, 15, "low"),
+  new VideoPreset(640, 360, PHONE_CAMERA_360_BITRATE, 20, "low"),
+];
+export const PHONE_CAMERA_TOP = new VideoPreset(1280, 720, PHONE_CAMERA_TOP_BITRATE, PHONE_CAMERA_FPS, "low");
+
+/** The largest frame a phone may capture, either way up, and its fastest frame rate. */
+export const PHONE_CAPTURE_MAX = { longSide: 1280, frameRate: 30 } as const;
+
+/** What a camera plan is chosen from. Pure, so the node tests can play every device. */
+export type CameraDevice = { ua: string; maxTouchPoints: number; cores: number };
+
+/** How this device's camera is captured, published and adapted. */
+export type CameraPlan = {
+  formFactor: FormFactor;
+  /** Capture resolution and top encoding. */
+  top: VideoPreset;
+  /** The simulcast layers under it, smallest first. */
+  layers: VideoPreset[];
+  /** The rungs applyCamera puts on the live sender (positional: [180, 360, top]). */
+  ladder: typeof LADDER;
+  /** The camera's network governor. */
+  adapt: GovernorConfig;
+  /** Sender priority for every camera encoding; undefined leaves the spec default ("low"). */
+  priority: RTCPriorityType | undefined;
+  degradationPreference: "maintain-framerate";
+  /** Hard getUserMedia caps on top of the ideal resolution; undefined: ideal only, as before. */
+  captureMax: { width: number; height: number; frameRate: number } | undefined;
+};
+
+export function cameraPlanFor(device: CameraDevice): CameraPlan {
+  const formFactor = deviceFormFactor(device.ua, device.maxTouchPoints);
+  if (formFactor === "phone") {
+    return {
+      formFactor,
+      top: PHONE_CAMERA_TOP,
+      layers: PHONE_CAMERA_LAYERS,
+      ladder: PHONE_LADDER,
+      adapt: ADAPT.phoneCamera,
+      priority: "low",
+      degradationPreference: "maintain-framerate",
+      captureMax: {
+        width: PHONE_CAPTURE_MAX.longSide,
+        height: PHONE_CAPTURE_MAX.longSide,
+        frameRate: PHONE_CAPTURE_MAX.frameRate,
+      },
+    };
+  }
+  return {
+    formFactor,
+    top: canCaptureCamera1080For(device) ? CAMERA_TOP : CAMERA_720,
+    layers: CAMERA_LAYERS,
+    ladder: LADDER,
+    adapt: ADAPT.camera,
+    priority: undefined,
+    degradationPreference: "maintain-framerate",
+    captureMax: undefined,
+  };
+}
+
+function currentCameraDevice(): CameraDevice {
+  if (typeof navigator === "undefined") return { ua: "", maxTouchPoints: 0, cores: 0 };
+  return {
+    ua: typeof navigator.userAgent === "string" ? navigator.userAgent : "",
+    maxTouchPoints: typeof navigator.maxTouchPoints === "number" ? navigator.maxTouchPoints : 0,
+    cores: navigator.hardwareConcurrency ?? 0,
+  };
+}
+
+let cameraPlanCache: CameraPlan | null = null;
+
+/** This browser's plan. A desktop's on the server, where it is never used to capture. */
+export function currentCameraPlan(): CameraPlan {
+  if (typeof navigator === "undefined") return cameraPlanFor(currentCameraDevice());
+  cameraPlanCache ??= cameraPlanFor(currentCameraDevice());
+  return cameraPlanCache;
+}
+
+/* The camera's getUserMedia options: the ideal `resolution` livekit-client already takes, and on
+ * a phone the hard caps beside it. livekit-client copies every other key of the capture options
+ * into the constraints as it is, after flattening `resolution` without overwriting, so an explicit
+ * width / height / frameRate wins; its type only names `resolution`, hence the cast. The same
+ * object goes into videoCaptureDefaults (media.ts) and the pre-join's createLocalVideoTrack, and
+ * livekit keeps it for a restart (unmute, device switch). */
+export function cameraCaptureOptions(plan: CameraPlan = currentCameraPlan()): VideoCaptureOptions {
+  const resolution = plan.top.resolution;
+  if (!plan.captureMax) return { resolution };
+  const max = plan.captureMax;
+  const constraints = {
+    resolution,
+    width: { ideal: resolution.width, max: max.width },
+    height: { ideal: resolution.height, max: max.height },
+    frameRate: { ideal: resolution.frameRate ?? max.frameRate, max: max.frameRate },
+  };
+  return constraints as VideoCaptureOptions;
+}
+
+/* The microphone's publish preset: speech (24 kbps Opus, see media.ts publishDefaults) at
+ * "high" priority, stated rather than left to livekit-client's default for a preset without one
+ * (also "high" today). The pacer then sends voice before any camera layer. */
+export const SPEECH_AUDIO: AudioPreset = { ...AudioPresets.speech, priority: "high" };
 
 /* AV1: the same picture for ~30% fewer bits.
  *
@@ -528,13 +714,38 @@ export const LADDER: Record<
   ],
 };
 
-/** The camera ladder for a codec: LADDER for VP8, every rung × AV1_SAVING for AV1. */
-export function cameraLadder(codec: CameraCodec = "vp8"): typeof LADDER {
-  if (codec === "vp8") return LADDER;
+/* A phone's rungs (31 Oct 2026): the same shape on PHONE_CAMERA_LAYERS / PHONE_CAMERA_TOP, so
+ * reduced (top off) is 600 kbps and minimal (360p only) 450 kbps. See cameraPlanFor. */
+export const PHONE_LADDER: typeof LADDER = {
+  full: [
+    { maxBitrate: PHONE_CAMERA_180_BITRATE, scaleDown: 6 },
+    { maxBitrate: PHONE_CAMERA_360_BITRATE, scaleDown: 3 },
+    { maxBitrate: PHONE_CAMERA_TOP_BITRATE, scaleDown: 1 },
+  ],
+  reduced: [
+    { maxBitrate: PHONE_CAMERA_180_BITRATE, scaleDown: 6 },
+    { maxBitrate: PHONE_CAMERA_360_BITRATE, scaleDown: 3 },
+    { maxBitrate: 0, scaleDown: 1 },
+  ],
+  minimal: [
+    { maxBitrate: 0, scaleDown: 6 },
+    { maxBitrate: PHONE_CAMERA_360_BITRATE, scaleDown: 3 },
+    { maxBitrate: 0, scaleDown: 1 },
+  ],
+};
+
+/** The camera ladder for a codec: `ladder` (LADDER, or a phone's) for VP8, every rung ×
+ *  AV1_SAVING for AV1. */
+export function cameraLadder(codec: CameraCodec = "vp8", ladder: typeof LADDER = LADDER): typeof LADDER {
+  if (codec === "vp8") return ladder;
   const scale = (rungs: (typeof LADDER)[PublishTier]) =>
     rungs.map((r) => ({ ...r, maxBitrate: Math.round(r.maxBitrate * AV1_SAVING) }));
-  return { full: scale(LADDER.full), reduced: scale(LADDER.reduced), minimal: scale(LADDER.minimal) };
+  return { full: scale(ladder.full), reduced: scale(ladder.reduced), minimal: scale(ladder.minimal) };
 }
+
+/** The parts of a CameraPlan the live encodings are built from. A desktop's by default. */
+export type CameraRungs = Pick<CameraPlan, "ladder" | "layers" | "top">;
+const DESKTOP_RUNGS: CameraRungs = { ladder: LADDER, layers: CAMERA_LAYERS, top: CAMERA_TOP };
 
 /* What each rung's encodings should be on the live camera sender: bitrate, active, fps.
  *
@@ -542,19 +753,22 @@ export function cameraLadder(codec: CameraCodec = "vp8"): typeof LADDER {
  * two (a capture under 960 px gets [low, original]), or one (AV1 fallen back to a single L1T3
  * encoding, see cameraPublishDefaults). One encoding cannot drop a layer, so it takes the
  * rung's TOTAL as its cap; libwebrtc's rate allocator then spends it on that one stream.
- * `fpsCap` is the CPU ladder's (ADAPT.cpu.cameraFps); a layer never goes above its own fps. */
+ * `fpsCap` is the CPU ladder's (ADAPT.cpu.cameraFps); a layer never goes above its own fps.
+ * `rungs` is the device's plan (cameraPlanFor): a phone's ladder and fps, or a desktop's. */
 export function cameraEncodingPlan(
   tier: PublishTier,
   codec: CameraCodec,
   encodings: number,
   topBitrate: number,
   fpsCap = 30,
+  rungs: CameraRungs = DESKTOP_RUNGS,
 ): { active: boolean; maxBitrate?: number; maxFramerate: number }[] {
   const scale = codec === "av1" ? AV1_SAVING : 1;
   const top = Math.round(topBitrate * scale);
-  const wanted = cameraLadder(codec)[tier];
+  const wanted = cameraLadder(codec, rungs.ladder)[tier];
+  // The plan's own fps: a phone's top is 24 (PHONE_CAMERA_TOP), and a re-apply must not make it 30.
   const fpsOf = (i: number, last: boolean) =>
-    Math.min(fpsCap, last ? CAMERA_TOP.encoding.maxFramerate ?? 30 : CAMERA_LAYERS[i]?.encoding.maxFramerate ?? 30);
+    Math.min(fpsCap, last ? rungs.top.encoding.maxFramerate ?? 30 : rungs.layers[i]?.encoding.maxFramerate ?? 30);
   if (encodings === 1) {
     const total = wanted.reduce((s, r, i) => s + (i === wanted.length - 1 ? Math.min(r.maxBitrate, top) : r.maxBitrate), 0);
     return [{ active: true, maxBitrate: total, maxFramerate: fpsOf(0, true) }];
@@ -1086,8 +1300,8 @@ function sendingBits(
 ): number {
   let bits = AUDIO_KBPS * 1000;
   if (cameraTier) {
-    const top = cameraCapturePreset().encoding.maxBitrate;
-    bits += cameraEncodingPlan(cameraTier, cameraCodec, 3, top).reduce((s, e) => s + (e.active ? e.maxBitrate ?? 0 : 0), 0);
+    const plan = currentCameraPlan();
+    bits += cameraEncodingPlan(cameraTier, cameraCodec, 3, plan.top.encoding.maxBitrate, 30, plan).reduce((s, e) => s + (e.active ? e.maxBitrate ?? 0 : 0), 0);
   }
   if (shareTier && share) {
     bits += shareLadder(share.codec, share.mode, share.layout)[shareTier].reduce((s, r) => s + r.maxBitrate, 0);
@@ -1182,7 +1396,8 @@ export function useNetworkHealth(
   const [health, setHealth] = useState<NetworkHealth>(IDLE);
 
   // The decision state, in refs: it changes every two seconds and nothing renders from it.
-  const cameraGov = useRef<GovernorState>(initialGovernor(ADAPT.camera));
+  // A phone's camera governor runs ADAPT.phoneCamera (cameraPlanFor).
+  const cameraGov = useRef<GovernorState>(initialGovernor(currentCameraPlan().adapt));
   const shareGov = useRef<GovernorState>(initialGovernor(ADAPT.share));
   const cpuGov = useRef<GovernorState>(initialGovernor(ADAPT.cpu));
   // Cumulative counters, so loss is measured over the window rather than for all time.
@@ -1201,7 +1416,9 @@ export function useNetworkHealth(
    * somebody's route genuinely changes — see RTT_WINDOW_SAMPLES. */
   const rttWindow = useRef<number[]>([]);
   // qualityLimitationDurations at the last sample, per outbound-rtp id (cpuLimitedShare).
-  const cpuWindow = useRef(new Map<string, { cpu: number; total: number }>());
+  const cpuWindow = useRef(new Map<string, { limited: number; total: number }>());
+  // The same for "bandwidth" (bandwidthLimitedShare), which only a phone's camera ladder reads.
+  const bandwidthWindow = useRef(new Map<string, { limited: number; total: number }>());
   // The backup-codec watchdog's state, for the camera track it was last fed (codec-watchdog.ts).
   const stall = useRef<{ sid: string; state: StallState }>({ sid: "", state: initialStall() });
 
@@ -1212,16 +1429,18 @@ export function useNetworkHealth(
   const applyCamera = useCallback(async (track: LocalVideoTrack, touchActive: boolean) => {
     const tier = TIERS[cameraGov.current.level];
     const fps = ADAPT.cpu.cameraFps[cpuGov.current.level] ?? 30;
-    // A 720p device's top layer is CAMERA_720, not the 1080p the table assumes.
-    const top = cameraCapturePreset().encoding.maxBitrate ?? CAMERA_1080_BITRATE;
+    // A 720p device's top layer is CAMERA_720, not the 1080p the table assumes; a phone's is
+    // PHONE_CAMERA_TOP, on its own lighter rungs (cameraPlanFor).
+    const plan = currentCameraPlan();
+    const top = plan.top.encoding.maxBitrate ?? CAMERA_1080_BITRATE;
     await applyEncodings(
       track.sender,
-      (n) => cameraEncodingPlan(tier, cameraCodecOfTrack(track.codec), n, top, fps),
+      (n) => cameraEncodingPlan(tier, cameraCodecOfTrack(track.codec), n, top, fps, plan),
       touchActive,
     );
     for (const [codec, sc] of track.simulcastCodecs) {
       if (codec === track.codec) continue;
-      await applyEncodings(sc.sender, (n) => cameraEncodingPlan(tier, cameraCodecOfTrack(codec), n, top, fps), touchActive);
+      await applyEncodings(sc.sender, (n) => cameraEncodingPlan(tier, cameraCodecOfTrack(codec), n, top, fps, plan), touchActive);
     }
   }, []);
 
@@ -1428,6 +1647,7 @@ export function useNetworkHealth(
           ),
         ),
         cpu: cpuLimitedShare(outbound, cpuWindow.current),
+        bandwidth: bandwidthLimitedShare(outbound, bandwidthWindow.current),
       };
 
       /* CPU first: its "layer" rung sets the camera's floor, and its fps caps are read by both
@@ -1480,7 +1700,7 @@ export function useNetworkHealth(
          * thumbnail. And on the CPU ladder's "layer" rung, the same. */
         const floor = share || cpuGov.current.level >= CPU_STEPS.indexOf("layer") ? 1 : 0;
         const before = tierOf(cameraGov.current);
-        const { state, decision } = governorStep(ADAPT.camera, cameraGov.current, signals, now, floor);
+        const { state, decision } = governorStep(currentCameraPlan().adapt, cameraGov.current, signals, now, floor);
         cameraGov.current = state;
         if (decision) log("camera", before, tierOf(state), decision.direction, decision.reason, signals);
         await applyCamera(camera, Boolean(decision));

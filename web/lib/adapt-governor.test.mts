@@ -198,7 +198,7 @@ console.log("floor");
 // ---------------------------------------------------------------- CPU signal
 console.log("cpu signal");
 {
-  const prev = new Map<string, { cpu: number; total: number }>();
+  const prev = new Map<string, { limited: number; total: number }>();
   const rep = (id: string, cpu: number, none: number) => ({
     id,
     qualityLimitationDurations: { cpu, bandwidth: 0, none, other: 0 },
