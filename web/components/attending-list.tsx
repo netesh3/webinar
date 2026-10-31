@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RegisteredCard } from "./my-webinars-list";
 import { Alert } from "./controls";
 import { Button, Empty, ListPager } from "./ui";
 import { api } from "@/lib/api";
 import type { AttendingPage, RegisteredWebinar } from "@/lib/api-types";
 import { isDevAuthBypassActive } from "@/lib/dev-bypass-session";
+import { onHostListsDropped } from "@/lib/host-list-cache";
 import { orderedRange } from "@/lib/host-list-url";
+import { useVisibleRefresh } from "@/lib/visible-refresh";
 
 /* The host home's Attending tab: other people's sessions this account registered
  * for, read a page at a time from GET /api/me/attending.
@@ -96,6 +98,10 @@ export function AttendingList({
     // onTotal is a report, not an input: a new callback identity is not a new page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bypass, filterKey, page, cursor, gen]);
+
+  const refresh = useCallback(() => setGen((n) => n + 1), []);
+  useVisibleRefresh(refresh);
+  useEffect(() => onHostListsDropped(refresh), [refresh]);
 
   function goTo(index: number) {
     if (index < 0 || index === page) return;

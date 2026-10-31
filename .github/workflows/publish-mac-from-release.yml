@@ -1,0 +1,91 @@
+# One-shot: publish a notarized macOS build from GitHub release assets to R2.
+# macOS is built on the owner's Mac; Windows stays as it is in latest.json.
+name: Publish Mac from release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag that holds the macOS installers
+        type: string
+        default: mac-0.1.4-publish
+      version:
+        description: Desktop version (apps/desktop package.json)
+        type: string
+        default: "0.1.4"
+jobs:
+  publish:
+    name: publish macOS to downloads.webinarliv.com
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: downloads-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      HAS_R2: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID != '' && secrets.R2_DOWNLOADS_ACCESS_KEY_ID != '' && secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY != '' }}
+    steps:
+      - name: Require R2 secrets
+        if: env.HAS_R2 != 'true'
+        run: |
+          echo "::error::R2_DOWNLOADS_* secrets are not set"
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download macOS assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D dist
+          ls -la dist
+      # Earlier Wrangler uploads left 0.1.4 objects without sha256 metadata; the
+      # publisher treats that as a conflict. Remove only this version's mac keys.
+      - name: Clear 0.1.4 mac objects without matching metadata
+        env:
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          export AWS_DEFAULT_REGION=auto AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required AWS_PAGER=""
+          endpoint="https://${R2_DOWNLOADS_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          keys=(
+            "desktop/${VERSION}/WebinarLiv-${VERSION}-mac-arm64.dmg"
+            "desktop/${VERSION}/WebinarLiv-${VERSION}-mac-x64.dmg"
+            "desktop/${VERSION}/latest-mac.yml"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.dmg"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.dmg.blockmap"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.zip"
+            "desktop/WebinarLiv-${VERSION}-mac-arm64.zip.blockmap"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.dmg"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.dmg.blockmap"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.zip"
+            "desktop/WebinarLiv-${VERSION}-mac-x64.zip.blockmap"
+          )
+          for key in "${keys[@]}"; do
+            aws s3api delete-object --bucket "$R2_DOWNLOADS_BUCKET" --key "$key" --endpoint-url "$endpoint" >/dev/null
+            echo "deleted $key"
+          done
+      - name: Publish
+        env:
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          IOS_APP_STORE_URL: ${{ vars.IOS_APP_STORE_URL }}
+          ANDROID_PLAY_STORE_URL: ${{ vars.ANDROID_PLAY_STORE_URL }}
+          IOS_TESTFLIGHT_URL: ${{ vars.IOS_TESTFLIGHT_URL }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/downloads/publish.mjs desktop --platform mac --version "$VERSION" --dir dist \
+            --signed-mac true --signed-windows false \
+            --write-manifest "$RUNNER_TEMP/latest.json"
+          { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

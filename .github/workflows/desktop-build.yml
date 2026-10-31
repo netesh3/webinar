@@ -1,14 +1,28 @@
 # Builds the Electron desktop app (apps/desktop) for macOS and Windows.
 #
+# macOS and Windows are built and published separately, and may be on different versions
+# (latest.json has a version per file, and each platform has its own update feed:
+# desktop/latest-mac.yml and desktop/latest.yml; docs/downloads.md).
+#
+# - Windows (build-windows) always runs on GitHub's windows-latest: NSIS x64 installer,
+#   its blockmap and latest.yml. Unsigned until the Azure Trusted Signing secrets exist.
+# - macOS on GitHub-hosted macos-latest (build) is off until vars.HOSTED_MAC_BUILD=true:
+#   the owner's Mac builds, signs, notarizes and publishes macOS with
+#   `scripts/downloads/publish.mjs desktop --platform mac`.
+#
 # - Pull requests and pushes to main that touch apps/desktop: typecheck, build,
 #   upload the installers as workflow artifacts.
 # - Manual run (Actions -> Desktop build -> Run workflow): the same, on any ref.
-# - A desktop-v<version> tag (matching apps/desktop/package.json): the same, then
+# - Manual run with "publish_windows": build Windows from the chosen ref and publish it for
+#   the version in apps/desktop/package.json. Only the Windows files, latest.yml and
+#   files["win-x64"] / signed.windows in latest.json change; the macOS ones are untouched.
+# - A desktop-v<version> tag (matching apps/desktop/package.json): the same builds, then
 #   a DRAFT GitHub release with the installers and the latest*.yml files (an archive;
-#   publishing the draft is a manual step), and the installers plus the auto-update
-#   feed published to https://downloads.webinarliv.com (Cloudflare R2, docs/downloads.md).
+#   publishing the draft is a manual step), and each platform that was built published to
+#   https://downloads.webinarliv.com (Cloudflare R2, docs/downloads.md).
 # - Manual run with "promote_tag" (e.g. desktop-v0.1.0): no build; makes that version,
-#   already in the downloads bucket, the latest again (rollback / re-publish).
+#   already in the downloads bucket, the latest again for every platform it has
+#   (rollback / re-publish).
 #
 # Downloads bucket (publishing is skipped with a notice when these are missing):
 #   secrets R2_DOWNLOADS_ACCOUNT_ID, R2_DOWNLOADS_ACCESS_KEY_ID, R2_DOWNLOADS_SECRET_ACCESS_KEY
@@ -30,6 +44,10 @@ on:
         description: "Re-publish this existing desktop-v<version> from the downloads bucket as latest (no build). Leave empty for a normal build."
         type: string
         default: ""
+      publish_windows:
+        description: "Build Windows from this ref and publish it to downloads.webinarliv.com (version from apps/desktop/package.json). macOS is left as it is."
+        type: boolean
+        default: false
   pull_request:
     paths:
       - "apps/desktop/**"
@@ -44,8 +62,8 @@ on:
       - ".github/workflows/desktop-build.yml"
 
 concurrency:
-  group: desktop-build-${{ github.ref }}-${{ inputs.promote_tag || 'build' }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: desktop-build-${{ github.ref }}-${{ inputs.promote_tag || (inputs.publish_windows && 'publish-windows') || 'build' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.publish_windows }}
 
 permissions:
   contents: read
@@ -71,23 +89,12 @@ jobs:
           node-version: 22
       - run: node --test scripts/downloads/publish.test.mjs
 
-  # GitHub-hosted macos-latest / windows-latest are off until
-  # vars.GITHUB_HOSTED_DESKTOP=true (this Mac builds and publishes macOS for now;
-  # Windows is skipped with Azure Trusted Signing).
+  # GitHub-hosted macos-latest is off until vars.HOSTED_MAC_BUILD=true (the owner's
+  # Mac builds, signs, notarizes and publishes macOS for now).
   build:
-    name: build (${{ matrix.name }})
-    if: ${{ !inputs.promote_tag && vars.GITHUB_HOSTED_DESKTOP == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: mac
-            os: macos-latest
-            args: --mac
-          - name: windows
-            os: windows-latest
-            args: --win
-    runs-on: ${{ matrix.os }}
+    name: build (mac)
+    if: ${{ !inputs.promote_tag && !inputs.publish_windows && vars.HOSTED_MAC_BUILD == 'true' }}
+    runs-on: macos-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -109,6 +116,7 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
 
       # Export only the signing variables that have a value, so electron-builder
       # never sees an empty CSC_LINK and an unconfigured repo builds unsigned.
@@ -119,6 +127,73 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          put() {
+            local name="$1" value="$2"
+            [ -n "$value" ] || return 0
+            {
+              echo "${name}<<__EOF_${name}__"
+              echo "$value"
+              echo "__EOF_${name}__"
+            } >> "$GITHUB_ENV"
+            echo "using ${name}"
+          }
+          put CSC_LINK "$MAC_CSC_LINK"
+          put CSC_KEY_PASSWORD "$MAC_CSC_KEY_PASSWORD"
+          put APPLE_ID "$APPLE_ID"
+          put APPLE_APP_SPECIFIC_PASSWORD "$APPLE_APP_SPECIFIC_PASSWORD"
+          put APPLE_TEAM_ID "$APPLE_TEAM_ID"
+          [ -n "$MAC_CSC_LINK" ] || echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: npm run build && npx electron-builder --config electron-builder.config.cjs --mac --publish never
+
+      - name: List artifacts
+        run: ls -la release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-mac
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-mac.yml
+
+  # Windows always builds on GitHub's windows-latest, whatever HOSTED_MAC_BUILD says.
+  build-windows:
+    name: build (windows)
+    if: ${{ !inputs.promote_tag }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "desktop-v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match apps/desktop/package.json version ${version}"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      # Azure Trusted Signing (electron-builder.config.cjs) when all its secrets are set;
+      # otherwise an unsigned installer (the download page shows the SmartScreen note).
+      - name: Signing environment (only secrets that are set)
+        env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -137,46 +212,36 @@ jobs:
             } >> "$GITHUB_ENV"
             echo "using ${name}"
           }
-          if [ "${{ matrix.name }}" = "mac" ]; then
-            put CSC_LINK "$MAC_CSC_LINK"
-            put CSC_KEY_PASSWORD "$MAC_CSC_KEY_PASSWORD"
-            put APPLE_ID "$APPLE_ID"
-            put APPLE_APP_SPECIFIC_PASSWORD "$APPLE_APP_SPECIFIC_PASSWORD"
-            put APPLE_TEAM_ID "$APPLE_TEAM_ID"
-            [ -n "$MAC_CSC_LINK" ] || echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
-          else
-            put AZURE_TENANT_ID "$AZURE_TENANT_ID"
-            put AZURE_CLIENT_ID "$AZURE_CLIENT_ID"
-            put AZURE_CLIENT_SECRET "$AZURE_CLIENT_SECRET"
-            put AZURE_TRUSTED_SIGNING_ENDPOINT "$AZURE_TRUSTED_SIGNING_ENDPOINT"
-            put AZURE_TRUSTED_SIGNING_ACCOUNT "$AZURE_TRUSTED_SIGNING_ACCOUNT"
-            put AZURE_TRUSTED_SIGNING_PROFILE "$AZURE_TRUSTED_SIGNING_PROFILE"
-            put AZURE_TRUSTED_SIGNING_PUBLISHER "$AZURE_TRUSTED_SIGNING_PUBLISHER"
-            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
-          fi
+          put AZURE_TENANT_ID "$AZURE_TENANT_ID"
+          put AZURE_CLIENT_ID "$AZURE_CLIENT_ID"
+          put AZURE_CLIENT_SECRET "$AZURE_CLIENT_SECRET"
+          put AZURE_TRUSTED_SIGNING_ENDPOINT "$AZURE_TRUSTED_SIGNING_ENDPOINT"
+          put AZURE_TRUSTED_SIGNING_ACCOUNT "$AZURE_TRUSTED_SIGNING_ACCOUNT"
+          put AZURE_TRUSTED_SIGNING_PROFILE "$AZURE_TRUSTED_SIGNING_PROFILE"
+          put AZURE_TRUSTED_SIGNING_PUBLISHER "$AZURE_TRUSTED_SIGNING_PUBLISHER"
+          echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
 
       - name: Build
-        run: npm run build && npx electron-builder --config electron-builder.config.cjs ${{ matrix.args }} --publish never
+        run: npm run build && npx electron-builder --config electron-builder.config.cjs --win --x64 --publish never
 
       - name: List artifacts
         run: ls -la release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.name }}
+          name: desktop-windows
           if-no-files-found: error
           retention-days: 14
           path: |
-            apps/desktop/release/*.dmg
-            apps/desktop/release/*.zip
             apps/desktop/release/*.exe
-            apps/desktop/release/*.blockmap
-            apps/desktop/release/latest*.yml
+            apps/desktop/release/*.exe.blockmap
+            apps/desktop/release/latest.yml
 
   release:
     name: draft release
-    if: startsWith(github.ref, 'refs/tags/desktop-v')
-    needs: build
+    # Whatever was built: Windows always, macOS only with HOSTED_MAC_BUILD.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/desktop-v') && needs.build-windows.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -204,12 +269,12 @@ jobs:
           fi
 
   publish:
-    name: publish to downloads.webinarliv.com
+    name: publish macOS to downloads.webinarliv.com
     if: startsWith(github.ref, 'refs/tags/desktop-v')
     needs: [build, publisher-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Shared with mobile-build.yml: one writer of latest.json at a time.
+    # Shared with publish-windows and mobile-build.yml: one writer of latest.json at a time.
     concurrency:
       group: downloads-publish
       cancel-in-progress: false
@@ -231,8 +296,8 @@ jobs:
       - uses: actions/download-artifact@v4
         if: env.HAS_R2 == 'true'
         with:
+          name: desktop-mac
           path: dist
-          merge-multiple: true
       - name: Publish
         if: env.HAS_R2 == 'true'
         env:
@@ -243,16 +308,65 @@ jobs:
           IOS_APP_STORE_URL: ${{ vars.IOS_APP_STORE_URL }}
           ANDROID_PLAY_STORE_URL: ${{ vars.ANDROID_PLAY_STORE_URL }}
           IOS_TESTFLIGHT_URL: ${{ vars.IOS_TESTFLIGHT_URL }}
-          # The same conditions the build used to sign (electron-builder.config.cjs).
+          # The same condition the build used to sign (electron-builder.config.cjs).
           MAC_SIGNED: ${{ secrets.CSC_LINK != '' }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          node scripts/downloads/publish.mjs desktop --platform mac --version "$version" --dir dist \
+            --signed-mac "$MAC_SIGNED" --write-manifest "$RUNNER_TEMP/latest.json"
+          { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-windows:
+    name: publish Windows to downloads.webinarliv.com
+    if: ${{ startsWith(github.ref, 'refs/tags/desktop-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_windows) }}
+    needs: [build-windows, publisher-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: downloads-publish
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: .
+    env:
+      HAS_R2: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID != '' && secrets.R2_DOWNLOADS_ACCESS_KEY_ID != '' && secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY != '' }}
+    steps:
+      - name: No downloads bucket configured
+        if: env.HAS_R2 != 'true'
+        run: |
+          echo "::error title=Downloads not published::Add the R2_DOWNLOADS_ACCOUNT_ID, R2_DOWNLOADS_ACCESS_KEY_ID and R2_DOWNLOADS_SECRET_ACCESS_KEY secrets to publish to downloads.webinarliv.com (docs/downloads.md)."
+          [ "${{ github.event_name }}" != "workflow_dispatch" ]
+      - uses: actions/checkout@v4
+        if: env.HAS_R2 == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_R2 == 'true'
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        if: env.HAS_R2 == 'true'
+        with:
+          name: desktop-windows
+          path: dist
+      - name: Publish
+        if: env.HAS_R2 == 'true'
+        env:
+          R2_DOWNLOADS_ACCOUNT_ID: ${{ secrets.R2_DOWNLOADS_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_DOWNLOADS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_DOWNLOADS_SECRET_ACCESS_KEY }}
+          R2_DOWNLOADS_BUCKET: ${{ vars.R2_DOWNLOADS_BUCKET || 'webinarliv-downloads' }}
+          IOS_APP_STORE_URL: ${{ vars.IOS_APP_STORE_URL }}
+          ANDROID_PLAY_STORE_URL: ${{ vars.ANDROID_PLAY_STORE_URL }}
+          IOS_TESTFLIGHT_URL: ${{ vars.IOS_TESTFLIGHT_URL }}
+          # The same condition the build used to sign (electron-builder.config.cjs).
           WIN_SIGNED: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT != '' && secrets.AZURE_TRUSTED_SIGNING_ACCOUNT != '' && secrets.AZURE_TRUSTED_SIGNING_PROFILE != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' }}
         run: |
           set -euo pipefail
           ls -la dist
           version="$(node -p "require('./apps/desktop/package.json').version")"
-          node scripts/downloads/publish.mjs desktop --version "$version" --dir dist \
-            --signed-mac "$MAC_SIGNED" --signed-windows "$WIN_SIGNED" \
-            --write-manifest "$RUNNER_TEMP/latest.json"
+          node scripts/downloads/publish.mjs desktop --platform windows --version "$version" --dir dist \
+            --signed-windows "$WIN_SIGNED" --write-manifest "$RUNNER_TEMP/latest.json"
           { echo "### downloads.webinarliv.com latest.json"; echo '```json'; cat "$RUNNER_TEMP/latest.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   promote:

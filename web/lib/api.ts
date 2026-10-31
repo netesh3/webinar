@@ -802,10 +802,11 @@ export const api = {
    *  `tab` defaults to upcoming, `q` matches the topic, `from`/`to` are plain
    *  YYYY-MM-DD dates inclusive on both ends, and `cursor` is the previous
    *  page's `nextCursor` (opaque: pass it back, don't read it). */
-  hostWebinars: (params: HostWebinarQuery = {}) =>
+  hostWebinars: (params: HostWebinarQuery = {}, force = false) =>
     cachedGet<HostWebinarPage>(hostWebinarsPath(params), {
       ttl: TTL_LIST,
       key: hostWebinarsKey(params),
+      force,
     }),
   /** Every session this host has, upcoming and past, for a PICKER rather than a
    *  list — the CRM asks "which webinar is this broadcast about", and a broadcast

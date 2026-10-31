@@ -32,6 +32,7 @@ import {
   shouldUseFallback,
 } from "@/lib/edge-hls";
 import { setEdgeVideoDelay } from "@/lib/caption-sync";
+import { playMedia } from "@/lib/media-play";
 import { jumpToLiveOnReturn } from "@/lib/background-return";
 import { useReturnQuiet } from "@/lib/use-return-quiet";
 import { deviceSummary } from "@/lib/device";
@@ -505,6 +506,19 @@ export function EdgePlayer({
   }, [jumpToLive]);
   useReturnQuiet(onReturn);
 
+  /* play() after the sound went on, settled (lib/media-play.ts). A bare `void v.play()`
+   * here was an unhandled NotAllowedError when the browser refused (31 Oct 2026). Refused,
+   * the player goes back to muted and keeps playing, so the sound button is still there
+   * to tap, rather than a paused picture with an icon claiming sound. */
+  const playWithSound = (v: HTMLVideoElement) => {
+    void playMedia(v).then((outcome) => {
+      if (outcome !== "refused") return;
+      v.muted = true;
+      setIsMuted(true);
+      void playMedia(v);
+    });
+  };
+
   return (
     <div className="relative h-full w-full">
       <StagePlayerChrome
@@ -523,7 +537,7 @@ export function EdgePlayer({
           if (!v) return;
           v.muted = false;
           setIsMuted(false);
-          void v.play();
+          playWithSound(v);
           // How long people sit in silence before finding the sound (mobile diagnosis).
           if (telemetryEnabled && !unmuteReported.current) {
             unmuteReported.current = true;
@@ -539,7 +553,7 @@ export function EdgePlayer({
           v.muted = !v.muted;
           userMutedRef.current = v.muted;
           setIsMuted(v.muted);
-          if (!v.muted) void v.play();
+          if (!v.muted) playWithSound(v);
         }}
       >
         {/* Speaker view on a phone: the share full width, the speaker floating over it, both

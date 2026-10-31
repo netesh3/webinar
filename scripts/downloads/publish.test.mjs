@@ -10,8 +10,10 @@ import {
   CACHE_FEED,
   CACHE_IMMUTABLE,
   CACHE_LATEST,
+  compareVersions,
   contentTypeFor,
   emptyManifest,
+  mergeDesktopSection,
   mergeManifest,
   normalizeManifest,
   updaterFeedFiles,
@@ -143,6 +145,8 @@ test("desktop publish, android publish, re-run, conflict, rollback against a loc
     url: `${BASE}/desktop/latest/WebinarLiv-win-x64.exe`,
     size: "WebinarLiv-0.1.0-win-x64.exe".length,
     sha256: sha("WebinarLiv-0.1.0-win-x64.exe"),
+    version: "0.1.0",
+    releasedAt: NOW,
   });
   assert.equal(m.android, null);
   assert.equal(m.stores.testflight, env.IOS_TESTFLIGHT_URL);
@@ -262,4 +266,165 @@ test("dry run writes nothing", async () => {
   assert.deepEqual(m.android, androidValue);
   assert.equal(m.stores.appStore, "https://apps.apple.com/x");
   assert.ok(lines.some((l) => l.startsWith("[dry-run] put   latest.json")));
+});
+
+// ------------------------------------------------------------------ platforms on their own versions
+
+async function fakePlatformBuild(platform, version, salt = "") {
+  const dir = await mkdtemp(join(tmpdir(), `desktop-${platform}-`));
+  const names =
+    platform === "mac"
+      ? [
+          `WebinarLiv-${version}-mac-arm64.dmg`,
+          `WebinarLiv-${version}-mac-x64.dmg`,
+          `WebinarLiv-${version}-mac-arm64.zip`,
+          `WebinarLiv-${version}-mac-x64.zip`,
+          `WebinarLiv-${version}-mac-arm64.zip.blockmap`,
+        ]
+      : [`WebinarLiv-${version}-win-x64.exe`, `WebinarLiv-${version}-win-x64.exe.blockmap`];
+  for (const n of names) await writeFile(join(dir, n), `${n}${salt}`);
+  if (platform === "mac") await writeFile(join(dir, "latest-mac.yml"), macYml(version));
+  else await writeFile(join(dir, "latest.yml"), winYml(version));
+  return dir;
+}
+
+const publishMac = async (store, version, now) =>
+  publishDesktop({
+    store,
+    dir: await fakePlatformBuild("mac", version),
+    version,
+    platform: "mac",
+    signedMac: true,
+    signedWindows: true,
+    baseUrl: BASE,
+    env: {},
+    now,
+    log: quiet,
+  });
+const publishWin = async (store, version, now) =>
+  publishDesktop({
+    store,
+    dir: await fakePlatformBuild("windows", version),
+    version,
+    platform: "windows",
+    signedMac: false,
+    signedWindows: false,
+    baseUrl: BASE,
+    env: {},
+    now,
+    log: quiet,
+  });
+
+test("compareVersions", () => {
+  assert.equal(compareVersions("0.1.4", "0.1.3"), 1);
+  assert.equal(compareVersions("0.1.3", "0.1.10"), -1);
+  assert.equal(compareVersions("1.0.0", "1.0.0"), 0);
+  assert.equal(compareVersions("1.0.0-beta.1", "1.0.0"), -1);
+  assert.equal(compareVersions("1.0.0-beta.2", "1.0.0-beta.10"), -1);
+  assert.equal(compareVersions("2.0.0", "1.9.9"), 1);
+});
+
+test("desktop: mac then Windows on a newer version keeps the mac files", async () => {
+  const store = new DirStore(await mkdtemp(join(tmpdir(), "bucket-mw-")));
+  let m = await publishMac(store, "0.1.3", NOW);
+  const macFiles = m.desktop.files;
+  assert.deepEqual(Object.keys(macFiles), ["mac-arm64", "mac-x64"]);
+  assert.deepEqual(m.desktop.signed, { mac: true, windows: false });
+
+  m = await publishWin(store, "0.1.4", LATER);
+  assert.deepEqual(Object.keys(m.desktop.files), ["mac-arm64", "mac-x64", "win-x64"]);
+  assert.deepEqual(m.desktop.files["mac-arm64"], macFiles["mac-arm64"]);
+  assert.deepEqual(m.desktop.files["mac-x64"], macFiles["mac-x64"]);
+  assert.equal(m.desktop.files["mac-arm64"].version, "0.1.3");
+  assert.equal(m.desktop.files["mac-arm64"].releasedAt, NOW);
+  assert.equal(m.desktop.files["win-x64"].version, "0.1.4");
+  assert.equal(m.desktop.files["win-x64"].releasedAt, LATER);
+  assert.deepEqual(m.desktop.signed, { mac: true, windows: false });
+  assert.equal(m.desktop.version, "0.1.4");
+  assert.equal(m.desktop.releasedAt, LATER);
+
+  // Separate update feeds per platform.
+  assert.match(await store.getText("desktop/latest-mac.yml"), /version: 0\.1\.3/);
+  assert.match(await store.getText("desktop/latest.yml"), /version: 0\.1\.4/);
+  assert.equal(await store.getText("desktop/latest/WebinarLiv-mac-arm64.dmg"), "WebinarLiv-0.1.3-mac-arm64.dmg");
+  assert.equal(await store.getText("desktop/latest/WebinarLiv-win-x64.exe"), "WebinarLiv-0.1.4-win-x64.exe");
+});
+
+test("desktop: Windows then mac keeps win-x64", async () => {
+  const store = new DirStore(await mkdtemp(join(tmpdir(), "bucket-wm-")));
+  let m = await publishWin(store, "0.1.4", NOW);
+  assert.deepEqual(Object.keys(m.desktop.files), ["win-x64"]);
+  assert.deepEqual(m.desktop.signed, { mac: false, windows: false });
+  const win = m.desktop.files["win-x64"];
+
+  m = await publishMac(store, "0.1.5", LATER);
+  assert.deepEqual(Object.keys(m.desktop.files), ["mac-arm64", "mac-x64", "win-x64"]);
+  assert.deepEqual(m.desktop.files["win-x64"], win);
+  assert.equal(m.desktop.files["mac-x64"].version, "0.1.5");
+  assert.deepEqual(m.desktop.signed, { mac: true, windows: false });
+  assert.equal(m.desktop.version, "0.1.5");
+  assert.match(await store.getText("desktop/latest.yml"), /version: 0\.1\.4/);
+  assert.match(await store.getText("desktop/latest-mac.yml"), /version: 0\.1\.5/);
+
+  // An older mac version still leaves the section on the highest one.
+  m = await publishMac(store, "0.1.2", LATER);
+  assert.equal(m.desktop.files["mac-arm64"].version, "0.1.2");
+  assert.equal(m.desktop.version, "0.1.4");
+  assert.equal(m.desktop.releasedAt, NOW);
+
+  // Promoting one platform leaves the other alone.
+  m = await promoteDesktop({ store, version: "0.1.5", platform: "mac", baseUrl: BASE, env: {}, now: LATER, log: quiet });
+  assert.equal(m.desktop.files["mac-arm64"].version, "0.1.5");
+  assert.deepEqual(m.desktop.files["win-x64"], win);
+  await assert.rejects(
+    promoteDesktop({ store, version: "0.1.5", platform: "windows", baseUrl: BASE, env: {}, now: LATER, log: quiet }),
+    /not in the bucket/,
+  );
+});
+
+test("desktop: --platform publishes only that platform from a dir with both", async () => {
+  const store = new DirStore(await mkdtemp(join(tmpdir(), "bucket-only-")));
+  await publishMac(store, "0.1.3", NOW);
+  const d = await fakeDesktopBuild("0.1.4");
+  const m = await publishDesktop({ store, dir: d, version: "0.1.4", platform: "windows", baseUrl: BASE, env: {}, now: LATER, log: quiet });
+  assert.equal(m.desktop.files["mac-arm64"].version, "0.1.3");
+  assert.equal(m.desktop.files["win-x64"].version, "0.1.4");
+  assert.equal(await store.head("desktop/0.1.4/WebinarLiv-0.1.4-mac-arm64.dmg"), null);
+  assert.match(await store.getText("desktop/latest-mac.yml"), /version: 0\.1\.3/);
+  const macOnly = await fakePlatformBuild("mac", "0.1.4");
+  await assert.rejects(
+    publishDesktop({ store, dir: macOnly, version: "0.1.4", platform: "windows", baseUrl: BASE, env: {}, now: LATER, log: quiet }),
+    /missing windows installer/,
+  );
+  await assert.rejects(
+    publishDesktop({ store, dir: d, version: "0.1.4", platform: "linux", baseUrl: BASE, env: {}, now: LATER, log: quiet }),
+    /invalid platform/,
+  );
+});
+
+test("merge: a legacy desktop section (no per-file versions) keeps its mac files on a Windows publish", () => {
+  const legacy = {
+    version: "0.1.3",
+    releasedAt: NOW,
+    signed: { mac: true, windows: false },
+    files: {
+      "mac-arm64": { url: `${BASE}/desktop/latest/WebinarLiv-mac-arm64.dmg`, size: 10, sha256: "a".repeat(64) },
+      "mac-x64": { url: `${BASE}/desktop/latest/WebinarLiv-mac-x64.dmg`, size: 11, sha256: "b".repeat(64) },
+    },
+  };
+  const win = { url: `${BASE}/desktop/latest/WebinarLiv-win-x64.exe`, size: 12, sha256: "c".repeat(64), version: "0.1.4", releasedAt: LATER };
+  const d = mergeDesktopSection(legacy, { platforms: ["windows"], files: { "win-x64": win }, signed: { windows: false } });
+  assert.deepEqual(d, {
+    version: "0.1.4",
+    releasedAt: LATER,
+    signed: { mac: true, windows: false },
+    files: {
+      "mac-arm64": { ...legacy.files["mac-arm64"], version: "0.1.3", releasedAt: NOW },
+      "mac-x64": { ...legacy.files["mac-x64"], version: "0.1.3", releasedAt: NOW },
+      "win-x64": win,
+    },
+  });
+  const fresh = mergeDesktopSection(null, { platforms: ["windows"], files: { "win-x64": win }, signed: { windows: true } });
+  assert.deepEqual(fresh.signed, { mac: false, windows: true });
+  assert.equal(fresh.version, "0.1.4");
 });

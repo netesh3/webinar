@@ -104,6 +104,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/layout.test.mts
 	# In-app browser (Instagram/Facebook WebView) and phone detection.
 	cd web && node --experimental-strip-types --no-warnings lib/device.test.mts
+	# Native app link routing, keep-awake pages, and the CallQos hand-off.
+	cd web && node --experimental-strip-types --no-warnings lib/native-bridge.test.mts
 	# The load-test kit's read-out: real viewers always start where the join sent them.
 	cd web && node --experimental-strip-types --no-warnings lib/load-probe.test.mts
 	# The latency clock's time strip: the cells the load-test kit reads off the picture.
@@ -262,6 +264,8 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# And when More gets out of the way of the rest of the bar: another button
 	# closes it in the same click, a drag toward it or Customize does not.
 	cd web && node --experimental-strip-types --no-warnings lib/bar-popover.test.mts
+	# A tap that opens Leave must not count as click-outside on iPhone.
+	cd web && node --experimental-strip-types --no-warnings lib/outside-dismiss.test.mts
 	# And the virtual-background catalogue: an old stored image id must not reach
 	# the compositor as a missing texture.
 	cd web && node --experimental-strip-types --no-warnings lib/backgrounds.test.mts
@@ -404,6 +408,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	# The host home's list filters in the URL: tab, search and dates survive a refresh or
 	# the back button, defaults stay out of the address, bad dates read as unset.
 	cd web && node --experimental-strip-types --no-warnings lib/host-list-url.test.mts
+	# Host list live-update: a lapsed scheduled row leaves Upcoming, and a create/end
+	# in another tab or the extra room window drops this tab's cached page.
+	cd web && node --experimental-strip-types --no-warnings lib/webinar-status.test.mts
+	cd web && node --experimental-strip-types --no-warnings lib/host-list-drop.test.mts
 	# The virtual background's presenter lock: a hand the mask cut off from the arm stays,
 	# other people (apart, beside, walking behind) still go.
 	cd web && node --experimental-strip-types --no-warnings lib/presenter-lock.test.mts
@@ -453,6 +461,10 @@ test-web: ## Typecheck, lint and unit-test the frontend
 	cd web && node --experimental-strip-types --no-warnings lib/server-clock.test.mts
 	# The broadcast player's sound: tried first after a Join tap, muted only when refused.
 	cd web && node --experimental-strip-types --no-warnings lib/autoplay-sound.test.mts
+	# play() and Room.startAudio() settle: a refusal shows the sound pill, not an unhandled rejection.
+	cd web && node --experimental-strip-types --no-warnings lib/media-play.test.mts
+	# Element fullscreen: standard, webkit-prefixed, and an iPhone with neither.
+	cd web && node --experimental-strip-types --no-warnings lib/fullscreen-api.test.mts
 	# The admin cost calculator: transfer pools, render concurrency, the AI cap, recording sizes.
 	cd web && node --experimental-strip-types --no-warnings lib/cost-calculator.test.mts
 	# Cost by host: recorded usage priced at those rates, the pool shared by GB, the platform share.

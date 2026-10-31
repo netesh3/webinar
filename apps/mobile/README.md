@@ -25,8 +25,10 @@ apps/mobile/
   assets/                 icon and splash sources (scripts/make-icon-source.mjs)
   android/                native Android project (committed)
     app/src/main/java/com/webinarliv/app/AppInfoPlugin.java  tells the page whether push is built in
+    app/src/main/java/com/webinarliv/app/CallQos*.java       live-room FGS, Wi-Fi/CPU locks
   ios/App/                native iOS project (committed)
     App/AppDelegate.swift   audio session (background audio), APNs token hand-off
+    App/CallQosPlugin.swift live-room videoChat audio session
     App/App.entitlements    Associated Domains (Universal Links, webcredentials), aps-environment
 web/                      (the site) pieces that only run inside the app
   lib/native-bridge.ts      deep links, push registration, share shim, keep-awake
@@ -84,11 +86,12 @@ Develop menu (iOS). The bridge logs lines prefixed with `[webinarliv-app]`.
 
 | Feature | How |
 |---|---|
-| Site only, other links outside | `server.allowNavigation` is `webinarliv.com` and `*.webinarliv.com` (e.g. `recordings.webinarliv.com`). Capacitor opens every other top-level navigation in the system browser. |
+| Site only, other links outside | `server.allowNavigation` is `webinarliv.com` and `*.webinarliv.com` (e.g. `recordings.webinarliv.com`). Capacitor opens every other top-level navigation in the system browser. Same-origin rooms (`openRoomTab`, Instant webinar, Go live, Join / Rejoin `target=_blank`) stay in the WebView; Zoom / WhatsApp still leave. |
 | Error / offline page | `www/index.html`, shown through `server.errorPath` when the site doesn't load. It reloads when the connection comes back. |
 | Camera and mic (LiveKit WebRTC) | **Android:** CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS, INTERNET (plus BLUETOOTH_CONNECT for headsets) in the manifest. Capacitor's `BridgeWebChromeClient.onPermissionRequest` already asks for the matching runtime permission and then grants the WebView request, so the app adds no custom WebChromeClient. **iOS:** NSCameraUsageDescription and NSMicrophoneUsageDescription. Capacitor's WKUIDelegate grants `requestMediaCapturePermissionFor`, so the user sees only the OS prompt. Capacitor already sets `allowsInlineMediaPlayback = true` and `mediaTypesRequiringUserActionForPlayback = []`. |
-| Background audio | iOS: `UIBackgroundModes` includes `audio`, and AppDelegate sets the `.playback` audio-session category, so a webinar keeps playing with the screen locked or the app in the background. Android: the WebView keeps playing while the activity is in the background, but there is no foreground service, so the OS can stop it under memory pressure (see Limits). |
-| Keep screen awake | `@capacitor-community/keep-awake`, switched on for `/webinars/*/room`, `/host/*/room` and recording pages, and off everywhere else (`keepsScreenAwake` in `web/lib/native-bridge.ts`). The plugin works the same on both platforms, so the app doesn't rely on the Screen Wake Lock API, which WKWebView gained only in recent iOS versions. |
+| Background audio | iOS: `UIBackgroundModes` includes `audio`, and AppDelegate sets the `.playback` audio-session category at launch. While a live room is open, `CallQosPlugin` switches to `.playAndRecord` / `.videoChat` so routing matches a video call. Android: `CallQosService` is a `mediaPlayback` foreground service (persistent "In a live webinar" notification) so the OS does not treat the WebView as a background tab. |
+| Keep screen awake | `@capacitor-community/keep-awake`, switched on for `/webinars/*/room`, `/host/*/room` and recording pages, and off everywhere else (`keepsScreenAwake` in `web/lib/native-bridge.ts`). The same path also calls `CallQos.setActive` (Wi-Fi low-latency lock, CPU wake lock, high-bandwidth `requestNetwork` on Android; videoChat session on iOS). |
+| Call QoS | Native `CallQos` plugin. Android also raises the WebView renderer to `RENDERER_PRIORITY_IMPORTANT` for the room. Capture stays 720p on phones (thermal); publish bitrate and subscribe density are the site's LiveKit defaults (`web/lib/network.ts`). |
 | App Links / Universal Links | Join and webinar URLs (`/webinars/*`, `/w/*`, `/host/*`, `/recordings*`, `/my-webinars*`, `/verify-email*`, `/reset-password*`) on `webinarliv.com` and `www` open the app. The intent filter has `autoVerify`. Entitlements: `applinks:webinarliv.com`, `applinks:www.webinarliv.com`. |
 | Custom scheme | `webinarliv://webinars/<id>` opens `https://webinarliv.com/webinars/<id>` in the app. |
 | Routing an opened link | The App plugin's `appUrlOpen` event (warm start) and `getLaunchUrl()` (cold start) feed `routeForOpenedUrl`, which accepts only our hosts and the custom scheme. The WebView then navigates there. |
@@ -385,9 +388,10 @@ declared (done) and a target API level that's current (36).
   `/connect/complete` in the WebView to finish, which leaves the room; the page then goes back
   to it. Connecting from Settings first avoids that.
 - **No screen share from phones** (see WebRTC in WKWebView).
-- **Android background:** without a foreground service (a media notification), Android can stop
-  the WebView's audio after a while in the background, and the mic stops when the screen is off.
-  A small foreground-service plugin would fix this.
+- **Android background:** a live room starts `CallQosService` (media-playback FGS). That keeps
+  the process in the foreground bucket and holds Wi-Fi / CPU locks, but the mic still stops
+  when the screen is off (WebView capture pause), and a forced-stop kills the call. Battery
+  and cellular use go up for the session — that is the Zoom-like trade.
 - **Web Push inside the app** isn't available (neither WebView supports the Push API); the app
   uses native push instead (see Push notifications). The site's browser opt-ins ("Get a
   notification") still report Web Push unsupported inside the app.

@@ -16,6 +16,7 @@ import {
   useAutoLowLight,
   useBackgroundDownload,
   useBackgroundLoadingView,
+  useBackgroundsBlockedOnIOS,
   useBackgroundsSupported,
   useBackgroundStatus,
   useVirtualBackground,
@@ -273,8 +274,9 @@ export function BackgroundPicker() {
   const { isCameraEnabled } = useLocalParticipant();
   const enabled = useVirtualBackgroundsEnabled();
   const supported = useBackgroundsSupported();
+  const iosBlocked = useBackgroundsBlockedOnIOS();
 
-  if (!permissions.canShareCamera || !enabled) return null;
+  if (!permissions.canShareCamera || !enabled || iosBlocked) return null;
 
   if (!supported) {
     return (

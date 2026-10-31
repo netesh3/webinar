@@ -2,7 +2,7 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["<APPLE_TEAM_ID>.com.webinarliv.app"],
+        "appIDs": ["GF5C6XT5S4.com.webinarliv.app"],
         "components": [
           { "/": "/webinars/*", "comment": "Webinar landing, registration and join links" },
           { "/": "/w/*", "comment": "Short links (recordings)" },
@@ -16,6 +16,6 @@
     ]
   },
   "webcredentials": {
-    "apps": ["<APPLE_TEAM_ID>.com.webinarliv.app"]
+    "apps": ["GF5C6XT5S4.com.webinarliv.app"]
   }
 }

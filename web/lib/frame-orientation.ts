@@ -88,11 +88,19 @@ export function processingLongSide(input: {
  * a quarter turn means displayWidth/displayHeight are the stored buffer's and swap. Without
  * it, `shown` — the <video> element playing the camera, which is always the way up the phone
  * is held — settles it: if it is portrait and the frame landscape (or the other way round),
- * the frame's numbers are the buffer's. Either way, the aspect is what is corrected, never
- * the pixel count. */
+ * the frame's numbers are the buffer's.
+ *
+ * On an iPhone, `shown` is usually the same landscape as the buffer: HTMLVideoElement.videoWidth
+ * is the sensor, and ProcessorWrapper's dummy video is sized to the 1280×720 capture. Turning
+ * a background on then published that landscape (the tile "flips to horizontal") because the
+ * WebRTC CVO header that had been rotating the raw camera is not on a processed track.
+ * `held` is how the phone is actually oriented (the viewport) and swaps in that case.
+ *
+ * Either way, the aspect is what is corrected, never the pixel count. */
 export function uprightSize(
   frame: { displayWidth: number; displayHeight: number; rotation?: number },
   shown?: { width: number; height: number } | null,
+  held?: { width: number; height: number } | null,
 ): { w: number; h: number } {
   const w = frame.displayWidth;
   const h = frame.displayHeight;
@@ -101,7 +109,52 @@ export function uprightSize(
   if (shown && shown.width > 0 && shown.height > 0 && w !== h && shown.width !== shown.height) {
     if (shown.width > shown.height !== w > h) return { w: h, h: w };
   }
+  if (held && held.width > 0 && held.height > 0 && w !== h && held.width !== held.height) {
+    if (held.width > held.height !== w > h) return { w: h, h: w };
+  }
   return { w, h };
+}
+
+/** Viewport of an Apple phone or tablet, or null on desktop (a tall Safari window is not a
+ *  portrait camera). */
+export function heldViewport(input: {
+  ua: string;
+  maxTouchPoints?: number;
+  width: number;
+  height: number;
+}): { width: number; height: number } | null {
+  if (!isAppleMobile(input.ua, input.maxTouchPoints ?? 0)) return null;
+  if (input.width <= 0 || input.height <= 0) return null;
+  return { width: input.width, height: input.height };
+}
+
+/** heldViewport for this browser. Off on the server and on desktop Safari. */
+export function browserHeldViewport(): { width: number; height: number } | null {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return null;
+  const vv = window.visualViewport;
+  return heldViewport({
+    ua: navigator.userAgent,
+    maxTouchPoints: navigator.maxTouchPoints ?? 0,
+    width: vv?.width || window.innerWidth,
+    height: vv?.height || window.innerHeight,
+  });
+}
+
+/** Size to publish a processed frame at: the camera's long side, processed aspect.
+ *
+ * ProcessorWrapper's canvas.captureStream fallback otherwise stretches the picture into
+ * videoWidth×videoHeight (the landscape sensor). Scaling this way keeps 720p on the wire
+ * and the portrait aspect the phone is held at. */
+export function publishSize(
+  processed: { w: number; h: number },
+  camera: { w: number; h: number },
+): { w: number; h: number } {
+  const trackLong = Math.max(camera.w, camera.h);
+  const frameLong = Math.max(processed.w, processed.h);
+  if (!frameLong || !trackLong) return processed.w ? processed : camera;
+  const k = trackLong / frameLong;
+  const even = (n: number) => Math.max(2, Math.round((n * k) / 2) * 2);
+  return { w: even(processed.w), h: even(processed.h) };
 }
 
 /** `size` shrunk so its longer side is at most `max` (never grown), in even pixels. */

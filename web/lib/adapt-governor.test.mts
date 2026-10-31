@@ -19,6 +19,7 @@ import {
   ADAPT,
   AV1_SAVING,
   CAMERA_1080_BITRATE,
+  CAMERA_720_BITRATE,
   CPU_STEPS,
   LADDER,
   SHARE_BITRATES,
@@ -287,10 +288,10 @@ console.log("camera encodings");
 {
   const top = CAMERA_1080_BITRATE;
   const vp8 = cameraEncodingPlan("full", "vp8", 3, top);
-  check(() => assert.deepEqual(vp8.map((e) => e.maxBitrate), [200_000, 640_000, 3_200_000]));
+  check(() => assert.deepEqual(vp8.map((e) => e.maxBitrate), [200_000, 640_000, CAMERA_1080_BITRATE]));
   check(() => assert.deepEqual(vp8.map((e) => e.maxFramerate), [15, 20, 30]));
   const av1 = cameraEncodingPlan("full", "av1", 3, top);
-  check(() => assert.deepEqual(av1.map((e) => e.maxBitrate), [140_000, 448_000, 2_240_000]));
+  check(() => assert.deepEqual(av1.map((e) => e.maxBitrate), [140_000, 448_000, Math.round(CAMERA_1080_BITRATE * AV1_SAVING)]));
   // Reduced turns the top layer off; minimal keeps 360p only.
   check(() => assert.deepEqual(cameraEncodingPlan("reduced", "av1", 3, top).map((e) => e.active), [true, true, false]));
   check(() => assert.deepEqual(cameraEncodingPlan("minimal", "vp8", 3, top).map((e) => e.active), [false, true, false]));
@@ -298,7 +299,10 @@ console.log("camera encodings");
   check(() => assert.deepEqual(cameraEncodingPlan("full", "vp8", 3, top, 15).map((e) => e.maxFramerate), [15, 15, 15]));
   check(() => assert.deepEqual(cameraEncodingPlan("full", "vp8", 3, top, 20).map((e) => e.maxFramerate), [15, 20, 20]));
   // A 720p device's top is its own preset, scaled for AV1.
-  check(() => assert.equal(cameraEncodingPlan("full", "av1", 3, 2_000_000)[2].maxBitrate, 1_400_000));
+  check(() => assert.equal(
+    cameraEncodingPlan("full", "av1", 3, CAMERA_720_BITRATE)[2].maxBitrate,
+    Math.round(CAMERA_720_BITRATE * AV1_SAVING),
+  ));
   // One encoding (AV1 fallen back to single L1T3): the rung's total as one cap, never off.
   const single = cameraEncodingPlan("reduced", "av1", 1, top);
   check(() => assert.equal(single.length, 1));

@@ -41,3 +41,80 @@ export function afterWebinarEnd(input: {
   if (input.role !== "host") return { go: "ended-screen" };
   return { go: "results", href: hostResultsPath(input.slug) };
 }
+
+/* Desktop: the live room is an extra OS window (window.open). Results belong on
+ * the host page that opened it, not in that leftover window. */
+
+export type RoomEndBridge = {
+  closeRoomWindow?: (url: string) => boolean | Promise<boolean>;
+};
+
+export type RoomEndOpener = {
+  closed: boolean;
+  replace: (url: string) => void;
+};
+
+/** Close the extra desktop room window and send Results to the opener / main window.
+ *  `navigate` means the caller should `router.replace` in this window as before. */
+export async function endRoomToResults(input: {
+  href: string;
+  origin: string;
+  bridge: RoomEndBridge | null | undefined;
+  opener: RoomEndOpener | null | undefined;
+  closeSelf: () => void;
+  selfClosed: () => boolean;
+}): Promise<"closed" | "navigate"> {
+  const url = new URL(input.href, input.origin).toString();
+  const closeRoom = input.bridge?.closeRoomWindow;
+  if (typeof closeRoom === "function") {
+    try {
+      if (await closeRoom(url)) return "closed";
+    } catch {
+      // Fall through: an older bridge, or this is the main window.
+    }
+  }
+  if (input.bridge && input.opener && !input.opener.closed) {
+    try {
+      input.opener.replace(url);
+    } catch {
+      // Opener gone or cross-origin; still close this extra window.
+    }
+    try {
+      input.closeSelf();
+    } catch {
+      // Already gone.
+    }
+    if (input.selfClosed()) return "closed";
+  }
+  return "navigate";
+}
+
+/** Keep window.opener in the desktop app so the room can hand Results back. */
+export function shouldKeepRoomOpener(hasDesktopBridge: boolean): boolean {
+  return hasDesktopBridge;
+}
+
+/** In the page: close the extra desktop room window, or tell the caller to navigate. */
+export async function leaveRoomForResults(href: string): Promise<"closed" | "navigate"> {
+  if (typeof window === "undefined") return "navigate";
+  const bridge = (window as unknown as { webinarlivDesktop?: RoomEndBridge }).webinarlivDesktop;
+  const opener = window.opener as Window | null;
+  return endRoomToResults({
+    href,
+    origin: window.location.origin,
+    bridge,
+    opener:
+      opener && !opener.closed
+        ? {
+            closed: false,
+            replace: (url) => {
+              opener.location.replace(url);
+            },
+          }
+        : null,
+    closeSelf: () => {
+      window.close();
+    },
+    selfClosed: () => window.closed,
+  });
+}

@@ -8,6 +8,7 @@ import {
   LOW_LIGHT_DEFAULT_ON,
   LOW_LIGHT_MAX,
   LOW_LIGHT_STEP,
+  useBackgroundsBlockedOnIOS,
   useBackgroundsSupported,
   useVirtualBackgroundsEnabled,
 } from "@/lib/backgrounds";
@@ -110,9 +111,10 @@ export function LowLightControl({
   const on = value > 0;
   const enabled = useVirtualBackgroundsEnabled();
   const supported = useBackgroundsSupported();
+  const iosBlocked = useBackgroundsBlockedOnIOS();
 
-  /* Kill switch: hide entirely. Do not claim the browser needs WebGL2. */
-  if (!enabled) return null;
+  /* Kill switch or iPhone: hide entirely. Do not claim the browser needs WebGL2. */
+  if (!enabled || iosBlocked) return null;
 
   if (!supported) {
     return (
@@ -222,8 +224,9 @@ export function LowLightSetting() {
   const { prefs, updatePrefs, permissions } = useRoomUI();
   const track = useCameraTrack();
   const enabled = useVirtualBackgroundsEnabled();
+  const iosBlocked = useBackgroundsBlockedOnIOS();
 
-  if (!permissions.canShareCamera || !enabled) return null;
+  if (!permissions.canShareCamera || !enabled || iosBlocked) return null;
 
   return (
     <section>

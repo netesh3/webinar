@@ -3,7 +3,12 @@
  * Run: node --experimental-strip-types --no-warnings lib/host-results.test.mts
  */
 import assert from "node:assert/strict";
-import { afterWebinarEnd, hostResultsPath } from "./host-results.ts";
+import {
+  afterWebinarEnd,
+  endRoomToResults,
+  hostResultsPath,
+  shouldKeepRoomOpener,
+} from "./host-results.ts";
 import { tabFromQuery } from "./host-tabs.ts";
 
 const slug = "final-testing-all-flow-new";
@@ -56,5 +61,76 @@ assert.deepEqual(
   afterWebinarEnd({ role: "panelist", ended: true, ownEndPending: true, slug }),
   { go: "stay" },
 );
+
+assert.equal(shouldKeepRoomOpener(true), true);
+assert.equal(shouldKeepRoomOpener(false), false);
+
+const origin = "https://webinarliv.com";
+
+{
+  let closed = false;
+  const got = await endRoomToResults({
+    href,
+    origin,
+    bridge: { closeRoomWindow: (url) => {
+      assert.equal(url, `${origin}${href}`);
+      return true;
+    } },
+    opener: null,
+    closeSelf: () => {
+      closed = true;
+    },
+    selfClosed: () => closed,
+  });
+  assert.equal(got, "closed");
+  assert.equal(closed, false, "IPC close does not also window.close");
+}
+
+{
+  const got = await endRoomToResults({
+    href,
+    origin,
+    bridge: { closeRoomWindow: () => false },
+    opener: null,
+    closeSelf: () => {},
+    selfClosed: () => false,
+  });
+  assert.equal(got, "navigate", "main window stays and navigates");
+}
+
+{
+  let replaced = "";
+  let closed = false;
+  const got = await endRoomToResults({
+    href,
+    origin,
+    bridge: {},
+    opener: {
+      closed: false,
+      replace: (url) => {
+        replaced = url;
+      },
+    },
+    closeSelf: () => {
+      closed = true;
+    },
+    selfClosed: () => closed,
+  });
+  assert.equal(got, "closed");
+  assert.equal(replaced, `${origin}${href}`);
+  assert.equal(closed, true);
+}
+
+{
+  const got = await endRoomToResults({
+    href,
+    origin,
+    bridge: null,
+    opener: { closed: false, replace: () => {} },
+    closeSelf: () => {},
+    selfClosed: () => true,
+  });
+  assert.equal(got, "navigate", "a browser tab with an opener still navigates");
+}
 
 console.log("host-results: ok");

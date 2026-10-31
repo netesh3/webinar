@@ -21,7 +21,9 @@ import {
 import type { Recording, RegistrantRow, Webinar } from "@/lib/api-types";
 import type { RosterCounts } from "./host-webinar-tabs";
 import { bypassWebinar, DEV_BYPASS_REGISTRANTS } from "@/lib/dev-bypass";
+import { onHostListsDropped } from "@/lib/host-list-cache";
 import { presentForHostList } from "@/lib/webinar-status";
+import { useVisibleRefresh } from "@/lib/visible-refresh";
 import {
   isDevAuthBypassActive,
   useDevAuthBypassActive,
@@ -76,7 +78,9 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   const showPreview = useDevAuthBypassActive();
   const rawPreview = showPreview ? bypassWebinar(slug) : undefined;
   const preview = rawPreview && now !== null ? presentForHostList(rawPreview, now) : undefined;
-  const webinar = showPreview ? (preview ?? null) : fetchedWebinar;
+  const presented =
+    fetchedWebinar && now !== null ? presentForHostList(fetchedWebinar, now) : fetchedWebinar;
+  const webinar = showPreview ? (preview ?? null) : presented;
   const previewRows =
     showPreview && preview && preview.status !== "draft"
       ? DEV_BYPASS_REGISTRANTS
@@ -146,6 +150,13 @@ export function HostWebinarScreen({ slug }: { slug: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const refresh = useCallback(() => {
+    if (fetchedWebinar?.status === "ended") return;
+    void load();
+  }, [fetchedWebinar?.status, load]);
+  useVisibleRefresh(refresh);
+  useEffect(() => onHostListsDropped(() => void load()), [load]);
 
   async function start() {
     if (bypass) {

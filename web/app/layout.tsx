@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Fraunces, Geist, Outfit } from "next/font/google";
 import Script from "next/script";
 import { AppProviders } from "@/components/providers";
@@ -13,7 +14,7 @@ import { NativeBoot, NativeSessionSync } from "@/components/native-boot";
 import { FaroBoot } from "@/components/faro-boot";
 import { sidebarBootScript } from "@/lib/sidebar";
 import { themeBootScript } from "@/lib/theme";
-import { appStoreBootScript } from "@/lib/device";
+import { appStoreBootScript, nativeAppViewport } from "@/lib/device";
 import "./globals.css";
 import "./sidebar.css";
 
@@ -71,10 +72,20 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** The installed app's title bar, and the mobile browser's: --color-brand. */
-export const viewport: Viewport = {
-  themeColor: "#0b5cff",
-};
+/** The installed app's title bar, and the mobile browser's: --color-brand.
+ *  viewport-fit=cover is what makes env(safe-area-inset-*) non-zero in the
+ *  Capacitor iOS WebView (contentInset never, so the page draws under the
+ *  status bar). Without it the host top bar sits behind the notch.
+ *  The native app also locks scale: iOS otherwise zooms into sub-16px fields
+ *  and a live room cannot pinch back out (nativeAppViewport). */
+export async function generateViewport(): Promise<Viewport> {
+  const ua = (await headers()).get("user-agent") ?? "";
+  return {
+    themeColor: "#0b5cff",
+    viewportFit: "cover",
+    ...nativeAppViewport(ua),
+  };
+}
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Fetched here so the shell renders with the operator's branding on the first

@@ -23,7 +23,7 @@
  * The PiP sits under the player's own chrome and under captions (z-order), so a caption is
  * never covered, wherever the PiP is dragged. */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import {
   BEACON_OFF,
   beaconStrip,
@@ -226,36 +226,88 @@ export function EdgeSpeakerSplit({
   const rest = cornerPosition(prefs.corner, size, box);
   const pos = dragPos ?? rest;
 
+  // Latest values for the window listeners below. Synced after each commit (refs
+  // must not be written during render), which is before any later pointer event.
+  const dragPosRef = useRef(dragPos);
+  const posRef = useRef(pos);
+  const boxRefSize = useRef(box);
+  const sizeRef = useRef(size);
+  const prefsRef = useRef(prefs);
+  const setPrefsRef = useRef(setPrefs);
+  useLayoutEffect(() => {
+    dragPosRef.current = dragPos;
+    posRef.current = pos;
+    boxRefSize.current = box;
+    sizeRef.current = size;
+    prefsRef.current = prefs;
+    setPrefsRef.current = setPrefs;
+  });
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d || d.id !== e.pointerId) return;
+      if (e.cancelable) e.preventDefault();
+      const dx = e.clientX - d.sx;
+      const dy = e.clientY - d.sy;
+      if (!dragPosRef.current && isTap(dx, dy)) return;
+      const b = boxRefSize.current;
+      const s = sizeRef.current;
+      setDragPos({
+        x: Math.min(Math.max(0, d.x0 + dx), Math.max(0, b.w - s.w)),
+        y: Math.min(Math.max(0, d.y0 + dy), Math.max(0, b.h - s.h)),
+      });
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d || d.id !== e.pointerId) return;
+      drag.current = null;
+      const last = dragPosRef.current;
+      if (!last) {
+        setSwapped((s) => !s);
+        return;
+      }
+      setPrefsRef.current({
+        ...prefsRef.current,
+        corner: nearestCorner(last, sizeRef.current, boxRefSize.current),
+      });
+      setDragPos(null);
+    };
+    const onCancel = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d || d.id !== e.pointerId) return;
+      /* Same as a release: iOS sends cancel instead of up when it thinks this
+       * is a scroll. Keep the PiP where the finger left it. */
+      const last = dragPosRef.current;
+      drag.current = null;
+      if (last) {
+        setPrefsRef.current({
+          ...prefsRef.current,
+          corner: nearestCorner(last, sizeRef.current, boxRefSize.current),
+        });
+      }
+      setDragPos(null);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!drag.current) return;
+      if (e.cancelable) e.preventDefault();
+    };
+    window.addEventListener("pointermove", onMove, { capture: true, passive: false });
+    window.addEventListener("pointerup", onUp, { capture: true });
+    window.addEventListener("pointercancel", onCancel, { capture: true });
+    window.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("touchmove", onTouchMove, true);
+    };
+  }, []);
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
     drag.current = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x0: pos.x, y0: pos.y };
-  };
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    const dx = e.clientX - d.sx;
-    const dy = e.clientY - d.sy;
-    if (!dragPos && isTap(dx, dy)) return;
-    setDragPos({
-      x: Math.min(Math.max(0, d.x0 + dx), Math.max(0, box.w - size.w)),
-      y: Math.min(Math.max(0, d.y0 + dy), Math.max(0, box.h - size.h)),
-    });
-  };
-  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    drag.current = null;
-    if (!dragPos) {
-      setSwapped((s) => !s);
-      return;
-    }
-    setPrefs({ ...prefs, corner: nearestCorner(dragPos, size, box) });
-    setDragPos(null);
-  };
-  const onPointerCancel = () => {
-    drag.current = null;
-    setDragPos(null);
   };
 
   return (
@@ -266,9 +318,6 @@ export function EdgeSpeakerSplit({
           tabIndex={0}
           aria-label={swapped ? "Screen share. Tap to swap back, drag to move." : "Speaker video. Tap to swap with the screen share, drag to move."}
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();

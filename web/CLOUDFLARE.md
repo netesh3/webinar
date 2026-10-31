@@ -81,7 +81,7 @@ npm ci
 npm run deploy   # sets empty API base, OPEN_NEXT=1
 ```
 
-**Homepage on this Worker:** logged-out `/` → marketing. Signed-in `/` → `/host` or `/browse`. Marketing is always reachable at [`/home`](https://webinar-web.ganesh-s-p006.workers.dev/home).
+**Homepage on this Worker:** logged-out `/` → marketing. Signed-in `/` → `/host` or `/browse`. Marketing is always reachable at `/home` (e.g. https://webinarliv.com/home).
 
 First-time login (if needed): `npx wrangler login`
 
@@ -101,21 +101,21 @@ apex + `www` as Workers custom domains. Keep `*.workers.dev` working in parallel
 |------|--------|
 | Domain | `webinarliv.com` (+ `www.webinarliv.com`) |
 | Registrar | Spaceship |
-| Cloudflare account | `392a7c7123d4be470145452fcd3f6840` (`ganesh.s.p006@gmail.com`) |
-| Worker | `webinar-web` → https://webinar-web.ganesh-s-p006.workers.dev |
+| Cloudflare account | The company account. Its ID is the repository variable `CLOUDFLARE_ACCOUNT_ID` (`gh variable get CLOUDFLARE_ACCOUNT_ID -R github.com/netesh3/webinar`); not hard-coded here. Moved from the owner's personal account on 30 Oct 2026, see [docs/runbooks/cloudflare-account-move.md](../docs/runbooks/cloudflare-account-move.md) |
+| Worker | `webinar-web` → https://webinarliv.com (also `webinar-web.<account subdomain>.workers.dev`) |
 
 ### 1. Add the zone in Cloudflare (dashboard required)
 
 Wrangler OAuth can **read** zones and **edit** Workers, but it cannot
 `account.zone.create`. Use the dashboard (not `wrangler` / API alone):
 
-1. Open [Add site](https://dash.cloudflare.com/392a7c7123d4be470145452fcd3f6840/add-site).
+1. Open Add site: `https://dash.cloudflare.com/<CLOUDFLARE_ACCOUNT_ID>/add-site`.
 2. Enter `webinarliv.com` → **Continue**.
 3. Choose the **Free** plan → continue.
 4. Skip or review DNS records (Worker custom domains will create what they need).
-5. Copy the assigned **nameservers** (this account’s other zones use
-   `anita.ns.cloudflare.com` / `lewis.ns.cloudflare.com` — confirm on the
-   success screen; they may differ per zone).
+5. Copy the assigned **nameservers** from the success screen (they differ per
+   account: the personal account used `anita` / `lewis`, the company account
+   uses `jean.ns.cloudflare.com` / `lou.ns.cloudflare.com`).
 
 Zone status stays **Pending** until the registrar NS change propagates.
 
@@ -160,7 +160,7 @@ npx wrangler deploy   # or: npx wrangler triggers deploy
 
 ```bash
 # ZONE_ID from: GET /zones?name=webinarliv.com
-ACCT=392a7c7123d4be470145452fcd3f6840
+ACCT="$(gh variable get CLOUDFLARE_ACCOUNT_ID -R github.com/netesh3/webinar)"
 # POST https://api.cloudflare.com/client/v4/accounts/$ACCT/workers/domains
 # body: {"hostname":"webinarliv.com","service":"webinar-web","environment":"production"}
 # repeat for www.webinarliv.com
@@ -176,7 +176,7 @@ and any direct API access.
 
 | Where | What to set |
 |-------|-------------|
-| Cloud Run + GitHub secrets | `CORS_ORIGINS=https://webinarliv.com,https://www.webinarliv.com,https://webinar-web.ganesh-s-p006.workers.dev` |
+| Cloud Run + GitHub secrets | `CORS_ORIGINS=https://webinarliv.com,https://www.webinarliv.com` (plus `https://webinar-web.<account subdomain>.workers.dev` if you want the workers.dev copy to call the API directly) |
 | Cloud Run + GitHub secrets | `WEB_BASE_URL=https://webinarliv.com` |
 | Supabase Auth → URL config | Site URL: `https://webinarliv.com`; Redirect URLs: `https://webinarliv.com/auth/callback`, `https://www.webinarliv.com/auth/callback`, keep workers.dev + localhost |
 | Google Cloud OAuth client (optional JS origins) | Add `https://webinarliv.com` and `https://www.webinarliv.com` |
@@ -197,7 +197,7 @@ is optional and not required for login.
 
 ### 5. Test URLs
 
-- https://webinar-web.ganesh-s-p006.workers.dev/ (must keep working)
+- `webinar-web.<account subdomain>.workers.dev` (the workers.dev copy; the subdomain belongs to the account in `CLOUDFLARE_ACCOUNT_ID`)
 - https://webinarliv.com/
 - https://www.webinarliv.com/
 - https://webinarliv.com/auth/callback (after Google sign-in)
@@ -214,7 +214,7 @@ CI needs secret **`CLOUDFLARE_API_TOKEN`** and variable
 ```bash
 # 1. https://dash.cloudflare.com/profile/api-tokens → Create Token
 #    → "Edit Cloudflare Workers" template
-#    → Account Resources: 392a7c7123d4be470145452fcd3f6840
+#    → Account Resources: the account in vars.CLOUDFLARE_ACCOUNT_ID
 #    → Zone Resources: include webinarliv.com   (needed for the custom domains)
 #    → Continue → Create → copy the token
 # 2. Store it (reads stdin, so it never lands in shell history):

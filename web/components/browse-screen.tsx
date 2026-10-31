@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useVisibleRefresh } from "@/lib/visible-refresh";
 import { ApiError, api } from "@/lib/api";
 import type { Webinar } from "@/lib/api-types";
 import { DEV_BYPASS_WEBINARS } from "@/lib/dev-bypass";
@@ -44,10 +45,12 @@ export function BrowseScreen() {
   // The catalogue only needs the session cookie, which this request sends on its
   // own. It starts with the login check rather than after it. Local preview has
   // nothing to fetch: the fixture list is derived below.
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (bypass) return;
     load();
   }, [bypass, load]);
+  useEffect(refresh, [refresh]);
+  useVisibleRefresh(refresh);
 
   const webinars = bypass
     ? DEV_BYPASS_WEBINARS.filter((w) => w.status !== "draft")

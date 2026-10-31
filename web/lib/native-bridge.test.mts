@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import { handOffReturn, isNativeApp, keepsScreenAwake, pushNeedsSync, routeForOpenedUrl } from "./native-bridge.ts";
+import { handOffReturn, inAppClickUrl, inAppDestination, isNativeApp, keepsScreenAwake, pushNeedsSync, routeForOpenedUrl } from "./native-bridge.ts";
 
 // App Links / Universal Links on the site itself become a path on the same origin.
 assert.equal(routeForOpenedUrl("https://webinarliv.com/webinars/abc?k=1#q"), "/webinars/abc?k=1#q");
@@ -32,6 +32,7 @@ assert.equal(routeForOpenedUrl("not a url"), null);
 
 // The Google sign-in hand-off comes back on the custom scheme (lib/app-auth.ts).
 assert.equal(routeForOpenedUrl("webinarliv://auth/complete?code=abc"), "/auth/complete?code=abc");
+assert.equal(routeForOpenedUrl("webinarliv://auth/complete/?code=abc"), "/auth/complete?code=abc");
 // The connect hand-offs come back the same way (lib/app-connect.ts).
 assert.equal(
   routeForOpenedUrl("webinarliv://connect/complete?code=abc&provider=zoom"),
@@ -40,6 +41,7 @@ assert.equal(
 assert.equal(routeForOpenedUrl("webinarliv://connect/picked"), "/connect/picked");
 // Sign-in and connect completions load their page; a Drive pick leaves the live room alone.
 assert.equal(handOffReturn("/auth/complete?code=abc"), "navigate");
+assert.equal(handOffReturn("/auth/complete/?code=abc"), "navigate");
 assert.equal(handOffReturn("/connect/complete?error=denied&provider=youtube"), "navigate");
 assert.equal(handOffReturn("/connect/picked"), "stay");
 assert.equal(handOffReturn("/connect/pickedx"), "none");
@@ -48,6 +50,17 @@ assert.equal(handOffReturn("/webinars/abc/room"), "none");
 assert.equal(routeForOpenedUrl("/webinars/abc/room?k=K"), "/webinars/abc/room?k=K");
 assert.equal(routeForOpenedUrl("//evil.example/x"), null);
 assert.equal(routeForOpenedUrl("/\\evil.example"), null);
+
+// Phone app: our rooms stay in the WebView; Zoom / WhatsApp do not.
+assert.equal(inAppDestination("/host/abc/room"), "https://webinarliv.com/host/abc/room");
+assert.equal(inAppDestination("/webinars/abc/room?k=1"), "https://webinarliv.com/webinars/abc/room?k=1");
+assert.equal(inAppDestination("https://webinarliv.com/host/abc/room"), "https://webinarliv.com/host/abc/room");
+assert.equal(inAppDestination("https://zoom.us/s/123"), null);
+assert.equal(inAppDestination("https://wa.me/?text=hi"), null);
+assert.equal(inAppClickUrl("/host/abc/room", "_blank"), "https://webinarliv.com/host/abc/room");
+assert.equal(inAppClickUrl("/host/abc/room", "_new"), "https://webinarliv.com/host/abc/room");
+assert.equal(inAppClickUrl("/host/abc/room", null), null);
+assert.equal(inAppClickUrl("https://calendar.google.com/x", "_blank"), null);
 
 // The screen stays on in a session and on a replay, nowhere else.
 assert.equal(keepsScreenAwake("/webinars/abc/room"), true);

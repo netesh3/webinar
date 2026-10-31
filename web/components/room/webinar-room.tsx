@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
+import { guardStartAudio } from "@/lib/media-play";
 import { withAutoAnswer } from "@/lib/qa-auto";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
@@ -74,7 +75,7 @@ import { useRoomHistory } from "@/lib/room-history-sync";
 import { applyCameraCodec, prioritiseAudio, useNetworkHealth } from "@/lib/network";
 import { av1RoomVerdict, parseAv1PublishMode, probeAv1, setAv1RoomVerdict } from "@/lib/codec-policy";
 import { formatElapsed } from "@/lib/format";
-import { afterWebinarEnd } from "@/lib/host-results";
+import { afterWebinarEnd, leaveRoomForResults } from "@/lib/host-results";
 import { Alert, Spinner } from "../controls";
 import { LockIcon, SignalIcon, SlidersIcon } from "../icons";
 import { useAppConfig, useToast } from "../providers";
@@ -189,6 +190,7 @@ export function WebinarRoom({
    *  were (lib/rejoin.ts). */
   rejoined?: boolean;
 }) {
+  const router = useRouter();
   const { ready: prefsReady } = useMediaPreferences();
   const { telemetryEnabled } = useAppConfig();
 
@@ -454,6 +456,7 @@ export function WebinarRoom({
       initialImageUrl={initialImageUrl}
       joinKey={joinKey}
       onLeave={onLeave}
+      onBack={() => router.push(door === "stage" ? `/host/${slug}` : `/webinars/${slug}`)}
       onDemoted={webinarUsesCdn || webinarUsesEdge ? handleDemoted : undefined}
       freshCredential={freshCredential}
       // Only the room this page opened with: a promotion or demotion later in the session
@@ -528,6 +531,7 @@ function RoomSession({
   initialImageUrl,
   joinKey,
   onLeave,
+  onBack,
   onDemoted,
   freshCredential,
   rejoined,
@@ -539,6 +543,7 @@ function RoomSession({
   initialImageUrl?: string;
   joinKey?: string;
   onLeave: () => void;
+  onBack: () => void;
   onDemoted?: () => void;
   freshCredential: Credential;
   rejoined: boolean;
@@ -560,7 +565,10 @@ function RoomSession({
         compositor: Boolean(join.edgeWebinar || join.cdnBroadcast),
       }),
     );
-    return new Room(roomOptions(prefs, join.canPublish));
+    // On iOS livekit-client calls startAudio itself, un-awaited, each time the page comes
+    // back; refused outside a tap, that was an unhandled NotAllowedError. Guarded, every
+    // call settles and the StartAudio pill below is what a refusal shows (lib/media-play.ts).
+    return guardStartAudio(new Room(roomOptions(prefs, join.canPublish)));
   });
 
   /* AV1 for this camera, if the device can afford it (lib/codec-policy.ts). roomOptions ran
@@ -656,6 +664,7 @@ function RoomSession({
           setEntry(choices);
           setChecked(true);
         }}
+        onBack={onBack}
       />
     );
   }
@@ -1842,12 +1851,16 @@ function ConnectedRoom({
     /* Leave normally completes in onDisconnected. A room that is already down — waiting to
      * reconnect, or between retries — emits nothing on disconnect(), so it is completed here,
      * or the button did nothing. The connect effect checks `leaving` too, so a later wake or
-     * retry does not bring them back. */
+     * retry does not bring them back.
+     *
+     * A share on the phone can leave disconnect() hanging (ReplayKit / WKWebView). If the
+     * SFU never emits Disconnected, still walk them out so Leave is never a stuck button. */
     if (room.state === ConnectionState.Disconnected) {
       completeLeave();
       return;
     }
     void disconnect();
+    window.setTimeout(() => completeLeave(), 2000);
   }, [disconnect, room, completeLeave]);
 
   // The server's view of the room, for the host only. It is the one list that
@@ -2303,8 +2316,13 @@ function AutoStartAudio({ room }: { room: Room }) {
     // before the host's audio had arrived found the optimistic `true`, stopped
     // listening for good, and unlocked nothing. A startAudio that succeeds is
     // the confirmation; until one does, every interaction tries again.
+    //
+    // startAudio is guarded (lib/media-play.ts) and resolves even when refused, so success
+    // is read from the room afterwards: a refusal has set canPlaybackAudio false (31 Oct 2026).
     const start = () => {
-      void room.startAudio().then(stop, () => {});
+      void room.startAudio().then(() => {
+        if (room.canPlaybackAudio) stop();
+      });
     };
     const stop = () => {
       window.removeEventListener("pointerup", start);
@@ -2604,7 +2622,14 @@ function stopLocalCapture(room: Room, published: Set<LocalTrack>) {
 function HostResultsRedirect({ href }: { href: string }) {
   const router = useRouter();
   useEffect(() => {
-    router.replace(href);
+    let cancelled = false;
+    void (async () => {
+      if ((await leaveRoomForResults(href)) === "closed" || cancelled) return;
+      router.replace(href);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [router, href]);
   return (
     <main className="grid min-h-dvh place-items-center bg-stage">

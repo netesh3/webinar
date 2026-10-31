@@ -43,3 +43,28 @@ export function presentForHostList<
   if (!lapsedWithoutLive(w, now)) return w;
   return { ...w, status: "ended", didntGoLive: true };
 }
+
+type HostListRow = {
+  status: string;
+  startedAt?: string;
+  didntGoLive?: boolean;
+  startsAt: string;
+  durationMin: number;
+};
+
+/** Keep a cached page in step with the clock: a scheduled session whose end has
+ *  passed leaves Upcoming without waiting for a refetch. Live stays live — only
+ *  the server (or a refetch) can end it. */
+export function hostListRowsForTab<T extends HostListRow>(
+  items: readonly T[],
+  tab: string,
+  now: number,
+): T[] {
+  return items
+    .map((w) => presentForHostList(w, now))
+    .filter((w) => {
+      if (tab === "past") return w.status === "ended";
+      if (tab === "drafts") return w.status === "draft";
+      return w.status === "scheduled" || w.status === "live";
+    });
+}

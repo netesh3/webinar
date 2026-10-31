@@ -4,6 +4,7 @@ import { RegisterForm } from "@/components/register-form";
 import { AutoRejoin } from "@/components/rejoin";
 import { MeetingDoor } from "@/components/meeting-door";
 import { ParticipantHeader } from "@/components/participant-header";
+import { WebinarStatusRefresh } from "@/components/webinar-status-refresh";
 import {
   Avatar,
   Badge,
@@ -59,6 +60,7 @@ export default async function WebinarDetailPage({
    * edges of the padding. */
   return (
     <div className="flex min-h-full flex-1 flex-col bg-page [--color-brand:#2563EB] [--color-brand-hover:#1D4ED8] dark:[--color-brand:#93C5FD] dark:[--color-brand-hover:#BFDBFE]">
+      <WebinarStatusRefresh slug={w.id} status={w.status} />
       <ParticipantHeader wide signIn />
       {/* Somebody who was in the room a few minutes ago goes straight back in. The server
           has the last word on whether they may; see components/rejoin.tsx. */}
@@ -227,6 +229,7 @@ function MeetingLanding({ webinar: w, ended }: { webinar: Webinar; ended: boolea
   const live = w.status === "live";
   return (
     <div className="flex min-h-full flex-1 flex-col bg-page [--color-brand:#2563EB] [--color-brand-hover:#1D4ED8] dark:[--color-brand:#93C5FD] dark:[--color-brand-hover:#BFDBFE]">
+      <WebinarStatusRefresh slug={w.id} status={w.status} />
       <ParticipantHeader wide signIn />
       {ended ? null : <AutoRejoin slug={w.id} />}
       <main className="grid w-full flex-1 place-items-center px-4 py-8 sm:px-6">

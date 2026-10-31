@@ -248,7 +248,7 @@ func TestVideoUploadInPartsResumesAndBecomesARecording(t *testing.T) {
 		}
 		var kept types.Recording
 		h.decode(raw, &kept)
-		want = want.AddDate(0, types.RecordingKeepMonths, 0)
+		want = types.AddMonths(want, types.RecordingKeepMonths)
 		if got := mustTime(t, kept.ExpiresAt); !near(got, want) || !kept.Extended {
 			t.Fatalf("keep #%d: expires %v, want %v", i, got, want)
 		}

@@ -17,6 +17,7 @@ import { RoomContext } from "@livekit/components-react";
 import { Room } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { guardStartAudio } from "@/lib/media-play";
 import type { JoinResponse } from "@/lib/api-types";
 import { leaveEdge, useEdgeEvents, useServerClockOffset } from "@/lib/edge-events";
 import { useMediaPreferences } from "@/lib/media";
@@ -85,7 +86,8 @@ export function EdgeAudienceRoom({
   // A phone left to watch must not auto-lock mid-webinar (lib/wake-lock.ts).
   useScreenWakeLock();
   // Never connected. The SSE stream raises its events (see lib/edge-events.ts).
-  const [room] = useState(() => new Room());
+  // startAudio settles on every call, LiveKit's own included (lib/media-play.ts).
+  const [room] = useState(() => guardStartAudio(new Room()));
   const [removed, setRemoved] = useState(false);
 
   const onPromotedRef = useRef(onPromoted);

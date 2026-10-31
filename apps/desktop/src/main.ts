@@ -21,13 +21,21 @@ import {
 } from "./config";
 import { buildMenu } from "./menu";
 import { isCallActive, registerPowerIpc } from "./power";
+import { applyChromiumQosFlags } from "./qos";
 import { installDisplayMediaHandler } from "./screen-picker";
-import { guardContents, hardenApp, installPermissionHandlers } from "./security";
+import { guardContents, hardenApp, installPermissionHandlers, senderUrl } from "./security";
+import { focusShareBar, isShareSessionActive, registerShareIpc } from "./share-session";
 import { startAutoUpdates } from "./updater";
 import { loadWindowState, trackWindowState } from "./window-state";
 
 app.setName("Webinar Liv");
 if (process.platform === "win32") app.setAppUserModelId("com.webinarliv.desktop");
+
+/* LiveKit encode / decode / adaptiveStream need a full time slice even when the
+ * window is unfocused, occluded by the share picker, or on a dual-GPU laptop.
+ * See qos.ts for what each switch does. Must run before app.whenReady().
+ * Hardware acceleration stays on (never disableHardwareAcceleration). */
+applyChromiumQosFlags(app.commandLine);
 
 /*
  * The user agent is Electron's own, plus a WebinarLivDesktop/<version> marker
@@ -48,12 +56,15 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // Register webinarliv:// (the installers also register it; this covers
-// `npm start` and a moved app).
-if (process.defaultApp && process.argv.length >= 2) {
-  app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
-} else {
-  app.setAsDefaultProtocolClient(PROTOCOL);
+// `npm start` and a moved app). macOS only accepts this after `ready`.
+function registerProtocol(): void {
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
 }
+if (process.platform !== "darwin") registerProtocol();
 
 let mainWindow: BrowserWindow | null = null;
 /** A deep link that arrived before the window existed (macOS open-url at launch). */
@@ -73,6 +84,9 @@ function webPreferences(): BrowserWindowConstructorOptions["webPreferences"] {
     webviewTag: false,
     navigateOnDragDrop: false,
     spellcheck: true,
+    // Always off, not only in a live room: Chromium otherwise throttles rAF /
+    // WebRTC in an unfocused or occluded window, which is exactly when a host
+    // is looking at slides or the share picker. qos.ts covers process flags.
     backgroundThrottling: false,
     additionalArguments: [`--webinarliv-site-hosts=${siteHosts}`, `--webinarliv-version=${app.getVersion()}`],
   };
@@ -154,6 +168,10 @@ function openTarget(target: string): void {
 }
 
 function focusMain(): void {
+  if (isShareSessionActive()) {
+    focusShareBar();
+    return;
+  }
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -185,6 +203,10 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
+  if (isShareSessionActive()) {
+    focusShareBar();
+    return;
+  }
   if (BrowserWindow.getAllWindows().length === 0) mainWindow = createMainWindow();
   else focusMain();
 });
@@ -196,27 +218,37 @@ app.whenReady().then(() => {
   installPermissionHandlers(ses);
   installDisplayMediaHandler(ses);
   registerPowerIpc();
+  registerShareIpc(() => mainWindow);
+
+  registerProtocol();
 
   ipcMain.on("webinarliv:badge", (event, count: unknown) => {
-    if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
+    if (!isSiteUrl(senderUrl(event))) return;
     const n = typeof count === "number" && Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
     app.setBadgeCount(n);
   });
   /* Continue with Google: the site's own start URL, in the system browser, which Google
-   * allows and an embedded window it does not. Only that one URL, only from a site page. */
-  ipcMain.on("webinarliv:open-sign-in", (event, url: unknown) => {
-    if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
+   * allows and an embedded window it does not. Only that one URL, only from a site page.
+   * invoke (not send) so the page knows if the browser actually opened. */
+  ipcMain.handle("webinarliv:open-sign-in", async (event, url: unknown) => {
+    if (!isSiteUrl(senderUrl(event))) return false;
     if (typeof url !== "string" || !isSignInStartUrl(url)) {
-      console.warn("[auth] refusing to open sign-in URL", url);
-      return;
+      console.warn("[auth] refusing to open sign-in URL");
+      return false;
     }
-    void shell.openExternal(url);
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch {
+      console.warn("[auth] system browser did not open");
+      return false;
+    }
   });
   /* Connect Zoom / YouTube and the Drive picker (web/lib/app-connect.ts, 29 Oct 2026): the
    * site's own connect start route with a one-time ticket, in the system browser. Only that,
    * only from a site page. */
   ipcMain.on("webinarliv:open-connect", (event, url: unknown) => {
-    if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
+    if (!isSiteUrl(senderUrl(event))) return;
     if (typeof url !== "string" || !isConnectStartUrl(url)) {
       console.warn("[connect] refusing to open a connect URL");
       return;
@@ -224,7 +256,7 @@ app.whenReady().then(() => {
     void shell.openExternal(url);
   });
   ipcMain.on("webinarliv:focus", (event) => {
-    if (!isSiteUrl(event.senderFrame?.url ?? "")) return;
+    if (!isSiteUrl(senderUrl(event))) return;
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
     if (win.isMinimized()) win.restore();

@@ -6,9 +6,12 @@
  * ordinary browsers, and in an ordinary browser window.Capacitor is undefined and every
  * function below is a no-op. The component that runs it is components/native-boot.tsx.
  *
- * The decisions (which URL an opened link should load, which pages keep the screen on)
- * are pure and tested in lib/native-bridge.test.mts.
+ * The decisions (which URL an opened link should load, which pages keep the screen on
+ * and ask the native shell for call-class radio/CPU/audio-session) are pure and tested
+ * in lib/native-bridge.test.mts.
  */
+
+import { appParentPath, nativeBackAction } from "./app-back.ts";
 
 /** Hosts the app may show. Mirrors capacitor.config.ts server.allowNavigation. */
 const SITE = "https://webinarliv.com";
@@ -41,7 +44,7 @@ export function routeForOpenedUrl(raw: string): string | null {
   }
   if (u.protocol === "webinarliv:") {
     // webinarliv://webinars/x parses with "webinars" as the host; put it back in the path.
-    const path = `${u.host ? `/${u.host}` : ""}${u.pathname}`.replace(/\/{2,}/g, "/");
+    const path = `${u.host ? `/${u.host}` : ""}${u.pathname}`.replace(/\/{2,}/g, "/").replace(/\/+$/, "");
     return `${path || "/"}${u.search}${u.hash}`;
   }
   if (u.protocol !== "https:" || !isOurHost(u.hostname)) return null;
@@ -52,6 +55,20 @@ export function routeForOpenedUrl(raw: string): string | null {
   return u.toString();
 }
 
+/** Absolute URL to load in the app WebView, or null to leave it (system browser).
+ *  Rooms, manage, join — anything on webinarliv.com. Zoom, WhatsApp, Google stay out. */
+export function inAppDestination(raw: string): string | null {
+  const route = routeForOpenedUrl(raw);
+  if (!route) return null;
+  return route.startsWith("/") ? `${SITE}${route}` : route;
+}
+
+/** A target=_blank click that must stay in the WebView. Null means don't intercept. */
+export function inAppClickUrl(href: string, target: string | null): string | null {
+  if (target !== "_blank" && target !== "_new") return null;
+  return inAppDestination(href);
+}
+
 /** What an opened route means for a system-browser hand-off (29 Oct 2026):
  *   "navigate"  the end of a sign-in or a connect (/auth/complete, /connect/complete): close
  *               the browser sheet and load the page, which finishes it
@@ -59,7 +76,7 @@ export function routeForOpenedUrl(raw: string): string | null {
  *               because the live room that asked is collecting it
  *   "none"      any other link */
 export function handOffReturn(route: string): "navigate" | "stay" | "none" {
-  const path = route.split(/[?#]/)[0];
+  const path = (route.split(/[?#]/)[0] ?? "").replace(/\/+$/, "") || "/";
   if (path === "/auth/complete" || path === "/connect/complete") return "navigate";
   if (path === "/connect/picked") return "stay";
   return "none";
@@ -120,6 +137,7 @@ type MessagingPlugin = {
 };
 type BrowserPlugin = { close: () => Promise<void> };
 type KeepAwakePlugin = { keepAwake: () => Promise<void>; allowSleep: () => Promise<void> };
+type CallQosPlugin = { setActive: (o: { on: boolean }) => Promise<void> };
 
 const LAUNCH_KEY = "webinarliv.native.launchUrl";
 const LAST_OPEN_KEY = "webinarliv.native.lastOpen";
@@ -170,6 +188,39 @@ async function wireDeepLinks(): Promise<Listener | null> {
     // No launch URL: an ordinary start from the icon.
   }
   return app.addListener("appUrlOpen", (e) => open(e.url));
+}
+
+/** Android hardware back. Listening disables the default (exit), so we must handle
+ *  the root ourselves. iOS has no hardware back; the in-app Back control covers it. */
+async function wireBackButton(): Promise<Listener | null> {
+  const app = plugin("App") as unknown as {
+    addListener: (
+      event: "backButton",
+      fn: (e: { canGoBack?: boolean }) => void,
+    ) => Promise<Listener>;
+    exitApp?: () => Promise<void>;
+  } | null;
+  if (!app?.addListener) return null;
+  try {
+    return await app.addListener("backButton", (e) => {
+      const action = nativeBackAction({
+        canGoBack: e.canGoBack === true,
+        pathname: window.location.pathname,
+      });
+      if (action === "history") {
+        window.history.back();
+        return;
+      }
+      if (action === "parent") {
+        const parent = appParentPath(window.location.pathname);
+        if (parent) window.location.assign(parent);
+        return;
+      }
+      void app.exitApp?.();
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** The native share sheet behind navigator.share, so the site's existing Share buttons
@@ -333,13 +384,33 @@ async function wirePush(): Promise<Listener[]> {
   return listeners;
 }
 
+/** Same-origin target=_blank (Join stage, Rejoin, Enter room) would otherwise
+ *  open Safari / Chrome from the Capacitor WebView. Capture so Next.js doesn't. */
+function wireInAppClicks(): () => void {
+  const onClick = (e: MouseEvent) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const el = e.target;
+    if (!(el instanceof Element)) return;
+    const a = el.closest("a");
+    if (!a) return;
+    const dest = inAppClickUrl(a.href, a.getAttribute("target"));
+    if (!dest) return;
+    e.preventDefault();
+    window.location.assign(dest);
+  };
+  document.addEventListener("click", onClick, true);
+  return () => document.removeEventListener("click", onClick, true);
+}
+
 /** Wire everything once per page load. Returns the teardown. */
 export function startNativeBridge(): () => void {
   if (!isNativeApp()) return () => {};
   document.documentElement.dataset.nativeApp = cap()?.getPlatform?.() ?? "native";
   wireShare();
-  const pending: Promise<Listener | Listener[] | null>[] = [wireDeepLinks(), wirePush()];
+  const unwireClicks = wireInAppClicks();
+  const pending: Promise<Listener | Listener[] | null>[] = [wireDeepLinks(), wirePush(), wireBackButton()];
   return () => {
+    unwireClicks();
     for (const p of pending) {
       void p.then((l) => {
         for (const one of Array.isArray(l) ? l : l ? [l] : []) void one.remove();
@@ -348,9 +419,15 @@ export function startNativeBridge(): () => void {
   };
 }
 
-/** Keep the screen on (or let it sleep) for the page at `pathname`. */
+/** Keep the screen on (or let it sleep) for the page at `pathname`, and ask
+ *  the native shell for call-class resources (Android foreground service +
+ *  Wi-Fi/CPU locks, iOS videoChat audio session). No-op in a browser, and
+ *  no-op in an older app build that has no CallQos plugin — the site still
+ *  loads. */
 export function syncKeepAwake(pathname: string): void {
+  const on = keepsScreenAwake(pathname);
   const k = plugin("KeepAwake") as unknown as KeepAwakePlugin | null;
-  if (!k) return;
-  void (keepsScreenAwake(pathname) ? k.keepAwake() : k.allowSleep()).catch(() => {});
+  if (k) void (on ? k.keepAwake() : k.allowSleep()).catch(() => {});
+  const qos = plugin("CallQos") as unknown as CallQosPlugin | null;
+  if (qos) void qos.setActive({ on }).catch(() => {});
 }

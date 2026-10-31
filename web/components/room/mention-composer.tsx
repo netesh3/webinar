@@ -234,7 +234,7 @@ export function MentionComposer({
         <div
           ref={backdrop}
           aria-hidden
-          className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 text-[13px] leading-relaxed break-words whitespace-pre-wrap wrap-anywhere text-ink"
+          className="ios-text-field pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 text-[13px] leading-relaxed break-words whitespace-pre-wrap wrap-anywhere text-ink"
         >
           {draftSegments(draft).map((s, i) =>
             s.mention ? (

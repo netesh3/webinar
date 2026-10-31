@@ -26,6 +26,7 @@
   flex-direction: column;
   white-space: nowrap;
   overflow: hidden;
+  padding-top: env(safe-area-inset-top, 0px);
   transition:
     width var(--sb-dur) var(--sb-ease),
     transform 250ms var(--sb-ease),
@@ -84,7 +85,7 @@
 }
 .sb-collapse {
   position: absolute;
-  top: 20px;
+  top: calc(20px + env(safe-area-inset-top, 0px));
   right: 12px;
   width: 28px;
   height: 28px;
@@ -507,6 +508,10 @@ html[data-theme="dark"] .sb-theme .sb-sun {
   .sb-main {
     height: 100dvh;
   }
+  /* Phone uses .sb-mbar for the notch; the desktop/iPad column is the top edge. */
+  .sb-chrome {
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
 }
 
 /* Bell and avatar. In flow so the page starts under them, and a stacking
@@ -595,7 +600,7 @@ html[data-theme="dark"] .sb-theme .sb-sun {
     display: none;
   }
   html.side-collapsed .sb-collapse {
-    top: 56px;
+    top: calc(56px + env(safe-area-inset-top, 0px));
     right: auto;
     left: 12px;
     width: 40px;
@@ -702,6 +707,10 @@ html[data-theme="dark"] .sb-theme .sb-sun {
   .sb-mbar,
   .sb-scrim {
     display: flex;
+  }
+  .sb-mbar {
+    padding-top: env(safe-area-inset-top, 0px);
+    height: calc(52px + env(safe-area-inset-top, 0px));
   }
   .sb-side {
     width: 280px;
