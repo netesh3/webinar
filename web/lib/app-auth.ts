@@ -76,6 +76,15 @@ export function appCompleteLink(result: { code?: string; error?: string }): stri
   return `webinarliv://auth/complete?${q.toString()}`;
 }
 
+/** A hand-off code pasted by hand (31 Oct 2026): when webinarliv:// does not reach this
+ *  copy of the app, /auth/app-return shows the code to copy. Trimmed; null unless it looks
+ *  like one (the server mints 64 hex characters). Showing it is safe: redeeming it takes the
+ *  verifier only this app holds. */
+export function pastedAppCode(raw: string): string | null {
+  const code = raw.trim();
+  return /^[A-Za-z0-9_-]{32,128}$/.test(code) ? code : null;
+}
+
 /** A redirect target from the exchange: a same-site path, else the fallback. */
 export function safeNextPath(raw: string | null | undefined, fallback = "/"): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return fallback;
@@ -123,6 +132,25 @@ export function currentAppKind(): AppKind | null {
 export async function startAppGoogleSignIn(opts: { next: string; loginHint?: string }): Promise<boolean> {
   const app = currentAppKind();
   if (!app) return false;
+  /* One sign-in at a time (31 Oct 2026). A second call while the first is opening the
+   * browser would write a new verifier over the one the first tab's code needs. */
+  if (appSignInStartedAt && Date.now() - appSignInStartedAt < START_GUARD_MS) return true;
+  appSignInStartedAt = Date.now();
+  try {
+    const opened = await openAppGoogleSignIn(app, opts);
+    if (!opened) appSignInStartedAt = 0;
+    return opened;
+  } catch (err) {
+    appSignInStartedAt = 0;
+    throw err;
+  }
+}
+
+/** When the last app sign-in started; a second start inside START_GUARD_MS is a double tap. */
+let appSignInStartedAt = 0;
+const START_GUARD_MS = 3_000;
+
+async function openAppGoogleSignIn(app: AppKind, opts: { next: string; loginHint?: string }): Promise<boolean> {
   const verifier = makeVerifier();
   const challenge = await challengeFor(verifier);
   try {

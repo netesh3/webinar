@@ -39,16 +39,22 @@ func (s *Store) IssueAppAuthCode(ctx context.Context, userID, challenge, app, ne
 	if err != nil {
 		return "", err
 	}
+	return raw, s.IssueAppAuthCodeAs(ctx, raw, userID, challenge, app, next)
+}
+
+/* IssueAppAuthCodeAs is IssueAppAuthCode with the raw code chosen by the caller (31 Oct 2026):
+ * the Google callback derives it from its replay row (api/auth_google_replay.go), so that a
+ * callback the browser sends twice hands the app the same code both times. raw must be as
+ * unguessable as RandomToken's. */
+func (s *Store) IssueAppAuthCodeAs(ctx context.Context, raw, userID, challenge, app, next string) error {
 	if _, err := s.pool.Exec(ctx, `DELETE FROM app_auth_codes WHERE expires_at < now() - interval '1 day'`); err != nil {
-		return "", err
+		return err
 	}
-	if _, err := s.pool.Exec(ctx, `
+	_, err := s.pool.Exec(ctx, `
 		INSERT INTO app_auth_codes (code_hash, user_id, challenge, app, next_path, expires_at)
 		VALUES ($1, $2::uuid, $3, $4, $5, now() + make_interval(secs => $6))`,
-		EmailVerifyHash(raw), userID, challenge, app, next, AppAuthCodeTTL.Seconds()); err != nil {
-		return "", err
-	}
-	return raw, nil
+		EmailVerifyHash(raw), userID, challenge, app, next, AppAuthCodeTTL.Seconds())
+	return err
 }
 
 /* RedeemAppAuthCode consumes a code and returns what it was bound to.

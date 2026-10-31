@@ -156,6 +156,15 @@ that leaks from the browser history, or that another app registered for
 spends a code, right verifier or wrong, and exchange is rate-limited
 (10 a minute per IP).
 
+When the browser sends the callback twice (31 Oct 2026: Chrome sent the same
+Google redirect twice, 250 ms apart, and showed the second, which used to fail
+with invalid_grant), the API answers the repeat from the first one's outcome
+for two minutes: the same `/auth/app-return` link with the same code, without
+asking Google again (`api/internal/api/auth_google_replay.go`). If the link
+opens nothing (macOS can keep `webinarliv://` on an older copy after an
+update; the app reclaims it on every launch), `/auth/app-return` shows the
+code with Copy, and the app's sign-in page takes it under "Paste the code".
+
 The user agent is Electron's own plus `WebinarLivDesktop/<version>`. Pages can
 also check `window.webinarlivDesktop`. The marker is deliberately not
 `WebinarLivApp/`: that is the phone app's, and the iOS app hides purchases.

@@ -120,7 +120,14 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// settle records the outcome on the replay row once this request has claimed it
+	// (auth_google_replay.go); nil before that.
+	var settle func(store.GoogleCallback)
+
 	fail := func(detail string) {
+		if settle != nil {
+			settle(store.GoogleCallback{Failure: detail})
+		}
 		if detail != "denied" {
 			s.log.Warn("google oauth callback failed", "detail", detail,
 				"google_error", r.URL.Query().Get("error"))
@@ -168,6 +175,39 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		s.log.Info("google oauth redirect pinned", "start", redirect, "request", reqRedirect)
 	}
 
+	/* The same Google redirect a second time (31 Oct 2026): answered with the first one's
+	 * outcome rather than a second, failing, code exchange. See auth_google_replay.go. */
+	replayKey := googleCallbackKey(state, code)
+	claim, claimed, err := s.claimGoogleCallback(r.Context(), replayKey)
+	if errors.Is(err, errGoogleCallbackBusy) {
+		s.log.Warn("google oauth callback: first attempt still in progress")
+		fail("exchange")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, "google oauth: claim callback", err)
+		return
+	}
+	if !claimed {
+		s.answerGoogleReplay(w, r, state, claim, fail)
+		return
+	}
+	settled := false
+	settle = func(c store.GoogleCallback) {
+		settled = true
+		c.Nonce = claim.Nonce
+		if err := s.store.FinishGoogleCallback(context.WithoutCancel(r.Context()), replayKey, c); err != nil {
+			s.log.Warn("google oauth callback: record outcome", "error", err)
+		}
+	}
+	defer func() {
+		if !settled {
+			if err := s.store.ReleaseGoogleCallback(context.WithoutCancel(r.Context()), replayKey, claim.Nonce); err != nil {
+				s.log.Warn("google oauth callback: release claim", "error", err)
+			}
+		}
+	}()
+
 	tok, err := auth.ExchangeGoogleCode(r.Context(), s.cfg.GoogleClientID, s.cfg.GoogleClientSecret,
 		redirect, code, st.Verifier)
 	if err != nil {
@@ -200,11 +240,13 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	if app != "" {
 		/* Started in an app: this is the system browser, which must not be signed in. The
 		 * app redeems the code from its own webview (handleAppAuthExchange). */
-		code, err := s.store.IssueAppAuthCode(r.Context(), user.ID, st.Challenge, app, next)
-		if err != nil {
+		// Derived from the replay row, so a repeat of this callback hands back this same code.
+		code := s.googleAppCode(claim.Nonce)
+		if err := s.store.IssueAppAuthCodeAs(r.Context(), code, user.ID, st.Challenge, app, next); err != nil {
 			s.fail(w, r, "google oauth: app code", err)
 			return
 		}
+		settle(store.GoogleCallback{UserID: user.ID, App: app})
 		s.clearGoogleStateCookie(w)
 		if created {
 			s.queueWelcome(r.Context(), user)
@@ -223,13 +265,15 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	s.sessions.SetCookie(w, session, exp)
 	s.store.TouchLogin(r.Context(), user.ID)
 	s.clearGoogleStateCookie(w)
+	landing := landingAfterSignIn(user.CanHost, next)
+	settle(store.GoogleCallback{UserID: user.ID, Landing: landing})
 	if created {
 		s.queueWelcome(r.Context(), user)
 		s.flushMailSoon()
 	}
 	s.log.Info("google auth", "user", user.ID, "created", created,
 		"email_domain", domainOf(user.Email))
-	http.Redirect(w, r, s.googleFront(r, landingAfterSignIn(user.CanHost, next), "", ""), http.StatusFound) // #nosec G710 -- googleFront prefixes an allowlisted origin; next passed safeGoogleNext
+	http.Redirect(w, r, s.googleFront(r, landing, "", ""), http.StatusFound) // #nosec G710 -- googleFront prefixes an allowlisted origin; next passed safeGoogleNext
 }
 
 /* handleGoogleAuth is POST /api/auth/google.

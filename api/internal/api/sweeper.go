@@ -122,6 +122,15 @@ func (s *Server) sweepExpiredTokens(ctx context.Context) {
 	if n > 0 {
 		s.log.Info("token retention: deleted expired tokens", "rows", n)
 	}
+	// Repeated-callback rows (auth_google_replay.go, 31 Oct 2026), dead a day.
+	n, err = s.store.PruneGoogleCallbacks(ctx, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		s.log.Error("token retention: prune google callbacks failed", "error", err)
+		return
+	}
+	if n > 0 {
+		s.log.Info("token retention: deleted google callback rows", "rows", n)
+	}
 }
 
 func (s *Server) sweepHostEmails(ctx context.Context) {

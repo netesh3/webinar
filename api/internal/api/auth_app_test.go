@@ -27,6 +27,18 @@ import (
 type fakeGoogleFor struct {
 	mu    sync.Mutex
 	nonce string
+	// calls counts token-endpoint requests (auth_google_replay_test.go, 31 Oct 2026).
+	calls int
+	// hold, when set, is closed by the test to let a token request answer; entered gets one
+	// send per request that is waiting on it.
+	hold    chan struct{}
+	entered chan struct{}
+}
+
+func (f *fakeGoogleFor) tokenCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
 }
 
 func newFakeGoogle(t *testing.T, email string) *fakeGoogleFor {
@@ -48,7 +60,13 @@ func newFakeGoogle(t *testing.T, email string) *fakeGoogleFor {
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		nonce := f.nonce
+		f.calls++
+		hold, entered := f.hold, f.entered
 		f.mu.Unlock()
+		if hold != nil {
+			entered <- struct{}{}
+			<-hold
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"id_token":     signGoogleIDToken(t, key, kid, testGoogleClientID, email, "App User", nonce),
 			"access_token": "ya29.test-access",
