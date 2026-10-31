@@ -9,6 +9,8 @@ import { stat } from "node:fs/promises";
 export const DEFAULT_BASE_URL = "https://downloads.webinarliv.com";
 export const DEFAULT_BUCKET = "webinarliv-downloads";
 export const MANIFEST_KEY = "latest.json";
+/** Root object for the custom domain. R2 has no directory index; this page points people at /download. */
+export const INDEX_KEY = "index.html";
 
 /** latest.json and the latest/ copies: they change on every release. */
 export const CACHE_LATEST = "public, max-age=300";
@@ -24,6 +26,7 @@ const CONTENT_TYPES = {
   json: "application/json",
   zip: "application/zip",
   yml: "text/yaml",
+  html: "text/html; charset=utf-8",
   blockmap: "application/octet-stream",
 };
 

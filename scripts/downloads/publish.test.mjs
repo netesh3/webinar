@@ -77,6 +77,7 @@ test("content types", () => {
   assert.equal(contentTypeFor("a.exe"), "application/vnd.microsoft.portable-executable");
   assert.equal(contentTypeFor("a.apk"), "application/vnd.android.package-archive");
   assert.equal(contentTypeFor("latest.json"), "application/json");
+  assert.equal(contentTypeFor("index.html"), "text/html; charset=utf-8");
 });
 
 const macYml = (v) => `version: ${v}
@@ -159,6 +160,9 @@ test("desktop publish, android publish, re-run, conflict, rollback against a loc
   assert.equal((await h("desktop/latest/WebinarLiv-win-x64.exe")).contentType, "application/vnd.microsoft.portable-executable");
   assert.equal((await h("latest.json")).cacheControl, CACHE_LATEST);
   assert.equal((await h("latest.json")).contentType, "application/json");
+  assert.equal((await h("index.html")).contentType, "text/html; charset=utf-8");
+  assert.equal((await h("index.html")).cacheControl, CACHE_LATEST);
+  assert.match(await store.getText("index.html"), /webinarliv.com\/download/);
   // Updater feed: yml at desktop/, everything it references next to it.
   assert.equal((await h("desktop/latest-mac.yml")).cacheControl, CACHE_FEED);
   for (const k of [

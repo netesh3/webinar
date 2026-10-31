@@ -3,6 +3,12 @@
 Installable packages (the desktop app for macOS and Windows, the Android APK) live in a
 Cloudflare R2 bucket, `webinarliv-downloads`, served at **https://downloads.webinarliv.com**.
 macOS is published from the owner's Mac, Windows by CI (each on its own version); the website's `/download` page reads `latest.json`.
+People get them from **https://webinarliv.com/download**,
+which reads `latest.json`. The bucket host is not a website: R2 custom domains have no
+index document, so GET `/` 404s on the bucket itself. The `downloads-root` Worker
+(`deploy/cloudflare/downloads-root`) is routed to that hostname with no path wildcard,
+which matches only `/` and 302s to the download page. Installers stay on the R2 custom
+domain. The publisher also writes `index.html` as the same pointer.
 
 This file is the contract between the publisher (`scripts/downloads/publish.mjs`, run by
 `.github/workflows/desktop-build.yml` and `.github/workflows/mobile-build.yml`) and everything
@@ -11,6 +17,7 @@ that reads the bucket (the web page, the desktop auto-updater, people).
 ## Layout
 
 ```
+index.html                                        redirects to https://webinarliv.com/download
 latest.json                                       manifest, see below
 desktop/<version>/WebinarLiv-<version>-mac-arm64.dmg
 desktop/<version>/WebinarLiv-<version>-mac-x64.dmg
@@ -193,7 +200,17 @@ By hand, the same thing with the AWS CLI is `aws s3api copy-object` of each
 2. **Custom domain.** In the bucket, Settings, then Custom Domains, then Connect Domain:
    `downloads.webinarliv.com` (the `webinarliv.com` zone must be on Cloudflare). Cloudflare
    creates the DNS record and certificate. This is what makes the bucket publicly readable,
-   and Cloudflare's cache honours the `Cache-Control` headers above.
+   and Cloudflare's cache honours the `Cache-Control` headers above. R2 still 404s `/`
+   (there is no index document setting). Deploy `deploy/cloudflare/downloads-root` so that
+   `/` 302s to `https://webinarliv.com/download` without touching `/latest.json` or the
+   installers:
+
+   ```sh
+   cd deploy/cloudflare/downloads-root
+   npx wrangler deploy
+   ```
+
+   The publisher also writes `index.html` on every release (same destination).
 3. **API token.** R2, then Manage R2 API Tokens, then Create API token: permission
    **Object Read & Write**, applied to **the `webinarliv-downloads` bucket only**, no expiry
    (or note the date). Copy the Access Key ID and Secret Access Key; the account ID is on

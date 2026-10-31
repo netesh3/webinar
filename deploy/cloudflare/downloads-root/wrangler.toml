@@ -1,0 +1,14 @@
+# R2 custom domain downloads.webinarliv.com 404s GET / (no index document).
+# A Workers route of the hostname with no path wildcard matches only
+# https://downloads.webinarliv.com/ (see Workers Routes docs). Installers and
+# latest.json stay on the R2 custom domain.
+# Deploy: npx wrangler deploy  (from this directory)
+name = "downloads-root"
+main = "src/index.js"
+compatibility_date = "2026-10-29"
+workers_dev = false
+preview_urls = false
+
+[[routes]]
+pattern = "downloads.webinarliv.com"
+zone_name = "webinarliv.com"

@@ -30,8 +30,8 @@
 
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import {
@@ -43,6 +43,7 @@ import {
   DESKTOP_FEED_FOR,
   DESKTOP_PLATFORMS,
   DESKTOP_TARGETS,
+  INDEX_KEY,
   MANIFEST_KEY,
   assertDesktopPlatform,
   desktopTargetsFor,
@@ -102,6 +103,16 @@ async function putImmutable(store, items, log) {
   return existing;
 }
 
+const INDEX_PATH = join(dirname(fileURLToPath(import.meta.url)), "index.html");
+
+async function putLandingPage(store, log) {
+  log(`put   ${INDEX_KEY}`);
+  await store.putFile(INDEX_KEY, INDEX_PATH, {
+    contentType: contentTypeFor(INDEX_KEY),
+    cacheControl: CACHE_LATEST,
+  });
+}
+
 /** `value` is the new section, or a function of the current one (a manifest read from the bucket). */
 async function writeManifest(store, { section, value, env, now, log }) {
   const current = parseManifest(await store.getText(MANIFEST_KEY));
@@ -112,6 +123,7 @@ async function writeManifest(store, { section, value, env, now, log }) {
     contentType: contentTypeFor(MANIFEST_KEY),
     cacheControl: CACHE_LATEST,
   });
+  await putLandingPage(store, log);
   return merged;
 }
 
