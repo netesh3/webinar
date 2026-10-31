@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError, api } from "@/lib/api";
+import { guardStartAudio } from "@/lib/media-play";
 import { withAutoAnswer } from "@/lib/qa-auto";
 import type { JoinResponse } from "@/lib/api-types";
 import { enableCamera } from "@/lib/backgrounds";
@@ -564,7 +565,10 @@ function RoomSession({
         compositor: Boolean(join.edgeWebinar || join.cdnBroadcast),
       }),
     );
-    return new Room(roomOptions(prefs, join.canPublish));
+    // On iOS livekit-client calls startAudio itself, un-awaited, each time the page comes
+    // back; refused outside a tap, that was an unhandled NotAllowedError. Guarded, every
+    // call settles and the StartAudio pill below is what a refusal shows (lib/media-play.ts).
+    return guardStartAudio(new Room(roomOptions(prefs, join.canPublish)));
   });
 
   /* AV1 for this camera, if the device can afford it (lib/codec-policy.ts). roomOptions ran
@@ -2312,8 +2316,13 @@ function AutoStartAudio({ room }: { room: Room }) {
     // before the host's audio had arrived found the optimistic `true`, stopped
     // listening for good, and unlocked nothing. A startAudio that succeeds is
     // the confirmation; until one does, every interaction tries again.
+    //
+    // startAudio is guarded (lib/media-play.ts) and resolves even when refused, so success
+    // is read from the room afterwards: a refusal has set canPlaybackAudio false (31 Oct 2026).
     const start = () => {
-      void room.startAudio().then(stop, () => {});
+      void room.startAudio().then(() => {
+        if (room.canPlaybackAudio) stop();
+      });
     };
     const stop = () => {
       window.removeEventListener("pointerup", start);

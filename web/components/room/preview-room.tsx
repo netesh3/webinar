@@ -12,6 +12,7 @@ import {
   DEV_BYPASS_NETWORK,
 } from "@/lib/dev-bypass";
 import { DEFAULT_PREFERENCES } from "@/lib/media";
+import { guardStartAudio } from "@/lib/media-play";
 import { useStageLayout } from "@/lib/layout";
 import { useToolLayout, type ToolId } from "@/lib/tools";
 import { stageFrame, useCompact } from "@/lib/compact";
@@ -139,7 +140,8 @@ const EMPTY_UNREAD: Record<ToolId, number> = {
 };
 
 export function PreviewRoom() {
-  const room = useMemo(() => new Room(), []);
+  // startAudio settles on every call, LiveKit's own included (lib/media-play.ts).
+  const room = useMemo(() => guardStartAudio(new Room()), []);
   const join = DEV_BYPASS_JOIN;
   /* Through useSearchParams rather than window.location, so the server render and the client
    * render agree. Reading the URL in an effect would flash the host's bar before swapping to

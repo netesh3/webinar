@@ -1,7 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type RefObject,
+} from "react";
 import { videoInNativeFullscreen } from "./simulive-clock";
+import {
+  canElementFullscreen,
+  exitElementFullscreen,
+  fullscreenElement,
+  requestElementFullscreen,
+  toggleElementFullscreen,
+} from "./fullscreen-api";
 
 /* Fullscreen for a video surface, across the three APIs browsers actually ship.
  *
@@ -33,10 +46,6 @@ import { videoInNativeFullscreen } from "./simulive-clock";
  * (lib/simulive-clock.ts videoInNativeFullscreen).
  */
 
-type WebkitElement = Element & {
-  webkitRequestFullscreen?: () => Promise<void> | void;
-};
-
 type WebkitVideo = HTMLVideoElement & {
   webkitEnterFullscreen?: () => void;
   webkitExitFullscreen?: () => void;
@@ -45,42 +54,27 @@ type WebkitVideo = HTMLVideoElement & {
   webkitDisplayingFullscreen?: boolean;
 };
 
-type WebkitDocument = Document & {
-  webkitFullscreenElement?: Element | null;
-  webkitExitFullscreen?: () => Promise<void> | void;
-};
-
-/** Whether this browser can make an element (our container, with our chrome) fullscreen.
- *  False on an iPhone, whose only fullscreen is the native video player. Client only. */
-export function canElementFullscreen(): boolean {
-  if (typeof document === "undefined") return false;
-  const doc = document as Document & { webkitFullscreenEnabled?: boolean };
-  const el = document.documentElement as WebkitElement;
-  const api =
-    typeof el.requestFullscreen === "function" || typeof el.webkitRequestFullscreen === "function";
-  return api && Boolean(doc.fullscreenEnabled || doc.webkitFullscreenEnabled);
-}
+// The element half (standard and webkit-prefixed) is lib/fullscreen-api.ts, which has no
+// React in it and so has tests (31 Oct 2026).
+export { canElementFullscreen, exitElementFullscreen, requestElementFullscreen };
 
 /** Whether anything is currently fullscreen, including the iOS native player
  *  that no document property reports. */
 function readFullscreen(video: HTMLVideoElement | null): boolean {
   if (typeof document === "undefined") return false;
-  const doc = document as WebkitDocument;
   return Boolean(
-    doc.fullscreenElement ||
-      doc.webkitFullscreenElement ||
-      (video as WebkitVideo | null)?.webkitDisplayingFullscreen,
+    fullscreenElement() || (video as WebkitVideo | null)?.webkitDisplayingFullscreen,
   );
 }
 
 /** Leaves whatever the browser has fullscreen: the document's element or the iOS player. */
 async function exitBrowserFullscreen(video: WebkitVideo | null): Promise<void> {
-  const doc = document as WebkitDocument;
+  if (fullscreenElement()) {
+    await exitElementFullscreen();
+    return;
+  }
   try {
-    if (doc.fullscreenElement && doc.exitFullscreen) await doc.exitFullscreen();
-    else if (doc.webkitFullscreenElement && doc.webkitExitFullscreen)
-      await doc.webkitExitFullscreen();
-    else video?.webkitExitFullscreen?.();
+    video?.webkitExitFullscreen?.();
   } catch {
     // Leaving fullscreen is not something to report; the browser will have
     // its own reason and the person can press Escape.
@@ -117,10 +111,9 @@ export function useFullscreen(
     const sync = () => {
       setBrowserFullscreen(readFullscreen(video));
       if (nativeVideo || !video) return;
-      const doc = document as WebkitDocument;
       const native = () =>
         videoInNativeFullscreen({
-          fullscreenElement: doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null,
+          fullscreenElement: fullscreenElement(),
           video,
           webkitDisplayingFullscreen: video.webkitDisplayingFullscreen,
         });
@@ -179,25 +172,10 @@ export function useFullscreen(
       return true;
     }
 
-    if (container.requestFullscreen) {
-      try {
-        await container.requestFullscreen();
-        return true;
-      } catch {
-        // Falls through: a rejection here is usually a permissions policy, and
-        // the video-element path below is sometimes still allowed.
-      }
-    }
-
-    const webkitContainer = container as WebkitElement;
-    if (webkitContainer.webkitRequestFullscreen) {
-      try {
-        await webkitContainer.webkitRequestFullscreen();
-        return true;
-      } catch {
-        // Falls through to the iOS video path.
-      }
-    }
+    // The container: the standard API, then the webkit-prefixed one. False when neither
+    // exists (an iPhone) or both refused (a permissions policy); either way the paths
+    // below are sometimes still allowed.
+    if (await requestElementFullscreen(container)) return true;
 
     // A simulive: our own fullscreen, never the native player.
     if (!nativeVideo) {
@@ -218,4 +196,46 @@ export function useFullscreen(
   }, [containerRef, videoRef, nativeVideo, pseudo]);
 
   return { isFullscreen: browserFullscreen || pseudo, pseudo, toggle };
+}
+
+function subscribeFullscreen(onChange: () => void): () => void {
+  document.addEventListener("fullscreenchange", onChange);
+  document.addEventListener("webkitfullscreenchange", onChange);
+  return () => {
+    document.removeEventListener("fullscreenchange", onChange);
+    document.removeEventListener("webkitfullscreenchange", onChange);
+  };
+}
+
+const noSubscription = () => () => {};
+
+/**
+ * Fullscreen for a plain element with no video of its own to fall back on: the room's
+ * stage (the Views menu) and a shared screen's tile (31 Oct 2026).
+ *
+ * `supported` is false on an iPhone, where only a <video> can go fullscreen; the caller
+ * hides its button there rather than offer one that does nothing. (The stage was not
+ * given pseudo-fullscreen: on a phone it already fills everything between the header and
+ * the control bar, and covering those would hide Leave and the sound pill for one strip
+ * of extra picture.) False on the server too, so the first render matches the HTML.
+ *
+ * `active` is read from the document, both APIs, so Escape and the browser's own exit
+ * keep the label honest.
+ */
+export function useElementFullscreen(getElement: () => Element | null): {
+  supported: boolean;
+  active: boolean;
+  toggle: () => Promise<boolean>;
+} {
+  const supported = useSyncExternalStore(noSubscription, canElementFullscreen, () => false);
+  const active = useSyncExternalStore(
+    subscribeFullscreen,
+    () => {
+      const el = getElement();
+      return el !== null && fullscreenElement() === el;
+    },
+    () => false,
+  );
+  const toggle = useCallback(() => toggleElementFullscreen(getElement()), [getElement]);
+  return { supported, active, toggle };
 }
