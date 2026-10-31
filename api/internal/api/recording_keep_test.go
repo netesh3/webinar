@@ -97,14 +97,27 @@ func TestRecordingKeepLongerIsRepeatable(t *testing.T) {
 		}
 		var kept types.Recording
 		h.decode(raw, &kept)
-		want = want.AddDate(0, types.RecordingKeepMonths, 0)
+		want = types.AddMonths(want, types.RecordingKeepMonths)
 		if got := mustTime(t, kept.ExpiresAt); !near(got, want) || !kept.Extended {
 			t.Errorf("after keep #%d: expires %v extended %v, want %v", i, got, kept.Extended, want)
 		}
 	}
 
+	// Kept from a month end, whatever today is: 30 Nov + 3 months is the end of February.
+	monthEnd := time.Date(time.Now().Year()+1, time.November, 30, 12, 0, 0, 0, time.UTC)
+	if _, err := h.store.Pool().Exec(t.Context(), `UPDATE recordings SET keep_until = $2 WHERE id = $1::uuid`, id, monthEnd); err != nil {
+		t.Fatal(err)
+	}
+	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+slug+"/recordings/"+id+"/keep", nil)
+	var kept types.Recording
+	h.decode(raw, &kept)
+	feb := time.Date(monthEnd.Year()+1, time.March, 0, 12, 0, 0, 0, time.UTC)
+	if got := mustTime(t, kept.ExpiresAt); res.StatusCode != http.StatusOK || !got.Equal(feb) {
+		t.Errorf("keep from 30 Nov: %d expires %v, want %v", res.StatusCode, got, feb)
+	}
+
 	// "Let it expire" undoes it and stops reminders; the default window is still ahead.
-	res, raw := h.do(http.MethodPost, "/api/host/webinars/"+slug+"/recordings/"+id+"/let-expire", nil)
+	res, raw = h.do(http.MethodPost, "/api/host/webinars/"+slug+"/recordings/"+id+"/let-expire", nil)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("let expire: %d %s", res.StatusCode, raw)
 	}
@@ -336,12 +349,12 @@ func TestRecordingExpiryRemindersAndKeepLink(t *testing.T) {
 	res, raw := h.do(http.MethodPost, "/api/host/recordings/keep-link", req)
 	var kept types.KeepRecordingLinkResponse
 	h.decode(raw, &kept)
-	if res.StatusCode != http.StatusOK || kept.Status != "kept" || !near(mustTime(t, kept.ExpiresAt), before.AddDate(0, 3, 0)) {
+	if res.StatusCode != http.StatusOK || kept.Status != "kept" || !near(mustTime(t, kept.ExpiresAt), types.AddMonths(before, types.RecordingKeepMonths)) {
 		t.Fatalf("keep link: %d %s", res.StatusCode, raw)
 	}
 	res, raw = h.do(http.MethodPost, "/api/host/recordings/keep-link", req)
 	h.decode(raw, &kept)
-	if res.StatusCode != http.StatusOK || kept.Status != "already_kept" || !near(mustTime(t, kept.ExpiresAt), before.AddDate(0, 3, 0)) {
+	if res.StatusCode != http.StatusOK || kept.Status != "already_kept" || !near(mustTime(t, kept.ExpiresAt), types.AddMonths(before, types.RecordingKeepMonths)) {
 		t.Errorf("reused link: %d %s, want already_kept and no second extension", res.StatusCode, raw)
 	}
 

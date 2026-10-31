@@ -16,6 +16,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/netkumar/webcast/api/internal/auth"
+	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -53,6 +54,12 @@ func TestGoogleStartRedirectsToGoogle(t *testing.T) {
 	}
 	if q.Get("prompt") != "select_account" {
 		t.Fatalf("prompt %q", q.Get("prompt"))
+	}
+	if q.Get("include_granted_scopes") != "true" {
+		t.Fatalf("include_granted_scopes %q", q.Get("include_granted_scopes"))
+	}
+	if q.Get("code_challenge") == "" || q.Get("code_challenge_method") != "S256" {
+		t.Fatalf("missing pkce: %s", loc)
 	}
 	if q.Get("login_hint") != "" {
 		t.Fatalf("empty start must omit login_hint: %s", loc)
@@ -442,6 +449,240 @@ func TestGoogleSignInThenTypedRegistrationPhone(t *testing.T) {
 	h.decode(raw, &acct)
 	if acct.Phone != patched {
 		t.Fatalf("patched phone %q", acct.Phone)
+	}
+}
+
+func TestGoogleStartCanonicalizesWWW(t *testing.T) {
+	h := newHarness(t, func(cfg *config.Config) {
+		withGoogleOAuth(cfg)
+		cfg.WebBaseURL = "https://webinarliv.com"
+		cfg.CORSOrigins = []string{"https://webinarliv.com", "https://www.webinarliv.com"}
+		cfg.CookieSecure = true
+	})
+	noFollow := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	req, err := http.NewRequest(http.MethodGet, h.srv.URL+"/api/auth/google/start?next=/webinars/demo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Forwarded-Host", "www.webinarliv.com")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	res, err := noFollow.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	loc, err := url.Parse(res.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loc.Query().Get("redirect_uri"); got != "https://webinarliv.com/api/auth/google/callback" {
+		t.Fatalf("www start redirect_uri %q, want apex", got)
+	}
+}
+
+func TestGoogleCallbackPinsStartRedirectWhenHostChanges(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const kid = "pin-redirect-kid"
+	const preview = "preview.example.workers.dev"
+	var lastRedirect, lastVerifier, idNonce string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/certs", func(w http.ResponseWriter, r *http.Request) {
+		n := base64.RawURLEncoding.EncodeToString(key.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": []map[string]string{{
+				"kid": kid, "kty": "RSA", "alg": "RS256", "n": n, "e": e,
+			}},
+		})
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		lastRedirect = r.Form.Get("redirect_uri")
+		lastVerifier = r.Form.Get("code_verifier")
+		idTok := signGoogleIDToken(t, key, kid, testGoogleClientID, "pin@test.dev", "Pin", idNonce)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id_token":     idTok,
+			"access_token": "ya29.pin",
+		})
+	})
+	google := httptest.NewServer(mux)
+	t.Cleanup(google.Close)
+
+	prevAuth, prevToken, prevCerts, prevHTTP := auth.GoogleAuthURL, auth.GoogleTokenURL, auth.GoogleCertsURL, auth.GoogleHTTP
+	t.Cleanup(func() {
+		auth.GoogleAuthURL = prevAuth
+		auth.GoogleTokenURL = prevToken
+		auth.GoogleCertsURL = prevCerts
+		auth.GoogleHTTP = prevHTTP
+	})
+	auth.GoogleTokenURL = google.URL + "/token"
+	auth.GoogleCertsURL = google.URL + "/certs"
+	auth.GoogleHTTP = google.Client()
+
+	h := newHarness(t, func(cfg *config.Config) {
+		withGoogleOAuth(cfg)
+		cfg.WebBaseURL = "https://webinarliv.com"
+		cfg.CORSOrigins = []string{"https://webinarliv.com", "https://" + preview}
+		cfg.CookieSecure = true
+	})
+	noFollow := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	start, err := http.NewRequest(http.MethodGet, h.srv.URL+"/api/auth/google/start?next=/&login_hint="+url.QueryEscape("pin@test.dev"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start.Header.Set("X-Forwarded-Host", preview)
+	start.Header.Set("X-Forwarded-Proto", "https")
+	res, err := noFollow.Do(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	loc, err := url.Parse(res.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := loc.Query().Get("state")
+	idNonce = loc.Query().Get("nonce")
+	wantRedirect := "https://" + preview + "/api/auth/google/callback"
+	if loc.Query().Get("redirect_uri") != wantRedirect {
+		t.Fatalf("start redirect_uri %q, want %s", loc.Query().Get("redirect_uri"), wantRedirect)
+	}
+	if loc.Query().Has("prompt") {
+		t.Fatalf("hinted prompt %q, want none", loc.Query().Get("prompt"))
+	}
+
+	cb, err := http.NewRequest(http.MethodGet, h.srv.URL+"/api/auth/google/callback?code=pin-code&state="+url.QueryEscape(state), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Callback arrives on the apex (dropped/changed X-Forwarded-Host) without
+	// the start cookie — the signed state must still carry redirect + PKCE.
+	cb.Header.Set("X-Forwarded-Host", "webinarliv.com")
+	cb.Header.Set("X-Forwarded-Proto", "https")
+	res, err = noFollow.Do(cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("callback: status %d body %s", res.StatusCode, body)
+	}
+	if lastRedirect != wantRedirect {
+		t.Fatalf("token redirect_uri %q, want pinned start URI %s", lastRedirect, wantRedirect)
+	}
+	if lastVerifier == "" {
+		t.Fatal("token exchange missing code_verifier")
+	}
+	if got := res.Header.Get("Location"); strings.Contains(got, "google=") {
+		t.Fatalf("landed on fail %q", got)
+	}
+}
+
+func TestGoogleCallbackSucceedsWhenPeoplePhoneDenied(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const kid = "no-phone-kid"
+	var idNonce string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/certs", func(w http.ResponseWriter, r *http.Request) {
+		n := base64.RawURLEncoding.EncodeToString(key.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": []map[string]string{{
+				"kid": kid, "kty": "RSA", "alg": "RS256", "n": n, "e": e,
+			}},
+		})
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		idTok := signGoogleIDToken(t, key, kid, testGoogleClientID, "nophone@test.dev", "No Phone", idNonce)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id_token":     idTok,
+			"access_token": "ya29.no-phone",
+		})
+	})
+	google := httptest.NewServer(mux)
+	t.Cleanup(google.Close)
+
+	prevAuth, prevToken, prevCerts, prevHTTP := auth.GoogleAuthURL, auth.GoogleTokenURL, auth.GoogleCertsURL, auth.GoogleHTTP
+	t.Cleanup(func() {
+		auth.GoogleAuthURL = prevAuth
+		auth.GoogleTokenURL = prevToken
+		auth.GoogleCertsURL = prevCerts
+		auth.GoogleHTTP = prevHTTP
+	})
+	auth.GoogleTokenURL = google.URL + "/token"
+	auth.GoogleCertsURL = google.URL + "/certs"
+	auth.GoogleHTTP = google.Client()
+
+	h := newHarness(t, withGoogleOAuth)
+	noFollow := &http.Client{
+		Jar: h.client.Jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	start, err := http.NewRequest(http.MethodGet, h.srv.URL+"/api/auth/google/start?next=/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := noFollow.Do(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	loc, err := url.Parse(res.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := loc.Query().Get("state")
+	idNonce = loc.Query().Get("nonce")
+
+	cb, err := http.NewRequest(http.MethodGet,
+		h.srv.URL+"/api/auth/google/callback?code=no-phone&state="+url.QueryEscape(state)+"&error=access_denied", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = noFollow.Do(cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("callback: status %d body %s", res.StatusCode, body)
+	}
+	if got := res.Header.Get("Location"); strings.Contains(got, "google=") {
+		t.Fatalf("phone skip must not fail sign-in: %s", got)
+	}
+
+	res, raw := h.do(http.MethodGet, "/api/auth/me", nil)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("me: status %d body %s", res.StatusCode, raw)
+	}
+	var acct types.Account
+	h.decode(raw, &acct)
+	if acct.Email != "nophone@test.dev" {
+		t.Fatalf("account %+v", acct)
+	}
+	if acct.GooglePhone != "" {
+		t.Fatalf("google phone %q, want empty", acct.GooglePhone)
 	}
 }
 

@@ -194,6 +194,12 @@ html[data-theme="dark"] .bg-ink:not(:disabled),
     bottom: calc(4.75rem + env(safe-area-inset-bottom));
   }
 
+  /* Capacitor iOS draws the WebView under the status bar (contentInset never).
+     Push the whole room — header, stage, control bar — below the notch. */
+  [data-room] {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
   /* The schedule form pins Schedule to the viewport bottom. Same trade as the
    * room: a toast in that corner would land on the button. */
   body:has([data-schedule-bar]) .toast-viewport {
@@ -2641,3 +2647,14 @@ html[data-theme="dark"] .tp-chip-5 { --tp-bg: rgba(6, 174, 212, 0.22); --tp-fg: 
 .ios-app-only { display: none !important; }
 html[data-ios-app] .ios-app-only { display: revert !important; }
 html[data-ios-app] .ios-app-hidden { display: none !important; }
+
+/* iOS zooms the whole page when a focused field is under 16px. The live room
+ * is h-dvh overflow-hidden, so there is no pinch-out. Chat is 13px; keep every
+ * text field at 16px on a phone. The mention-composer backdrop is a div that
+ * must match the textarea. */
+@media (hover: none) and (pointer: coarse) {
+  :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]):not([type="color"]):not([type="image"]),
+  .ios-text-field {
+    font-size: 16px !important;
+  }
+}

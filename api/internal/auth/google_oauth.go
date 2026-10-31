@@ -2,6 +2,9 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,22 +36,49 @@ const GoogleOAuthScopes = "openid email profile"
 // Without a login_hint, prompt=select_account makes the chooser explicit. With
 // a login_hint no prompt is sent: Google otherwise shows a blank picker and
 // ignores the address they already typed.
-func GoogleAuthCodeURL(clientID, redirect, state, nonce, loginHint string) string {
+func GoogleAuthCodeURL(clientID, redirect, state, nonce, loginHint, challenge string) string {
 	hint := GoogleLoginHint(loginHint)
 	q := url.Values{
-		"client_id":     {clientID},
-		"redirect_uri":  {redirect},
-		"response_type": {"code"},
-		"scope":         {GoogleOAuthScopes},
-		"state":         {state},
-		"nonce":         {nonce},
+		"client_id":              {clientID},
+		"redirect_uri":           {redirect},
+		"response_type":          {"code"},
+		"scope":                  {GoogleOAuthScopes},
+		"state":                  {state},
+		"nonce":                  {nonce},
+		"include_granted_scopes": {"true"},
 	}
 	if hint != "" {
 		q.Set("login_hint", hint)
 	} else {
 		q.Set("prompt", "select_account")
 	}
+	if c := strings.TrimSpace(challenge); c != "" {
+		q.Set("code_challenge", c)
+		q.Set("code_challenge_method", "S256")
+	}
 	return GoogleAuthURL + "?" + q.Encode()
+}
+
+// GooglePKCE is the S256 pair for an authorization-code start. The verifier
+// is stored in signed state and sent on the token request; the challenge goes
+// on the authorize URL.
+type GooglePKCE struct {
+	Verifier  string
+	Challenge string
+}
+
+// NewGooglePKCE returns a fresh S256 pair. Empty on RNG failure.
+func NewGooglePKCE() (GooglePKCE, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return GooglePKCE{}, err
+	}
+	verifier := base64.RawURLEncoding.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(verifier))
+	return GooglePKCE{
+		Verifier:  verifier,
+		Challenge: base64.RawURLEncoding.EncodeToString(sum[:]),
+	}, nil
 }
 
 // GoogleLoginHint is a typed email for Google's login_hint. Empty, a display
@@ -94,7 +124,9 @@ type googleTokenJSON struct {
 }
 
 // ExchangeGoogleCode turns an authorization code into an ID token and access token.
-func ExchangeGoogleCode(ctx context.Context, clientID, secret, redirect, code string) (GoogleTokenResponse, error) {
+// verifier is the PKCE code_verifier from /start; empty only for in-flight grants
+// that predate PKCE.
+func ExchangeGoogleCode(ctx context.Context, clientID, secret, redirect, code, verifier string) (GoogleTokenResponse, error) {
 	clientID = strings.TrimSpace(clientID)
 	secret = strings.TrimSpace(secret)
 	code = strings.TrimSpace(code)
@@ -112,6 +144,9 @@ func ExchangeGoogleCode(ctx context.Context, clientID, secret, redirect, code st
 		"client_id":     {clientID},
 		"client_secret": {secret},
 		"redirect_uri":  {redirect},
+	}
+	if v := strings.TrimSpace(verifier); v != "" {
+		form.Set("code_verifier", v)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, GoogleTokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -134,11 +169,14 @@ func ExchangeGoogleCode(ctx context.Context, clientID, secret, redirect, code st
 		return GoogleTokenResponse{}, fmt.Errorf("%w: bad token response", ErrGoogleOAuth)
 	}
 	if parsed.Error != "" || res.StatusCode != http.StatusOK {
-		detail := parsed.Error
-		if parsed.ErrorDesc != "" {
-			detail = parsed.ErrorDesc
-		}
-		if detail == "" {
+		detail := strings.TrimSpace(parsed.Error)
+		desc := strings.TrimSpace(parsed.ErrorDesc)
+		switch {
+		case detail != "" && desc != "":
+			detail = detail + ": " + desc
+		case desc != "":
+			detail = desc
+		case detail == "":
 			detail = fmt.Sprintf("HTTP %d", res.StatusCode)
 		}
 		return GoogleTokenResponse{}, fmt.Errorf("%w: %s", ErrGoogleOAuth, detail)

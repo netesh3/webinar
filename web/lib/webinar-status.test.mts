@@ -4,7 +4,12 @@
  */
 
 import assert from "node:assert/strict";
-import { lapsedWithoutLive, presentForHostList, scheduledEndMs } from "./webinar-status.ts";
+import {
+  hostListRowsForTab,
+  lapsedWithoutLive,
+  presentForHostList,
+  scheduledEndMs,
+} from "./webinar-status.ts";
 
 const NOW = Date.parse("2026-10-01T10:36:00.000Z"); // 16:06 IST
 
@@ -62,5 +67,24 @@ assert.equal(ran.didntGoLive, undefined);
 
 // The server already said so.
 assert.equal(lapsedWithoutLive(row({ status: "ended", didntGoLive: true }), NOW), true);
+
+// Upcoming hides a session whose scheduled end has passed; live stays.
+const upcoming = hostListRowsForTab(
+  [
+    row({ startsAt: futureStart }),
+    row({}),
+    row({ status: "live", startedAt: "2026-09-30T06:00:00.000Z" }),
+  ],
+  "upcoming",
+  NOW,
+);
+assert.equal(upcoming.length, 2);
+assert.equal(upcoming[0]?.status, "scheduled");
+assert.equal(upcoming[1]?.status, "live");
+
+const past = hostListRowsForTab([row({}), row({ startsAt: futureStart })], "past", NOW);
+assert.equal(past.length, 1);
+assert.equal(past[0]?.status, "ended");
+assert.equal(past[0]?.didntGoLive, true);
 
 console.log("webinar-status: ok");

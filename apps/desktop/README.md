@@ -10,13 +10,17 @@ apps/desktop/
   src/config.ts          start URL, which URLs are "the site", deep-link parsing
   src/security.ts        permissions, navigation rules, popups
   src/screen-picker.ts   getDisplayMedia handler + picker window
+  src/share-session.ts   hide meeting windows during entire-screen share
+  src/share-policy.ts    pure hide / extra-window-close rules
   src/preload.ts         window.webinarlivDesktop bridge, call detection, badge
   src/picker-preload.ts  bridge for the picker window
-  src/power.ts           keep the display awake during a call
+  src/share-bar-preload.ts  Stop-share bar bridge
+  src/power.ts           keep the display / process awake during a call
+  src/qos.ts             Chromium GPU / timer flags and process priority
   src/updater.ts         electron-updater (generic feed on downloads.webinarliv.com)
   src/menu.ts            native menus
   src/window-state.ts    remembered window size and position
-  static/                picker and offline pages (local files, strict CSP)
+  static/                picker, share bar, and offline pages (local files, strict CSP)
   build/                 icons, macOS entitlements
   scripts/make-icons.sh  regenerates build/icon.{png,icns,ico}
   electron-builder.config.cjs
@@ -222,22 +226,44 @@ app, whose session is not the ticket's account, and is spent there.
   `isDesktop`, `platform`, `version`, `setCallActive(on)`, `setBadgeCount(n)`,
   `openSignIn(url)` (the main process opens only the site's Google sign-in
   start URL in the system browser), `openConnect(url)` (only the site's
-  connect start URL with a ticket).
+  connect start URL with a ticket), `closeRoomWindow(url)` (close this extra
+  room window and load Results in the main window), `onStopShare(cb)` (the
+  floating share bar's Stop button).
 
 ### Screen sharing
 
 Electron has no built-in picker, so `getDisplayMedia` goes through
 `session.setDisplayMediaRequestHandler`. The app lists screens and windows
 with `desktopCapturer` and shows them, with thumbnails and app icons, in a
-small modal window (`static/picker.html`). On Windows, when the page asks for
+small modal window (`static/picker.html`). The app's own windows (the room,
+the host page, pop-outs) are omitted from the **Window** list so nobody
+shares the meeting chrome by mistake. On Windows, when the page asks for
 audio, the picker also offers **Share system audio** (WASAPI loopback). This is
 the whole system mix, so other people in the call can hear themselves if the
 sharer is not on headphones; it is off by default. macOS has no system-audio
 option.
 
+**Entire screen** is Zoom-like: every app window is hidden before the first
+captured frame, and a small always-on-top **Stop sharing** bar stays on the
+screen. That bar uses `setContentProtection(true)` so it is excluded from
+the capture on macOS and on Windows 10 2004+ (`WDA_EXCLUDEFROMCAPTURE`).
+Hiding (not minimizing) is what keeps the meeting window off the taskbar /
+Dock restore path, so it cannot be brought back into the share. The windows
+come back when the share stops. Sharing a **window** of another app leaves
+the room up.
+
 macOS asks for Screen Recording permission the first time; the picker shows
 a notice with a button to System Settings while it is missing. After granting
 it, the app has to be restarted (macOS rule).
+
+### Ending a webinar
+
+Live rooms open in their own window (`window.open`, as they open in a new
+tab on the web). When the host's session ends, that extra window closes
+instead of navigating to Results; Results load in the main window
+(`/host/<slug>?tab=results`). Attendees still see the ended survey in
+whatever window they were in. A room that is the main window (rejoin in
+place) still navigates in place.
 
 ### Deep links
 
@@ -263,14 +289,30 @@ call.
 On macOS, links work once the app has been opened from /Applications once. On
 Windows the NSIS installer registers the scheme.
 
-### Calls and display sleep
+### Calls, display sleep, CPU and GPU
 
-While any window is in a call, the app holds
-`powerSaveBlocker.start("prevent-display-sleep")`. A call is detected without
-any web change: the preload watches for a held screen wake lock (the live
-rooms take one, see `web/lib/wake-lock.ts`) or a live camera, microphone or
-screen-share track. The page can also force it with
+While any window is in a call, the app holds both
+`powerSaveBlocker.start("prevent-display-sleep")` and
+`prevent-app-suspension`, and raises the process to above-normal priority
+(`src/qos.ts`). A call is detected without any web change: the preload
+watches for a held screen wake lock (the live rooms take one, see
+`web/lib/wake-lock.ts`) or a live camera, microphone or screen-share track.
+The page can also force it with
 `window.webinarlivDesktop.setCallActive(true | false)`.
+
+Chromium is also told not to treat the window as background work, so LiveKit
+keeps a full time slice when the meeting is unfocused or occluded (share
+picker, another app on top):
+
+- `webPreferences.backgroundThrottling: false` on every window
+- `--disable-background-timer-throttling`
+- `--disable-backgrounding-occluded-windows`
+- `--disable-renderer-backgrounding`
+- `--force-high-performance-gpu` (discrete GPU on dual-GPU Windows laptops)
+
+Hardware acceleration stays on. These flags are set in `src/main.ts` before
+`app.whenReady()`. They cost more battery on a laptop on battery power — the
+trade is a stable HD encode, the same one Zoom makes.
 
 ### Notifications and badge
 

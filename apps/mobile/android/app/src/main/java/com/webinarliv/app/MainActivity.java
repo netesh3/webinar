@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // App-local plugins are registered before the bridge starts.
         registerPlugin(AppInfoPlugin.class);
+        registerPlugin(CallQosPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

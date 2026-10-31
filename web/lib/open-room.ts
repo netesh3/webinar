@@ -1,13 +1,37 @@
+import { currentIsNativeApp } from "./device";
+import { inAppDestination, isNativeApp } from "./native-bridge";
+
+/** Phone app: stay in the WebView. window.open here is Safari / Chrome. */
+function inPhoneApp(): boolean {
+  return isNativeApp() || currentIsNativeApp();
+}
+
+function goInApp(url: string): boolean {
+  if (!inPhoneApp()) return false;
+  const dest = inAppDestination(url);
+  if (!dest) return false;
+  window.location.assign(dest);
+  return true;
+}
+
 /** Open a live / preview room in a new tab. Keeps manage / browse / my-webinars
  *  in place so ending or admitting people does not lose the host's place.
+ *
+ *  In the Android / iOS app there is no second WebView: a new tab is the
+ *  system browser. Instant webinar, Go live, and Join therefore navigate this
+ *  WebView instead (30 Oct 2026). Zoom start URLs still open outside.
  *
  *  No feature string — see openPendingRoomTab's comment on why passing one
  *  at all (even just "noopener,noreferrer", nothing size/chrome-related)
  *  is what turns this into a stripped-down popup window in some browsers
- *  instead of a normal tab. .opener is nulled by hand instead. */
+ *  instead of a normal tab. .opener is nulled by hand in the browser; the
+ *  desktop app keeps it so the extra room window can close onto Results. */
 export function openRoomTab(url: string): void {
+  if (goInApp(url)) return;
   const tab = window.open(url, "_blank");
-  if (tab) tab.opener = null;
+  // Desktop keeps opener so the extra room window can close and hand Results
+  // back (lib/host-results.ts). The web severs it as before.
+  if (tab && !("webinarlivDesktop" in window)) tab.opener = null;
 }
 
 /**
@@ -45,11 +69,24 @@ export function openPendingRoomTab(): {
    * and that is what should render here.
    *
    * Same-origin destination (our own /host/.../room), so there is no
-   * referrer to leak to a third party regardless — the isolation that
-   * actually matters (no window.opener back-reference) still happens two
-   * lines down, by hand, which needs no feature string at all. */
+   * referrer to leak to a third party regardless. In the browser the opener
+   * is severed by hand two lines down; the desktop app keeps it so the extra
+   * room window can close onto Results. */
+  if (inPhoneApp()) {
+    let cancelled = false;
+    return {
+      open: (url: string) => {
+        if (cancelled) return;
+        if (goInApp(url)) return;
+        openRoomTab(url);
+      },
+      cancel: () => {
+        cancelled = true;
+      },
+    };
+  }
   const tab = window.open("", "_blank");
-  if (tab) tab.opener = null;
+  if (tab && !("webinarlivDesktop" in window)) tab.opener = null;
   return {
     open: (url: string) => {
       if (tab && !tab.closed) {

@@ -17,6 +17,9 @@
  *                               the system browser (web/lib/app-connect.ts; the
  *                               main process only opens the site's own connect
  *                               start URL with a ticket)
+ *   closeRoomWindow(url)        close this extra room window and load Results
+ *                               in the main window (host webinar end)
+ *   onStopShare(cb)             Stop sharing from the floating share bar
  *
  * The page does not have to call anything: a small main-world script below
  * detects a call by itself (a held screen wake lock, which the live rooms take
@@ -31,8 +34,10 @@ function arg(name: string): string {
   return process.argv.find((a) => a.startsWith(prefix))?.slice(prefix.length) ?? "";
 }
 
-/** Hosts the main process trusts, passed in through additionalArguments. */
-const siteDomains = arg("webinarliv-site-hosts").split(",").filter(Boolean);
+/** Hosts the main process trusts, passed in through additionalArguments.
+ *  Always include webinarliv.com so a missing flag cannot hide the bridge
+ *  (without it, Continue with Google runs in this window and Google refuses). */
+const siteDomains = [...new Set(["webinarliv.com", ...arg("webinarliv-site-hosts").split(",").filter(Boolean)])];
 const appVersion = arg("webinarliv-version");
 
 function isSitePage(): boolean {
@@ -65,10 +70,25 @@ if (isSitePage()) {
       ipcRenderer.send("webinarliv:badge", n);
     },
     openSignIn(url: unknown) {
-      if (typeof url === "string") ipcRenderer.send("webinarliv:open-sign-in", url);
+      if (typeof url !== "string") return Promise.resolve(false);
+      return ipcRenderer.invoke("webinarliv:open-sign-in", url);
     },
     openConnect(url: unknown) {
       if (typeof url === "string") ipcRenderer.send("webinarliv:open-connect", url);
+    },
+    closeRoomWindow(url: unknown) {
+      if (typeof url !== "string") return Promise.resolve(false);
+      return ipcRenderer.invoke("webinarliv:close-room", url) as Promise<boolean>;
+    },
+    onStopShare(cb: unknown) {
+      if (typeof cb !== "function") return () => {};
+      const handler = () => {
+        (cb as () => void)();
+      };
+      ipcRenderer.on("webinarliv:stop-share", handler);
+      return () => {
+        ipcRenderer.removeListener("webinarliv:stop-share", handler);
+      };
     },
     // Used by the main-world helper below; not part of the public surface.
     _detected(on: unknown) {
@@ -77,6 +97,9 @@ if (isSitePage()) {
     },
     _focus() {
       ipcRenderer.send("webinarliv:focus");
+    },
+    _shareCaptureEnded() {
+      ipcRenderer.send("webinarliv:share-capture-ended");
     },
   });
 
@@ -88,7 +111,12 @@ if (isSitePage()) {
  * Wraps a few browser APIs without changing what they return.
  */
 function installMainWorldHelpers(): void {
-  type Bridge = { _detected(on: boolean): void; _focus(): void; setBadgeCount(n: number): void };
+  type Bridge = {
+    _detected(on: boolean): void;
+    _focus(): void;
+    _shareCaptureEnded(): void;
+    setBadgeCount(n: number): void;
+  };
   const w = window as unknown as Window & { webinarlivDesktop?: Bridge; __webinarlivHelpers?: boolean };
   const bridge = w.webinarlivDesktop;
   if (!bridge || w.__webinarlivHelpers) return;
@@ -138,18 +166,35 @@ function installMainWorldHelpers(): void {
   // Camera, microphone and screen tracks.
   const media = navigator.mediaDevices;
   if (media) {
-    for (const name of ["getUserMedia", "getDisplayMedia"] as const) {
-      const original = media[name];
-      if (typeof original !== "function") continue;
-      media[name] = async function (this: MediaDevices, ...args: unknown[]) {
-        const stream: MediaStream = await (original as (...a: unknown[]) => Promise<MediaStream>).apply(this, args);
+    const originalUser = media.getUserMedia;
+    if (typeof originalUser === "function") {
+      media.getUserMedia = async function (this: MediaDevices, ...args: unknown[]) {
+        const stream: MediaStream = await (originalUser as (...a: unknown[]) => Promise<MediaStream>).apply(this, args);
         for (const t of stream.getTracks()) {
           tracks.add(t);
           t.addEventListener("ended", report);
         }
         report();
         return stream;
-      } as MediaDevices[typeof name];
+      } as MediaDevices["getUserMedia"];
+    }
+    const originalDisplay = media.getDisplayMedia;
+    if (typeof originalDisplay === "function") {
+      media.getDisplayMedia = async function (this: MediaDevices, ...args: unknown[]) {
+        const stream: MediaStream = await (originalDisplay as (...a: unknown[]) => Promise<MediaStream>).apply(
+          this,
+          args,
+        );
+        for (const t of stream.getTracks()) {
+          tracks.add(t);
+          t.addEventListener("ended", () => {
+            report();
+            bridge._shareCaptureEnded();
+          });
+        }
+        report();
+        return stream;
+      } as MediaDevices["getDisplayMedia"];
     }
   }
   // track.stop() fires no event, so poll as well.

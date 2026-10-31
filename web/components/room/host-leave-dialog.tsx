@@ -2,6 +2,8 @@
 
 import { useRemoteParticipants } from "@livekit/components-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { bindOutsideDismiss } from "@/lib/outside-dismiss";
+import { useCompact } from "@/lib/compact";
 import { api } from "@/lib/api";
 import { mergeHostCandidates, metadataCoHost } from "@/lib/host-transfer";
 import { HOST_LEAVE_NO_COHOST_NOTE, handoverLabel, leaveMenuItems } from "@/lib/panelists";
@@ -45,6 +47,7 @@ export function HostLeaveMenu({
   const meeting = !!join.meeting;
   const remotes = useRemoteParticipants();
   const panel = useRef<HTMLDivElement | null>(null);
+  const compact = useCompact();
   const reloadRoster = roster.reload;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,17 +72,18 @@ export function HostLeaveMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onClose();
     };
-    const onDown = (e: PointerEvent) => {
-      if (panel.current?.contains(e.target as Node)) return;
-      // Leave button toggles open; ignore that click so we do not close-then-reopen.
-      if ((e.target as HTMLElement).closest?.("[data-host-leave-trigger]")) return;
-      if (!busy) onClose();
-    };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onDown);
+    const stopOutside = bindOutsideDismiss({
+      contains: (node) => !!panel.current?.contains(node),
+      // Leave button toggles open; ignore that click so we do not close-then-reopen.
+      ignoreClosest: "[data-host-leave-trigger]",
+      onOutside: () => {
+        if (!busy) onClose();
+      },
+    });
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onDown);
+      stopOutside();
     };
   }, [open, onClose, busy]);
 
@@ -123,7 +127,16 @@ export function HostLeaveMenu({
       ref={panel}
       role="menu"
       aria-label="Leave options"
-      className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
+      className={
+        compact
+          ? "room-dark fixed right-2 z-[80] w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
+          : "room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
+      }
+      style={
+        compact
+          ? { bottom: "calc(3.75rem + env(safe-area-inset-bottom, 0px))" }
+          : undefined
+      }
     >
       {error && (
         <p role="alert" className="mx-3.5 my-2 text-[12px] leading-relaxed text-live">

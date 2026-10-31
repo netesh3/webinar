@@ -15,10 +15,12 @@ import {
   webContents as allWebContents,
   type Session,
   type Streams,
+  type WebContents,
 } from "electron";
 import path from "node:path";
 import { isSiteOrigin } from "./config";
 import type { PickerInit, PickerSource } from "./picker-preload";
+import { beginShareSession, filterOwnWindowSources } from "./share-session";
 
 let pickerOpen = false;
 
@@ -37,17 +39,22 @@ async function listSources(): Promise<PickerSource[]> {
     thumbnailSize: { width: 320, height: 200 },
     fetchWindowIcons: true,
   });
-  return sources.map((s) => ({
+  const mapped: PickerSource[] = sources.map((s) => ({
     id: s.id,
     name: s.name || (s.id.startsWith("screen:") ? "Screen" : "Window"),
     kind: s.id.startsWith("screen:") ? ("screen" as const) : ("window" as const),
     thumbnail: s.thumbnail.isEmpty() ? "" : s.thumbnail.toDataURL(),
     icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
   }));
+  return filterOwnWindowSources(mapped);
 }
 
 /** Shows the picker and resolves with the chosen streams, or null if cancelled. */
-async function pick(parent: BrowserWindow | null, audioRequested: boolean): Promise<Streams | null> {
+async function pick(
+  parent: BrowserWindow | null,
+  audioRequested: boolean,
+  from: WebContents | null,
+): Promise<Streams | null> {
   const sources = await listSources();
   const audioAvailable = audioRequested && process.platform === "win32";
 
@@ -96,6 +103,9 @@ async function pick(parent: BrowserWindow | null, audioRequested: boolean): Prom
       if (!source) return finish(null);
       const streams: Streams = { video: { id: source.id, name: source.name } };
       if (audioAvailable && choice.audio) streams.audio = "loopback";
+      // Hide meeting windows before the first captured frame when the entire
+      // screen is the source. Window shares leave the room up.
+      beginShareSession(from ?? parent?.webContents ?? null, source.kind);
       finish(streams);
     };
     const onCancel = (e: Electron.IpcMainEvent) => {
@@ -135,7 +145,7 @@ export function installDisplayMediaHandler(ses: Session): void {
     const parent = contents ? BrowserWindow.fromWebContents(contents) : null;
 
     pickerOpen = true;
-    pick(parent, request.audioRequested)
+    pick(parent, request.audioRequested, contents ?? null)
       .then((streams) => callback(streams))
       .catch((err) => {
         console.error("[screen-picker]", err);

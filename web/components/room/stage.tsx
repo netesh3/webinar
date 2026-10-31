@@ -733,6 +733,10 @@ function FloatingCameras({
   } | null>(null);
   const panel = useRef<HTMLElement | null>(null);
   const [layout, setLayout] = useState({ left: FLOAT_MARGIN, top: FLOAT_MARGIN });
+  const dragRef = useRef(drag);
+  const onWinMove = useRef<(e: PointerEvent) => void>(() => {});
+  const onWinUp = useRef<(e: PointerEvent) => void>(() => {});
+  const onWinCancel = useRef<(e: PointerEvent) => void>(() => {});
 
   const showExtra = hidden > 0;
   const size = panelSize(tileW, tiles.length, showExtra);
@@ -855,6 +859,83 @@ function FloatingCameras({
 
   const showChrome = hover || drag !== null || resizing !== null;
 
+  // The window listeners below call these; point them at this render's closures
+  // after commit (refs must not be written during render).
+  useLayoutEffect(() => {
+    dragRef.current = drag;
+    onWinMove.current = (e: PointerEvent) => {
+      if (movePtr.current === e.pointerId && moveFrom.current) {
+        setDrag({
+          dx: e.clientX - moveFrom.current.x,
+          dy: e.clientY - moveFrom.current.y,
+        });
+        return;
+      }
+      if (resizePtr.current === e.pointerId) applyResize(e.clientX, e.clientY, false);
+    };
+    onWinUp.current = (e: PointerEvent) => {
+      if (movePtr.current === e.pointerId && moveFrom.current) {
+        const left = moveFrom.current.left + (e.clientX - moveFrom.current.x);
+        const top = moveFrom.current.top + (e.clientY - moveFrom.current.y);
+        movePtr.current = null;
+        moveFrom.current = null;
+        setDrag(null);
+        placeAt(left, top);
+        return;
+      }
+      if (resizePtr.current === e.pointerId) {
+        applyResize(e.clientX, e.clientY, true);
+        resizePtr.current = null;
+        resizeFrom.current = null;
+        setResizing(null);
+      }
+    };
+    onWinCancel.current = (e: PointerEvent) => {
+      /* iOS treats a finger-move as a scroll and sends pointercancel. Commit the
+       * last offset rather than snapping the cameras back — that snap is why the
+       * popup looked immovable in the app. */
+      if (movePtr.current === e.pointerId && moveFrom.current) {
+        const d = dragRef.current;
+        const left = moveFrom.current.left + (d?.dx ?? 0);
+        const top = moveFrom.current.top + (d?.dy ?? 0);
+        movePtr.current = null;
+        moveFrom.current = null;
+        setDrag(null);
+        placeAt(left, top);
+        return;
+      }
+      if (resizePtr.current === e.pointerId) {
+        resizePtr.current = null;
+        resizeFrom.current = null;
+        setResizing(null);
+      }
+    };
+  });
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (movePtr.current !== e.pointerId && resizePtr.current !== e.pointerId) return;
+      if (e.cancelable) e.preventDefault();
+      onWinMove.current(e);
+    };
+    const up = (e: PointerEvent) => onWinUp.current(e);
+    const cancel = (e: PointerEvent) => onWinCancel.current(e);
+    const touchMove = (e: TouchEvent) => {
+      if (movePtr.current == null && resizePtr.current == null) return;
+      if (e.cancelable) e.preventDefault();
+    };
+    window.addEventListener("pointermove", move, { capture: true, passive: false });
+    window.addEventListener("pointerup", up, { capture: true });
+    window.addEventListener("pointercancel", cancel, { capture: true });
+    window.addEventListener("touchmove", touchMove, { capture: true, passive: false });
+    return () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", cancel, true);
+      window.removeEventListener("touchmove", touchMove, true);
+    };
+  }, []);
+
   /* One click between small and large — the corners are still there for anything in
    * between. Grows away from the stage edge it sits nearest, so cameras parked
    * bottom-right stay bottom-right instead of sliding over the slide's middle. */
@@ -889,7 +970,7 @@ function FloatingCameras({
       pointerId: number,
       clientX: number,
       clientY: number,
-      target: HTMLElement,
+      _target: HTMLElement,
     ) => {
       resizePtr.current = pointerId;
       resizeFrom.current = {
@@ -903,7 +984,6 @@ function FloatingCameras({
         panelH: size.height,
       };
       setResizing(corner);
-      target.setPointerCapture(pointerId);
     },
     [tileW, layout.left, layout.top, size.width, size.height],
   );
@@ -1003,7 +1083,7 @@ function FloatingCameras({
       ref={(el) => {
         panel.current = el;
       }}
-      className={`group absolute z-20 rounded-[11px] border border-white/20 bg-black/40 p-0.5 shadow-2xl backdrop-blur-md ${
+      className={`group absolute z-20 touch-none select-none rounded-[11px] border border-white/20 bg-black/40 p-0.5 shadow-2xl backdrop-blur-md [&_canvas]:pointer-events-none [&_video]:pointer-events-none ${
         drag ? "cursor-grabbing" : "cursor-grab"
       } ${showChrome ? "border-white/35" : ""}`}
       style={{
@@ -1019,11 +1099,10 @@ function FloatingCameras({
         toggleEnlarged();
       }}
       onPointerDown={(e) => {
-        // Drag the frame; corner hits and tile buttons stopPropagation.
+        // Drag the frame; buttons (hide, enlarge, pin, resize) keep their own press.
         if (e.button !== 0) return;
-        if ((e.target as HTMLElement).closest("[data-float-resize],[data-float-hide]")) {
-          return;
-        }
+        if ((e.target as HTMLElement).closest("button")) return;
+        e.preventDefault();
         const stage = panel.current?.offsetParent as HTMLElement | null;
         if (!stage) return;
         movePtr.current = e.pointerId;
@@ -1034,48 +1113,6 @@ function FloatingCameras({
           top: layout.top,
         };
         setDrag({ dx: 0, dy: 0 });
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      }}
-      onPointerMove={(e) => {
-        if (movePtr.current === e.pointerId && moveFrom.current) {
-          setDrag({
-            dx: e.clientX - moveFrom.current.x,
-            dy: e.clientY - moveFrom.current.y,
-          });
-          return;
-        }
-        if (resizePtr.current === e.pointerId) {
-          applyResize(e.clientX, e.clientY, false);
-        }
-      }}
-      onPointerUp={(e) => {
-        if (movePtr.current === e.pointerId && moveFrom.current) {
-          const left = moveFrom.current.left + (e.clientX - moveFrom.current.x);
-          const top = moveFrom.current.top + (e.clientY - moveFrom.current.y);
-          movePtr.current = null;
-          moveFrom.current = null;
-          setDrag(null);
-          placeAt(left, top);
-          return;
-        }
-        if (resizePtr.current === e.pointerId) {
-          applyResize(e.clientX, e.clientY, true);
-          resizePtr.current = null;
-          resizeFrom.current = null;
-          setResizing(null);
-        }
-      }}
-      onPointerCancel={(e) => {
-        if (movePtr.current === e.pointerId) {
-          movePtr.current = null;
-          moveFrom.current = null;
-          setDrag(null);
-        }
-        if (resizePtr.current === e.pointerId) {
-          resizePtr.current = null;
-          resizeFrom.current = null;
-          setResizing(null);
-        }
       }}
     >
       {/* Enlarge / shrink and hide, top-centre.

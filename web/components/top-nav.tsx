@@ -13,7 +13,7 @@ import { ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
 import { EmailNavLink } from "./email/email-nav";
-import { useInstallMenuAction } from "./pwa";
+import { useInOwnApp } from "./get-app-link";
 import { indexable } from "@/lib/plans";
 import { useIOSApp } from "./ios-app";
 
@@ -87,7 +87,7 @@ function homeHrefFor(canHost: boolean): string {
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const install = useInstallMenuAction();
+  const inOwnApp = useInOwnApp();
   const { appName } = useAppConfig();
   const { account, status, signOut } = useSession();
   const { registrations } = useRegistrations();
@@ -104,7 +104,7 @@ export function TopNav() {
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (
-    <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface/95 backdrop-blur">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-line bg-surface/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-5">
         <Link
           href={homeHrefFor(account?.canHost === true)}
@@ -182,8 +182,8 @@ export function TopNav() {
                   label: "Guides & blog",
                   onSelect: () => router.push("/blog"),
                 },
-                ...(install.action
-                  ? [{ kind: "action" as const, label: "Install app", onSelect: install.action }]
+                ...(!inOwnApp
+                  ? [{ kind: "action" as const, label: "Get the app", onSelect: () => router.push("/download") }]
                   : []),
                 { kind: "separator" },
                 {
@@ -196,7 +196,6 @@ export function TopNav() {
                 },
               ]}
             />
-            {install.modal}
           </>
         ) : (
           <div className="hidden items-center gap-2 sm:flex">

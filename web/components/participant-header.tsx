@@ -39,7 +39,7 @@ export function ParticipantHeader({
   const { account, status } = useSession();
 
   return (
-    <header className="border-b border-line bg-surface">
+    <header className="border-b border-line bg-surface pt-[env(safe-area-inset-top)]">
       <div
         className={
           wide

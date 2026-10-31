@@ -9,7 +9,7 @@ import { LOW_LIGHT_GLSL, LOW_LIGHT_LIFT } from "./low-light-curve";
 import { HumanSeg, loadHumanSeg, type Matte } from "./humanseg";
 import { backgroundLoadingView, setCameraCovered } from "./background-loading";
 import { PresenterLock, type FaceBox } from "./presenter-lock";
-import { browserUprightPlan, capLongSide, uprightSize } from "./frame-orientation";
+import { browserHeldViewport, browserUprightPlan, capLongSide, uprightSize } from "./frame-orientation";
 export { needsUprightCopy } from "./frame-orientation";
 
 /* Segmentation and compositing, done ourselves.
@@ -2198,6 +2198,18 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
 
   // ------------------------------------------------------------------ internals
 
+  /* How big to draw this frame. videoWidth is the iPhone sensor (landscape 1280×720) so it
+   * cannot be the "shown" size — it agrees with the buffer and never swaps. The dummy
+   * <video> is often display:none (clientWidth 0). The viewport is how the phone is held. */
+  private uprightOf(frame: VideoFrame): { w: number; h: number } {
+    const video = this.inputVideo;
+    const layout =
+      video && video.clientWidth > 0 && video.clientHeight > 0
+        ? { width: video.clientWidth, height: video.clientHeight }
+        : null;
+    return uprightSize(frame as VideoFrame & { rotation?: number }, layout, browserHeldViewport());
+  }
+
   /* The frame into the engine. Straight from the VideoFrame everywhere but WebKit, where it
    * is drawn into a 2D canvas first — drawImage being the read that orients a phone camera's
    * buffer the way its <video> shows it, and the one the model's mask is already cut from. */
@@ -2209,12 +2221,7 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
     /* Sized as shown — a portrait phone's frame can report its landscape buffer's size — and
      * per frame, so turning the phone mid-call resizes everything on the next one. Smaller on
      * an iPhone: ProcessorWrapper scales the result back to the camera's size to publish. */
-    const video = this.inputVideo;
-    const shown = video ? { width: video.videoWidth, height: video.videoHeight } : null;
-    const size = capLongSide(
-      uprightSize(frame as VideoFrame & { rotation?: number }, shown),
-      this.upright.longSide,
-    );
+    const size = capLongSide(this.uprightOf(frame), this.upright.longSide);
     this.uprightIn = sized(this.uprightIn, size.w, size.h);
     this.uprightIn.ctx.drawImage(frame, 0, 0, size.w, size.h);
     engine.upload(frame, mips, this.uprightIn.canvas as unknown as TexImageSource, size);
@@ -2712,10 +2719,8 @@ export class SoftSegmenter extends VideoTransformer<Record<string, never>> {
       /* Sized as the picture is shown. On WebKit a portrait phone's frame can report its
        * landscape buffer, and a cover that size would turn the audience's tile sideways until
        * the background arrived — the same correction uploadFrame makes. */
-      const video = this.inputVideo;
-      const shown = video ? { width: video.videoWidth, height: video.videoHeight } : null;
       const { w, h } = this.uprightCopy
-        ? uprightSize(frame as VideoFrame & { rotation?: number }, shown)
+        ? this.uprightOf(frame)
         : { w: frame.displayWidth, h: frame.displayHeight };
       this.cover ??= canvas2d(w, h);
       const c = this.cover;

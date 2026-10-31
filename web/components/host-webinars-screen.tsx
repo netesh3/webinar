@@ -25,7 +25,9 @@ import {
   HOST_WEBINAR_PAGE_SIZE,
   hostListFilterKey,
   hostListPageKey,
+  onHostListsDropped,
 } from "@/lib/host-list-cache";
+import { useVisibleRefresh } from "@/lib/visible-refresh";
 import { type Webinar, type WebinarInput } from "@/lib/api-types";
 import { deliveryOffer } from "@/lib/delivery-policy";
 import { useDeliveryPolicy } from "@/lib/use-delivery-policy";
@@ -353,6 +355,8 @@ export function HostWebinarsScreen() {
       })
       .catch(() => setOnStage([]));
   }, [bypass]);
+  useVisibleRefresh(loadStage);
+  useEffect(() => onHostListsDropped(loadStage), [loadStage]);
 
   /** After starting an instant webinar: the host's own list lives inside
    *  HostWebinarBrowser and fetches itself, so it gets nudged rather than

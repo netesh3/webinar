@@ -17,6 +17,7 @@ import {
   PlusIcon,
   ScreenShareIcon,
 } from "../icons";
+import { useElementFullscreen } from "@/lib/fullscreen";
 import { tileFit } from "@/lib/layout";
 import { CAMERA_OFF_LABEL } from "@/lib/stage-presence";
 import { isHighlighted } from "@/lib/speaker";
@@ -357,7 +358,11 @@ function ZoomableVideo({
   // Fill crops to the window edges. Fit is the default because losing the edge of
   // a slide without being told is worse than a band of black.
   const [fill, setFill] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
+  // Both APIs through lib/fullscreen.ts: `box.requestFullscreen()` is missing on an iPhone
+  // and threw there (31 Oct 2026), so the button is hidden where it cannot work. The state
+  // is read from the document, so Escape, which skips our button, keeps the label right.
+  const getBox = useCallback(() => box.current, []);
+  const fullscreen = useElementFullscreen(getBox);
   // The origin of the gesture lives in a ref because it changes on every pointer
   // move and nothing renders from it. Whether a drag is in PROGRESS is state,
   // because the cursor and the transform's transition both depend on it — and a ref
@@ -443,15 +448,6 @@ function ZoomableVideo({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [zoomAt]);
-
-  // Leaving fullscreen by pressing Escape does not go through our button, so the
-  // state is read from the document rather than assumed.
-  useEffect(() => {
-    const sync = () =>
-      setFullscreen(document.fullscreenElement === box.current);
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
 
   const zoomed = view.scale > 1;
 
@@ -568,16 +564,15 @@ function ZoomableVideo({
             <ExpandIcon className="size-3.5" />
           )}
         </ZoomButton>
-        <ZoomButton
-          label={fullscreen ? "Leave fullscreen" : "Fullscreen"}
-          pressed={fullscreen}
-          onClick={() => {
-            if (document.fullscreenElement) void document.exitFullscreen();
-            else void box.current?.requestFullscreen().catch(() => {});
-          }}
-        >
-          <ScreenShareIcon className="size-3.5" />
-        </ZoomButton>
+        {fullscreen.supported && (
+          <ZoomButton
+            label={fullscreen.active ? "Leave fullscreen" : "Fullscreen"}
+            pressed={fullscreen.active}
+            onClick={() => void fullscreen.toggle()}
+          >
+            <ScreenShareIcon className="size-3.5" />
+          </ZoomButton>
+        )}
       </div>
     </div>
   );

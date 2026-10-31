@@ -23,7 +23,7 @@ import { Alert, Select, Spinner } from "../controls";
 import { BackgroundTiles } from "./background-picker";
 import { LowLightControl } from "./low-light";
 import { Button } from "../ui";
-import { CameraIcon, CameraOffIcon, MicIcon, MicOffIcon } from "../icons";
+import { ArrowLeftIcon, CameraIcon, CameraOffIcon, MicIcon, MicOffIcon } from "../icons";
 
 /* The pre-join check, for people who are about to be on camera.
  *
@@ -42,6 +42,7 @@ export function PreJoin({
   prefs,
   onUpdatePrefs,
   onJoin,
+  onBack,
   initialMedia,
 }: {
   topic: string;
@@ -73,6 +74,8 @@ export function PreJoin({
     audioTrack: LocalAudioTrack | null;
     videoTrack: LocalVideoTrack | null;
   }) => void;
+  /** Leave this check without joining. The phone app has no browser Back. */
+  onBack?: () => void;
 }) {
   const start = initialMedia ?? { micEnabled: prefs.micEnabled, cameraEnabled: prefs.cameraEnabled };
   const [micEnabled, setMicEnabled] = useState(start.micEnabled);
@@ -434,7 +437,18 @@ export function PreJoin({
   }
 
   return (
-    <main className="mx-auto grid min-h-dvh w-full max-w-4xl place-items-center p-4 sm:p-6">
+    <main className="relative mx-auto grid min-h-dvh w-full max-w-4xl place-items-center p-4 pt-[max(1rem,calc(env(safe-area-inset-top,0px)+3rem))] sm:p-6 sm:pt-[max(1.5rem,calc(env(safe-area-inset-top,0px)+3rem))]">
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute left-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-2 hover:text-ink"
+          style={{ top: "max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))" }}
+        >
+          <ArrowLeftIcon className="size-4" />
+          Back
+        </button>
+      )}
       <div className="w-full">
         <div className="mb-5 text-center">
           <h1 className="text-[19px] leading-snug font-semibold tracking-[-0.01em] text-ink sm:text-[22px]">

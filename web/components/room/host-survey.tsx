@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { hostResultsPath } from "@/lib/host-results";
+import { hostResultsPath, leaveRoomForResults } from "@/lib/host-results";
 import type { HostSurvey } from "@/lib/api-types";
 import { Modal, Spinner } from "../controls";
 import { ClipboardIcon } from "../icons";
@@ -213,8 +213,10 @@ export function EndWebinarDialog({ open, onClose }: { open: boolean; onClose: ()
       // The response is what means the on-end survey has been sent. Replacing
       // before it returns would cancel the request and skip that send.
       await api.endWebinar(slug);
-      // Replace, not push: Back must not reopen a room that has been closed.
-      router.replace(hostResultsPath(slug));
+      // Desktop: close the extra room window and show Results in the opener.
+      // The web, and a room that is the main window, still replace in place.
+      const href = hostResultsPath(slug);
+      if ((await leaveRoomForResults(href)) !== "closed") router.replace(href);
       onClose();
     } catch (err) {
       markEnding(false);

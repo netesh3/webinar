@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { useElementFullscreen } from "@/lib/fullscreen";
 import {
   LAYOUT_HINT,
   LAYOUT_LABEL,
@@ -18,6 +19,9 @@ import {
   SpeakerViewIcon,
 } from "../icons";
 import { useRoomUI } from "./context";
+
+/** The room's stage column, which every room shell marks with data-stage. */
+const stageElement = () => document.querySelector("[data-stage]");
 
 /* The Layout / Views menu.
  *
@@ -58,17 +62,9 @@ export function LayoutMenu({
   const panel = useRef<HTMLDivElement | null>(null);
   const where = placement ?? (embedded ? "embedded" : "bar");
   const compact = where === "header" || where === "sheet";
-  const [fullscreen, setFullscreen] = useState(false);
-
-  useEffect(() => {
-    const sync = () =>
-      setFullscreen(
-        document.fullscreenElement === document.querySelector("[data-stage]"),
-      );
-    sync();
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
+  // Through lib/fullscreen.ts, not `el.requestFullscreen()`: on an iPhone that method is
+  // missing outright and the call threw (31 Oct 2026). There the Fullscreen row is hidden.
+  const fullscreen = useElementFullscreen(stageElement);
 
   useEffect(() => {
     if (where === "embedded") return;
@@ -92,13 +88,10 @@ export function LayoutMenu({
 
   const body = compact ? (
     <CompactBody
-      fullscreen={fullscreen}
-      onToggleFullscreen={() => {
-        const el = document.querySelector("[data-stage]");
-        if (!(el instanceof HTMLElement)) return;
-        if (document.fullscreenElement) void document.exitFullscreen();
-        else void el.requestFullscreen().catch(() => {});
-      }}
+      fullscreen={fullscreen.active}
+      onToggleFullscreen={
+        fullscreen.supported ? () => void fullscreen.toggle() : undefined
+      }
     />
   ) : (
     <DetailedBody />
@@ -132,7 +125,8 @@ function CompactBody({
   onToggleFullscreen,
 }: {
   fullscreen: boolean;
-  onToggleFullscreen: () => void;
+  /** Absent where the browser cannot make the stage fullscreen (an iPhone). */
+  onToggleFullscreen?: () => void;
 }) {
   const { stage } = useRoomUI();
   return (
@@ -182,16 +176,18 @@ function CompactBody({
 
       {stage.mode === "grid" && <TilesPerPage />}
 
-      <div className="mt-1 border-t border-line pt-1">
-        <button
-          type="button"
-          onClick={onToggleFullscreen}
-          className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40"
-        >
-          <ExpandIcon className="size-4 shrink-0 text-ink-3" />
-          {fullscreen ? "Exit fullscreen" : "Fullscreen"}
-        </button>
-      </div>
+      {onToggleFullscreen && (
+        <div className="mt-1 border-t border-line pt-1">
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-brand/40"
+          >
+            <ExpandIcon className="size-4 shrink-0 text-ink-3" />
+            {fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          </button>
+        </div>
+      )}
 
       {stage.pinnedParticipantId && (
         <button

@@ -4,7 +4,6 @@
  */
 
 import {
-  installKind,
   iosVersion,
   optInKey,
   optInState,
@@ -76,14 +75,6 @@ ok("busy while subscribing", optInState({ ...base, busy: true }) === "busy");
 ok("denied is blocked", optInState({ ...base, permission: "denied" }) === "blocked");
 ok("granted and subscribed is on", optInState({ ...base, permission: "granted", subscribed: true }) === "on");
 ok("granted but not subscribed still asks", optInState({ ...base, permission: "granted" }) === "ask");
-
-// ---- install
-ok("installed offers nothing", installKind({ ua: ANDROID_CHROME, standalone: true, deferredPrompt: true }) === "none");
-ok("captured prompt offers the prompt", installKind({ ua: ANDROID_CHROME, standalone: false, deferredPrompt: true }) === "prompt");
-ok("no prompt yet on Android offers nothing", installKind({ ua: ANDROID_CHROME, standalone: false, deferredPrompt: false }) === "none");
-ok("iPhone gets instructions", installKind({ ua: IPHONE_17, standalone: false, deferredPrompt: false }) === "ios");
-ok("iPad gets instructions", installKind({ ua: IPAD_DESKTOP, maxTouchPoints: 5, standalone: false, deferredPrompt: false }) === "ios");
-ok("a Mac gets nothing", installKind({ ua: MAC_SAFARI, standalone: false, deferredPrompt: false }) === "none");
 
 // ---- encoding and bodies
 const key = urlBase64ToUint8Array("BAEC_-8");

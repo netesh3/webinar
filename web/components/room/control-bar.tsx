@@ -708,6 +708,18 @@ export function ControlBar() {
     }
   }, [previewChrome, fileShare, localParticipant, notify]);
 
+  /* Desktop floating share bar (apps/desktop share-session): Stop sharing there
+   * must run the same teardown as the in-room button. */
+  useEffect(() => {
+    const d = (window as unknown as {
+      webinarlivDesktop?: { onStopShare?: (cb: () => void) => () => void };
+    }).webinarlivDesktop;
+    if (typeof d?.onStopShare !== "function") return;
+    return d.onStopShare(() => {
+      void stopSharing();
+    });
+  }, [stopSharing]);
+
   /* The browser ending the share — its own "Stop sharing", or the shared window closing.
    * LiveKit unpublishes the ended video itself but leaves the tab audio published and
    * capturing, which keeps the capture alive; sweep up the rest of it. */
@@ -1150,7 +1162,7 @@ export function ControlBar() {
       // rendering under a mic button that appears a moment later is the
       // exact bug this is fixing. The inline style below only ever refines
       // it down once real data is in, never up past this floor.
-      className={`relative flex min-h-14 shrink-0 items-center ${shiftToolsRight ? "justify-end" : "justify-center"} border-t border-white/10 bg-stage-bar pl-48 pr-16 sm:px-56`}
+      className={`relative z-40 flex min-h-14 shrink-0 items-center ${shiftToolsRight ? "justify-end" : "justify-center"} border-t border-white/10 bg-stage-bar pl-48 pr-16 sm:px-56`}
       style={{
         // Clears the iOS home indicator; without it the leave button sits
         // under the system gesture area and is genuinely hard to hit.
@@ -1709,7 +1721,6 @@ export function ControlBar() {
               // between — see LeaveConfirm for why that step is a popover and not a modal.
               else setLeaveConfirmOpen((v) => !v);
             }}
-            disabled={connecting}
             aria-label={
               isHost
                 ? `Leave or end the ${join.meeting ? "meeting" : "webinar"}`
@@ -1717,8 +1728,7 @@ export function ControlBar() {
             }
             aria-haspopup={isHost ? "menu" : "dialog"}
             aria-expanded={isHost ? leaveMenuOpen : leaveConfirmOpen}
-            title={connecting ? "Connecting…" : undefined}
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-live sm:px-4"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-live px-3 text-[13px] font-semibold text-white transition-colors hover:bg-live/90 outline-none focus-visible:ring-2 focus-visible:ring-white/50 sm:px-4"
             style={phoneBarBoxStyle(phoneFit)}
           >
             <LeaveIcon

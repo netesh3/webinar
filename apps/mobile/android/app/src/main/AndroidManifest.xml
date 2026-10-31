@@ -58,12 +58,26 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Keeps the WebView in the FOREGROUND bucket during a live room so
+             Android does not kill it under memory pressure (CallQosService). -->
+        <service
+            android:name=".CallQosService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Wi-Fi high-perf / low-latency lock and a CPU wake lock during a live room. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Foreground service so a live webinar is not treated as a background tab. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- WebRTC (LiveKit) in the WebView. Capacitor's BridgeWebChromeClient already
          implements onPermissionRequest: it asks for the runtime permission(s) matching
          the page's getUserMedia request and then grants the WebView's PermissionRequest,

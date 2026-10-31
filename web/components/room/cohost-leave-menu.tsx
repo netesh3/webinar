@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { bindOutsideDismiss } from "@/lib/outside-dismiss";
+import { useCompact } from "@/lib/compact";
 import { leaveMenuItems } from "@/lib/panelists";
 import { useRoomUI } from "./context";
 
@@ -25,6 +27,7 @@ export function CoHostLeaveMenu({
   const { join } = useRoomUI();
   const meeting = !!join.meeting;
   const panel = useRef<HTMLDivElement | null>(null);
+  const compact = useCompact();
   const items = leaveMenuItems(false);
 
   useEffect(() => {
@@ -32,17 +35,15 @@ export function CoHostLeaveMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    const onDown = (e: PointerEvent) => {
-      if (panel.current?.contains(e.target as Node)) return;
-      // Leave button toggles open; ignore that click so we do not close-then-reopen.
-      if ((e.target as HTMLElement).closest?.("[data-host-leave-trigger]")) return;
-      onClose();
-    };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onDown);
+    const stopOutside = bindOutsideDismiss({
+      contains: (node) => !!panel.current?.contains(node),
+      ignoreClosest: "[data-host-leave-trigger]",
+      onOutside: onClose,
+    });
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onDown);
+      stopOutside();
     };
   }, [open, onClose]);
 
@@ -53,7 +54,16 @@ export function CoHostLeaveMenu({
       ref={panel}
       role="menu"
       aria-label="Leave options"
-      className="room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
+      className={
+        compact
+          ? "room-dark fixed right-2 z-[80] w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
+          : "room-dark absolute right-0 bottom-full z-50 mb-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-2xl"
+      }
+      style={
+        compact
+          ? { bottom: "calc(3.75rem + env(safe-area-inset-bottom, 0px))" }
+          : undefined
+      }
     >
       {items.some((i) => i.kind === "leave") && (
         <button

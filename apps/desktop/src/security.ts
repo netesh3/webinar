@@ -11,7 +11,7 @@ import {
   type Session,
   type WebContents,
 } from "electron";
-import { isExternalSafe, isFlowUrl, isSiteOrigin, isSiteUrl } from "./config";
+import { isExternalSafe, isFlowUrl, isSiteOrigin, isSiteUrl, PROTOCOL, resolveLaunchTarget } from "./config";
 
 /**
  * Granted to the site origin only. Everything else (geolocation, MIDI, HID,
@@ -86,6 +86,31 @@ export function openExternal(url: string): void {
   else console.warn("[security] refusing to open", url);
 }
 
+/** URL of the frame that sent an IPC message. senderFrame.url can throw once
+ *  the frame is gone; fall back to the webContents URL so a sign-in click is
+ *  not silently dropped. */
+export function senderUrl(event: {
+  senderFrame?: { url: string } | null;
+  sender: { getURL: () => string };
+}): string {
+  try {
+    const fromFrame = event.senderFrame?.url;
+    if (fromFrame) return fromFrame;
+  } catch {
+    // Render frame was disposed.
+  }
+  try {
+    return event.sender.getURL();
+  } catch {
+    return "";
+  }
+}
+
+function appProtocolTarget(url: string): string | null | undefined {
+  if (!url.startsWith(`${PROTOCOL}:`)) return undefined;
+  return resolveLaunchTarget(url);
+}
+
 /** WebContents opened as an in-app popup for a sign-in / payment flow. */
 const flowContents = new WeakSet<WebContents>();
 
@@ -107,6 +132,25 @@ export function guardContents(
   childWindowOptions: () => BrowserWindowConstructorOptions,
 ): void {
   contents.on("will-navigate", (event, url) => {
+    const appTarget = appProtocolTarget(url);
+    if (appTarget !== undefined) {
+      event.preventDefault();
+      if (appTarget) void contents.loadURL(appTarget);
+      return;
+    }
+    if (isSiteUrl(url) || isFlowUrl(url)) return;
+    if (flowContents.has(contents) && url.startsWith("https:")) return;
+    event.preventDefault();
+    openExternal(url);
+  });
+
+  contents.on("will-redirect", (event, url) => {
+    const appTarget = appProtocolTarget(url);
+    if (appTarget !== undefined) {
+      event.preventDefault();
+      if (appTarget) void contents.loadURL(appTarget);
+      return;
+    }
     if (isSiteUrl(url) || isFlowUrl(url)) return;
     if (flowContents.has(contents) && url.startsWith("https:")) return;
     event.preventDefault();

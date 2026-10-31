@@ -3,11 +3,15 @@
 // latest.json. The layout and manifest are the contract in docs/downloads.md.
 //
 //   node scripts/downloads/publish.mjs desktop --version 0.1.0 --dir dist \
-//        --signed-mac false --signed-windows false
+//        --signed-mac false --signed-windows false [--platform mac|windows]
 //   node scripts/downloads/publish.mjs android --version 0.1.0 --version-code 42 \
 //        --apk app-release.apk --signed true
-//   node scripts/downloads/publish.mjs promote-desktop --version 0.1.0   # rollback / re-publish
+//   node scripts/downloads/publish.mjs promote-desktop --version 0.1.0 [--platform mac|windows]
 //   node scripts/downloads/publish.mjs promote-android --version 0.1.0
+//
+// Desktop platforms are published independently: `--platform windows` (CI) touches only the
+// Windows installer, latest.yml and files["win-x64"]; `--platform mac` (the owner's Mac) only
+// the macOS ones. Without --platform, every platform with an installer in --dir is published.
 //
 // Options for every command:
 //   --dry-run                 print the plan and the merged latest.json, write nothing
@@ -36,10 +40,15 @@ import {
   CACHE_LATEST,
   DEFAULT_BASE_URL,
   DEFAULT_BUCKET,
-  DESKTOP_FEED_FILES,
+  DESKTOP_FEED_FOR,
+  DESKTOP_PLATFORMS,
   DESKTOP_TARGETS,
   INDEX_KEY,
   MANIFEST_KEY,
+  assertDesktopPlatform,
+  desktopTargetsFor,
+  mergeDesktopSection,
+  normalizeManifest,
   androidLatestKey,
   androidVersionedKey,
   assertVersion,
@@ -104,9 +113,11 @@ async function putLandingPage(store, log) {
   });
 }
 
+/** `value` is the new section, or a function of the current one (a manifest read from the bucket). */
 async function writeManifest(store, { section, value, env, now, log }) {
   const current = parseManifest(await store.getText(MANIFEST_KEY));
-  const merged = mergeManifest(current, { section, value, stores: storesFromEnv(env), now });
+  const next = typeof value === "function" ? value(normalizeManifest(current)[section]) : value;
+  const merged = mergeManifest(current, { section, value: next, stores: storesFromEnv(env), now });
   log(`put   ${MANIFEST_KEY} (${section} section)`);
   await store.putText(MANIFEST_KEY, `${JSON.stringify(merged, null, 2)}\n`, {
     contentType: contentTypeFor(MANIFEST_KEY),
@@ -116,40 +127,49 @@ async function writeManifest(store, { section, value, env, now, log }) {
   return merged;
 }
 
-function desktopSection({ version, releasedAt, signed, files, baseUrl }) {
-  const out = { version, releasedAt, signed, files: {} };
-  for (const t of DESKTOP_TARGETS) {
-    const f = files[t.id];
-    if (!f) continue;
-    out.files[t.id] = { url: publicUrl(baseUrl, desktopLatestKey(t)), size: f.size, sha256: f.sha256 };
+/** latest.json file entries for the given targets: { id: { url, size, sha256, version, releasedAt } }. */
+function desktopFiles(entries, baseUrl) {
+  const out = {};
+  for (const { t, size, sha256, version, releasedAt } of entries) {
+    out[t.id] = { url: publicUrl(baseUrl, desktopLatestKey(t)), size, sha256, version, releasedAt };
   }
   return out;
 }
 
-export async function publishDesktop({ store, dir, version, signedMac, signedWindows, baseUrl, env, now, log }) {
+/** Which platforms a command works on: the one asked for, or both. */
+function wantedPlatforms(platform) {
+  return platform ? [assertDesktopPlatform(platform)] : [...DESKTOP_PLATFORMS];
+}
+
+/**
+ * Publish the desktop installers found in `dir` for `platform` ("mac" or "windows"), or for
+ * every platform that has one when `platform` is not given. Only the published platforms'
+ * files, signed flags and update feeds change; the other platform stays as it is, on
+ * whatever version it is on.
+ */
+export async function publishDesktop({ store, dir, version, platform, signedMac, signedWindows, baseUrl, env, now, log }) {
   assertVersion(version);
   now ??= new Date().toISOString();
   const signed = { mac: Boolean(signedMac), windows: Boolean(signedWindows) };
+  const wanted = wantedPlatforms(platform);
 
   const installers = [];
   for (const t of DESKTOP_TARGETS) {
+    if (!wanted.includes(t.platform)) continue;
     const path = join(dir, desktopFileName(version, t));
     if (!existsSync(path)) continue;
     installers.push({ t, path, ...(await fileInfo(path)) });
   }
-  if (!installers.some((i) => i.t.platform === "mac")) {
-    throw new Error(`missing macOS installer in ${dir}`);
-  }
+  if (platform && !installers.length) throw new Error(`missing ${platform} installer for ${version} in ${dir}`);
+  if (!installers.length) throw new Error(`no desktop installers for ${version} in ${dir}`);
+  const platforms = DESKTOP_PLATFORMS.filter((p) => installers.some((i) => i.t.platform === p));
 
   const feeds = [];
   const payloadNames = new Set();
-  for (const name of DESKTOP_FEED_FILES) {
+  for (const p of platforms) {
+    const name = DESKTOP_FEED_FOR[p];
     const path = join(dir, name);
-    if (!existsSync(path)) {
-      // Windows feed is absent when this Mac ships macOS-only (no Azure Trusted Signing).
-      if (name === "latest.yml") continue;
-      throw new Error(`missing updater feed ${path}`);
-    }
+    if (!existsSync(path)) throw new Error(`missing updater feed ${path}`);
     const text = await readFile(path, "utf8");
     const feedVersion = updaterFeedVersion(text);
     if (feedVersion !== version) throw new Error(`${name} is for version ${feedVersion}, expected ${version}`);
@@ -179,10 +199,14 @@ export async function publishDesktop({ store, dir, version, signedMac, signedWin
 
   // A re-run of the same build keeps the original release time and signed flags.
   const prior = (t) => existing.get(desktopVersionedKey(version, t));
-  const releasedAt = prior(DESKTOP_TARGETS[0])?.["released-at"] ?? now;
-  for (const t of DESKTOP_TARGETS) {
-    const was = prior(t)?.signed;
-    if (was === "true" || was === "false") signed[t.platform] = was === "true";
+  const releasedAt = {};
+  for (const p of platforms) {
+    const first = installers.find((i) => i.t.platform === p);
+    releasedAt[p] = prior(first.t)?.["released-at"] ?? now;
+  }
+  for (const i of installers) {
+    const was = prior(i.t)?.signed;
+    if (was === "true" || was === "false") signed[i.t.platform] = was === "true";
   }
 
   for (const i of installers) {
@@ -191,7 +215,12 @@ export async function publishDesktop({ store, dir, version, signedMac, signedWin
     await store.copy(desktopVersionedKey(version, i.t), key, {
       contentType: contentTypeFor(key),
       cacheControl: CACHE_LATEST,
-      metadata: prior(i.t) ?? { version, "released-at": releasedAt, signed: String(signed[i.t.platform]), sha256: i.sha256 },
+      metadata: prior(i.t) ?? {
+        version,
+        "released-at": releasedAt[i.t.platform],
+        signed: String(signed[i.t.platform]),
+        sha256: i.sha256,
+      },
     });
   }
   for (const f of feeds) {
@@ -199,58 +228,73 @@ export async function publishDesktop({ store, dir, version, signedMac, signedWin
     await store.putText(desktopFeedKey(f.name), f.text, { contentType: contentTypeFor(f.name), cacheControl: CACHE_FEED });
   }
 
-  const files = Object.fromEntries(installers.map((i) => [i.t.id, { size: i.size, sha256: i.sha256 }]));
-  const value = desktopSection({ version, releasedAt, signed, files, baseUrl });
+  const files = desktopFiles(
+    installers.map((i) => ({ t: i.t, size: i.size, sha256: i.sha256, version, releasedAt: releasedAt[i.t.platform] })),
+    baseUrl,
+  );
+  const value = (current) => mergeDesktopSection(current, { platforms, files, signed });
   return writeManifest(store, { section: "desktop", value, env, now, log });
 }
 
-export async function promoteDesktop({ store, version, baseUrl, env, now, log }) {
+/**
+ * Make `version`, already in the bucket, the current one for `platform`, or for every
+ * platform that has that version when `platform` is not given. The other platform is left
+ * on its own version.
+ */
+export async function promoteDesktop({ store, version, platform, baseUrl, env, now, log }) {
   assertVersion(version);
   now ??= new Date().toISOString();
-  const files = {};
-  const meta = {};
-  for (const t of DESKTOP_TARGETS) {
-    const key = desktopVersionedKey(version, t);
-    const head = await store.head(key);
-    if (!head?.metadata?.sha256) {
-      if (t.platform === "windows") continue;
-      throw new Error(`${key} is not in the bucket (or has no sha256 metadata)`);
+  const wanted = wantedPlatforms(platform);
+  const found = [];
+  for (const p of wanted) {
+    const targets = [];
+    for (const t of desktopTargetsFor(p)) {
+      const key = desktopVersionedKey(version, t);
+      const head = await store.head(key);
+      targets.push({ t, key, head: head?.metadata?.sha256 ? head : null });
     }
-    files[t.id] = { size: head.size, sha256: head.metadata.sha256 };
-    meta[t.id] = head.metadata;
+    const missing = targets.filter((x) => !x.head);
+    if (missing.length === targets.length) {
+      if (platform) throw new Error(`${missing[0].key} is not in the bucket (or has no sha256 metadata)`);
+      continue;
+    }
+    if (missing.length) throw new Error(`${missing[0].key} is not in the bucket (or has no sha256 metadata)`);
+    found.push({ platform: p, targets });
   }
+  if (!found.length) throw new Error(`no desktop installers for ${version} in the bucket`);
+
   const feeds = [];
-  for (const name of DESKTOP_FEED_FILES) {
+  for (const { platform: p } of found) {
+    const name = DESKTOP_FEED_FOR[p];
     const text = await store.getText(desktopFeedVersionedKey(version, name));
-    if (text == null) {
-      if (name === "latest.yml") continue;
-      throw new Error(`${desktopFeedVersionedKey(version, name)} is not in the bucket`);
-    }
+    if (text == null) throw new Error(`${desktopFeedVersionedKey(version, name)} is not in the bucket`);
     for (const n of updaterFeedFiles(text)) {
       if (!(await store.head(desktopPayloadKey(n)))) throw new Error(`${desktopPayloadKey(n)} is not in the bucket`);
     }
     feeds.push({ name, text });
   }
 
-  for (const t of DESKTOP_TARGETS) {
-    if (!files[t.id]) continue;
-    log(`copy  ${desktopVersionedKey(version, t)} -> ${desktopLatestKey(t)}`);
-    await store.copy(desktopVersionedKey(version, t), desktopLatestKey(t), {
-      contentType: contentTypeFor(desktopLatestKey(t)),
-      cacheControl: CACHE_LATEST,
-      metadata: meta[t.id],
-    });
+  const entries = [];
+  const signed = {};
+  for (const { platform: p, targets } of found) {
+    signed[p] = targets[0].head.metadata.signed === "true";
+    for (const { t, key, head } of targets) {
+      log(`copy  ${key} -> ${desktopLatestKey(t)}`);
+      await store.copy(key, desktopLatestKey(t), {
+        contentType: contentTypeFor(desktopLatestKey(t)),
+        cacheControl: CACHE_LATEST,
+        metadata: head.metadata,
+      });
+      entries.push({ t, size: head.size, sha256: head.metadata.sha256, version, releasedAt: targets[0].head.metadata["released-at"] ?? now });
+    }
   }
   for (const f of feeds) {
     log(`put   ${desktopFeedKey(f.name)}`);
     await store.putText(desktopFeedKey(f.name), f.text, { contentType: contentTypeFor(f.name), cacheControl: CACHE_FEED });
   }
-  const signed = {
-    mac: meta["mac-arm64"]?.signed === "true",
-    windows: meta["win-x64"]?.signed === "true",
-  };
-  const releasedAt = meta["mac-arm64"]?.["released-at"] ?? now;
-  const value = desktopSection({ version, releasedAt, signed, files, baseUrl });
+  const platforms = found.map((x) => x.platform);
+  const files = desktopFiles(entries, baseUrl);
+  const value = (current) => mergeDesktopSection(current, { platforms, files, signed });
   return writeManifest(store, { section: "desktop", value, env, now, log });
 }
 
@@ -335,6 +379,7 @@ async function main(argv) {
       signed: { type: "string" },
       "signed-mac": { type: "string" },
       "signed-windows": { type: "string" },
+      platform: { type: "string" },
       "dry-run": { type: "boolean", default: false },
       "fake-bucket": { type: "string" },
       "current-manifest": { type: "string" },
@@ -386,6 +431,7 @@ async function main(argv) {
         dir: values.dir,
         signedMac: bool(values["signed-mac"]),
         signedWindows: bool(values["signed-windows"]),
+        platform: values.platform,
       });
       break;
     case "android":
@@ -398,7 +444,7 @@ async function main(argv) {
       });
       break;
     case "promote-desktop":
-      manifest = await promoteDesktop(common);
+      manifest = await promoteDesktop({ ...common, platform: values.platform });
       break;
     case "promote-android":
       manifest = await promoteAndroid(common);

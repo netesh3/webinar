@@ -8,10 +8,12 @@ import assert from "node:assert/strict";
 import {
   PHONE_LONG_SIDE,
   capLongSide,
+  heldViewport,
   isAppleMobile,
   isWebKitEngine,
   needsUprightCopy,
   processingLongSide,
+  publishSize,
   uprightSize,
 } from "./frame-orientation.ts";
 
@@ -40,9 +42,11 @@ const chromeAndroid =
   "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
 const firefoxMac =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:132.0) Gecko/20100101 Firefox/132.0";
+const capacitorIOS =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 WebinarLivApp/1.0";
 
 // WebKit: Safari everywhere, and every iOS browser whatever its name.
-for (const ua of [safariIOS, chromeIOS, firefoxIOS, safariIPad, safariMac]) {
+for (const ua of [safariIOS, chromeIOS, firefoxIOS, safariIPad, safariMac, capacitorIOS]) {
   assert.equal(isWebKitEngine(ua), true, ua);
 }
 for (const ua of [chromeMac, edgeWin, chromeAndroid, firefoxMac, ""]) {
@@ -51,7 +55,7 @@ for (const ua of [chromeMac, edgeWin, chromeAndroid, firefoxMac, ""]) {
 
 // The copy is for WebKit, every version: iOS 17, 18, and 26 (whose UA freezes the OS at 18_7
 // and puts the real version in Version/26.x), Safari, Chrome and Firefox on iOS, iPad, Mac.
-for (const ua of [safariIOS, safariIOS26, safariIOS17, chromeIOS, chromeIOS26, firefoxIOS, safariIPad, safariMac]) {
+for (const ua of [safariIOS, safariIOS26, safariIOS17, chromeIOS, chromeIOS26, firefoxIOS, safariIPad, safariMac, capacitorIOS]) {
   assert.equal(needsUprightCopy({ ua }), true, ua);
 }
 // Chrome/Edge (modern path) and Firefox (fallback, not WebKit) are untouched.
@@ -60,6 +64,7 @@ for (const ua of [chromeMac, edgeWin, chromeAndroid, firefoxMac, ""]) {
 }
 
 // Apple phones and tablets, iPadOS's desktop-looking UA by its touch points.
+assert.equal(isAppleMobile(capacitorIOS), true);
 assert.equal(isAppleMobile(safariIOS26), true);
 assert.equal(isAppleMobile(chromeIOS), true);
 assert.equal(isAppleMobile(safariIPad), true);
@@ -112,6 +117,31 @@ assert.deepEqual(uprightSize({ displayWidth: 720, displayHeight: 1280, rotation:
   w: 720,
   h: 1280,
 });
+// The iPhone app: videoWidth is the landscape sensor, same as the frame, so `shown` does
+// not swap. The viewport (how the phone is held) does.
+const iphonePortrait = { width: 390, height: 844 };
+assert.deepEqual(uprightSize(buffer, { width: 1280, height: 720 }, iphonePortrait), {
+  w: 720,
+  h: 1280,
+});
+assert.deepEqual(uprightSize(buffer, null, iphonePortrait), { w: 720, h: 1280 });
+assert.deepEqual(
+  uprightSize(buffer, { width: 1280, height: 720 }, { width: 844, height: 390 }),
+  { w: 1280, h: 720 },
+);
+// Rotation still wins over a landscape viewport.
+assert.deepEqual(uprightSize({ ...buffer, rotation: 90 }, null, { width: 844, height: 390 }), {
+  w: 720,
+  h: 1280,
+});
+assert.equal(heldViewport({ ua: safariIOS, width: 390, height: 844 })?.height, 844);
+assert.equal(heldViewport({ ua: chromeMac, width: 390, height: 844 }), null);
+
+// Fallback canvas: portrait processed frame, landscape camera → 720p portrait on the wire.
+assert.deepEqual(publishSize({ w: 360, h: 640 }, { w: 1280, h: 720 }), { w: 720, h: 1280 });
+assert.deepEqual(publishSize({ w: 720, h: 1280 }, { w: 1280, h: 720 }), { w: 720, h: 1280 });
+assert.deepEqual(publishSize({ w: 1280, h: 720 }, { w: 1280, h: 720 }), { w: 1280, h: 720 });
+
 // Nothing to go on: the frame's own numbers.
 assert.deepEqual(uprightSize(buffer, null), { w: 1280, h: 720 });
 assert.deepEqual(uprightSize(buffer, { width: 0, height: 0 }), { w: 1280, h: 720 });

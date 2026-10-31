@@ -10,6 +10,7 @@
 import {
   asBackgroundChoice,
   backgroundsAvailable,
+  backgroundsBlockedOnIOS,
   describeBackground,
   describeBackgroundError,
   isBackgroundAttachAbort,
@@ -92,6 +93,28 @@ console.log("\nvirtualBackgroundsEnabled / backgroundsAvailable");
     if (prev === undefined) delete process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS;
     else process.env.NEXT_PUBLIC_VIRTUAL_BACKGROUNDS = prev;
   }
+}
+
+console.log("\nbackgroundsBlockedOnIOS");
+
+{
+  const iphone =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 WebinarLivApp/1.0";
+  const safariIOS =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+  const chromeAndroid =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36";
+  const chromeMac =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36";
+
+  ok(backgroundsBlockedOnIOS(iphone), "iPhone app cannot run blur");
+  ok(backgroundsBlockedOnIOS(safariIOS), "Safari on iPhone cannot run blur");
+  ok(!backgroundsBlockedOnIOS(chromeAndroid), "Android still offers blur");
+  ok(!backgroundsBlockedOnIOS(chromeMac), "desktop Mac still offers blur");
+  ok(
+    backgroundsBlockedOnIOS(chromeMac, 5),
+    "iPadOS (Mac UA + touch) cannot run blur",
+  );
 }
 
 console.log("\ndescribeBackground");
