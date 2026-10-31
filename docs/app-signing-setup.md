@@ -330,7 +330,7 @@ Release (after PR #776, the downloads pipeline, is merged). The desktop tag must
 `apps/desktop/package.json` (currently `0.1.0`).
 
 GitHub-hosted `macos-latest` is off until the repo variables `HOSTED_MAC_BUILD` /
-`GITHUB_HOSTED_MOBILE` / `GITHUB_HOSTED_MACOS` are `true`. Until then this Mac builds the
+`HOSTED_ANDROID_BUILD` / `HOSTED_IOS_BUILD` are `true`. Until then this Mac builds the
 signed macOS app, Android APK/AAB and iOS IPA, and `scripts/downloads/publish.mjs` uploads
 through Wrangler OAuth (Windows is skipped with Azure Trusted Signing). Tags still mark the
 version:
