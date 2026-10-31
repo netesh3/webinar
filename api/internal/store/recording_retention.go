@@ -126,33 +126,44 @@ func (s *Store) RecordingOwnerOf(ctx context.Context, id string, defaultDays int
 /* ExtendRecording moves a session's expiry RecordingKeepMonths past the expiry in effect.
  * onlyIfExpiresAt, when set, makes it a no-op unless the expiry is still that one — what
  * keeps a reused email link from extending twice. Returns the new expiry and whether it
- * moved. Turns reminders back on: a recording somebody keeps is one they care about. */
+ * moved. Turns reminders back on: a recording somebody keeps is one they care about.
+ *
+ * The months are added by types.AddMonths (clamped to the target month's end), not by SQL
+ * interval arithmetic, so the expiry follows one rule wherever it is computed. The session
+ * row is locked while the new expiry is worked out: two keeps at once add twice, in turn. */
 func (s *Store) ExtendRecording(ctx context.Context, sessionID string, defaultDays int, onlyIfExpiresAt *time.Time) (time.Time, bool, error) {
-	var (
-		expires *time.Time
-		moved   bool
-	)
-	err := s.pool.QueryRow(ctx, `
-		WITH cur AS (SELECT recording_expires_at($1::uuid, $2) AS at),
-		upd AS (
-		  UPDATE recordings r
-		     SET keep_until = cur.at + make_interval(months => $4), reminders_off = false
-		    FROM cur
-		   WHERE r.id = $1::uuid AND r.parent_id IS NULL AND cur.at IS NOT NULL
-		     AND ($3::timestamptz IS NULL OR date_trunc('second', cur.at) = date_trunc('second', $3::timestamptz))
-		  RETURNING r.keep_until
-		)
-		SELECT coalesce((SELECT keep_until FROM upd), (SELECT at FROM cur)), EXISTS (SELECT 1 FROM upd)`,
-		sessionID, defaultDays, onlyIfExpiresAt, types.RecordingKeepMonths,
-	).Scan(&expires, &moved)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return time.Time{}, false, err
 	}
-	if expires == nil {
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var expires *time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT recording_expires_at(r.id, $2) FROM recordings r
+		 WHERE r.id = $1::uuid AND r.parent_id IS NULL FOR UPDATE`,
+		sessionID, defaultDays,
+	).Scan(&expires)
+	if noRows(err) || (err == nil && expires == nil) {
 		// No such session, or a deployment that deletes nothing: there is no expiry to move.
 		return time.Time{}, false, ErrNotFound
 	}
-	return *expires, moved, nil
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if onlyIfExpiresAt != nil && !expires.Truncate(time.Second).Equal(onlyIfExpiresAt.Truncate(time.Second)) {
+		return *expires, false, nil
+	}
+	next := types.AddMonths(*expires, types.RecordingKeepMonths)
+	if _, err := tx.Exec(ctx,
+		`UPDATE recordings SET keep_until = $2, reminders_off = false WHERE id = $1::uuid`,
+		sessionID, next); err != nil {
+		return time.Time{}, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return time.Time{}, false, err
+	}
+	return next, true, nil
 }
 
 /* LetRecordingExpire undoes "Keep longer" and stops the reminders: the expiry goes back to

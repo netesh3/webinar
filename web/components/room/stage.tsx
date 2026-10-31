@@ -734,7 +734,6 @@ function FloatingCameras({
   const panel = useRef<HTMLElement | null>(null);
   const [layout, setLayout] = useState({ left: FLOAT_MARGIN, top: FLOAT_MARGIN });
   const dragRef = useRef(drag);
-  dragRef.current = drag;
   const onWinMove = useRef<(e: PointerEvent) => void>(() => {});
   const onWinUp = useRef<(e: PointerEvent) => void>(() => {});
   const onWinCancel = useRef<(e: PointerEvent) => void>(() => {});
@@ -860,53 +859,58 @@ function FloatingCameras({
 
   const showChrome = hover || drag !== null || resizing !== null;
 
-  onWinMove.current = (e: PointerEvent) => {
-    if (movePtr.current === e.pointerId && moveFrom.current) {
-      setDrag({
-        dx: e.clientX - moveFrom.current.x,
-        dy: e.clientY - moveFrom.current.y,
-      });
-      return;
-    }
-    if (resizePtr.current === e.pointerId) applyResize(e.clientX, e.clientY, false);
-  };
-  onWinUp.current = (e: PointerEvent) => {
-    if (movePtr.current === e.pointerId && moveFrom.current) {
-      const left = moveFrom.current.left + (e.clientX - moveFrom.current.x);
-      const top = moveFrom.current.top + (e.clientY - moveFrom.current.y);
-      movePtr.current = null;
-      moveFrom.current = null;
-      setDrag(null);
-      placeAt(left, top);
-      return;
-    }
-    if (resizePtr.current === e.pointerId) {
-      applyResize(e.clientX, e.clientY, true);
-      resizePtr.current = null;
-      resizeFrom.current = null;
-      setResizing(null);
-    }
-  };
-  onWinCancel.current = (e: PointerEvent) => {
-    /* iOS treats a finger-move as a scroll and sends pointercancel. Commit the
-     * last offset rather than snapping the cameras back — that snap is why the
-     * popup looked immovable in the app. */
-    if (movePtr.current === e.pointerId && moveFrom.current) {
-      const d = dragRef.current;
-      const left = moveFrom.current.left + (d?.dx ?? 0);
-      const top = moveFrom.current.top + (d?.dy ?? 0);
-      movePtr.current = null;
-      moveFrom.current = null;
-      setDrag(null);
-      placeAt(left, top);
-      return;
-    }
-    if (resizePtr.current === e.pointerId) {
-      resizePtr.current = null;
-      resizeFrom.current = null;
-      setResizing(null);
-    }
-  };
+  // The window listeners below call these; point them at this render's closures
+  // after commit (refs must not be written during render).
+  useLayoutEffect(() => {
+    dragRef.current = drag;
+    onWinMove.current = (e: PointerEvent) => {
+      if (movePtr.current === e.pointerId && moveFrom.current) {
+        setDrag({
+          dx: e.clientX - moveFrom.current.x,
+          dy: e.clientY - moveFrom.current.y,
+        });
+        return;
+      }
+      if (resizePtr.current === e.pointerId) applyResize(e.clientX, e.clientY, false);
+    };
+    onWinUp.current = (e: PointerEvent) => {
+      if (movePtr.current === e.pointerId && moveFrom.current) {
+        const left = moveFrom.current.left + (e.clientX - moveFrom.current.x);
+        const top = moveFrom.current.top + (e.clientY - moveFrom.current.y);
+        movePtr.current = null;
+        moveFrom.current = null;
+        setDrag(null);
+        placeAt(left, top);
+        return;
+      }
+      if (resizePtr.current === e.pointerId) {
+        applyResize(e.clientX, e.clientY, true);
+        resizePtr.current = null;
+        resizeFrom.current = null;
+        setResizing(null);
+      }
+    };
+    onWinCancel.current = (e: PointerEvent) => {
+      /* iOS treats a finger-move as a scroll and sends pointercancel. Commit the
+       * last offset rather than snapping the cameras back — that snap is why the
+       * popup looked immovable in the app. */
+      if (movePtr.current === e.pointerId && moveFrom.current) {
+        const d = dragRef.current;
+        const left = moveFrom.current.left + (d?.dx ?? 0);
+        const top = moveFrom.current.top + (d?.dy ?? 0);
+        movePtr.current = null;
+        moveFrom.current = null;
+        setDrag(null);
+        placeAt(left, top);
+        return;
+      }
+      if (resizePtr.current === e.pointerId) {
+        resizePtr.current = null;
+        resizeFrom.current = null;
+        setResizing(null);
+      }
+    };
+  });
 
   useEffect(() => {
     const move = (e: PointerEvent) => {

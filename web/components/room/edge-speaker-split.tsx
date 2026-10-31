@@ -23,7 +23,7 @@
  * The PiP sits under the player's own chrome and under captions (z-order), so a caption is
  * never covered, wherever the PiP is dragged. */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import {
   BEACON_OFF,
   beaconStrip,
@@ -226,18 +226,22 @@ export function EdgeSpeakerSplit({
   const rest = cornerPosition(prefs.corner, size, box);
   const pos = dragPos ?? rest;
 
+  // Latest values for the window listeners below. Synced after each commit (refs
+  // must not be written during render), which is before any later pointer event.
   const dragPosRef = useRef(dragPos);
-  dragPosRef.current = dragPos;
   const posRef = useRef(pos);
-  posRef.current = pos;
   const boxRefSize = useRef(box);
-  boxRefSize.current = box;
   const sizeRef = useRef(size);
-  sizeRef.current = size;
   const prefsRef = useRef(prefs);
-  prefsRef.current = prefs;
   const setPrefsRef = useRef(setPrefs);
-  setPrefsRef.current = setPrefs;
+  useLayoutEffect(() => {
+    dragPosRef.current = dragPos;
+    posRef.current = pos;
+    boxRefSize.current = box;
+    sizeRef.current = size;
+    prefsRef.current = prefs;
+    setPrefsRef.current = setPrefs;
+  });
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {

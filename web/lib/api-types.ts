@@ -9545,10 +9545,10 @@ export interface Recording {
  *  *
  *  * A recording is kept for the host's retention days (Admin -> Accounts, else the deployment's
  *  * RECORDINGS_RETENTION_DAYS, 30) from when it stopped. "Keep longer" adds RecordingKeepMonths
- *  * to the expiry in effect and can be repeated, while the host's stored recordings are within
- *  * their quota. The quota is the plan's (plan_limits, migration 0148: no plan 2 GB,
- *  * Professional and trials 10 GB, Business 50 GB, Enterprise 200 GB) unless an admin set one
- *  * for the account.
+ *  * to the expiry in effect (AddMonths: the day clamps to the month's end) and can be repeated,
+ *  * while the host's stored recordings are within their quota. The quota is the plan's
+ *  * (plan_limits, migration 0148: no plan 2 GB, Professional and trials 10 GB, Business 50 GB,
+ *  * Enterprise 200 GB) unless an admin set one for the account.
  */
 export const RecordingKeepMonths = 3;
 /**
@@ -9556,10 +9556,10 @@ export const RecordingKeepMonths = 3;
  *  *
  *  * A recording is kept for the host's retention days (Admin -> Accounts, else the deployment's
  *  * RECORDINGS_RETENTION_DAYS, 30) from when it stopped. "Keep longer" adds RecordingKeepMonths
- *  * to the expiry in effect and can be repeated, while the host's stored recordings are within
- *  * their quota. The quota is the plan's (plan_limits, migration 0148: no plan 2 GB,
- *  * Professional and trials 10 GB, Business 50 GB, Enterprise 200 GB) unless an admin set one
- *  * for the account.
+ *  * to the expiry in effect (AddMonths: the day clamps to the month's end) and can be repeated,
+ *  * while the host's stored recordings are within their quota. The quota is the plan's
+ *  * (plan_limits, migration 0148: no plan 2 GB, Professional and trials 10 GB, Business 50 GB,
+ *  * Enterprise 200 GB) unless an admin set one for the account.
  */
 export const RecordingQuotaWarnPercent = 90;
 /**
