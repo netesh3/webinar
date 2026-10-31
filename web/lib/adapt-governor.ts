@@ -185,9 +185,24 @@ export function governorStep(
  * qualityLimitationReason, that sample counts as all-or-nothing. `previous` (keyed by report
  * id) is mutated: it is the window boundary.
  */
-export function cpuLimitedShare(
+export function cpuLimitedShare(reports: readonly Record<string, unknown>[], previous: LimitWindow): number | undefined {
+  return limitedShare(reports, previous, "cpu");
+}
+
+/** The same for "bandwidth": the encoder held under its target because the pacer / estimator
+ *  had no room for it. The phone camera ladder's early signal (ADAPT.phoneCamera, 31 Oct 2026).
+ *  Its own `previous`: one window map per reason. */
+export function bandwidthLimitedShare(reports: readonly Record<string, unknown>[], previous: LimitWindow): number | undefined {
+  return limitedShare(reports, previous, "bandwidth");
+}
+
+/** Seconds limited by the tracked reason, and by every reason, per outbound-rtp id. */
+export type LimitWindow = Map<string, { limited: number; total: number }>;
+
+function limitedShare(
   reports: readonly Record<string, unknown>[],
-  previous: Map<string, { cpu: number; total: number }>,
+  previous: LimitWindow,
+  reason: "cpu" | "bandwidth",
 ): number | undefined {
   let worst: number | undefined;
   for (const r of reports) {
@@ -195,13 +210,13 @@ export function cpuLimitedShare(
     const d = r.qualityLimitationDurations as Record<string, number> | undefined;
     let share: number | undefined;
     if (d && typeof d === "object") {
-      const cpu = typeof d.cpu === "number" ? d.cpu : 0;
+      const limited = typeof d[reason] === "number" ? d[reason] : 0;
       const total = Object.values(d).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0);
       const before = previous.get(id);
-      previous.set(id, { cpu, total });
-      if (before && total > before.total) share = Math.max(0, Math.min(1, (cpu - before.cpu) / (total - before.total)));
+      previous.set(id, { limited, total });
+      if (before && total > before.total) share = Math.max(0, Math.min(1, (limited - before.limited) / (total - before.total)));
     } else if (typeof r.qualityLimitationReason === "string") {
-      share = r.qualityLimitationReason === "cpu" ? 1 : 0;
+      share = r.qualityLimitationReason === reason ? 1 : 0;
     }
     if (share !== undefined && (worst === undefined || share > worst)) worst = share;
   }

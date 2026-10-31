@@ -7,7 +7,7 @@ import {
   type LocalVideoTrack,
 } from "livekit-client";
 import { useEffect, useRef, useState } from "react";
-import { cameraCapturePreset, deviceLabel, useDevices, useMediaPreferences } from "@/lib/media";
+import { cameraCaptureOptions, deviceLabel, useDevices, useMediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { saveGoLiveChoice, type GoLiveChoice } from "@/lib/simulive-golive";
 import { Alert, Modal, Select } from "../controls";
@@ -79,7 +79,7 @@ function SetupBody({
     if (!camera) return;
     let stale = false;
     let opened: LocalVideoTrack | null = null;
-    createLocalVideoTrack({ deviceId: prefs.videoInput, resolution: cameraCapturePreset().resolution })
+    createLocalVideoTrack({ deviceId: prefs.videoInput, ...cameraCaptureOptions() })
       .then((track) => {
         if (stale) {
           track.stop();

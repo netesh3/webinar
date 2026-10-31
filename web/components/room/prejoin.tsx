@@ -16,7 +16,7 @@ import {
   useBackgroundDownload,
 } from "@/lib/backgrounds";
 import { progressFraction, setBackgroundLoadingView } from "@/lib/background-loading";
-import { cameraCapturePreset, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
+import { cameraCaptureOptions, deviceLabel, useDevices, type MediaPreferences } from "@/lib/media";
 import { describeMediaError } from "@/lib/media-errors";
 import { measureMicLevel } from "@/lib/mic-level";
 import { Alert, Select, Spinner } from "../controls";
@@ -252,7 +252,7 @@ export function PreJoin({
    *
    *  One resolution, the same one the room publishes at — there is nothing to choose here
    *  any more, because what actually goes out is decided by the measured uplink rather than
-   *  by a dropdown. See cameraCapturePreset in lib/media.ts.
+   *  by a dropdown. See cameraCaptureOptions in lib/network.ts (a phone's is capped at 720p).
    *
    *  `stale` is whether the caller has moved on while the camera was opening — another
    *  device chosen, or the camera turned off. Opening takes long enough for that to happen,
@@ -271,7 +271,7 @@ export function PreJoin({
         (processor) =>
           createLocalVideoTrack({
             deviceId: prefs.videoInput,
-            resolution: cameraCapturePreset().resolution,
+            ...cameraCaptureOptions(),
             processor,
           }),
         backgroundEngine,
