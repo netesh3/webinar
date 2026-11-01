@@ -167,6 +167,9 @@ const (
 	 * the on-demand video server failing to start or not being ready at a session's start
 	 * (api/internal/api/sfu_box.go). */
 	NotifyOpsAlert NotificationKind = "ops_alert"
+	/* NotifyWhatsAppLimited is the host's bell when Meta limits their WhatsApp number
+	 * (error 131048, spam rate limit) and the outbox pauses their messages. */
+	NotifyWhatsAppLimited NotificationKind = "whatsapp_limited"
 )
 
 /* WhatsAppReminderKinds are the automatic WhatsApp messages, in the order they

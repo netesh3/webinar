@@ -397,6 +397,8 @@ function AlertItem({
         href={
           a.kind === "ops_alert"
             ? "/admin"
+            : a.kind === "whatsapp_limited"
+            ? "/host/messages"
             : a.kind === "recording_expiring"
             ? a.webinarId
               ? `/host/${a.webinarId}?tab=recording`

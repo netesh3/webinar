@@ -206,3 +206,20 @@ func (s *Store) MarkExpiryWarned(ctx context.Context, userID, token string) erro
 		 WHERE id = $1 AND whatsapp_access_token = $2`, userID, token)
 	return err
 }
+
+/* AlertWhatsAppLimited puts a whatsapp_limited alert on the host's bell, unless one is
+ * already there from the last 24 hours: Meta's limit lasts hours and the outbox meets it
+ * every pass. Reports whether it added one. */
+func (s *Store) AlertWhatsAppLimited(ctx context.Context, hostID, subject, body string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO notifications (user_id, kind, subject, body)
+		SELECT $1::uuid, 'whatsapp_limited', $2, $3
+		 WHERE NOT EXISTS (
+		       SELECT 1 FROM notifications
+		        WHERE user_id = $1::uuid AND kind = 'whatsapp_limited'
+		          AND created_at > now() - interval '24 hours')`, hostID, subject, body)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}

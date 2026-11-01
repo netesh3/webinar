@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -61,7 +62,8 @@ func flushOnce(t *testing.T, h *harness) time.Duration {
 
 func TestWhatsAppFlushStopsAtItsBudgetAndResumes(t *testing.T) {
 	g := newFakeGraph(t)
-	h := newHarness(t, whatsappConfigured(g.srv.URL))
+	// 10 a second (burst 10), so a 300 ms sending window cannot reach all 20.
+	h := newHarness(t, whatsappConfigured(g.srv.URL), func(c *config.Config) { c.WhatsAppSendPerSec = 10 })
 	h.login("neeraj@acme.dev")
 	connectWhatsApp(t, h)
 	const n = 20

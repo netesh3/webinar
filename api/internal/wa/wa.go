@@ -564,6 +564,43 @@ func (c *Client) do(ctx context.Context, token, method, path string, body, dest 
  * remedy.
  */
 func graphError(raw []byte, status int) error {
+	code, sub := graphCodes(raw)
+	return &GraphError{Code: code, Sub: sub, Status: status, Err: graphErrorText(raw, status)}
+}
+
+/* GraphError is a refusal Meta answered: its error code and subcode beside the sentence
+ * graphError made of it. Error() is that sentence and Unwrap reaches the named errors
+ * (ErrTokenRejected, …), so callers that only read the text or match those see no change.
+ * The outbox reads the code to tell a throughput limit from a refusal (MetaCode). */
+type GraphError struct {
+	Code, Sub, Status int
+	Err               error
+}
+
+func (e *GraphError) Error() string { return e.Err.Error() }
+func (e *GraphError) Unwrap() error { return e.Err }
+
+// MetaCode is Meta's error code for a refusal it answered, or 0.
+func MetaCode(err error) int {
+	var e *GraphError
+	if errors.As(err, &e) {
+		return e.Code
+	}
+	return 0
+}
+
+func graphCodes(raw []byte) (code, sub int) {
+	var parsed struct {
+		Error struct {
+			Code int `json:"code"`
+			Sub  int `json:"error_subcode"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(raw, &parsed)
+	return parsed.Error.Code, parsed.Error.Sub
+}
+
+func graphErrorText(raw []byte, status int) error {
 	var parsed struct {
 		Error struct {
 			Message string `json:"message"`

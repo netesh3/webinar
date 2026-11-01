@@ -73,6 +73,8 @@ type fakeGraph struct {
 	// sendDelay holds each send's answer back after Meta has taken it, which is how a
 	// slow Graph, or one whose answer never arrives in time, is simulated.
 	sendDelay time.Duration
+	// sendTimes is when each send arrived, beside sends, for the rate assertions.
+	sendTimes []time.Time
 
 	/* registers is every /register body, recorded whole so a test can assert that the
 	 * PIN the host typed is what reached Meta. Nothing else in this file records a
@@ -240,6 +242,7 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 			raw, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(raw, &body)
 			g.sends = append(g.sends, body)
+			g.sendTimes = append(g.sendTimes, time.Now())
 			n := len(g.sends)
 			if d := g.sendDelay; d > 0 {
 				g.mu.Unlock()
@@ -652,4 +655,26 @@ func (g *fakeGraph) slowSends(d time.Duration) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.sendDelay = d
+}
+
+// sentAt is when each send arrived, in arrival order.
+func (g *fakeGraph) sentAt() []time.Time {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]time.Time(nil), g.sendTimes...)
+}
+
+// refuseSends makes every later send fail with Meta's error code; 0 stops refusing.
+func (g *fakeGraph) refuseSends(code int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if code == 0 {
+		g.sendStatus, g.sendError = 0, nil
+		return
+	}
+	g.sendStatus = http.StatusBadRequest
+	if code == 130429 {
+		g.sendStatus = http.StatusTooManyRequests
+	}
+	g.sendError = map[string]any{"message": fmt.Sprintf("(#%d) refused", code), "code": code}
 }

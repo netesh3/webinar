@@ -414,6 +414,52 @@ func (s *Store) ClaimSend(ctx context.Context, id string) (bool, error) {
 	return tag.RowsAffected() == 1, nil
 }
 
+/* ClaimSends is ClaimSend for a batch, in one statement: it returns the ids this caller
+ * claimed. A row another caller has locked is skipped rather than waited for (SKIP LOCKED)
+ * and one it already claimed is no longer pending, so two concurrent claims over the same
+ * ids split them and never share one. */
+func (s *Store) ClaimSends(ctx context.Context, ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		UPDATE notifications n
+		   SET delivery = 'sent', delivery_error = '', delivered_at = now()
+		  FROM (SELECT id FROM notifications
+		         WHERE id = ANY($1::uuid[]) AND delivery = 'pending' AND due_at <= now()
+		         FOR UPDATE SKIP LOCKED) c
+		 WHERE n.id = c.id
+		RETURNING n.id::text`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0, len(ids))
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+/* ReleaseClaims puts claimed rows that never reached a recipient back to pending, due
+ * now, with no attempt counted: rows the flush ran out of time for, and sends Meta
+ * refused for throughput (130429, 80007) or for the number's spam limit (131048) before
+ * delivering anything. Only for rows the caller claimed and did not send. */
+func (s *Store) ReleaseClaims(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE notifications
+		   SET delivery = 'pending', delivered_at = NULL
+		 WHERE id = ANY($1::uuid[]) AND delivery = 'sent'`, ids)
+	return err
+}
+
 /* GiveUpDelivery retires a claimed row as failed, for good: no retry. For a send whose
  * outcome is unknown (it may have been delivered and the answer lost), where trying again
  * risks a second copy. The reason says so, for the host reading why it failed. */

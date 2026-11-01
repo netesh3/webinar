@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -58,6 +59,9 @@ type Module struct {
 	// waFlushBudget and waSendTimeout override one WhatsApp flush's timing; zero is the
 	// default (whatsappFlushBudget, whatsappSendTimeout). Tests only: SetWhatsAppFlushTiming.
 	waFlushBudget, waSendTimeout time.Duration
+	// waLimits is the outbox's send rate (wa_outbox.go), made on first use from the config.
+	waLimits     *waLimits
+	waLimitsOnce sync.Once
 }
 
 func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {
