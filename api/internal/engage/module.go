@@ -55,6 +55,9 @@ type Module struct {
 	// blobs holds our copies of WhatsApp attachments. Nil until UseMediaStore (or
 	// with recording storage off); attachments then come from Graph each time.
 	blobs MediaBlobs
+	// waFlushBudget and waSendTimeout override one WhatsApp flush's timing; zero is the
+	// default (whatsappFlushBudget, whatsappSendTimeout). Tests only: SetWhatsAppFlushTiming.
+	waFlushBudget, waSendTimeout time.Duration
 }
 
 func New(cfg config.Config, st *store.Store, log *slog.Logger) *Module {

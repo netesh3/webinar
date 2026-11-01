@@ -260,7 +260,25 @@ They are not provisioned from the repo; create them by hand once:
 |---|---|---|---|---|
 | Database over 300 MB | `max(webinarliv_db_size_bytes)` | `> 300e6` | 15m | "Postgres is {{ $value | humanize1024 }}; Supabase Free goes read-only at 500 MB. Upgrade the plan or trim data." |
 | No database backup in 30 h | `time() - max(webinarliv_db_backup_last_success_seconds)` | `> 108000` (30 h) | 0m | "The nightly DB backup has not succeeded for 30 hours. Check Actions → DB backup." |
+| Site unreachable (outside check) | `1 - avg(avg_over_time(probe_success{job="Webinar Liv API"}[5m]))` | `> 0.5` | 2m | "More than half of the outside probes of webinarliv.com/api/config are failing." |
+| Tick slow or failing | `(sum(increase(http_server_request_duration_seconds_count{job="webcast-api",http_route="/api/internal/tick"}[10m])) - sum(increase(http_server_request_duration_seconds_bucket{job="webcast-api",http_route="/api/internal/tick",le="30"}[10m]))) / sum(increase(http_server_request_duration_seconds_count{job="webcast-api",http_route="/api/internal/tick"}[10m]))` | `> 0.3` | 5m | "More than 30% of ticks in 10 minutes took over 30 s." |
 
 For the backup alert, set **No data → Alerting** too: before the first push there is no series
-at all, and that is also "no backup". A dashboard stat panel can show the size against the cap
+at all, and that is also "no backup".
+
+The last two are in group `webinar-liv`, contact point "Webinar Liv", and came out of the
+1 Nov 2026 outage, which none of the four app alerts saw:
+
+- **Site unreachable (outside check)** reads a Grafana Synthetic Monitoring HTTP check, job
+  `Webinar Liv API`: `GET https://webinarliv.com/api/config` every 90 s from Mumbai, Hyderabad
+  and Singapore, expecting 200 within a 10 s timeout. **No data → Alerting**: probes that stop
+  reporting are not a healthy site. It exists because Cloud Run's front end answered every
+  request with 429 for twelve minutes and none of those requests reached the app, so its own
+  `http_server_request_duration_seconds` recorded nothing to alert on.
+- **Tick slow or failing** is the share of ticks slower than 30 s (the `le="30"` bucket), well
+  inside the tick's 50 s budget (`api/internal/api/tick.go`). **No data → OK**: no ticks at
+  all is "Tick stopped"'s job. On 1 Nov every other tick ran 90 s, and the app recorded each
+  as a 200 because the handler did write one; the write failing at the server's 60 s
+  WriteTimeout is invisible from inside the handler, and Cloud Run's 503 never reached the
+  app's metrics. A dashboard stat panel can show the size against the cap
 with the first query and unit `bytes(SI)`.

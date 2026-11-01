@@ -350,7 +350,7 @@ func (s *Server) Routes() http.Handler {
 	// Streaming a recording is exempt: see httpx.Timeout. Everything else gets a
 	// deadline, because a request that cannot finish in twenty seconds is a request
 	// that is not going to finish.
-	// The tick is exempt too: it bounds itself (tickBudget) and a pass cut at 20 s would
+	// The tick is exempt too: it bounds itself (tickRequestBudget) and a pass cut at 20 s would
 	// leave the rest of the outbox for a minute later.
 	r.Use(httpx.Timeout(20*time.Second, "/recordings/", "/api/internal/tick", "/events"))
 	r.Use(cors.Handler(cors.Options{

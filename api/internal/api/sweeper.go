@@ -25,8 +25,10 @@ import (
  */
 const (
 	tickEvery = 30 * time.Second
-	// tickBudget bounds one pass; the lease outlives it so an overrun cannot start a twin.
-	tickBudget = 90 * time.Second
+	/* tickBudget bounds one pass of the realtime lane; the lease outlives it so an overrun
+	 * cannot start a twin. Inside tickRequestBudget (tick.go) on Cloud Run: 90 s here once
+	 * outlived the server's 60 s WriteTimeout and took the API down (1 Nov 2026). */
+	tickBudget = 45 * time.Second
 	// mailFlushBudget is the slice of a pass that may wait on Gmail. The CRM
 	// jobs run after it, on the time that is left. One slow SMTP conversation
 	// used to consume the whole pass and every later query then failed with
@@ -35,7 +37,7 @@ const (
 	tickLease       = 2 * time.Minute
 	// maintenanceBudget bounds the maintenance lane, which runs beside the realtime one;
 	// maintenanceJobBudget bounds each of its jobs.
-	maintenanceBudget    = 80 * time.Second
+	maintenanceBudget    = 45 * time.Second
 	maintenanceJobBudget = 20 * time.Second
 	/* realtimeJobBudget bounds each sweep of the realtime lane, so one that waits on an
 	 * unreachable server stops there and the rest of the lane still has time: on 24 Oct 2026

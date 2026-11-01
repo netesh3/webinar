@@ -389,6 +389,42 @@ func (s *Store) MarkDelivered(ctx context.Context, id, delivery, reason string) 
 	return s.RecordSendAttempt(ctx, id, delivery, reason)
 }
 
+/* ClaimSend marks one pending, due row 'sent' BEFORE it is sent, and reports whether this
+ * caller is the one that did.
+ *
+ * For a channel where a second copy costs somebody money and lands twice on a phone
+ * (WhatsApp), the order is the guarantee: the row says sent before Meta hears of it, so no
+ * retry, crash, timed-out tick or second runner can send it again. The send's outcome
+ * then corrects the row: a refusal Meta answered goes back to pending through
+ * RecordSendAttempt, a send with no answer is retired by GiveUpDelivery. A process that
+ * dies between this and the send leaves a message marked sent that never went: at most
+ * once, which is the right way round for a paid message (1 Nov 2026, see
+ * engage.flushWhatsAppOutbox).
+ */
+func (s *Store) ClaimSend(ctx context.Context, id string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE notifications
+		   SET delivery = 'sent', delivery_error = '', delivered_at = now()
+		 WHERE id = $1::uuid
+		   AND delivery = 'pending'
+		   AND due_at <= now()`, id)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+/* GiveUpDelivery retires a claimed row as failed, for good: no retry. For a send whose
+ * outcome is unknown (it may have been delivered and the answer lost), where trying again
+ * risks a second copy. The reason says so, for the host reading why it failed. */
+func (s *Store) GiveUpDelivery(ctx context.Context, id, reason string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE notifications
+		   SET attempts = attempts + 1, delivery = 'failed', delivery_error = $2, delivered_at = now()
+		 WHERE id = $1::uuid`, id, reason)
+	return err
+}
+
 /* ClaimDueDelivery reserves one pending row so a second flush will not send it.
  *
  * It moves due_at forward and returns. The connection is back in the pool

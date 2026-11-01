@@ -924,34 +924,41 @@ func attachmentBlank(a types.CRMAttachment) bool {
  *
  * A status for a message we have no row for is not an error — a host could have
  * disconnected and reconnected, or the send could predate this table — so it
- * reports whether it matched anything and leaves the decision to the caller.
+ * reports whether the message is known and, apart from that, whether the status moved
+ * it, and leaves the decision to the caller. Meta's first status for every send is
+ * "sent", which the row already says, so known-and-not-moved is the ordinary case;
+ * reading it as "unknown" (until 1 Nov 2026) made a broadcast's every status look
+ * unmatched.
  */
-func (s *Store) SetMessageStatus(ctx context.Context, hostID, wamid, status, failure string) (bool, error) {
+func (s *Store) SetMessageStatus(ctx context.Context, hostID, wamid, status, failure string) (known, moved bool, err error) {
 	wamid = strings.TrimSpace(wamid)
 	if wamid == "" {
-		return false, nil
+		return false, false, nil
 	}
 	rank := map[string]int{"queued": 0, "sent": 1, "delivered": 2, "read": 3}
 	next, ok := rank[status]
 	if !ok && status != "failed" {
-		return false, nil
+		return false, false, nil
 	}
 
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE crm_messages
-		   SET status = $3,
-		       error = case when $3 = 'failed' then $4 else error end,
-		       updated_at = now()
-		 WHERE host_id = $1 AND wamid = $2
-		   AND ($3 = 'failed' OR status <> 'failed')
-		   AND ($3 = 'failed' OR $5 > case status
-		         when 'queued' then 0 when 'sent' then 1
-		         when 'delivered' then 2 when 'read' then 3 else 0 end)`,
-		hostID, wamid, status, failure, next)
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() > 0, nil
+	err = s.pool.QueryRow(ctx, `
+		WITH m AS (
+		  SELECT id FROM crm_messages WHERE host_id = $1 AND wamid = $2
+		), u AS (
+		  UPDATE crm_messages
+		     SET status = $3,
+		         error = case when $3 = 'failed' then $4 else error end,
+		         updated_at = now()
+		   WHERE id IN (SELECT id FROM m)
+		     AND ($3 = 'failed' OR status <> 'failed')
+		     AND ($3 = 'failed' OR $5 > case status
+		           when 'queued' then 0 when 'sent' then 1
+		           when 'delivered' then 2 when 'read' then 3 else 0 end)
+		  RETURNING 1
+		)
+		SELECT EXISTS (SELECT 1 FROM m), EXISTS (SELECT 1 FROM u)`,
+		hostID, wamid, status, failure, next).Scan(&known, &moved)
+	return known, moved, err
 }
 
 /* SetContactWhatsAppOptOut records that this person no longer wants messages.

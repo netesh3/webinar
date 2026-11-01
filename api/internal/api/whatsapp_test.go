@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/types"
@@ -69,6 +70,9 @@ type fakeGraph struct {
 	// host's unpaid WABA or an expired window is simulated.
 	sendStatus int
 	sendError  map[string]any
+	// sendDelay holds each send's answer back after Meta has taken it, which is how a
+	// slow Graph, or one whose answer never arrives in time, is simulated.
+	sendDelay time.Duration
 
 	/* registers is every /register body, recorded whole so a test can assert that the
 	 * PIN the host typed is what reached Meta. Nothing else in this file records a
@@ -236,6 +240,12 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 			raw, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(raw, &body)
 			g.sends = append(g.sends, body)
+			n := len(g.sends)
+			if d := g.sendDelay; d > 0 {
+				g.mu.Unlock()
+				time.Sleep(d)
+				g.mu.Lock()
+			}
 			if g.sendStatus != 0 {
 				w.WriteHeader(g.sendStatus)
 				_ = json.NewEncoder(w).Encode(map[string]any{"error": g.sendError})
@@ -243,7 +253,7 @@ func newFakeGraph(t *testing.T) *fakeGraph {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"messaging_product": "whatsapp",
-				"messages":          []map[string]string{{"id": fmt.Sprintf("wamid.OUT%d", len(g.sends))}},
+				"messages":          []map[string]string{{"id": fmt.Sprintf("wamid.OUT%d", n)}},
 			})
 		case strings.HasSuffix(r.URL.Path, "/register") && r.Method == http.MethodPost:
 			var body map[string]any
@@ -635,4 +645,11 @@ func TestDroppedWhatsAppSubscriptionIsRestored(t *testing.T) {
 	if len(g.subscribed) != 1 || g.subscribed[0] != testMetaWABAID {
 		t.Fatalf("subscribed = %v, want [%s] again after Meta dropped it", g.subscribed, testMetaWABAID)
 	}
+}
+
+// slowSends makes every later send take d to answer.
+func (g *fakeGraph) slowSends(d time.Duration) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.sendDelay = d
 }

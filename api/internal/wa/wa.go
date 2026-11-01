@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -480,6 +481,33 @@ func metaMediaHost(host string) bool {
 		strings.HasSuffix(host, ".facebook.com")
 }
 
+/* NoAnswerError is a call that may have reached Meta but whose answer never came back: a
+ * timeout, a dropped connection, a body cut short. For a send it means "perhaps sent", and
+ * a caller that retries it can put the same message on somebody's phone twice (1 Nov 2026:
+ * seven broadcast sends timed out at the tick's deadline and were sent again on the next
+ * pass). Error() is the underlying error's own text, so logs read as before.
+ *
+ * A call that never left this machine (no route, connection refused) is not one of these:
+ * Meta cannot have acted on it. */
+type NoAnswerError struct{ Err error }
+
+func (e *NoAnswerError) Error() string { return e.Err.Error() }
+func (e *NoAnswerError) Unwrap() error { return e.Err }
+
+// NoAnswer reports whether err is a call Meta may have acted on without answering.
+func NoAnswer(err error) bool {
+	var e *NoAnswerError
+	return errors.As(err, &e)
+}
+
+func unanswered(err error) error {
+	var op *net.OpError
+	if errors.As(err, &op) && op.Op == "dial" {
+		return err
+	}
+	return &NoAnswerError{Err: err}
+}
+
 func (c *Client) post(ctx context.Context, token, path string, body, dest any) error {
 	return c.do(ctx, token, http.MethodPost, path, body, dest)
 }
@@ -505,14 +533,19 @@ func (c *Client) do(ctx context.Context, token, method, path string, body, dest 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// A deadline already spent means nothing was sent, which is a different answer from
+	// "sent, and the answer was lost".
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	res, err := c.http().Do(req)
 	if err != nil {
-		return err
+		return unanswered(err)
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 	if err != nil {
-		return err
+		return unanswered(err)
 	}
 	if res.StatusCode >= 300 {
 		return graphError(raw, res.StatusCode)
