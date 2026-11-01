@@ -454,8 +454,8 @@ export const COMPARISON: CompareGroup[] = [
         detail: "After the session, everyone who registered gets the replay by email.",
       }),
       all("Push notifications", {
-        hint: "From the installable web app",
-        detail: "Attendees install the web app and get a push when you go live and when the replay is ready.",
+        hint: "In the browser, when you go live and when the replay is ready",
+        detail: "Attendees who allow notifications get one when you go live and when the replay is ready.",
       }),
       tier("whatsapp_crm", "WhatsApp reminders and follow-ups", {
         hint: "From your own WhatsApp Business number; Meta bills its message fees to you",
