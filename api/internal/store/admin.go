@@ -476,6 +476,27 @@ INSERT INTO plan_limits (plan, limit_key, value) VALUES
     ('enterprise',   'recording_storage_bytes', 500::bigint * 1024 * 1024 * 1024)
 ON CONFLICT (plan, limit_key) DO UPDATE SET value = EXCLUDED.value;`
 
+/* AudienceInsightsSQL puts audience_insights (devices and locations) in Professional and up and
+ * Starter, and keeps it for a Basic subscriber who had it (migrations/0181, 1 Nov 2026).
+ * One shot: migrations/0181 runs it, and a store test checks this text still matches. */
+const AudienceInsightsSQL = `INSERT INTO plan_features (plan, feature, enabled) VALUES
+    ('professional', 'audience_insights', true),
+    ('business',     'audience_insights', true),
+    ('enterprise',   'audience_insights', true),
+    ('starter',      'audience_insights', true)
+ON CONFLICT (plan, feature) DO UPDATE SET enabled = true;
+UPDATE users u
+   SET features = u.features || ARRAY['audience_insights']
+ WHERE effective_plan(u.id) = 'basic'
+   AND NOT ('audience_insights' = ANY (u.features))
+   AND NOT ('audience_insights' = ANY (u.features_off));`
+
+// ConvertAudienceInsights applies AudienceInsightsSQL. Tests only.
+func (s *Store) ConvertAudienceInsights(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, AudienceInsightsSQL)
+	return err
+}
+
 // ConvertPricingGates applies PricingGatesSQL. Tests only.
 func (s *Store) ConvertPricingGates(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx, PricingGatesSQL)
@@ -492,7 +513,7 @@ func (s *Store) ConvertPricingGates(ctx context.Context) error {
 var TierFeatures = map[types.Plan][]string{
 	// Basic sells none of the tiered switches (cloud recording left it in 0180).
 	types.PlanBasic:        {},
-	types.PlanProfessional: {types.FeatureCloudRecording, types.FeatureWhatsAppCRM},
+	types.PlanProfessional: {types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureAudienceInsights},
 	types.PlanBusiness:     businessTierFeatures,
 	types.PlanEnterprise:   businessTierFeatures,
 }
@@ -500,11 +521,16 @@ var TierFeatures = map[types.Plan][]string{
 var businessTierFeatures = []string{
 	types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureSimulive, types.FeatureReplayEngage,
 	types.FeatureZoom, types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,
-	types.FeatureFollowupSend, types.FeatureRepurpose, types.FeatureCaptions,
+	types.FeatureFollowupSend, types.FeatureRepurpose, types.FeatureCaptions, types.FeatureAudienceInsights,
 }
 
-// PricingV3Features is the switches migrations/0179 set: TieredFeatures but captions (0180).
-var PricingV3Features = businessTierFeatures[:len(businessTierFeatures)-1]
+// PricingV3Features is the switches migrations/0179 set: TieredFeatures but captions (0180) and
+// audience_insights (0181).
+var PricingV3Features = []string{
+	types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureSimulive, types.FeatureReplayEngage,
+	types.FeatureZoom, types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,
+	types.FeatureFollowupSend, types.FeatureRepurpose,
+}
 
 // TieredFeatures is every switch TierFeatures decides: the ones the plans on sale differ by.
 var TieredFeatures = businessTierFeatures

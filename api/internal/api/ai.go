@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -62,10 +63,61 @@ func aiMonthStart(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 }
 
+/* errAINotOnPlan is an AI call for a host whose switches do not include the feature: refused
+ * before anything is sent, so a plan without AI never spends on it (1 Nov 2026). It wraps
+ * ai.ErrUnavailable, so every caller already treats it as "no AI here" and stops quietly. */
+var errAINotOnPlan = fmt.Errorf("%w: not on this host's plan", ai.ErrUnavailable)
+
+/* aiFeatureSwitches is the plan switch (types.Features) each AI feature needs. The callers
+ * check their own switch first; this is the backstop at the point of spend, so a background
+ * job, a retry or a new caller cannot reach the provider for a host without it. Admin
+ * overrides count: the host's effective features decide (store.User.HasFeature). sales_chat
+ * is the public site's assistant, on nobody's account. A feature not listed needs ai. */
+func aiFeatureSwitches(feature string) []string {
+	switch feature {
+	case types.AIFeatureSalesChat:
+		return nil
+	case types.AIFeatureQAAuto:
+		return []string{types.FeatureAI, types.FeatureSimuliveAuto}
+	case types.AIFeatureQAHarvest, types.AIFeatureEmbed:
+		return []string{types.FeatureAI, types.FeatureAIKnowledge}
+	case types.AIFeatureRepurpose:
+		return []string{types.FeatureAI, types.FeatureRepurpose}
+	case types.AIFeatureHighlights, types.AIFeatureReels, types.AIFeatureClipPosts:
+		return []string{types.FeatureAI, types.FeatureClips}
+	}
+	return []string{types.FeatureAI}
+}
+
+// aiPlanCheck is errAINotOnPlan unless hostID has every switch the feature needs.
+func (s *Server) aiPlanCheck(ctx context.Context, feature, hostID string) error {
+	need := aiFeatureSwitches(feature)
+	if len(need) == 0 {
+		return nil
+	}
+	if hostID == "" {
+		return errAINotOnPlan
+	}
+	host, err := s.store.UserByID(ctx, hostID)
+	if err != nil {
+		return err
+	}
+	for _, k := range need {
+		if !host.HasFeature(k) {
+			s.log.Info("ai: refused, not on the host's plan", "feature", feature, "host", hostID, "needs", k)
+			return errAINotOnPlan
+		}
+	}
+	return nil
+}
+
 // aiComplete is s.ai.Complete for one feature, on behalf of hostID ("" for none).
 func (s *Server) aiComplete(ctx context.Context, feature, hostID string, req ai.Request) (ai.Reply, error) {
 	if !s.ai.Enabled() {
 		return ai.Reply{}, ai.ErrUnavailable
+	}
+	if err := s.aiPlanCheck(ctx, feature, hostID); err != nil {
+		return ai.Reply{}, err
 	}
 	if err := s.aiCapCheck(ctx, feature, hostID); err != nil {
 		return ai.Reply{}, err

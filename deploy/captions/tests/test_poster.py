@@ -108,6 +108,7 @@ def test_transcript_wanted_reads_only_the_apis_own_answers(monkeypatch):
     answers = {
         (200, '{"wanted": true}'): "wanted",
         (200, '{"wanted": false, "reason": "load_test"}'): "skip",
+        (200, '{"wanted": false, "reason": "plan"}'): "skip",
         (404, '{"wanted": false, "gone": true}'): "gone",
         (404, "404 page not found"): "unknown",  # an API without the route: never "gone"
         (500, ""): "unknown",

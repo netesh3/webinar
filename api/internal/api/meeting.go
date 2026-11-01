@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/netkumar/webcast/api/internal/billing"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/store"
@@ -108,7 +109,8 @@ func refuseMeetingDoor(w http.ResponseWriter, wb types.Webinar) bool {
 
 func writeMeetingFull(w http.ResponseWriter, capacity int) {
 	httpx.Error(w, http.StatusConflict, "meeting_full", fmt.Sprintf(
-		"This meeting is full: it holds %d people at once, including the host.", capacity))
+		"This meeting is full: it holds %d people at once, including the host.", capacity)+
+		upgradeHint(capacity, billing.Plan.MeetingSeats, " people"))
 }
 
 func writeMeetingEnded(w http.ResponseWriter) {

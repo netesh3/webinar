@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import type { Person, Webinar } from "@/lib/api-types";
+import { planBadgeFor, upgradeHref } from "@/lib/plan-gate";
 
 /* Small presentational primitives shared across every screen.
    Server Components — no state, no handlers. */
@@ -324,3 +325,65 @@ export function kindLabel(w: Webinar): { text: string; tone: Tone } {
   // for a session actually in progress, or people think they're missing it.
   return { text: "Live webinar", tone: "neutral" };
 }
+
+/* ------------------------------------------------------------------ plan locks
+ * A gated feature for a host whose plan lacks it (1 Nov 2026): shown, not hidden, with the
+ * lowest plan that has it ("Business and up", lib/plan-gate.ts, read from the same tiers as
+ * the pricing table) and an Upgrade link. A per-host switch names no plan: nothing renders.
+ * components/plan-lock.tsx adds the session-aware PlanGate. */
+
+/** The small "Business and up" pill. Nothing for a switch no plan sells. */
+export function PlanBadge({ feature, className = "" }: { feature: string; className?: string }) {
+  const label = planBadgeFor(feature);
+  if (!label) return null;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand ${className}`}
+    >
+      <svg viewBox="0 0 24 24" className="size-3" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+        <rect x="5" y="11" width="14" height="9" rx="2" />
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      </svg>
+      {label}
+    </span>
+  );
+}
+
+/** The "Upgrade" link beside a badge. */
+export function UpgradeLink({ className = "" }: { className?: string }) {
+  return (
+    <Link href={upgradeHref()} className={`text-[12.5px] font-medium text-brand hover:underline ${className}`}>
+      Upgrade
+    </Link>
+  );
+}
+
+/** A locked feature in place of its control: what it is, the plan badge and Upgrade. */
+export function PlanLock({
+  feature,
+  title,
+  children,
+  className = "",
+}: {
+  feature: string;
+  title: string;
+  /** One line on what the feature does, or what the host has instead. */
+  children?: ReactNode;
+  className?: string;
+}) {
+  if (!planBadgeFor(feature)) return null;
+  return (
+    <div
+      className={`grid gap-1.5 rounded-lg border border-dashed border-line-2 bg-surface-2 p-3 text-[13px] ${className}`}
+      data-plan-lock={feature}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium text-ink">{title}</span>
+        <PlanBadge feature={feature} />
+      </div>
+      {children && <p className="text-[12.5px] text-ink-2">{children}</p>}
+      <UpgradeLink />
+    </div>
+  );
+}
+

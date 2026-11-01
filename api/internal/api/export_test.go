@@ -60,6 +60,14 @@ func RetrieveKnowledge(s *Server, ctx context.Context, wb types.Webinar, questio
 // IsAILimit reports whether err is a monthly AI cap.
 func IsAILimit(err error) bool { return errors.Is(err, errAILimit) }
 
+// IsAINotOnPlan is errors.Is(err, errAINotOnPlan): an AI call refused before it was sent.
+func IsAINotOnPlan(err error) bool { return errors.Is(err, errAINotOnPlan) }
+
+// AIEmbed is aiEmbed, for the spend-gate tests.
+func AIEmbed(s *Server, ctx context.Context, hostID string, inputs []string) ([][]float32, error) {
+	return s.aiEmbed(ctx, hostID, inputs)
+}
+
 // SetSpamEvery sets how long a pending message waits for a spam pass; the returned func
 // restores it.
 func SetSpamEvery(d time.Duration) func() {

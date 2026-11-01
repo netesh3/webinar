@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/webhook"
+	"github.com/netkumar/webcast/api/internal/billing"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/internal/media"
@@ -139,8 +140,9 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusConflict, types.RecordingQuotaError{
 			Error: "quota_exceeded", UsedBytes: st.UsedBytes, QuotaBytes: st.QuotaBytes,
 			Message: fmt.Sprintf("Your storage is full (%s of %s), so a new cloud recording can't start. "+
-				"Record on this computer, delete recordings or videos you no longer need, or upgrade your plan for more space.",
-				gbText(st.UsedBytes), gbText(st.QuotaBytes)),
+				"Record on this computer, or delete recordings or videos you no longer need.",
+				gbText(st.UsedBytes), gbText(st.QuotaBytes)) +
+				upgradeHint(int(st.QuotaBytes>>30), func(p billing.Plan) int { return p.StorageGB }, " GB of storage"),
 		})
 		return
 	case errors.Is(err, errRecordingNoRoom):

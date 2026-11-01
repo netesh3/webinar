@@ -8,6 +8,7 @@ import (
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/internal/useragent"
+	"github.com/netkumar/webcast/api/types"
 )
 
 /* noteJoinDevice records what this join came from (types.AudienceDevices) and where
@@ -35,6 +36,9 @@ func joinLocation(r *http.Request) store.Location {
 // handleWebinarDevices is one webinar's audience by device, for its host.
 func (s *Server) handleWebinarDevices(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
+	if !s.audienceInsightsAllowed(w, r, slug) {
+		return
+	}
 	out, err := s.store.WebinarAudienceDevices(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "audience devices", err)
@@ -43,9 +47,29 @@ func (s *Server) handleWebinarDevices(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, out)
 }
 
+/* audienceInsightsAllowed refuses the device and location breakdowns, 403 feature_off, for a
+ * webinar whose host's plan has no audience_insights (Professional and up, migrations/0181).
+ * The webinar's host decides, as for every host feature, not the co-host reading it. */
+func (s *Server) audienceInsightsAllowed(w http.ResponseWriter, r *http.Request, slug string) bool {
+	wb, err := s.store.WebinarBySlug(r.Context(), slug)
+	if err != nil {
+		s.fail(w, r, "audience insights: webinar", err)
+		return false
+	}
+	if s.hostHas(r.Context(), wb.Host.ID, types.FeatureAudienceInsights) {
+		return true
+	}
+	httpx.Error(w, http.StatusForbidden, "feature_off",
+		"Audience by device and location is on the Professional plan and up.")
+	return false
+}
+
 // handleWebinarLocations is one webinar's audience by location, for its host.
 func (s *Server) handleWebinarLocations(w http.ResponseWriter, r *http.Request) {
 	slug := slugFromContext(r.Context())
+	if !s.audienceInsightsAllowed(w, r, slug) {
+		return
+	}
 	out, err := s.store.WebinarAudienceLocations(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "audience locations", err)

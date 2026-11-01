@@ -303,7 +303,8 @@ class ApiClient:
         return self.post_json("/api/internal/captions/status", status_payload(room, state))
 
     def transcript_wanted(self, room: str) -> str:
-        """Before an after-session pass: "wanted", "skip" (a load test), "gone" (the webinar
+        """Before an after-session pass: "wanted", "skip" (a load test, or a plan without server
+        captions), "gone" (the webinar
         no longer exists) or "unknown" (the API was unreachable, errored, or is too old to
         have POST /api/internal/transcripts/wanted). Only "skip" and "gone" may drop the
         room's audio, and "gone" needs the API's own {"gone": true}: a plain 404 from an API
@@ -311,7 +312,9 @@ class ApiClient:
         status, body = self.post_json("/api/internal/transcripts/wanted", {"room": room}, retries=1)
         if status == 200 and body.get("wanted") is True:
             return "wanted"
-        if status == 200 and body.get("wanted") is False and body.get("reason") == "load_test":
+        # load_test: never read. plan: the host's plan has no server captions (1 Nov 2026),
+        # so the paid pass must not run for them.
+        if status == 200 and body.get("wanted") is False and body.get("reason") in ("load_test", "plan"):
             return "skip"
         if status == 404 and body.get("gone") is True:
             return "gone"

@@ -6234,6 +6234,13 @@ export const FeatureCaptions = "captions";
  */
 export const FeatureHLSDelivery = "hls_delivery";
 /**
+ *  FeatureAudienceInsights is a webinar's audience by device (phone, laptop or tablet, and the
+ * 	 * browser) and by location (country, region, city): the two breakdowns on its analytics, and
+ * 	 * their API routes (403 feature_off without it). Professional and up, and Starter
+ * 	 * (migrations/0181, 1 Nov 2026); before that every host had them.
+ */
+export const FeatureAudienceInsights = "audience_insights";
+/**
  * Feature groups: the admin screen's headings (Feature.Group).
  */
 export const FeatureGroupSessions = "sessions";
@@ -6249,6 +6256,10 @@ export const FeatureGroupDelivery = "delivery";
  * Feature groups: the admin screen's headings (Feature.Group).
  */
 export const FeatureGroupIntegrations = "integrations";
+/**
+ * Feature groups: the admin screen's headings (Feature.Group).
+ */
+export const FeatureGroupAnalytics = "analytics";
 /**
  * FeatureGroup is one heading of the admin screen's feature list.
  */

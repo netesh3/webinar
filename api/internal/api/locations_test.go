@@ -81,6 +81,7 @@ func TestJoinRecordsTheLocationOncePerAttendee(t *testing.T) {
 		t.Run(delivery, func(t *testing.T) {
 			h := newHarness(t, edgeConfig)
 			h.signup("Location Host", "location-host-"+delivery+"@test.dev", true)
+			insightsHost(t, h)
 			wb := h.liveWebinar("Locations", func(in *types.WebinarInput) { in.Delivery = delivery })
 
 			join := func(email, country, region, city string) string {
@@ -158,6 +159,7 @@ func TestJoinRecordsTheLocationOncePerAttendee(t *testing.T) {
 func TestJoinLocationCapsTheRegion(t *testing.T) {
 	h := newHarness(t)
 	h.signup("Cap Host", "location-cap@test.dev", true)
+	insightsHost(t, h)
 	wb := h.liveWebinar("Caps", nil)
 	reg := h.registerAsGuest(wb.ID, "long@test.dev")
 	long := string(bytes.Repeat([]byte("ab"), 50))
@@ -176,6 +178,7 @@ func TestJoinLocationCapsTheRegion(t *testing.T) {
 func TestLocationCitiesAreGroupedByCountryAndRegion(t *testing.T) {
 	h := newHarness(t)
 	h.signup("City Host", "location-cities@test.dev", true)
+	insightsHost(t, h)
 	wb := h.liveWebinar("Cities", nil)
 	n := 0
 	join := func(country, region, city string) {

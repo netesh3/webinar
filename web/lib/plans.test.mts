@@ -166,6 +166,9 @@ assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("WhatsApp reminders and fo
 assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Chat spam filter")!.cells[id]), [false, false, true, true]);
 assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("People per meeting")!.cells[id]), ["10", "20", "100", "300"]);
 assert.ok(rowsByLabel.has("Storage (uploads and recordings)"));
+// Audience by device and location: Professional and up (migrations/0181).
+for (const label of ["Attendance by device", "Attendance by location"])
+  assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get(label)!.cells[id]), [false, true, true, true], label);
 // Gone for now (1 Nov 2026): the apps rows and their section, and HLS delivery.
 for (const gone of ["Installable web app", "Desktop and mobile apps", "Delivery for very large audiences"])
   assert.ok(!rowsByLabel.has(gone), gone);

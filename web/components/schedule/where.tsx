@@ -1,5 +1,6 @@
 "use client";
 
+import { PlanBadge, UpgradeLink } from "../plan-lock";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
@@ -125,6 +126,13 @@ export function WhereSection({
             );
           })}
         </div>
+        {status === "signed-in" && !zoomAllowed && !appOnly && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-2">
+            Run it on your own Zoom account
+            <PlanBadge feature={FeatureZoom} />
+            <UpgradeLink />
+          </div>
+        )}
         {zoomAllowed && !appOnly && form.venue !== "app" && (
           <p className="mt-3 text-[12.5px] leading-relaxed text-ink-2">
             People still get your WhatsApp and email. The join link is a

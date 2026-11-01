@@ -1,10 +1,11 @@
 "use client";
 
+import { PlanLock } from "./plan-lock";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
-import type { Recording, Webinar } from "@/lib/api-types";
+import { FeatureSimulive, type Recording, type Webinar } from "@/lib/api-types";
 import { useHydrated } from "@/lib/clock";
 import { formatClock } from "@/lib/format";
 import { daysLeftText, daysUntilExpiry, expiryTone } from "@/lib/recording-retention";
@@ -50,9 +51,9 @@ export function ScheduleHeading() {
       </div>
       {/* The server refuses a simulive without the account's switch: say so before the form. */}
       {status !== "loading" && !simuliveAllowed(account) && (
-        <p role="alert" className="mb-3 text-[13px] text-warn">
-          Simulive isn&apos;t switched on for this account, so this can&apos;t be saved. Ask us to turn it on.
-        </p>
+        <PlanLock feature={FeatureSimulive} title="Simulive" className="mb-3">
+          Replay a past recording as a scheduled live session. It can&apos;t be saved on your plan.
+        </PlanLock>
       )}
     </>
   );

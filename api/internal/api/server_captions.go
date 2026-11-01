@@ -284,6 +284,12 @@ func (s *Server) handleInternalTranscriptWanted(w http.ResponseWriter, r *http.R
 		httpx.JSON(w, http.StatusOK, map[string]any{"wanted": false, "reason": "load_test"})
 		return
 	}
+	/* The after-session pass is the paid provider again (1 Nov 2026): not for a host whose
+	 * plan has no server captions, whatever was asked for during the session. */
+	if wb, err := s.store.WebinarBySlug(r.Context(), slug); err == nil && !s.hostHas(r.Context(), wb.Host.ID, types.FeatureCaptions) {
+		httpx.JSON(w, http.StatusOK, map[string]any{"wanted": false, "reason": "plan"})
+		return
+	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"wanted": true})
 }
 

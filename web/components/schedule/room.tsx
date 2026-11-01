@@ -1,11 +1,11 @@
 "use client";
 
+import { PlanBadge, UpgradeLink } from "../plan-lock";
 import { Toggle } from "../controls";
-import { Badge } from "../ui";
 import { useAppConfig, useSession } from "../providers";
 import { api } from "@/lib/api";
 import { interceptConnectClick } from "@/lib/app-connect";
-import { FeatureCloudRecording, type Webinar } from "@/lib/api-types";
+import { FeatureCaptions, FeatureCloudRecording, type Webinar } from "@/lib/api-types";
 import { CaptionsLanguageSelect } from "../captions-language-select";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
@@ -26,6 +26,8 @@ export function RoomSection({
   const config = useAppConfig();
   const { account } = useSession();
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
+  // Server captions (the caption agent) are Business and up; every plan has device captions.
+  const serverCaptions = (account?.features ?? []).includes(FeatureCaptions);
   /* "Record automatically" is a cloud recording the server starts (api/internal/api/
    * auto_record.go), so it needs the host's cloud recording switch and a site that records
    * on the server. Without them it is shown off and disabled rather than hidden, so a host
@@ -160,7 +162,12 @@ export function RoomSection({
                 ) : (
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     Record automatically
-                    {!cloudRecording && <Badge tone="warn">Available on request</Badge>}
+                    {!cloudRecording && (
+                      <>
+                        <PlanBadge feature={FeatureCloudRecording} />
+                        <UpgradeLink />
+                      </>
+                    )}
                   </span>
                 )
               }
@@ -169,7 +176,7 @@ export function RoomSection({
                   ? "Starts a cloud recording once you're live and someone on the stage has their camera or mic on."
                   : cloudRecording
                     ? "Needs server-side recording, which this site doesn't use."
-                    : "Cloud recording is switched on per account. Ask us to turn it on."
+                    : "Cloud recording is on Professional and up. On your plan, record on your own computer from the room."
               }
             />
           )}
@@ -178,7 +185,21 @@ export function RoomSection({
               key={key}
               checked={Boolean(form.options[key])}
               onChange={(v) => set("options", { ...form.options, [key]: v })}
-              label={label}
+              label={
+                key === "captions" && !serverCaptions ? (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    {label}
+                    <PlanBadge feature={FeatureCaptions} />
+                  </span>
+                ) : (
+                  label
+                )
+              }
+              description={
+                key === "captions" && !serverCaptions
+                  ? "Device captions on your plan: made in each speaker's browser. Server captions are on Business and up."
+                  : undefined
+              }
             />
           ))}
         </div>

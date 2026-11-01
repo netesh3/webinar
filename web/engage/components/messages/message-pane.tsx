@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
+import { PlanLock } from "@/components/ui";
 import { useState, type ReactNode } from "react";
 import { MaterialIcon } from "@/components/icons";
 import {
   ChannelEmail,
   ChannelWhatsApp,
+  FeatureWhatsAppCRM,
   MaxReminders,
   SlotConfirmation,
   SlotFollowupEngaged,
@@ -176,16 +177,10 @@ function emailCopy(slot: MessageSlot, topic: string, when: string, body: string)
 /** The WhatsApp tab on a plan without WhatsApp: what it would do, and where to get it. */
 function WhatsAppUpsell() {
   return (
-    <div className="grid gap-2 rounded-lg border border-line bg-surface-2 p-3 text-[13px]">
-      <p className="font-medium text-ink">WhatsApp messages are on Professional and up</p>
-      <p className="text-ink-2">
-        Send reminders, the replay and follow-ups on WhatsApp from your own business number. Your email messages keep
-        going out as they do now.
-      </p>
-      <Link href="/pricing#pricing" className="font-medium text-brand hover:underline">
-        See plans
-      </Link>
-    </div>
+    <PlanLock feature={FeatureWhatsAppCRM} title="WhatsApp messages">
+      Send reminders, the replay and follow-ups on WhatsApp from your own business number. Your email messages keep
+      going out as they do now.
+    </PlanLock>
   );
 }
 

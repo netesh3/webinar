@@ -1,5 +1,6 @@
 "use client";
 
+import { PlanLock } from "./plan-lock";
 import { DEFAULT_REMINDERS, ReminderTimes, describeReminders } from "./reminder-times";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { CopyField, Spinner, Tabs } from "./controls";
@@ -247,7 +248,13 @@ export function HostWebinarTabs({
             />
           </Card>
           <SettingsTab webinar={w} />
-          {aiKnowledge && <SessionKnowledgeCard slug={w.id} />}
+          {aiKnowledge ? (
+            <SessionKnowledgeCard slug={w.id} />
+          ) : (
+            <PlanLock feature={FeatureAIKnowledge} title="AI knowledge base">
+              Give the AI your documents and links, and it drafts answers to questions from them.
+            </PlanLock>
+          )}
           <StageTab webinar={w} onChanged={onChanged} />
           <HostLinkCard webinar={w} />
         </div>
@@ -273,6 +280,21 @@ export function HostWebinarTabs({
           <AILeadsAndFollowups webinar={w} />
           {repurpose && <RepurposeCard webinar={w} />}
         </>
+      )}
+      {/* Locked, not missing, on a plan without them (1 Nov 2026). */}
+      {tab === "Results" && ended && (!ai || !cloudRecording) && (
+        <div className="mb-4 grid gap-2 sm:grid-cols-2">
+          {!ai && (
+            <PlanLock feature={FeatureAI} title="AI recap, hot leads and follow-up drafts">
+              A recap with chapters and action items after every session, and follow-ups written for each group.
+            </PlanLock>
+          )}
+          {!cloudRecording && (
+            <PlanLock feature={FeatureCloudRecording} title="Cloud recording and replay">
+              On your plan, record on your own computer from the room.
+            </PlanLock>
+          )}
+        </div>
       )}
       {/* Old recap emails link to ?tab=results: one line pointing at where the recap went. */}
       {tab === "Results" && ended && ai && (

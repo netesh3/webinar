@@ -283,6 +283,7 @@ func TestSimuliveNeverDispatchesTheCaptionAgent(t *testing.T) {
 	email := "cc-sim-dispatch@test.dev"
 	h.signup("Coach Dispatch", email, true)
 	enableAI(t, h, email)
+	serverCaptionsHost(t, h)
 
 	orig := h.liveWebinar("Original with AI", nil)
 	// The control: a live session with AI on does bring the agent in for the transcript.
