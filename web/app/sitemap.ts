@@ -9,6 +9,10 @@ import { siteOrigin } from "@/lib/site-origin";
 /* Public pages and every blog post. Which pages, their dates and priorities, and what
  * is kept out live in lib/seo.ts, which lib/seo.test.mts checks. /download only while an
  * admin has it switched on (from /api/config; left out when the API cannot say). */
+/* Rendered per request, not at build: the /download entry follows an admin switch that changes
+ * without a deploy. The config read behind it is cached (lib/http.ts TTL_CONFIG). */
+export const dynamic = "force-dynamic";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [origin, config] = await Promise.all([siteOrigin(), api.config().catch(() => null)]);
   return sitemapEntries(origin, POSTS, { indexable: indexable(), downloadsVisible: downloadsVisible(config) });
