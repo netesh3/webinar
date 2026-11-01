@@ -2,6 +2,7 @@ package billing
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/netkumar/webcast/api/types"
@@ -106,8 +107,8 @@ func TestPricingV3Lineup(t *testing.T) {
 	}
 	want := []row{
 		{types.PlanBasic, 100, 3, 2_999_00, 39_00, 7_499_00, 99_00, 29_988_00, 390_00, 1_49_940_00, 1_950_00},
-		{types.PlanProfessional, 300, 5, 9_999_00, 149_00, 0, 0, 99_948_00, 1_490_00, 4_99_740_00, 7_450_00},
-		{types.PlanBusiness, 500, 10, 24_999_00, 349_00, 0, 0, 2_49_948_00, 3_490_00, 12_49_740_00, 17_450_00},
+		{types.PlanProfessional, 300, 5, 9_999_00, 149_00, 24_999_00, 375_00, 99_948_00, 1_490_00, 4_99_740_00, 7_450_00},
+		{types.PlanBusiness, 500, 10, 24_999_00, 349_00, 62_499_00, 875_00, 2_49_948_00, 3_490_00, 12_49_740_00, 17_450_00},
 	}
 	for _, w := range want {
 		p, ok := FindPlan(string(w.id))
@@ -140,12 +141,42 @@ func TestPricingV3Lineup(t *testing.T) {
 			}
 		}
 	}
-	// Basic's monthly price is 60% off its list, in both currencies.
+	// Every paid plan's monthly price is 60% off its list, in both currencies (1 Nov 2026).
+	for _, p := range OnSale() {
+		if p.ContactOnly {
+			if p.ListMonthly != nil {
+				t.Errorf("%s is contact-only but has a list price", p.ID)
+			}
+			continue
+		}
+		for _, cur := range []string{INR, USD} {
+			m, _ := p.Price(cur, Monthly)
+			if pct := DiscountPercent(m, p.List(cur, Monthly)); OffLabel(pct) != "60% OFF" {
+				t.Errorf("%s %s monthly = %d%% off, want 60%% OFF", p.ID, cur, pct)
+			}
+		}
+	}
+	// The cards: a lead line, then the limits, then what the plan adds.
+	for id, lead := range map[string]string{
+		"basic": "Includes:", "professional": "Everything in Basic, plus:",
+		"business": "Everything in Professional, plus:", "enterprise": "Everything in Business, plus:",
+	} {
+		p, _ := FindPlan(id)
+		if p.Lead != lead {
+			t.Errorf("%s lead = %q, want %q", id, p.Lead, lead)
+		}
+		f := p.AllFeatures()
+		if len(f) < 4 || f[2] != "Meetings of up to "+thousands(p.MeetingSeats())+" people" || f[3] != thousands(p.StorageGB)+" GB storage" {
+			t.Errorf("%s card lines = %q", id, f)
+		}
+	}
+	// Nothing on Basic's card promises what Basic does not have.
 	basic, _ := FindPlan("basic")
-	for _, cur := range []string{INR, USD} {
-		m, _ := basic.Price(cur, Monthly)
-		if pct := DiscountPercent(m, basic.List(cur, Monthly)); OffLabel(pct) != "60% OFF" {
-			t.Errorf("Basic %s monthly = %d%% off, want 60%% OFF", cur, pct)
+	for _, line := range basic.AllFeatures() {
+		for _, banned := range []string{"WhatsApp", "Cloud recording", "captions", "spam", "AI", "Simulive"} {
+			if strings.Contains(line, banned) {
+				t.Errorf("Basic's card says %q", line)
+			}
 		}
 	}
 	ent, _ := FindPlan("enterprise")

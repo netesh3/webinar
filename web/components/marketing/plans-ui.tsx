@@ -221,6 +221,7 @@ export function PlanCards({ headingLevel = 2 }: { headingLevel?: 2 | 3 }) {
                 >
                   {plan.contactOnly ? "Contact us" : `Choose ${plan.name}`}
                 </a>
+                <p className="plan-lead">{plan.lead}</p>
                 <ul className="ticks">
                   {cardLines(plan).map((h) => (
                     <li key={h}>{h}</li>
@@ -230,8 +231,11 @@ export function PlanCards({ headingLevel = 2 }: { headingLevel?: 2 | 3 }) {
             );
           })}
         </div>
-        <p className="pricing-foot">
-          <a href="#compare">Compare all features ↓</a>
+        <p className="pl-compare-cta">
+          {/* As prominent as the trial button (1 Nov 2026): the full table is the next question. */}
+          <a className="btn btn-primary btn-lg" href="#compare">
+            Compare all features ↓
+          </a>
         </p>
         <p className="pricing-foot">
           {GST_PERCENT}% GST is added to INR payments, with a GST invoice. USD payments are charged without GST. Pay
@@ -383,10 +387,15 @@ export function PlansFaq() {
             Yes, from Settings. Cancel a trial before it ends and you are never charged. A yearly plan is paid once for
             the year, at {YEARLY_OFF_PERCENT}% off its list price.
           </FaqItem>
-          <FaqItem question="How long are recordings kept?">
-            30 days from the end of the session. We email you a week and a day before a recording expires; one click
-            keeps it for 3 more months, as long as you are within your plan&apos;s storage. You can download a recording
-            at any time.
+          <FaqItem question="Where are my recordings kept?">
+            On every plan you can record in the browser and keep the file on your computer. Cloud recording is on
+            Professional and up: a cloud recording is kept 30 days from the end of the session, we email you a week
+            and a day before it expires, and one click keeps it for 3 more months while you are within your
+            plan&apos;s storage. Your storage holds the videos you upload and your cloud recordings together.
+          </FaqItem>
+          <FaqItem question="Which plans have captions?">
+            Every plan has live captions made on each speaker&apos;s device. Business and Enterprise add server live
+            captions, in English and eight Indian languages.
           </FaqItem>
           <FaqItem question="Which plans have AI?">
             Business and Enterprise: recaps, Q&amp;A answer drafts, the knowledge base, follow-up drafts and

@@ -50,7 +50,8 @@ var Facts = []string{
 	"During a webinar: polls, quizzes, upvoted Q&A, chat, reactions, raised hands, bringing attendees on stage, a shared whiteboard, screen share, and recording. You can also stream live to YouTube, LinkedIn Live, Instagram Live and Facebook Live at the same time.",
 	"After a webinar: every attendee gets an Engagement Score from 0 to 100 built from watch time (40), polls (15), quiz accuracy (10), chat (10), Q&A (10), reactions (5), raised hand (5) and survey (5). Tools you didn't use don't count against anyone.",
 	"Follow-up by engagement group: send an offer to the most engaged, a replay to the rest, and a note to no-shows. WhatsApp automations, campaigns, follow-ups and scheduling, with drips, a chatbot and one shared inbox, are included from Professional up.",
-	"Business and Enterprise add simulive (a recording played as a live session), AI recaps, an AI knowledge base, AI follow-up drafts and Zoom.",
+	"Cloud recording is from Professional up; on Basic the presenter records on their own computer.",
+	"Business and Enterprise add simulive (a recording played as a live session), server live captions, a chat spam filter, AI recaps, an AI knowledge base, AI follow-up drafts and Zoom. Every plan has captions made on the speaker's device.",
 	"WhatsApp reminders use your own WhatsApp Business number through Meta's official sign-up. Meta bills message fees to your own WhatsApp Business account; Webinar Liv does not mark them up.",
 	"You own your contacts and data: export registrants, attendance and chat as CSV at any time.",
 	"Buying: choose a plan on the pricing page, pay with UPI, cards, netbanking or wallets through Razorpay, and host access turns on immediately — no waiting for approval.",
@@ -83,14 +84,14 @@ PLANS (prices before tax; a yearly plan is paid once for the year`)
 		if p.ContactOnly {
 			// Not sold online: no price to quote, so a question about it reaches a person.
 			fmt.Fprintf(&b, "- %s (%s): %d or more live attendees per webinar and up to %d people on stage; priced on request, so hand off for a quote. Includes: %s.\n",
-				p.Name, p.Who, p.Attendees(), p.StageSeats(), strings.Join(p.Features, "; "))
+				p.Name, p.Who, p.Attendees(), p.StageSeats(), p.Summary())
 			continue
 		}
 		inr, _ := p.Price(billing.INR, billing.Monthly)
 		inrYear, _ := p.Price(billing.INR, billing.Yearly)
 		usd, _ := p.Price(billing.USD, billing.Monthly)
 		fmt.Fprintf(&b, "- %s (%s): up to %d live attendees per webinar and up to %d people on stage; %s/month or %s/year; or $%d/month. Includes: %s.\n",
-			p.Name, p.Who, p.Attendees(), p.StageSeats(), rupees(inr), rupees(inrYear), usd/100, strings.Join(p.Features, "; "))
+			p.Name, p.Who, p.Attendees(), p.StageSeats(), rupees(inr), rupees(inrYear), usd/100, p.Summary())
 	}
 	b.WriteString("\nFACTS:\n")
 	for _, f := range Facts {

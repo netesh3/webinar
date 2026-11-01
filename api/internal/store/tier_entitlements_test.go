@@ -35,6 +35,38 @@ func TestAIDefaultOffSQLMatchesMigration(t *testing.T) {
 	}
 }
 
+func TestPricingGatesSQLMatchesMigration(t *testing.T) {
+	body, err := migrationFS.ReadFile("migrations/0180_pricing_gates.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), PricingGatesSQL) {
+		t.Fatalf("0180 drifted from PricingGatesSQL:\n%s", body)
+	}
+	// TierFeatures says what 0180 sets: captions Business and up, cloud recording Professional up.
+	has := func(plan types.Plan, key string) bool {
+		for _, k := range TierFeatures[plan] {
+			if k == key {
+				return true
+			}
+		}
+		return false
+	}
+	for plan, row := range map[types.Plan][2]bool{
+		types.PlanBasic: {false, false}, types.PlanProfessional: {false, true},
+		types.PlanBusiness: {true, true}, types.PlanEnterprise: {true, true},
+	} {
+		if has(plan, types.FeatureCaptions) != row[0] || has(plan, types.FeatureCloudRecording) != row[1] {
+			t.Errorf("%s: captions %v cloud_recording %v, want %v", plan,
+				has(plan, types.FeatureCaptions), has(plan, types.FeatureCloudRecording), row)
+		}
+		want := "('" + string(plan) + "', "
+		if !strings.Contains(PricingGatesSQL, want) {
+			t.Errorf("PricingGatesSQL has no row for %s", plan)
+		}
+	}
+}
+
 func TestPricingV3SQLMatchesMigration(t *testing.T) {
 	body, err := migrationFS.ReadFile("migrations/0179_pricing_v3.sql")
 	if err != nil {
@@ -44,7 +76,7 @@ func TestPricingV3SQLMatchesMigration(t *testing.T) {
 		t.Fatalf("0179 drifted from PricingV3SQL:\n%s", body)
 	}
 	// The SQL's tiers are TierFeatures: every tiered switch is named, and every plan on sale.
-	for _, k := range TieredFeatures {
+	for _, k := range PricingV3Features {
 		if !strings.Contains(PricingV3SQL, "'"+k+"'") {
 			t.Errorf("PricingV3SQL does not set %s", k)
 		}

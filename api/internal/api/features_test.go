@@ -70,10 +70,10 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	}
 
 	target := h.signup("Switchable Host", "switchable@test.dev", true)
-	// Every switch is off until somebody decides — except the whiteboard (migrations/0099),
-	// meetings and server captions (0142), which start on. Every AI switch is per host only
-	// (0159), in no plan; simulive is off for a new account.
-	if want := []string{types.FeatureCaptions, types.FeatureMeetings, types.FeatureWhiteboard}; !slices.Equal(target.Features, want) {
+	// Every switch is off until somebody decides — except the whiteboard (migrations/0099)
+	// and meetings (0142), which start on. Server captions are Business and up since 0180, so
+	// an account with no plan captions on each speaker's device; simulive is off.
+	if want := []string{types.FeatureMeetings, types.FeatureWhiteboard}; !slices.Equal(target.Features, want) {
 		t.Fatalf("a new account starts with features %v, want %v", target.Features, want)
 	}
 
@@ -117,8 +117,8 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	_, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
 		types.FeatureGrant{Feature: types.FeatureWhatsAppCRM, Enabled: true})
 	h.decode(raw, &updated)
-	if len(updated.Features) != 5 {
-		t.Errorf("features = %v after re-granting WhatsApp CRM, want five (with the defaults: whiteboard, meetings, captions)", updated.Features)
+	if len(updated.Features) != 4 {
+		t.Errorf("features = %v after re-granting WhatsApp CRM, want four (with the defaults: whiteboard, meetings)", updated.Features)
 	}
 
 	res, raw = h.do(http.MethodPatch, "/api/admin/users/"+target.ID+"/features",
@@ -167,7 +167,7 @@ func TestFeaturesAreRefusedWhenSwitchedOff(t *testing.T) {
 	g := newFakeGraph(t)
 	h := newHarness(t, whatsappConfigured(g.srv.URL))
 	h.login("neeraj@acme.dev")
-	connectWhatsApp(t, h)
+	connectWhatsAppOnly(t, h)
 	wb := autoWebinar(t, h, "A webinar with no switches on")
 	contact := registerOptedIn(t, h, wb.ID)
 
@@ -260,7 +260,7 @@ func TestWhatsAppCRMIsOneSwitch(t *testing.T) {
 	}
 
 	h.login("neeraj@acme.dev")
-	connectWhatsApp(t, h)
+	connectWhatsAppOnly(t, h)
 	me := meAccount(t, h)
 	res, raw := h.do(http.MethodPost, "/api/host/crm/tags", types.CRMTagRequest{Name: "VIP"})
 	if res.StatusCode != http.StatusForbidden || errorCode(t, raw) != "feature_off" {

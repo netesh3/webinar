@@ -33,7 +33,7 @@ export type PlanLimits = {
   stage: number;
   /** People in one meeting at once, the host included (types.PlanMeetingCap). */
   meetingCap: number;
-  /** Cloud recording storage, GB (plan_limits, migrations/0179). */
+  /** Storage, GB: cloud recordings, uploaded videos and clips together (plan_limits, migrations/0180). */
   recordingGb: number;
 };
 
@@ -49,13 +49,16 @@ export type Plan = {
   popular?: boolean;
   /** Sold by talking to us: no price and no checkout. */
   contactOnly?: boolean;
+  /** The card's bold first line (billing Plan.Lead): "Everything in Basic, plus:", or "Includes:". */
+  lead: string;
   limits: PlanLimits;
-  /** The card's lines after the attendee and stage lines: the server's Plan.Features, word for word. */
+  /** What the plan adds, after the limit lines: the server's Plan.Features, word for word. */
   highlights: string[];
 };
 
-/* The server's plans, in the same order. Each entry's server, monthly, list, attendees, stage
- * and highlights are read by api/internal/billing/web_plans_test.go: keep the `key: value` shape. */
+/* The server's plans, in the same order. Each entry's server, monthly, list, lead, limits and
+ * highlights are read by api/internal/billing/web_plans_test.go: keep the `key: value` shape.
+ * (1 Nov 2026) Every paid plan's monthly price is 60% off its list. */
 export const PLANS: Plan[] = [
   {
     id: "basic",
@@ -64,15 +67,16 @@ export const PLANS: Plan[] = [
     who: "For coaches running their first webinars",
     monthly: { INR: 2999, USD: 39 },
     list: { INR: 7499, USD: 99 },
+    lead: "Includes:",
     limits: {
       attendees: 100,
       stage: 3,
       meetingCap: 10,
-      recordingGb: 5,
+      recordingGb: 2,
     },
     highlights: [
       "Webinars with registration pages",
-      "Email reminders before and follow-ups after",
+      "Email confirmations and reminders",
       "Engagement for every attendee",
       "Webinar Engagement Score",
     ],
@@ -83,14 +87,16 @@ export const PLANS: Plan[] = [
     name: "Professional",
     who: "For coaches selling programs every week",
     monthly: { INR: 9999, USD: 149 },
+    list: { INR: 24999, USD: 375 },
     popular: true,
+    lead: "Everything in Basic, plus:",
     limits: {
       attendees: 300,
       stage: 5,
-      meetingCap: 10,
-      recordingGb: 50,
+      meetingCap: 20,
+      recordingGb: 10,
     },
-    highlights: ["Everything in Basic", "WhatsApp automations and campaigns", "WhatsApp follow-ups and scheduling"],
+    highlights: ["Cloud recording", "WhatsApp automations and campaigns", "WhatsApp follow-ups and scheduling"],
   },
   {
     id: "business",
@@ -98,16 +104,19 @@ export const PLANS: Plan[] = [
     name: "Business",
     who: "For academies and teams with big launches",
     monthly: { INR: 24999, USD: 349 },
+    list: { INR: 62499, USD: 875 },
+    lead: "Everything in Professional, plus:",
     limits: {
       attendees: 500,
       stage: 10,
-      meetingCap: 10,
-      recordingGb: 200,
+      meetingCap: 100,
+      recordingGb: 100,
     },
     highlights: [
-      "Everything in Professional",
       "Simulive: recordings played as live",
+      "Server live captions",
       "AI recaps, knowledge base and follow-ups",
+      "Chat spam filter",
       "Zoom and every advanced feature",
     ],
   },
@@ -118,22 +127,25 @@ export const PLANS: Plan[] = [
     who: "For institutions and very large audiences",
     monthly: null,
     contactOnly: true,
+    lead: "Everything in Business, plus:",
     limits: {
       attendees: 1000,
       stage: 100,
-      meetingCap: 10,
+      meetingCap: 300,
       recordingGb: 500,
     },
-    highlights: ["Everything in Business", "Customised for your organisation", "Priority support and onboarding"],
+    highlights: ["Customised for your organisation", "Priority support and onboarding"],
   },
 ];
 
 /* What each plan includes of the server's switches (types.Features keys) that the plans differ
- * by: the server's store.TierFeatures, as migrations/0179 set the tiers. Whiteboard, meetings
- * and captions are on every plan and not listed. clips, instant_webinar and hls_delivery are
- * on no plan (an admin's switch for one host). Read by web_plans_test.go. */
+ * by: the server's store.TierFeatures, as migrations/0179 and 0180 set the tiers. Basic has none
+ * of them: no cloud recording (the presenter records on their own computer), no WhatsApp and no
+ * server captions (captions run on each speaker's device). Whiteboard and meetings are on every
+ * plan and not listed. clips, instant_webinar and hls_delivery are on no plan (an admin's switch
+ * for one host). The chat spam filter needs ai. Read by web_plans_test.go. */
 export const TIER_FEATURES: Record<PlanId, string[]> = {
-  basic: ["cloud_recording"],
+  basic: [],
   pro: ["cloud_recording", "whatsapp_crm"],
   business: [
     "cloud_recording",
@@ -146,6 +158,7 @@ export const TIER_FEATURES: Record<PlanId, string[]> = {
     "simulive_auto",
     "followup_send",
     "repurpose",
+    "captions",
   ],
   enterprise: [
     "cloud_recording",
@@ -158,6 +171,7 @@ export const TIER_FEATURES: Record<PlanId, string[]> = {
     "simulive_auto",
     "followup_send",
     "repurpose",
+    "captions",
   ],
 };
 
@@ -250,13 +264,19 @@ export function perMonth(plan: Plan, currency: Currency, period: Period): number
   return p === null ? null : monthlyShare(p, period);
 }
 
-/** The card's full list, as the server's Plan.AllFeatures writes it. */
+/** The card's list after its lead, as the server's Plan.AllFeatures writes it: the limits, then
+ *  what the plan adds. */
 export function cardLines(plan: Plan): string[] {
   const n = (v: number) => v.toLocaleString("en-IN");
-  const attendees = plan.contactOnly
-    ? `${n(plan.limits.attendees)}+ attendees`
-    : `Up to ${n(plan.limits.attendees)} attendees`;
-  return [attendees, `Up to ${n(plan.limits.stage)} people on stage`, ...plan.highlights];
+  const l = plan.limits;
+  const attendees = plan.contactOnly ? `${n(l.attendees)}+ attendees` : `Up to ${n(l.attendees)} attendees`;
+  return [
+    attendees,
+    `Up to ${n(l.stage)} people on stage`,
+    `Meetings of up to ${n(l.meetingCap)} people`,
+    `${n(l.recordingGb)} GB storage`,
+    ...plan.highlights,
+  ];
 }
 
 export function formatPrice(amount: number, currency: Currency): string {
@@ -336,10 +356,12 @@ function enterpriseOnly(label: string, value: Cell = true, text: RowText = {}): 
   };
 }
 
-/* "Compare all features": everything the product has today, checked in the code. Not listed
- * because they are not built: breakout rooms, SSO, custom domains, branding beyond a cover
- * image, a public API, webhooks or Zapier. Not listed because no plan sells them (31 Oct
- * 2026): instant meetings and webinars, highlight clips and reels. */
+/* "Compare all features": everything the product has today, checked in the code, against the
+ * tiers of migrations/0179 and 0180. Not listed because they are not built: breakout rooms, SSO,
+ * custom domains, branding beyond a cover image, a public API, webhooks or Zapier. Not listed
+ * because no plan sells them: instant meetings and webinars, highlight clips and reels, and HLS
+ * delivery (an admin's switch for one host). Not listed until the store listings are live: the
+ * desktop and mobile apps. */
 export const COMPARISON: CompareGroup[] = [
   {
     id: "capacity",
@@ -355,12 +377,12 @@ export const COMPARISON: CompareGroup[] = [
         (p) => n(p.limits.stage),
         "Host, co-hosts, panelists and attendees brought on stage, together",
       ),
+      limitRow("People per meeting", (p) => n(p.limits.meetingCap), "Everyone in a meeting is on camera, the host included"),
       limitRow(
-        "People per meeting",
-        (p) => (p.contactOnly ? "Up to 50" : n(p.limits.meetingCap)),
-        "Everyone in a meeting is on camera, the host included",
+        "Storage (uploads and recordings)",
+        (p) => `${n(p.limits.recordingGb)} GB`,
+        "Videos you upload to play in a session, cloud recordings and their captions, together",
       ),
-      limitRow("Cloud recording storage", (p) => `${n(p.limits.recordingGb)} GB`, "Recordings and their captions"),
     ],
   },
   {
@@ -397,16 +419,6 @@ export const COMPARISON: CompareGroup[] = [
         detail: "Blur or a background, noise suppression and low-light correction, all in the browser.",
       }),
       all("Picture-in-picture"),
-      {
-        label: "Delivery for very large audiences",
-        hint: "An HLS stream from the video server or a CDN, a few seconds behind live. Set up by our team.",
-        cells: {
-          basic: "On request",
-          pro: "On request",
-          business: "On request",
-          enterprise: "On request",
-        },
-      },
     ],
   },
   {
@@ -418,12 +430,8 @@ export const COMPARISON: CompareGroup[] = [
         hint: "One page per webinar, with a cover image",
         detail: "A registration page per webinar with your own questions and a cover image.",
       }),
-      all("Registration approval", {
-        detail: "Approve registrants one by one or all at once.",
-      }),
-      all("Calendar invites", {
-        hint: "An .ics invite with every confirmation",
-      }),
+      all("Registration approval", { detail: "Approve registrants one by one or all at once." }),
+      all("Calendar invites", { hint: "An .ics invite with every confirmation" }),
       all("Audience across all your webinars", {
         detail: "Everyone who registered or attended, across every webinar, in one list.",
       }),
@@ -434,12 +442,12 @@ export const COMPARISON: CompareGroup[] = [
     title: "Reminders & follow-ups",
     intro: "Remind people before, follow up after, on email and WhatsApp.",
     rows: [
-      all("Email reminders before the webinar", {
-        hint: "From templates you can edit",
-        detail: "Reminder emails with calendar invites, at the times you choose, from templates you can edit.",
+      all("Email confirmations and reminders", {
+        hint: "Before the webinar, from templates you can edit",
+        detail: "A confirmation when they register and reminder emails with calendar invites, at the times you choose.",
       }),
-      all("Email follow-ups after the webinar", {
-        hint: "The replay link, by email",
+      tier("cloud_recording", "Replay email after the webinar", {
+        hint: "The replay link to everyone who registered; needs a cloud recording",
         detail: "After the session, everyone who registered gets the replay by email.",
       }),
       all("Push notifications", {
@@ -476,9 +484,7 @@ export const COMPARISON: CompareGroup[] = [
       all("Chat, Q&A, polls and quizzes", {
         detail: "Chat with images and @mentions, upvoted Q&A, polls and quizzes.",
       }),
-      all("Reactions and raised hands", {
-        detail: "Emoji reactions, and raised hands you can bring on stage.",
-      }),
+      all("Reactions and raised hands", { detail: "Emoji reactions, and raised hands you can bring on stage." }),
       all("Offer pop-ups and post-session surveys", {
         detail: "Show an offer at the right moment and ask for feedback at the end.",
       }),
@@ -490,24 +496,32 @@ export const COMPARISON: CompareGroup[] = [
         hint: "0–100 per attendee",
         detail: "A 0-100 score per attendee from watch time, polls, quizzes, chat, Q&A and reactions.",
       }),
+      tier("ai", "Chat spam filter", {
+        hint: "Spam and links caught in chat and Q&A, by rules and an AI check, with one-click clean-up",
+        detail: "Spam and links caught in chat and Q&A, with one-click clean-up.",
+      }),
     ],
   },
   {
     id: "recording",
     title: "Recording & replay",
-    intro: "Every session recorded, with a replay page to share.",
+    intro: "Record every session, on your computer or in the cloud.",
     rows: [
+      all("Local recording in the browser", {
+        hint: "Saved on the presenter's computer",
+        detail: "Record the session in the browser and keep the file on your own computer.",
+      }),
       tier("cloud_recording", "Cloud recording", {
-        hint: "Recorded on our servers, with captions",
+        hint: "Recorded on our servers, with captions; counts against your storage",
         detail: "Record to the cloud by hand or automatically, with captions in the recording.",
       }),
-      all("Local recording in the browser"),
-      all("Replay pages and share links", {
-        detail: "A replay page for every recording, and links to share it.",
+      tier("cloud_recording", "Replay pages and share links", {
+        hint: "For cloud recordings",
+        detail: "A replay page for every cloud recording, and links to share it.",
       }),
-      all("Recordings kept for 30 days", {
+      tier("cloud_recording", "Recordings kept for 30 days", {
         hint: "Then Keep longer, 3 months at a time, within your storage",
-        detail: "Recordings are kept 30 days after the session, with reminders before they expire.",
+        detail: "Cloud recordings are kept 30 days after the session, with reminders before they expire.",
       }),
     ],
   },
@@ -527,7 +541,7 @@ export const COMPARISON: CompareGroup[] = [
   },
   {
     id: "ai",
-    title: "AI",
+    title: "AI & captions",
     intro: "AI that drafts, and you decide. On Business and Enterprise, within a monthly AI limit.",
     rows: [
       tier("ai", "AI recap and insights", {
@@ -545,20 +559,17 @@ export const COMPARISON: CompareGroup[] = [
         hint: "The AI answers questions while a simulive plays",
         detail: "While a simulive plays, the AI answers the questions it is confident about, from your knowledge base.",
       }),
-      tier("ai", "Write with AI", {
-        hint: "Titles, descriptions and registration copy",
-      }),
+      tier("ai", "Write with AI", { hint: "Titles, descriptions and registration copy" }),
       tier("repurpose", "Blog, newsletter and social drafts", {
         hint: "From a session's transcript, in your brand voice",
         detail: "A blog post, newsletter, LinkedIn, X or Instagram post from a session, in your brand voice.",
       }),
-      all("Live captions", {
-        hint: "English, Hindi, Hinglish, Tamil, Telugu, Kannada, Marathi, Bengali and Gujarati",
-        detail: "Live captions for the room and the recording, in English and eight Indian languages.",
+      tier("captions", "Server live captions", {
+        hint: "Made on our servers: English, Hindi, Hinglish, Tamil, Telugu, Kannada, Marathi, Bengali and Gujarati",
+        detail: "Live captions made on our servers, in English and eight Indian languages, for the room and the recording.",
       }),
-      all("Chat spam filter", {
-        hint: "Rules on every plan; the AI check is on plans with AI",
-        detail: "Spam and links caught in chat, with one-click clean-up.",
+      all("Captions on the speaker's device", {
+        hint: "Made in each speaker's browser, on every plan",
       }),
     ],
   },
@@ -605,18 +616,6 @@ export const COMPARISON: CompareGroup[] = [
     ],
   },
   {
-    id: "apps",
-    title: "Apps",
-    rows: [
-      all("Installable web app", {
-        hint: "Add to the home screen, with push notifications",
-      }),
-      all("Desktop and mobile apps", {
-        hint: "Where released: see the Download page",
-      }),
-    ],
-  },
-  {
     id: "security",
     title: "Support & security",
     intro: "Your room, your rules, your data.",
@@ -630,7 +629,7 @@ export const COMPARISON: CompareGroup[] = [
       all("Lobby, approval and host controls", {
         detail: "A lobby for meetings, approval for registrations, mute-all and remove for the stage.",
       }),
-      all("WhatsApp opt-in", {
+      tier("whatsapp_crm", "WhatsApp opt-in", {
         detail: "Attendees opt in before you can message them on WhatsApp.",
       }),
       all("Payments through Razorpay", {

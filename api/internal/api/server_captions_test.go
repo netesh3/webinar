@@ -87,6 +87,7 @@ func (h *harness) setServerCaptions(slug string, on bool) (*http.Response, types
 func TestServerCaptionsToggleDispatchesAndRemovesTheAgent(t *testing.T) {
 	h := newHarness(t, captionsConfig)
 	h.signup("Caption Host", "srvcap-toggle@test.dev", true)
+	serverCaptionsHost(t, h)
 	wb := h.liveWebinar("Server captions toggle", nil)
 	room := "webinar_" + wb.ID
 
@@ -162,6 +163,7 @@ func TestServerCaptionsToggleDispatchesAndRemovesTheAgent(t *testing.T) {
 func TestServerCaptionsUnavailableWithoutTheSecret(t *testing.T) {
 	h := newHarness(t)
 	h.signup("No Agent Host", "srvcap-none@test.dev", true)
+	serverCaptionsHost(t, h)
 	wb := h.liveWebinar("No server captions", nil)
 	res, _, raw := h.setServerCaptions(wb.ID, true)
 	if res.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(raw), "server_captions_unavailable") {
@@ -208,6 +210,7 @@ func TestInternalCaptionAuth(t *testing.T) {
 func TestInternalCaptionStoresAndFansOutLikeABrowserCaption(t *testing.T) {
 	h := newHarness(t, captionsConfig, edgeConfig)
 	host := edgeHost(t, h, "srvcap-fanout@test.dev")
+	serverCaptionsHost(t, h)
 	wb := edgeWebinar(h, "Caption fan-out")
 	room := "webinar_" + wb.ID
 	speaker := "user_" + host.ID
@@ -292,6 +295,7 @@ func TestInternalCaptionStoresAndFansOutLikeABrowserCaption(t *testing.T) {
 func TestInternalCaptionPublishedAndPartialGoOnlyToTheEdge(t *testing.T) {
 	h := newHarness(t, captionsConfig, edgeConfig)
 	host := edgeHost(t, h, "srvcap-direct@test.dev")
+	serverCaptionsHost(t, h)
 	wb := edgeWebinar(h, "Caption direct")
 	room := "webinar_" + wb.ID
 	speaker := "user_" + host.ID

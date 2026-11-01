@@ -76,6 +76,7 @@ func TestCaptionsLanguageDefaultsAndIsValidated(t *testing.T) {
 func TestCaptionsLanguageReachesTheAgentAndChangesLive(t *testing.T) {
 	h := newHarness(t, captionsConfig)
 	h.signup("Lang Live Host", "caplang-live@test.dev", true)
+	serverCaptionsHost(t, h)
 	wb := h.liveWebinar("Hindi session", func(in *types.WebinarInput) {
 		in.Options.Captions = true
 		in.Options.CaptionsLanguage = "hi"

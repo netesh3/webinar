@@ -665,6 +665,10 @@ export interface BillingPlan {
    * Stage is the plan's cap on people on stage at once (types.PlanStageCap).
    */
   stage: number /* int */;
+  /**
+   * Lead is the bold line above Features: "Everything in Basic, plus:", or "Includes:".
+   */
+  lead: string;
   features: string[];
   popular?: boolean;
   prices: BillingPrice[];
@@ -2777,6 +2781,10 @@ export const FollowupReasonMailOff = "mail_unconfigured";
  * Why a channel cannot be used for somebody, or why a send was skipped or failed.
  */
 export const FollowupReasonNotConnected = "whatsapp_not_connected";
+/**
+ * FollowupReasonPlan is a host whose plan has no WhatsApp (FeatureWhatsAppCRM, 1 Nov 2026).
+ */
+export const FollowupReasonPlan = "whatsapp_plan";
 /**
  * Why a channel cannot be used for somebody, or why a send was skipped or failed.
  */
@@ -6207,9 +6215,10 @@ export const FeatureSimuliveAuto = "simulive_auto";
  */
 export const FeatureFollowupSend = "followup_send";
 /**
- *  FeatureCaptions is live server captions in the room (the caption agent). ON by default
- * 	 * in every tier (migrations/0142). Off: turning server captions on is refused 403
- * 	 * feature_off and the room falls back to on-device captions in the browser.
+ *  FeatureCaptions is live server captions in the room (the caption agent). In the Business,
+ * 	 * Enterprise and grandfathered Starter tiers since 1 Nov 2026 (migrations/0180; every tier
+ * 	 * had it from 0142). Off: turning server captions on is refused 403 feature_off and the
+ * 	 * room falls back to captions made on each speaker's device, which every plan has.
  */
 export const FeatureCaptions = "captions";
 /**
@@ -9455,9 +9464,10 @@ export interface SetUserMeetingCapRequest {
   meetingCap?: number /* int */;
 }
 /**
- * MaxMeetingCapOverride is the most people an admin may allow in one account's meetings.
+ * MaxMeetingCapOverride is the most people an admin may allow in one account's meetings:
+ * Enterprise's (PlanMeetingCap), so an override can match it (1 Nov 2026; was 50).
  */
-export const MaxMeetingCapOverride = 50;
+export const MaxMeetingCapOverride = 300;
 export interface SetUserMaxDurationRequest {
   maxDurationMin?: number /* int */;
 }

@@ -7,17 +7,23 @@ import (
 	"github.com/netkumar/webcast/api/types"
 )
 
-// Meetings are 10 people on every plan until an admin says otherwise; webinars keep their own
-// stage caps (TestPlanStageCap).
+// Meetings by plan (1 Nov 2026): Basic 10, Professional 20, Business 100, Enterprise 300; no
+// plan and the grandfathered Starter 10. Webinars keep their own stage caps (TestPlanStageCap).
 func TestPlanMeetingCap(t *testing.T) {
-	for _, plan := range []types.Plan{"", types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise} {
-		if got := types.PlanMeetingCap(plan); got != 10 {
-			t.Errorf("PlanMeetingCap(%q) = %d, want 10", plan, got)
+	for plan, want := range map[types.Plan]int{
+		"": 10, types.PlanStarter: 10, types.PlanBasic: 10, types.PlanProfessional: 20,
+		types.PlanBusiness: 100, types.PlanEnterprise: 300,
+	} {
+		if got := types.PlanMeetingCap(plan); got != want {
+			t.Errorf("PlanMeetingCap(%q) = %d, want %d", plan, got, want)
 		}
+	}
+	if types.MaxMeetingCapOverride < types.PlanMeetingCap(types.PlanEnterprise) {
+		t.Errorf("an admin cannot set a meeting as big as Enterprise's (%d < %d)", types.MaxMeetingCapOverride, types.PlanMeetingCap(types.PlanEnterprise))
 	}
 }
 
-/* An admin raises one account's meetings to 50, the most allowed, and back to the plan. The
+/* An admin raises one account's meetings to 50, and back to the plan. The
  * webinar stage cap is a separate setting and does not move. */
 func TestAdminSetsAMeetingCapSeparateFromTheStageCap(t *testing.T) {
 	h := newHarness(t)

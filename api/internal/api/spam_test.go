@@ -27,10 +27,15 @@ func spamSetup(t *testing.T, reply string, plain bool, tweak func(*config.Config
 	h, model := aiHarness(t, reply, tweak)
 	email := "spam-host-" + strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")) + "@test.dev"
 	h.signup("Spam Host", email, true)
-	if !plain {
-		enableAI(t, h, email)
-	}
+	/* The filter, rules included, needs the account's ai switch (Business and up, 1 Nov 2026).
+	 * plain is a session that may not use the AI: the account has it, the room's switch is off. */
+	enableAI(t, h, email)
 	wb := h.liveWebinar("Personal finance for your first job", nil)
+	if plain {
+		if res, raw := h.patchAI(wb.ID, false); res.StatusCode != http.StatusOK {
+			t.Fatalf("AI off: %d %s", res.StatusCode, raw)
+		}
+	}
 	var guests []types.Registration
 	for _, g := range []string{"asha", "ravi", "meera", "kabir"} {
 		guests = append(guests, h.registerAsGuest(wb.ID, "spam-"+g+"-"+strings.ToLower(t.Name())+"@test.dev"))
@@ -412,5 +417,18 @@ func TestSpamAutoHideIsOffByDefault(t *testing.T) {
 	third := h.spamChat(wb.ID, g[2], "DM me, call me on +91 99887 76655")
 	if isDeleted(third) {
 		t.Fatal("a 0.75 flag was auto-hidden")
+	}
+}
+
+// Below Business (no ai switch) there is no filter at all, rules included, and chat still works.
+func TestSpamFilterNeedsBusiness(t *testing.T) {
+	t.Cleanup(api.SetSpamEvery(time.Hour))
+	h, model := aiHarness(t, `{"items":[]}`, nil)
+	h.signup("No Filter Host", "spam-basic-host@test.dev", true)
+	wb := h.liveWebinar("No filter on Basic", nil)
+	g := h.registerAsGuest(wb.ID, "spam-basic-guest@test.dev")
+	h.spamChat(wb.ID, g, whatsappSpam)
+	if out := h.spamFlags(wb.ID); len(out.Flags) != 0 || model.callCount() != 0 {
+		t.Fatalf("a host without ai got spam flags: %+v, calls %d", out, model.callCount())
 	}
 }

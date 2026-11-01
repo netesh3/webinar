@@ -193,6 +193,8 @@ func TestMessageDefaultsBackfill(t *testing.T) {
 func TestEngageSlotResolutionPrecedence(t *testing.T) {
 	h := newHarness(t)
 	h.login("neeraj@acme.dev")
+	// WhatsApp messages need WhatsApp on the plan (Professional and up, 1 Nov 2026).
+	forceFeature(t, h, h.me().ID, types.FeatureWhatsAppCRM, true)
 	res, raw := h.do(http.MethodPost, "/api/host/webinars", map[string]any{
 		"topic": "Precedence", "startsAt": time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339),
 		"durationMin": 45, "status": "scheduled", "registrationRequired": true,

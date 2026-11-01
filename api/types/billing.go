@@ -26,7 +26,9 @@ type BillingPlan struct {
 	Who       string `json:"who"`
 	Attendees int    `json:"attendees"`
 	// Stage is the plan's cap on people on stage at once (types.PlanStageCap).
-	Stage    int            `json:"stage"`
+	Stage int `json:"stage"`
+	// Lead is the bold line above Features: "Everything in Basic, plus:", or "Includes:".
+	Lead     string         `json:"lead"`
 	Features []string       `json:"features"`
 	Popular  bool           `json:"popular,omitempty"`
 	Prices   []BillingPrice `json:"prices"`

@@ -134,6 +134,15 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "not_found", "That webinar doesn't exist.")
 		return
+	case errors.Is(err, errStorageFull):
+		st, _ := s.store.RecordingStorageFor(r.Context(), wb.Host.ID, s.cfg.RecordingsRetentionDays)
+		httpx.JSON(w, http.StatusConflict, types.RecordingQuotaError{
+			Error: "quota_exceeded", UsedBytes: st.UsedBytes, QuotaBytes: st.QuotaBytes,
+			Message: fmt.Sprintf("Your storage is full (%s of %s), so a new cloud recording can't start. "+
+				"Record on this computer, delete recordings or videos you no longer need, or upgrade your plan for more space.",
+				gbText(st.UsedBytes), gbText(st.QuotaBytes)),
+		})
+		return
 	case errors.Is(err, errRecordingNoRoom):
 		httpx.Error(w, http.StatusServiceUnavailable, "recording_no_capacity",
 			"Cloud recording couldn't start: the video server is busy streaming to your audience. "+
@@ -148,6 +157,9 @@ func (s *Server) handleStartRecording(w http.ResponseWriter, r *http.Request) {
 		"by", user.ID, "mime", mime, "mode", s.cfg.RecordingsMode)
 	httpx.JSON(w, http.StatusCreated, rec)
 }
+
+// errStorageFull is a new cloud recording for a host whose storage is already full.
+var errStorageFull = errors.New("recording storage full")
 
 /* beginRecording starts a recording session's next take: the row, then (egress mode) the
  * server-side recorder, then the room's indicator. Shared by Record (handleStartRecording)
@@ -166,6 +178,15 @@ func (s *Server) beginRecording(
 	// topic or anything else a person typed. Two levels of fan-out so a directory
 	// listing stays usable after a few thousand recordings.
 	key := fmt.Sprintf("%s/%s/%s.%s", id[0:2], id[2:4], id, store.ExtForMime(mime))
+
+	/* (1 Nov 2026) A host already at or past their storage starts no new cloud recording: the
+	 * plan limits came down for some plans (migrations/0180), and nothing they have is deleted
+	 * for it, so the limit holds by stopping what is new. A take that crosses the line while
+	 * recording is still flagged as before (recordingStartStorage). */
+	if st, err := s.store.RecordingStorageFor(ctx, wb.Host.ID, s.cfg.RecordingsRetentionDays); err == nil &&
+		st.QuotaBytes > 0 && st.UsedBytes >= st.QuotaBytes {
+		return types.Recording{}, errStorageFull
+	}
 
 	rec, err := s.store.StartRecording(ctx, wb.ID, id, userID, userName, mime, key)
 	if err != nil {
@@ -220,7 +241,7 @@ func (s *Server) beginRecording(
 		s.pushRoomMetadataCtx(ctx, sfu, wb)
 	}
 
-	// Never refused for storage (see recording_retention.go): flagged and warned instead.
+	// Refused above when storage is already full; a take that fills it is flagged and warned.
 	rec.StorageWarning = s.recordingStartStorage(ctx, wb.Host.ID, rec.ID)
 	return rec, nil
 }

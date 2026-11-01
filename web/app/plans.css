@@ -497,3 +497,26 @@ html[data-theme="dark"] .lp .pl-table thead th.pl-pop {
     font-size: 12.5px;
   }
 }
+
+/* ------------------------------------------------------------------ cards: lead and compare
+ * (1 Nov 2026) The bold "Everything in Basic, plus:" line above a card's list, and the
+ * "Compare all features" button, as prominent as the trial button. Full width on a phone. */
+.lp .plan .plan-lead {
+  margin: 4px 0 -6px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.lp .pl-compare-cta {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+}
+
+@media (max-width: 699px) {
+  .lp .pl-compare-cta .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

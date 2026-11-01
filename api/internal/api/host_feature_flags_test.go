@@ -14,6 +14,13 @@ import (
  * captions (migrations/0142): every one is refused by the SERVER without it, a sub-switch is
  * never in effect without its parent, and the admin can set several in one request. */
 
+/* serverCaptionsHost gives the signed-in host server captions, as Business does: since 1 Nov
+ * 2026 (migrations/0180) no plan and Basic caption on each speaker's device instead. */
+func serverCaptionsHost(t *testing.T, h *harness) {
+	t.Helper()
+	forceFeature(t, h, h.me().ID, types.FeatureCaptions, true)
+}
+
 func forceFeature(t *testing.T, h *harness, userID, key string, on bool) {
 	t.Helper()
 	if _, err := h.store.SetFeature(context.Background(), userID, key, on); err != nil {
@@ -242,7 +249,8 @@ func TestAdminSetsSeveralFeaturesAtOnce(t *testing.T) {
 		t.Fatalf("bulk inherit: %d %s", res.StatusCode, raw)
 	}
 	h.decode(raw, &acct)
-	if want := []string{types.FeatureCaptions, types.FeatureMeetings, types.FeatureWhiteboard}; !slices.Equal(acct.Features, want) {
+	// No plan: no server captions since 0180.
+	if want := []string{types.FeatureMeetings, types.FeatureWhiteboard}; !slices.Equal(acct.Features, want) {
 		t.Errorf("after inherit: %v, want %v", acct.Features, want)
 	}
 

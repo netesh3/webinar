@@ -441,6 +441,9 @@ const whatsappTextMax = 4096
  */
 func (s *Module) handleCRMSend(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
+	if !whatsAppPlanAllowed(w, user) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	var body types.CRMSendRequest

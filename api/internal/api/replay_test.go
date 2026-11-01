@@ -296,6 +296,8 @@ func TestReplayNeedsTheSwitchAndAChosenTemplate(t *testing.T) {
 		Kind: types.NotifyWhatsAppReplay, Template: testTemplateUtility,
 		Language: "en_US", Params: []string{"replay"},
 	})
+	// Then WhatsApp is taken away (a plan without it, 1 Nov 2026): the template stays chosen.
+	forceFeature(t, h, h.me().ID, types.FeatureWhatsAppCRM, false)
 	openThenStart(t, h, wb.ID)
 	rec := readyRecording(t, h, wb.ID)
 	publishRecording(t, h, wb.ID, rec.ID, true)

@@ -295,6 +295,30 @@ func (s *Module) MessageSlots(ctx context.Context, webinarID string) ([]types.Me
 	return slots, true, nil
 }
 
+// ---------------------------------------------------------------- WhatsApp by plan
+
+/* WhatsApp messages — reminders, confirmations, the replay and follow-ups — are sold from
+ * Professional up (1 Nov 2026): they need types.FeatureWhatsAppCRM, from the plan or an
+ * admin's override. A save that turns WhatsApp on for a slot is refused without it; a slot
+ * that already sent WhatsApp before the gate keeps its setting, and the sender skips it
+ * (crmstore.PendingWhatsApp) until the host has the switch again. */
+
+// whatsAppTurnsOn reports whether a save moves a slot from not sending WhatsApp to sending it.
+func whatsAppTurnsOn(prev types.MessageSlot, enabled bool, channels []string) bool {
+	next := types.MessageSlot{Enabled: enabled, Channels: channels}
+	return next.Sends(types.ChannelWhatsApp) && !prev.Sends(types.ChannelWhatsApp)
+}
+
+// whatsAppPlanAllowed answers 403 whatsapp_plan, as an upsell, for a host without WhatsApp.
+func whatsAppPlanAllowed(w http.ResponseWriter, user store.User) bool {
+	if user.HasFeature(types.FeatureWhatsAppCRM) {
+		return true
+	}
+	httpx.Error(w, http.StatusForbidden, "whatsapp_plan",
+		"WhatsApp messages are on the Professional plan and up. Upgrade to send reminders and follow-ups on WhatsApp.")
+	return false
+}
+
 // ---------------------------------------------------------------- validation
 
 func normalizeChannels(in []string) ([]string, error) {
@@ -540,6 +564,9 @@ func (s *Module) handleSetMessageDefaults(w http.ResponseWriter, r *http.Request
 		norm.Language = strings.TrimSpace(in.Language)
 		norm.Enabled = in.Enabled
 		prev, _ := types.FindSlot(current, norm.Kind)
+		if whatsAppTurnsOn(prev, norm.Enabled, norm.Channels) && !whatsAppPlanAllowed(w, user) {
+			return
+		}
 		/* The wording is checked when this save turns the slot on or picks a
 		 * different template. A time change on a slot that is already on, and
 		 * any save that leaves it off, keeps the old name even if Meta no
@@ -621,6 +648,13 @@ func (s *Module) handleSetWebinarMessages(w http.ResponseWriter, r *http.Request
 		enabled := prev.Enabled
 		if in.Enabled != nil {
 			enabled = *in.Enabled
+		}
+		channels := prev.Channels
+		if patch.Channels != nil {
+			channels = *patch.Channels
+		}
+		if whatsAppTurnsOn(prev, enabled, channels) && !whatsAppPlanAllowed(w, user) {
+			return
 		}
 		template := prev.Template
 		if in.Template != nil {

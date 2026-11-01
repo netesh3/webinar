@@ -228,6 +228,9 @@ func (s *Module) handleCRMSummary(w http.ResponseWriter, r *http.Request) {
  * from the webinar when one is named. */
 func (s *Module) handleCRMTestSend(w http.ResponseWriter, r *http.Request) {
 	user := authctx.User(r.Context())
+	if !whatsAppPlanAllowed(w, user) {
+		return
+	}
 	var body types.CRMTestSendRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")

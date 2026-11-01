@@ -64,12 +64,12 @@ const want: Record<Exclude<PlanId, "enterprise">, Record<Currency, Record<Period
     USD: { monthly: [39, 99, "60% OFF"], yearly: [390, 1950, "80% OFF"] },
   },
   pro: {
-    INR: { monthly: [9999, null, ""], yearly: [99948, 499740, "80% OFF"] },
-    USD: { monthly: [149, null, ""], yearly: [1490, 7450, "80% OFF"] },
+    INR: { monthly: [9999, 24999, "60% OFF"], yearly: [99948, 499740, "80% OFF"] },
+    USD: { monthly: [149, 375, "60% OFF"], yearly: [1490, 7450, "80% OFF"] },
   },
   business: {
-    INR: { monthly: [24999, null, ""], yearly: [249948, 1249740, "80% OFF"] },
-    USD: { monthly: [349, null, ""], yearly: [3490, 17450, "80% OFF"] },
+    INR: { monthly: [24999, 62499, "60% OFF"], yearly: [249948, 1249740, "80% OFF"] },
+    USD: { monthly: [349, 875, "60% OFF"], yearly: [3490, 17450, "80% OFF"] },
   },
 };
 for (const [id, byCurrency] of Object.entries(want)) {
@@ -122,20 +122,56 @@ assert.throws(() => findPlan("starter" as never));
 assert.equal(findPlan(TRIAL.plan).id, "pro");
 
 // The caps the server enforces, and the card lines it writes (billing.Plan.AllFeatures).
+// Attendees, stage, people per meeting and storage GB (1 Nov 2026).
 assert.deepEqual(
-  PLANS.map((p) => [p.limits.attendees, p.limits.stage]),
+  PLANS.map((p) => [p.limits.attendees, p.limits.stage, p.limits.meetingCap, p.limits.recordingGb]),
   [
-    [100, 3],
-    [300, 5],
-    [500, 10],
-    [1000, 100],
+    [100, 3, 10, 2],
+    [300, 5, 20, 10],
+    [500, 10, 100, 100],
+    [1000, 100, 300, 500],
   ],
 );
-assert.deepEqual(cardLines(findPlan("basic")).slice(0, 2), ["Up to 100 attendees", "Up to 3 people on stage"]);
+assert.deepEqual(cardLines(findPlan("basic")).slice(0, 4), [
+  "Up to 100 attendees",
+  "Up to 3 people on stage",
+  "Meetings of up to 10 people",
+  "2 GB storage",
+]);
 assert.deepEqual(cardLines(findPlan("enterprise")).slice(0, 2), ["1,000+ attendees", "Up to 100 people on stage"]);
-assert.equal(findPlan("pro").highlights[0], "Everything in Basic");
-assert.equal(findPlan("business").highlights[0], "Everything in Professional");
-assert.equal(findPlan("enterprise").highlights[0], "Everything in Business");
+// The lead line, Zoom style: "Everything in <the plan below>, plus:".
+assert.deepEqual(PLANS.map((p) => p.lead), [
+  "Includes:",
+  "Everything in Basic, plus:",
+  "Everything in Professional, plus:",
+  "Everything in Business, plus:",
+]);
+// Every paid plan's monthly price shows 60% OFF; Enterprise shows no price or badge.
+for (const p of selfServePlans())
+  for (const c of ["INR", "USD"] as Currency[])
+    assert.equal(offLabel(discountPercent(priceFor(p, c, "monthly")!, listFor(p, c, "monthly"))), "60% OFF", `${p.id} ${c}`);
+assert.equal(findPlan("enterprise").list, undefined);
+
+// Basic's card promises nothing Basic does not have.
+for (const line of [findPlan("basic").lead, ...cardLines(findPlan("basic"))])
+  for (const banned of ["WhatsApp", "Cloud recording", "captions", "spam", "AI", "Simulive", "follow-up"])
+    assert.ok(!line.includes(banned), `Basic's card says "${line}"`);
+assert.deepEqual(TIER_FEATURES.basic, []);
+// Captions: server captions Business and up, on the speaker's device everywhere.
+const rowsByLabel = new Map(COMPARISON.flatMap((g) => g.rows).map((r) => [r.label, r]));
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Server live captions")!.cells[id]), [false, false, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Captions on the speaker's device")!.cells[id]), [true, true, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Cloud recording")!.cells[id]), [false, true, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("WhatsApp reminders and follow-ups")!.cells[id]), [false, true, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Chat spam filter")!.cells[id]), [false, false, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("People per meeting")!.cells[id]), ["10", "20", "100", "300"]);
+assert.ok(rowsByLabel.has("Storage (uploads and recordings)"));
+// Gone for now (1 Nov 2026): the apps rows and their section, and HLS delivery.
+for (const gone of ["Installable web app", "Desktop and mobile apps", "Delivery for very large audiences"])
+  assert.ok(!rowsByLabel.has(gone), gone);
+assert.ok(!COMPARISON.some((g) => g.id === "apps"));
+// Every row a Basic host sees ticked is something every plan has.
+for (const r of rowsByLabel.values()) if (r.cells.basic !== false) assert.notEqual(r.cells.enterprise, false, r.label);
 
 // Every limit grows (or holds) up the tiers, and prices rise with them.
 for (let i = 1; i < PLANS.length; i++) {
@@ -153,7 +189,7 @@ for (let i = 1; i < PLAN_IDS.length; i++) {
   for (const k of TIER_FEATURES[PLAN_IDS[i - 1]])
     assert.ok(TIER_FEATURES[PLAN_IDS[i]].includes(k), `${k} drops at ${PLAN_IDS[i]}`);
 }
-assert.ok(!TIER_FEATURES.basic.includes("whatsapp_crm") && TIER_FEATURES.pro.includes("whatsapp_crm"));
+assert.ok(!(TIER_FEATURES.basic as string[]).includes("whatsapp_crm") && TIER_FEATURES.pro.includes("whatsapp_crm"));
 for (const k of ["simulive", "ai", "ai_knowledge", "zoom", "repurpose"]) {
   assert.ok(!TIER_FEATURES.pro.includes(k) && TIER_FEATURES.business.includes(k), k);
 }
@@ -198,7 +234,7 @@ assert.deepEqual(
 // Not sold on any plan, so not in the table or the cards (31 Oct 2026): instant sessions,
 // clips, highlights and reels; and nothing about months free.
 const text = JSON.stringify([COMPARISON, PLANS]).toLowerCase();
-for (const banned of ["instant", "clip", "reel", "highlights and", "months free", "attendee-hour", "ai credit"]) {
+for (const banned of ["instant", "clip", "reel", "highlights and", "months free", "attendee-hour", "ai credit", "hls"]) {
   assert.ok(!text.includes(banned), `the plans mention "${banned}"`);
 }
 

@@ -39,6 +39,8 @@ const (
 	FollowupReasonNoEmail      = "no_email"
 	FollowupReasonMailOff      = "mail_unconfigured"
 	FollowupReasonNotConnected = "whatsapp_not_connected"
+	// FollowupReasonPlan is a host whose plan has no WhatsApp (FeatureWhatsAppCRM, 1 Nov 2026).
+	FollowupReasonPlan         = "whatsapp_plan"
 	FollowupReasonNoContact    = "no_contact"
 	FollowupReasonNoNumber     = "no_number"
 	FollowupReasonOptedOut     = "opted_out"

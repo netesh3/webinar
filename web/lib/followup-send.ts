@@ -82,6 +82,8 @@ export function reasonText(reason: string | undefined): string {
       return "Email isn't set up on this server";
     case "whatsapp_not_connected":
       return "WhatsApp isn't connected";
+    case "whatsapp_plan":
+      return "WhatsApp is on Professional and up";
     case "no_contact":
       return "Not in your WhatsApp contacts";
     case "no_number":

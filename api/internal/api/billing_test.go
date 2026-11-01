@@ -378,8 +378,8 @@ func TestCatalogueAndRefusals(t *testing.T) {
 	}
 	for key, want := range map[string]int64{
 		"basic/INR/monthly": 7_499_00, "basic/USD/monthly": 99_00,
-		"professional/INR/monthly": 0, "professional/USD/monthly": 0,
-		"business/INR/monthly": 0, "business/USD/monthly": 0,
+		"professional/INR/monthly": 24_999_00, "professional/USD/monthly": 375_00,
+		"business/INR/monthly": 62_499_00, "business/USD/monthly": 875_00,
 		"basic/INR/yearly": 1_49_940_00, "basic/USD/yearly": 1_950_00,
 		"professional/INR/yearly": 4_99_740_00, "professional/USD/yearly": 7_450_00,
 		"business/INR/yearly": 12_49_740_00, "business/USD/yearly": 17_450_00,
@@ -390,7 +390,8 @@ func TestCatalogueAndRefusals(t *testing.T) {
 	}
 	// The saving, computed from the two prices and rounded down.
 	for key, want := range map[string]int{
-		"basic/USD/monthly": 60, "basic/INR/monthly": 60, "professional/INR/monthly": 0,
+		"basic/USD/monthly": 60, "basic/INR/monthly": 60, "professional/INR/monthly": 60,
+		"professional/USD/monthly": 60, "business/INR/monthly": 60, "business/USD/monthly": 60,
 		"basic/INR/yearly": 80, "basic/USD/yearly": 80, "professional/INR/yearly": 80,
 		"business/USD/yearly": 80, "business/INR/yearly": 80,
 	} {
