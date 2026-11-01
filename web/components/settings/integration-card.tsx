@@ -1,5 +1,7 @@
 "use client";
 
+import { FeatureGoogleDrive, FeatureStreamOut, FeatureWhatsAppCRM } from "@/lib/api-types";
+import { PlanLock, useHasFeature } from "../plan-lock";
 import { useState, type FormEvent } from "react";
 import { MaterialIcon } from "../icons";
 import { Menu, Modal, Spinner } from "../controls";
@@ -66,6 +68,38 @@ function Status({ status }: { status: string }) {
 /** One integration, from the registry. The button and the ⋯ menu are whatever
  *  actions the API sent — this file does not know WhatsApp from YouTube. */
 export function IntegrationCard({
+  card,
+  onChange,
+}: {
+  card: IntegrationCard;
+  onChange: () => Promise<void>;
+}) {
+  /* Streaming out is Professional and up, Drive Business and up (2 Nov 2026): the card is
+   * shown locked with its plan, not as a connect button the server would refuse. */
+  const gate = INTEGRATION_FEATURE[card.id];
+  const allowed = useHasFeature(gate ?? "");
+  if (gate && !allowed) {
+    return (
+      <PlanLock feature={gate} title={card.name}>
+        {card.tagline}
+      </PlanLock>
+    );
+  }
+  return <IntegrationCardBody card={card} onChange={onChange} />;
+}
+
+// The plan switch each integration card needs: WhatsApp, streaming out and Drive.
+const INTEGRATION_FEATURE: Record<string, string> = {
+  whatsapp: FeatureWhatsAppCRM,
+  youtube: FeatureStreamOut,
+  linkedin: FeatureStreamOut,
+  "instagram-live": FeatureStreamOut,
+  "facebook-live": FeatureStreamOut,
+  drive: FeatureGoogleDrive,
+  "google-drive": FeatureGoogleDrive,
+};
+
+function IntegrationCardBody({
   card,
   onChange,
 }: {

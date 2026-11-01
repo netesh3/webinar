@@ -22,17 +22,17 @@ export const post: Post = {
 
     You do not need a recording or captions for a recap. It is written from the best material there is:
 
-    1. the full transcript, made after the session from server captions,
+    1. the full transcript, made after the session from AI Live captions,
     2. otherwise the live captions (with the AI switch on, these are captured even when nobody has captions turned on),
     3. otherwise the Q&A, polls and chat alone.
 
-    Server captions are English. See [Live captions](/blog/live-captions) for more.
+    AI Live captions follow the webinar's captions language. See [Live captions](/blog/live-captions) for more.
 
     ## After the session: the AI insights tab
 
     Open the webinar from **Your webinars**. After it has ended you will see an **AI insights** tab, next to **Results**, **Follow up** and **Recording**. Meetings get one too.
 
-    The recap is usually ready a minute or two after the end. If the session had server captions, it waits for the full transcript first, which can take up to about half an hour. While it waits you will see **Still processing**, and a **Generate recap now** button. Press it if you would rather not wait: the recap is written straight away from the live captions, Q&A, polls and chat.
+    The recap is usually ready a minute or two after the end. If the session had AI Live captions, it waits for the full transcript first, which can take up to about half an hour. While it waits you will see **Still processing**, and a **Generate recap now** button. Press it if you would rather not wait: the recap is written straight away from the live captions, Q&A, polls and chat.
 
     > [!TIP] A recap is written once
     > There is no regenerate or edit. If you press **Generate recap now**, that is the recap, even after the full transcript arrives. Wait if you want the fuller one.

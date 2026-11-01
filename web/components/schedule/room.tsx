@@ -5,7 +5,7 @@ import { Toggle } from "../controls";
 import { useAppConfig, useSession } from "../providers";
 import { api } from "@/lib/api";
 import { interceptConnectClick } from "@/lib/app-connect";
-import { FeatureCaptions, FeatureCloudRecording, type Webinar } from "@/lib/api-types";
+import { FeatureCaptions, FeatureCloudRecording, FeatureStreamOut, type Webinar } from "@/lib/api-types";
 import { CaptionsLanguageSelect } from "../captions-language-select";
 import { FormGroup, FormSection } from "./chrome";
 import type { FormState, SetForm } from "./form-state";
@@ -28,6 +28,8 @@ export function RoomSection({
   const cloudRecording = (account?.features ?? []).includes(FeatureCloudRecording);
   // Server captions (the caption agent) are Business and up; every plan has device captions.
   const serverCaptions = (account?.features ?? []).includes(FeatureCaptions);
+  // Streaming out is Professional and up (2 Nov 2026).
+  const streamOut = (account?.features ?? []).includes(FeatureStreamOut);
   /* "Record automatically" is a cloud recording the server starts (api/internal/api/
    * auto_record.go), so it needs the host's cloud recording switch and a site that records
    * on the server. Without them it is shown off and disabled rather than hidden, so a host
@@ -183,9 +185,17 @@ export function RoomSection({
           {extras.map(([key, label]) => (
             <Toggle
               key={key}
-              checked={Boolean(form.options[key])}
+              checked={key === "multistream" && !streamOut ? false : Boolean(form.options[key])}
+              disabled={key === "multistream" && !streamOut}
               onChange={(v) => set("options", { ...form.options, [key]: v })}
               label={
+                key === "multistream" && !streamOut ? (
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    {label}
+                    <PlanBadge feature={FeatureStreamOut} />
+                    <UpgradeLink />
+                  </span>
+                ) : 
                 key === "captions" && !serverCaptions ? (
                   <span className="inline-flex flex-wrap items-center gap-1.5">
                     {label}
@@ -196,8 +206,10 @@ export function RoomSection({
                 )
               }
               description={
-                key === "captions" && !serverCaptions
-                  ? "Device captions on your plan: made in each speaker's browser. Server captions are on Business and up."
+                key === "multistream" && !streamOut
+                  ? "Send the session live to YouTube, LinkedIn, Facebook or Instagram. Professional and up."
+                  : key === "captions" && !serverCaptions
+                  ? "Device captions on your plan: made in each speaker's browser. AI Live captions are on Business and up."
                   : undefined
               }
             />
@@ -217,7 +229,7 @@ export function RoomSection({
             />
           </div>
         )}
-        {form.options.multistream && (
+        {form.options.multistream && streamOut && (
           <div className="mt-3 grid gap-2">
             {config.youtubeOAuth && account?.youtube?.connected ? (
               <p className="text-[12.5px] text-ink-2">

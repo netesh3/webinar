@@ -35,6 +35,45 @@ func TestAIDefaultOffSQLMatchesMigration(t *testing.T) {
 	}
 }
 
+func TestStreamOutSQLMatchesMigration(t *testing.T) {
+	body, err := migrationFS.ReadFile("migrations/0183_stream_out.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), StreamOutSQL) {
+		t.Fatalf("0183 drifted from StreamOutSQL:\n%s", body)
+	}
+	for plan, keys := range TierFeatures {
+		has := false
+		for _, k := range keys {
+			has = has || k == types.FeatureStreamOut
+		}
+		inSQL := strings.Contains(strings.Join(strings.Fields(StreamOutSQL), " "), "('"+string(plan)+"', 'stream_out'")
+		if has != inSQL || has != (plan != types.PlanBasic) {
+			t.Errorf("%s: stream_out in TierFeatures %v, in the SQL %v", plan, has, inSQL)
+		}
+	}
+	for key, plans := range map[string][]types.Plan{
+		types.FeatureCSVExport:   {types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise},
+		types.FeatureGoogleDrive: {types.PlanBusiness, types.PlanEnterprise},
+	} {
+		for plan, keys := range TierFeatures {
+			has := false
+			for _, k := range keys {
+				has = has || k == key
+			}
+			want := false
+			for _, p := range plans {
+				want = want || p == plan
+			}
+			inSQL := strings.Contains(strings.Join(strings.Fields(StreamOutSQL), " "), "('"+string(plan)+"', '"+key+"'")
+			if has != want || (want && !inSQL) {
+				t.Errorf("%s: %s in TierFeatures %v, want %v", plan, key, has, want)
+			}
+		}
+	}
+}
+
 func TestAudienceInsightsSQLMatchesMigration(t *testing.T) {
 	body, err := migrationFS.ReadFile("migrations/0181_audience_insights.sql")
 	if err != nil {

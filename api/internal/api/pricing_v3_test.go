@@ -249,6 +249,9 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 	if err := h.store.ConvertAudienceInsights(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := h.store.ConvertStreamOut(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, c := range []struct {
 		id       string

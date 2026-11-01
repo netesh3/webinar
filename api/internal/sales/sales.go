@@ -51,7 +51,7 @@ var Facts = []string{
 	"After a webinar: every attendee gets an Engagement Score from 0 to 100 built from watch time (40), polls (15), quiz accuracy (10), chat (10), Q&A (10), reactions (5), raised hand (5) and survey (5). Tools you didn't use don't count against anyone.",
 	"Follow-up by engagement group: send an offer to the most engaged, a replay to the rest, and a note to no-shows. WhatsApp automations, campaigns, follow-ups and scheduling, with drips, a chatbot and one shared inbox, are included from Professional up.",
 	"Cloud recording is from Professional up; on Basic the presenter records on their own computer.",
-	"Business and Enterprise add simulive (a recording played as a live session), server live captions, a chat spam filter, AI recaps, an AI knowledge base, AI follow-up drafts and Zoom. Every plan has captions made on the speaker's device.",
+	"Business and Enterprise add simulive (a recording played as a live session), AI Live captions, a chat spam filter, AI recaps, an AI knowledge base, AI follow-up drafts and Zoom. Every plan has captions made on the speaker's device.",
 	"WhatsApp reminders use your own WhatsApp Business number through Meta's official sign-up. Meta bills message fees to your own WhatsApp Business account; Webinar Liv does not mark them up.",
 	"You own your contacts and data: export registrants, attendance and chat as CSV at any time.",
 	"Buying: choose a plan on the pricing page, pay with UPI, cards, netbanking or wallets through Razorpay, and host access turns on immediately — no waiting for approval.",

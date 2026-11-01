@@ -35,6 +35,11 @@ func (s *Server) handleSetStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Stopping is always allowed; starting needs the plan's stream_out.
+	if !body.Off && !s.requireStreamOut(w, r, wb.Host.ID) {
+		return
+	}
+
 	savedIngest, wasOn, err := s.store.WebinarStreamIngest(r.Context(), slug)
 	if err != nil {
 		s.fail(w, r, "set stream: load ingest", err)

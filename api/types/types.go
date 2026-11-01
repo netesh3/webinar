@@ -1461,6 +1461,22 @@ const (
 	 * their API routes (403 feature_off without it). Professional and up, and Starter
 	 * (migrations/0181, 1 Nov 2026); before that every host had them. */
 	FeatureAudienceInsights = "audience_insights"
+	/* FeatureStreamOut is streaming a session out: to YouTube (a pasted key, or the connected
+	 * channel), and to LinkedIn, Facebook, Instagram or any RTMP address. Professional and up,
+	 * and Starter (migrations/0183, 2 Nov 2026). Without it the API refuses every start (403
+	 * feature_off), the compositor gets none of the host's destinations, and the go-live
+	 * YouTube broadcast is not created. */
+	FeatureStreamOut = "stream_out"
+	/* FeatureGoogleDrive is playing a video from the host's Google Drive into a session (the
+	 * Drive source in video share and the simulive picker, and the apps' Drive hand-off).
+	 * Business and up, and Starter (migrations/0183). The picker and the download run in the
+	 * browser; the server refuses the apps' hand-off without it. */
+	FeatureGoogleDrive = "google_drive"
+	/* FeatureCSVExport is every host-facing file export: registrants, attendance, engagement,
+	 * the session report, the transcript and the chat. Professional and up, and Starter
+	 * (migrations/0183). What the host can see on screen stays visible; only the file is refused
+	 * (403 feature_off). */
+	FeatureCSVExport = "csv_export"
 )
 
 // Feature groups: the admin screen's headings (Feature.Group).
@@ -1620,8 +1636,8 @@ var Features = []Feature{
 	},
 	{
 		Key:         FeatureCaptions,
-		Label:       "Server captions",
-		Description: "Live captions from the server's caption agent, in the webinar's captions language, when the host turns captions on. In Business and Enterprise (and the grandfathered Starter). Off falls back to captions made on each speaker's device.",
+		Label:       "AI Live captions",
+		Description: "AI Live captions: made on our servers by the caption agent, in the webinar's captions language, when the host turns captions on. In Business and Enterprise (and the grandfathered Starter). Off falls back to captions made on each speaker's device.",
 		Group:       FeatureGroupDelivery,
 	},
 	// Integrations.
@@ -1637,7 +1653,25 @@ var Features = []Feature{
 		Description: "Let this host connect Zoom and schedule a session as a Zoom meeting or webinar. Off means sessions stay in this app.",
 		Group:       FeatureGroupIntegrations,
 	},
+	{
+		Key:         FeatureStreamOut,
+		Label:       "Stream out (YouTube and RTMP)",
+		Description: "Let this host stream a session live to YouTube, LinkedIn, Facebook, Instagram or any RTMP address, and connect a YouTube channel. Professional and up. Off refuses every stream and sends the host's destinations nothing.",
+		Group:       FeatureGroupIntegrations,
+	},
+	{
+		Key:         FeatureGoogleDrive,
+		Label:       "Google Drive",
+		Description: "Let this host play a video from their Google Drive into a session. Business and up. Off hides the Drive source.",
+		Group:       FeatureGroupIntegrations,
+	},
 	// Analytics.
+	{
+		Key:         FeatureCSVExport,
+		Label:       "CSV exports",
+		Description: "Let this host download registrants, attendance, engagement, the session report, the transcript and the chat as files. Professional and up. Off keeps everything on screen and refuses the files.",
+		Group:       FeatureGroupAnalytics,
+	},
 	{
 		Key:         FeatureAudienceInsights,
 		Label:       "Audience by device and location",

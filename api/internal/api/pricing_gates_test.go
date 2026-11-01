@@ -99,7 +99,7 @@ func TestServerCaptionsAreBusinessAndUp(t *testing.T) {
 	wb := h.liveWebinar("Basic captions", nil)
 	res, _, raw := h.setServerCaptions(wb.ID, true)
 	h.wantError(res, raw, http.StatusForbidden, "feature_off")
-	if !strings.Contains(string(raw), "Business and Enterprise") {
+	if !strings.Contains(string(raw), "AI Live captions are on Business and up") {
 		t.Errorf("refusal does not name the plans: %s", raw)
 	}
 	// The ordinary switch still turns captions on: they run on each speaker's device.

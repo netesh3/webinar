@@ -1,5 +1,7 @@
 "use client";
 
+import { FeatureGoogleDrive } from "@/lib/api-types";
+import { PlanLock, useHasFeature } from "../plan-lock";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Recording } from "@/lib/api-types";
@@ -268,6 +270,8 @@ function SourceStep({
     [],
   );
 
+  // Google Drive is Business and up (2 Nov 2026); an admin's override counts.
+  const driveAllowed = useHasFeature(FeatureGoogleDrive);
   const fromDrive = async () => {
     if (!driveConfigured(drive)) return;
     const controller = new AbortController();
@@ -418,7 +422,11 @@ function SourceStep({
         <h3 className="mb-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">
           Google Drive
         </h3>
-        {driveConfigured(drive) ? (
+        {!driveAllowed ? (
+          <PlanLock feature={FeatureGoogleDrive} title="Pick from Drive">
+            Play a video from your Google Drive into the session. A file from your computer works on every plan.
+          </PlanLock>
+        ) : driveConfigured(drive) ? (
           <button
             type="button"
             onClick={() => void fromDrive()}

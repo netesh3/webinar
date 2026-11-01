@@ -1,5 +1,7 @@
 "use client";
 
+import { FeatureStreamOut } from "@/lib/api-types";
+import { PlanLock, useHasFeature } from "../plan-lock";
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { interceptConnectClick } from "@/lib/app-connect";
@@ -30,6 +32,7 @@ export type YouTubeStream = {
 };
 
 export function useYouTubeStream(): YouTubeStream {
+  const streamOut = useHasFeature(FeatureStreamOut);
   const { slug, isHost } = useRoomUI();
   const { notify } = useToast();
   const { account } = useSession();
@@ -117,7 +120,14 @@ export function useYouTubeStream(): YouTubeStream {
     }
   }
 
-  const dialog = !isHost ? null : (
+  // Streaming out is Professional and up (2 Nov 2026): the dialog says so instead of a form.
+  const dialog = !isHost ? null : !streamOut ? (
+    <Modal open={open} onClose={() => setOpen(false)} title={"Stream to YouTube"}>
+      <PlanLock feature={FeatureStreamOut} title="Streaming out">
+        Send the session live to YouTube, LinkedIn, Facebook, Instagram or any RTMP address.
+      </PlanLock>
+    </Modal>
+  ) : (
     <Modal
       open={open}
       onClose={() => !busy && setOpen(false)}

@@ -157,15 +157,24 @@ for (const line of [findPlan("basic").lead, ...cardLines(findPlan("basic"))])
   for (const banned of ["WhatsApp", "Cloud recording", "captions", "spam", "AI", "Simulive", "follow-up"])
     assert.ok(!line.includes(banned), `Basic's card says "${line}"`);
 assert.deepEqual(TIER_FEATURES.basic, []);
-// Captions: server captions Business and up, on the speaker's device everywhere.
+// Captions: AI Live captions Business and up, on the speaker's device everywhere.
 const rowsByLabel = new Map(COMPARISON.flatMap((g) => g.rows).map((r) => [r.label, r]));
-assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Server live captions")!.cells[id]), [false, false, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("AI Live captions")!.cells[id]), [false, false, true, true]);
 assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Captions on the speaker's device")!.cells[id]), [true, true, true, true]);
 assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Cloud recording")!.cells[id]), [false, true, true, true]);
 assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("WhatsApp reminders and follow-ups")!.cells[id]), [false, true, true, true]);
 assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Chat spam filter")!.cells[id]), [false, false, true, true]);
 assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("People per meeting")!.cells[id]), ["10", "20", "100", "300"]);
 assert.ok(rowsByLabel.has("Storage (uploads and recordings)"));
+// Streaming out and CSV exports Professional and up, Google Drive Business and up (0183); the
+// AI renames (2 Nov 2026).
+for (const label of ["Stream to YouTube", "Stream to LinkedIn, Facebook and Instagram", "CSV exports"])
+  assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get(label)!.cells[id]), [false, true, true, true], label);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Google Drive")!.cells[id]), [false, false, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("Google sign-in and calendar links")!.cells[id]), [true, true, true, true]);
+assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get("AI Blog, newsletter and social drafts")!.cells[id]), [false, false, true, true]);
+for (const old of ["Server live captions", "Blog, newsletter and social drafts"]) assert.ok(!rowsByLabel.has(old), old);
+assert.ok(findPlan("business").highlights.includes("AI Live captions"));
 // Audience by device and location: Professional and up (migrations/0181).
 for (const label of ["Attendance by device", "Attendance by location"])
   assert.deepEqual(PLAN_IDS.map((id) => rowsByLabel.get(label)!.cells[id]), [false, true, true, true], label);

@@ -491,6 +491,52 @@ UPDATE users u
    AND NOT ('audience_insights' = ANY (u.features))
    AND NOT ('audience_insights' = ANY (u.features_off));`
 
+/* StreamOutSQL puts stream_out and csv_export in Professional and up, google_drive in Business
+ * and up, all three in Starter, and keeps them for subscribers who had them (migrations/0183,
+ * 2 Nov 2026). One shot: migrations/0183 runs it,
+ * and a store test checks this text still matches. */
+const StreamOutSQL = `INSERT INTO plan_features (plan, feature, enabled) VALUES
+    ('professional', 'stream_out', true),
+    ('business',     'stream_out', true),
+    ('enterprise',   'stream_out', true),
+    ('starter',      'stream_out', true)
+ON CONFLICT (plan, feature) DO UPDATE SET enabled = true;
+UPDATE users u
+   SET features = u.features || ARRAY['stream_out']
+ WHERE effective_plan(u.id) = 'basic'
+   AND NOT ('stream_out' = ANY (u.features))
+   AND NOT ('stream_out' = ANY (u.features_off))
+   AND (u.youtube_refresh <> ''
+        OR u.linkedin_ingest <> '' OR u.facebook_ingest <> '' OR u.instagram_ingest <> ''
+        OR EXISTS (SELECT 1 FROM webinars w
+                    WHERE w.host_id = u.id
+                      AND (w.stream_ingest <> '' OR (w.options ->> 'multistream')::boolean IS TRUE)));
+INSERT INTO plan_features (plan, feature, enabled) VALUES
+    ('business',     'google_drive', true),
+    ('enterprise',   'google_drive', true),
+    ('starter',      'google_drive', true),
+    ('professional', 'csv_export',   true),
+    ('business',     'csv_export',   true),
+    ('enterprise',   'csv_export',   true),
+    ('starter',      'csv_export',   true)
+ON CONFLICT (plan, feature) DO UPDATE SET enabled = true;
+UPDATE users u
+   SET features = u.features || ARRAY['google_drive']
+ WHERE effective_plan(u.id) IN ('basic', 'professional')
+   AND NOT ('google_drive' = ANY (u.features))
+   AND NOT ('google_drive' = ANY (u.features_off));
+UPDATE users u
+   SET features = u.features || ARRAY['csv_export']
+ WHERE effective_plan(u.id) = 'basic'
+   AND NOT ('csv_export' = ANY (u.features))
+   AND NOT ('csv_export' = ANY (u.features_off));`
+
+// ConvertStreamOut applies StreamOutSQL. Tests only.
+func (s *Store) ConvertStreamOut(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, StreamOutSQL)
+	return err
+}
+
 // ConvertAudienceInsights applies AudienceInsightsSQL. Tests only.
 func (s *Store) ConvertAudienceInsights(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx, AudienceInsightsSQL)
@@ -513,7 +559,7 @@ func (s *Store) ConvertPricingGates(ctx context.Context) error {
 var TierFeatures = map[types.Plan][]string{
 	// Basic sells none of the tiered switches (cloud recording left it in 0180).
 	types.PlanBasic:        {},
-	types.PlanProfessional: {types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureAudienceInsights},
+	types.PlanProfessional: {types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureAudienceInsights, types.FeatureStreamOut, types.FeatureCSVExport},
 	types.PlanBusiness:     businessTierFeatures,
 	types.PlanEnterprise:   businessTierFeatures,
 }
@@ -522,6 +568,7 @@ var businessTierFeatures = []string{
 	types.FeatureCloudRecording, types.FeatureWhatsAppCRM, types.FeatureSimulive, types.FeatureReplayEngage,
 	types.FeatureZoom, types.FeatureAI, types.FeatureAIKnowledge, types.FeatureSimuliveAuto,
 	types.FeatureFollowupSend, types.FeatureRepurpose, types.FeatureCaptions, types.FeatureAudienceInsights,
+	types.FeatureStreamOut, types.FeatureCSVExport, types.FeatureGoogleDrive,
 }
 
 // PricingV3Features is the switches migrations/0179 set: TieredFeatures but captions (0180) and

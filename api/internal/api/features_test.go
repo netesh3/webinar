@@ -70,6 +70,7 @@ func TestAdminSwitchesFeaturesPerAccount(t *testing.T) {
 	}
 
 	target := h.signup("Switchable Host", "switchable@test.dev", true)
+	withoutExtras(t, h, target.ID)
 	// Every switch is off until somebody decides — except the whiteboard (migrations/0099)
 	// and meetings (0142), which start on. Server captions are Business and up since 0180, so
 	// an account with no plan captions on each speaker's device; simulive is off.

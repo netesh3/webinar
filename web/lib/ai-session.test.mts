@@ -91,12 +91,12 @@ assert.match(captionsStatus(s(true, true, false), true).title, /being recorded/)
 assert.equal(captionsStatus(s(true, false, true), false).label, "Captions: on this device (server starting)");
 assert.equal(
   captionsStatus(s(true, false, false), false).label,
-  "Captions: on this device (server captions unavailable)",
+  "Captions: on this device (AI Live captions unavailable)",
 );
 assert.equal(captionsStatus(s(true, false, false), false).onDevice, true);
 // The server's reason, when the host's switch got one, is in the tooltip.
 assert.match(
-  captionsStatus(s(true, false, false), false, "Server captions aren't set up here.").title,
+  captionsStatus(s(true, false, false), false, "AI Live captions aren't set up here.").title,
   /aren't set up here/,
 );
 // Off ignores a stale reason.

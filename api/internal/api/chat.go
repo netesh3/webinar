@@ -344,6 +344,10 @@ func (s *Server) handleChatTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The file is an export (Professional and up); the JSON above is what the screen shows.
+	if !s.csvExportAllowed(w, r) {
+		return
+	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+slug+`-chat.csv"`)
 

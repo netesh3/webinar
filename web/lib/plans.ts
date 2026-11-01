@@ -114,7 +114,7 @@ export const PLANS: Plan[] = [
     },
     highlights: [
       "Simulive: recordings played as live",
-      "Server live captions",
+      "AI Live captions",
       "AI recaps, knowledge base and follow-ups",
       "Chat spam filter",
       "Zoom and every advanced feature",
@@ -141,13 +141,14 @@ export const PLANS: Plan[] = [
 /* What each plan includes of the server's switches (types.Features keys) that the plans differ
  * by: the server's store.TierFeatures, as migrations/0179 and 0180 set the tiers. Basic has none
  * of them: no cloud recording (the presenter records on their own computer), no WhatsApp and no
- * server captions (captions run on each speaker's device). Whiteboard and meetings are on every
+ * AI Live captions (captions run on each speaker's device). Whiteboard and meetings are on every
  * plan and not listed. clips, instant_webinar and hls_delivery are on no plan (an admin's switch
  * for one host). The chat spam filter needs ai. audience_insights (devices and locations) is
- * Professional and up (migrations/0181). Read by web_plans_test.go. */
+ * Professional and up (migrations/0181); stream_out and csv_export Professional and up, and
+ * google_drive Business and up (migrations/0183). Read by web_plans_test.go. */
 export const TIER_FEATURES: Record<PlanId, string[]> = {
   basic: [],
-  pro: ["cloud_recording", "whatsapp_crm", "audience_insights"],
+  pro: ["cloud_recording", "whatsapp_crm", "audience_insights", "stream_out", "csv_export"],
   business: [
     "cloud_recording",
     "whatsapp_crm",
@@ -161,6 +162,9 @@ export const TIER_FEATURES: Record<PlanId, string[]> = {
     "repurpose",
     "captions",
     "audience_insights",
+    "stream_out",
+    "csv_export",
+    "google_drive",
   ],
   enterprise: [
     "cloud_recording",
@@ -175,6 +179,9 @@ export const TIER_FEATURES: Record<PlanId, string[]> = {
     "repurpose",
     "captions",
     "audience_insights",
+    "stream_out",
+    "csv_export",
+    "google_drive",
   ],
 };
 
@@ -533,10 +540,10 @@ export const COMPARISON: CompareGroup[] = [
     title: "Streaming out",
     intro: "Go live on your channels at the same time.",
     rows: [
-      all("Stream to YouTube", {
+      tier("stream_out", "Stream to YouTube", {
         detail: "Send the session live to your YouTube channel.",
       }),
-      all("Stream to LinkedIn, Facebook and Instagram", {
+      tier("stream_out", "Stream to LinkedIn, Facebook and Instagram", {
         hint: "With the platform's stream key (RTMP)",
         detail: "Send the session live to LinkedIn, Facebook or Instagram with a stream key.",
       }),
@@ -563,11 +570,11 @@ export const COMPARISON: CompareGroup[] = [
         detail: "While a simulive plays, the AI answers the questions it is confident about, from your knowledge base.",
       }),
       tier("ai", "Write with AI", { hint: "Titles, descriptions and registration copy" }),
-      tier("repurpose", "Blog, newsletter and social drafts", {
+      tier("repurpose", "AI Blog, newsletter and social drafts", {
         hint: "From a session's transcript, in your brand voice",
         detail: "A blog post, newsletter, LinkedIn, X or Instagram post from a session, in your brand voice.",
       }),
-      tier("captions", "Server live captions", {
+      tier("captions", "AI Live captions", {
         hint: "Made on our servers: English, Hindi, Hinglish, Tamil, Telugu, Kannada, Marathi, Bengali and Gujarati",
         detail: "Live captions made on our servers, in English and eight Indian languages, for the room and the recording.",
       }),
@@ -586,7 +593,7 @@ export const COMPARISON: CompareGroup[] = [
         detail:
           "Schedule a session as a Zoom meeting or webinar; registrants get their own links, attendance comes back.",
       }),
-      all("Google Drive", {
+      tier("google_drive", "Google Drive", {
         detail: "Play a video from your Google Drive into a session.",
       }),
       all("Google sign-in and calendar links"),
@@ -600,9 +607,9 @@ export const COMPARISON: CompareGroup[] = [
         hint: "Phone, laptop or tablet, and the browser",
       }),
       tier("audience_insights", "Attendance by location", { hint: "Country, region and city" }),
-      all("CSV exports", {
-        hint: "Registrants, attendance, engagement and transcripts",
-        detail: "Your data is yours: export registrants, attendance, engagement and transcripts.",
+      tier("csv_export", "CSV exports", {
+        hint: "Download registrants, attendance, engagement, the chat and transcripts as files",
+        detail: "Download registrants, attendance, engagement, the chat and transcripts as files for your own tools.",
       }),
     ],
   },

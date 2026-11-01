@@ -49,7 +49,7 @@ export const post: Post = {
     - A headset or a decent microphone helps more than anything else.
     - Captions appear a second or two after the words are spoken, so expect a short delay.
 
-    Captions normally run on our servers. If they cannot, each speaker's own browser makes them instead, the Captions tile says **Captions: on this device (server captions unavailable)**, and the first time you may see **Loading captions on this device. The first time takes a moment; after that it stays on the machine.**
+    Captions normally run on our servers. If they cannot, each speaker's own browser makes them instead, the Captions tile says **Captions: on this device (AI Live captions unavailable)**, and the first time you may see **Loading captions on this device. The first time takes a moment; after that it stays on the machine.**
 
     ## After the session
 
