@@ -120,6 +120,10 @@ func (s *Server) mixPlan(ctx context.Context, wb types.Webinar) (origin string, 
 	if wb.Delivery == types.DeliveryEdge {
 		origin = s.cfg.BroadcastRTMPURL(wb.ID)
 	}
+	// The host's own destinations only with stream_out (2 Nov 2026); an edge origin is ours.
+	if !s.hostStreamsOut(ctx, wb.Host.ID) {
+		return origin, nil
+	}
 	now := time.Now()
 	seen := map[string]bool{}
 	add := func(platform, u string) {

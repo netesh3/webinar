@@ -919,21 +919,21 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/survey/answers", s.handleSurveyAnswers)
 
 				r.Get("/registrants", s.handleHostRegistrants)
-				r.Get("/registrants.csv", s.handleExportRegistrants)
+				r.With(s.requireCSVExport).Get("/registrants.csv", s.handleExportRegistrants)
 				r.Get("/report", s.handleSessionReport)
 				// The audience by device (devices.go): exact, one per attendee.
 				r.Get("/devices", s.handleWebinarDevices)
 				// The audience by location (devices.go): country, and the state within India.
 				r.Get("/locations", s.handleWebinarLocations)
-				r.Get("/report.csv", s.handleExportReport)
+				r.With(s.requireCSVExport).Get("/report.csv", s.handleExportReport)
 				// The attendee list of an ended session; host and co-hosts only. See attendee_export.go.
-				r.Get("/attendees.csv", s.handleAttendeesCSV)
+				r.With(s.requireCSVExport).Get("/attendees.csv", s.handleAttendeesCSV)
 				r.Get("/engagement", s.handleEngagementSummary)
 				r.Post("/engagement/recompute", s.handleRecomputeEngagement)
 				r.Get("/engagement/attendees", s.handleEngagementAttendees)
 				r.Get("/engagement/attendees/{identity}", s.handleEngagementAttendee)
-				r.Get("/engagement.csv", s.handleEngagementCSV)
-				r.Get("/transcript.txt", s.handleTranscript)
+				r.With(s.requireCSVExport).Get("/engagement.csv", s.handleEngagementCSV)
+				r.With(s.requireCSVExport).Get("/transcript.txt", s.handleTranscript)
 				// Suggested highlights on a recording, for clips. Host and co-hosts, not the
 				// rest of the stage. See highlights.go.
 				r.Get("/recordings/{id}/highlights", s.handleGetHighlights)

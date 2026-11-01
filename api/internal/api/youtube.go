@@ -58,6 +58,9 @@ func safeReturnPath(raw string) string {
 }
 
 func (s *Server) handleYouTubeConnect(w http.ResponseWriter, r *http.Request) {
+	if !s.requireStreamOut(w, r, userFromContext(r.Context()).ID) {
+		return
+	}
 	if s.youtube == nil || !s.youtube.Enabled() {
 		httpx.Error(w, http.StatusServiceUnavailable, "youtube_oauth_unset",
 			"YouTube linking is not set up on this instance. Paste a stream key instead, or ask whoever runs this to set GOOGLE_CLIENT_SECRET.")
@@ -242,6 +245,10 @@ func (s *Server) applyYouTubeLive(ctx context.Context, wb types.Webinar, privacy
 	host, err := s.store.UserByID(ctx, wb.Host.ID)
 	if err != nil {
 		return "", "", err
+	}
+	// Before Google is asked for anything (2 Nov 2026): the go-live broadcast too.
+	if !host.HasFeature(types.FeatureStreamOut) {
+		return "", "", errStreamOutOff
 	}
 	if host.YouTubeRefresh == "" {
 		return "", "", yt.ErrNeedRefresh

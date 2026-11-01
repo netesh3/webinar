@@ -1,5 +1,7 @@
 "use client";
 
+import { FeatureCSVExport } from "@/lib/api-types";
+import { PlanBadge, UpgradeLink, useHasFeature } from "../plan-lock";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ExportOption } from "@/lib/engagement/exports";
 import { ChevronDownIcon } from "@/components/icons";
@@ -12,6 +14,7 @@ export function ExportMenu({ options }: { options: ExportOption[] }) {
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+  const csvExport = useHasFeature(FeatureCSVExport);
 
   useEffect(() => {
     if (!open) return;
@@ -34,6 +37,15 @@ export function ExportMenu({ options }: { options: ExportOption[] }) {
   }, [open]);
 
   if (options.length === 0) return null;
+  // File exports are Professional and up (2 Nov 2026): the data stays on screen.
+  if (!csvExport)
+    return (
+      <span className="inline-flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
+        Export
+        <PlanBadge feature={FeatureCSVExport} />
+        <UpgradeLink />
+      </span>
+    );
 
   const onMenuKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;

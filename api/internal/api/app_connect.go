@@ -194,11 +194,19 @@ func (s *Server) handleAppConnectTicket(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	case "youtube":
+		if !s.requireStreamOut(w, r, user.ID) {
+			return
+		}
 		if s.youtube == nil || !s.youtube.Enabled() {
 			httpx.Error(w, http.StatusServiceUnavailable, "youtube_oauth_unset", "YouTube linking is not set up on this instance.")
 			return
 		}
 	case "drive":
+		// Google Drive is Business and up (2 Nov 2026): no hand-off, so no token, without it.
+		if !user.HasFeature(types.FeatureGoogleDrive) {
+			httpx.Error(w, http.StatusForbidden, "feature_off", googleDriveMessage)
+			return
+		}
 		if s.cfg.GoogleClientID == "" || s.cfg.GoogleAPIKey == "" {
 			httpx.Error(w, http.StatusServiceUnavailable, "drive_unset", "Google Drive is not set up on this instance.")
 			return
@@ -273,12 +281,16 @@ func (s *Server) handleAppConnectStart(w http.ResponseWriter, r *http.Request) {
 		}
 		s.zoomAuthRedirect(w, r, user, c.Return, c.App, c.ID)
 	case "youtube":
-		if s.youtube == nil || !s.youtube.Enabled() {
+		if s.youtube == nil || !s.youtube.Enabled() || !user.HasFeature(types.FeatureStreamOut) {
 			s.appConnectFailed(w, r, provider, app, "unavailable")
 			return
 		}
 		s.youtubeAuthRedirect(w, r, user.ID, c.Return, c.App, c.ID)
 	case "drive":
+		if !user.HasFeature(types.FeatureGoogleDrive) {
+			s.appConnectFailed(w, r, provider, app, "unavailable")
+			return
+		}
 		now := time.Now()
 		signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, drivePickClaims{
 			RegisteredClaims: jwt.RegisteredClaims{

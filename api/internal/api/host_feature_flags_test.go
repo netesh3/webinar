@@ -209,6 +209,7 @@ func TestServerCaptionsNeedTheirSwitch(t *testing.T) {
 func TestAdminSetsSeveralFeaturesAtOnce(t *testing.T) {
 	h := newHarness(t)
 	target := h.signup("Bulk Host", "bulk-host@test.dev", true)
+	withoutExtras(t, h, target.ID)
 	h.logout()
 	if _, _, err := h.store.PromoteAdmins(context.Background(), []string{"neeraj@acme.dev"}); err != nil {
 		t.Fatal(err)

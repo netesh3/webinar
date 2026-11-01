@@ -47,6 +47,9 @@ func (s *Server) mountWebinarStreamDestinations(r chi.Router) {
 
 func (s *Server) handleSaveStreamDestination(w http.ResponseWriter, r *http.Request, p integrations.RTMPPlatform) {
 	user := userFromContext(r.Context())
+	if !s.requireStreamOut(w, r, user.ID) {
+		return
+	}
 	var body types.SaveStreamKeyRequest
 	if err := httpx.DecodeJSON(w, r, &body); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")

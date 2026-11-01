@@ -444,12 +444,18 @@ export function PlansFaq() {
             plan&apos;s storage. Your storage holds the videos you upload and your cloud recordings together.
           </FaqItem>
           <FaqItem question="Which plans have captions?">
-            Every plan has live captions made on each speaker&apos;s device. Business and Enterprise add server live
+            Every plan has live captions made on each speaker&apos;s device. Business and Enterprise add AI Live
             captions, in English and eight Indian languages.
           </FaqItem>
           <FaqItem question="Which plans have AI?">
-            Business and Enterprise: recaps, Q&amp;A answer drafts, the knowledge base, follow-up drafts and
-            repurposing. AI only drafts (you decide what is sent), and it works within a monthly AI limit.
+            Business and Enterprise: recaps, Q&amp;A answer drafts, the knowledge base, follow-up drafts and AI blog,
+            newsletter and social drafts. AI only drafts (you decide what is sent), and it works within a monthly AI
+            limit.
+          </FaqItem>
+          <FaqItem question="Which plans can stream to YouTube or download exports?">
+            Professional and up: streaming to YouTube, LinkedIn, Facebook, Instagram or any RTMP address, and
+            downloading registrants, attendance, engagement and transcripts as files. Google Drive is on Business and
+            up. On every plan, everything stays on screen in your account.
           </FaqItem>
           <FaqItem question="Who pays for WhatsApp messages?">
             Meta bills WhatsApp message fees to your own WhatsApp Business account. We do not mark them up.

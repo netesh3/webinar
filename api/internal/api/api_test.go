@@ -746,6 +746,12 @@ func newHarnessWith(
 	if err := st.SeedDev(ctx, hash); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
+	/* Every host had streaming out, Google Drive and file exports until migrations/0183
+	 * (2 Nov 2026) put them on plans. The fixtures keep them, as the subscribers who had them
+	 * did, so the suite tests what those features do; the gates' own tests take them away. */
+	if _, err := st.Pool().Exec(ctx, testExtrasSQL); err != nil {
+		t.Fatalf("grant the fixtures' extras: %v", err)
+	}
 
 	cfg := config.Config{
 		Env:           "development",
@@ -991,9 +997,17 @@ func (h *harness) signup(name, email string, wantsHost bool) types.Account {
 			h.t.Fatalf("grant hosting to %s: %v", email, err)
 		}
 		acct.CanHost = true
+		// The extras every host had before 0183; see testExtrasSQL.
+		if _, err := h.store.Pool().Exec(context.Background(), testExtrasSQL+` AND id = $1::uuid`, acct.ID); err != nil {
+			h.t.Fatalf("grant the extras to %s: %v", email, err)
+		}
 	}
 	return acct
 }
+
+// testExtrasSQL gives accounts stream_out, csv_export and google_drive as overrides.
+const testExtrasSQL = `UPDATE users SET features = ARRAY(SELECT DISTINCT unnest(features || ARRAY['stream_out', 'csv_export', 'google_drive']))
+	WHERE true`
 
 func (h *harness) logout() {
 	h.t.Helper()
@@ -3411,5 +3425,15 @@ func waitRecordingReady(t *testing.T, h *harness, slug, id string) {
 			t.Fatalf("recording %s not ready after 5s: %s", id, raw)
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// withoutExtras takes testExtrasSQL's overrides off one account, for a test of its exact switches.
+func withoutExtras(t *testing.T, h *harness, id string) {
+	t.Helper()
+	if _, err := h.store.Pool().Exec(context.Background(), `UPDATE users
+		SET features = array_remove(array_remove(array_remove(features, 'stream_out'), 'csv_export'), 'google_drive')
+		WHERE id = $1::uuid`, id); err != nil {
+		t.Fatal(err)
 	}
 }

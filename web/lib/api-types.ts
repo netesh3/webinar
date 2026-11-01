@@ -6246,6 +6246,28 @@ export const FeatureHLSDelivery = "hls_delivery";
  */
 export const FeatureAudienceInsights = "audience_insights";
 /**
+ *  FeatureStreamOut is streaming a session out: to YouTube (a pasted key, or the connected
+ * 	 * channel), and to LinkedIn, Facebook, Instagram or any RTMP address. Professional and up,
+ * 	 * and Starter (migrations/0183, 2 Nov 2026). Without it the API refuses every start (403
+ * 	 * feature_off), the compositor gets none of the host's destinations, and the go-live
+ * 	 * YouTube broadcast is not created.
+ */
+export const FeatureStreamOut = "stream_out";
+/**
+ *  FeatureGoogleDrive is playing a video from the host's Google Drive into a session (the
+ * 	 * Drive source in video share and the simulive picker, and the apps' Drive hand-off).
+ * 	 * Business and up, and Starter (migrations/0183). The picker and the download run in the
+ * 	 * browser; the server refuses the apps' hand-off without it.
+ */
+export const FeatureGoogleDrive = "google_drive";
+/**
+ *  FeatureCSVExport is every host-facing file export: registrants, attendance, engagement,
+ * 	 * the session report, the transcript and the chat. Professional and up, and Starter
+ * 	 * (migrations/0183). What the host can see on screen stays visible; only the file is refused
+ * 	 * (403 feature_off).
+ */
+export const FeatureCSVExport = "csv_export";
+/**
  * Feature groups: the admin screen's headings (Feature.Group).
  */
 export const FeatureGroupSessions = "sessions";

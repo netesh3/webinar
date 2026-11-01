@@ -1,6 +1,6 @@
 "use client";
 
-import { PlanLock } from "./plan-lock";
+import { PlanBadge, PlanLock, UpgradeLink, useHasFeature } from "./plan-lock";
 import { DEFAULT_REMINDERS, ReminderTimes, describeReminders } from "./reminder-times";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { CopyField, Spinner, Tabs } from "./controls";
@@ -33,6 +33,7 @@ import {
   FeatureAI,
   FeatureAIKnowledge,
   FeatureCloudRecording,
+  FeatureCSVExport,
   type CustomQuestion,
   type EngagementTierCounts,
   type Recording,
@@ -663,6 +664,7 @@ function AttendeesTab({
 }) {
   const bypass = isDevAuthBypassActive();
   const whatsappOn = useRosterWhatsAppColumns();
+  const csvExport = useHasFeature(FeatureCSVExport);
   const [offset, setOffset] = useState(0);
   const { sort, onSort } = useSort<RosterSortKey>({ defaultDir: ROSTER_DEFAULT_DIR });
   const [page, setPage] = useState<RegistrantPage | null>(null);
@@ -799,7 +801,7 @@ function AttendeesTab({
                 same people as contacts, with tags, notes and history. */}
             {messaging.bar}
             <RosterContactsLink slug={w.id} />
-            {!bypass && (
+            {!bypass && csvExport && (
               <ButtonLink
                 href={api.registrantsCsvUrl(w.id)}
                 size="sm"
@@ -808,6 +810,13 @@ function AttendeesTab({
               >
                 Export CSV
               </ButtonLink>
+            )}
+            {!bypass && !csvExport && (
+              <span className="inline-flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
+                Export CSV
+                <PlanBadge feature={FeatureCSVExport} />
+                <UpgradeLink />
+              </span>
             )}
           </div>
         </div>

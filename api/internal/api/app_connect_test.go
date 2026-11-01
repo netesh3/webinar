@@ -446,6 +446,8 @@ func TestAppDrivePickHandOff(t *testing.T) {
 	h.logout()
 	// Not a host: a panelist shares a Drive video from the stage as well.
 	h.signup("Drive Panelist", "drive-host@test.dev", false)
+	// Google Drive is Business and up (0183): this account has it, as an override.
+	forceFeature(t, h, h.me().ID, types.FeatureGoogleDrive, true)
 
 	_, ticket := h.appTicket("drive", "android", "")
 	poll := func() (*http.Response, types.AppDrivePickResponse) {

@@ -234,7 +234,7 @@ export function useCaptionsMoreAction():
           setUnavailable(null);
           return;
         } catch (err) {
-          const why = err instanceof Error && err.message ? err.message : "Server captions didn't start.";
+          const why = err instanceof Error && err.message ? err.message : "AI Live captions didn't start.";
           setUnavailable(why);
           notify(`${why} Captions are on, made on each speaker's device.`, "info");
         }

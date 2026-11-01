@@ -1,5 +1,7 @@
 "use client";
 
+import { FeatureStreamOut } from "@/lib/api-types";
+import { PlanLock, useHasFeature } from "../plan-lock";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { WebinarStreamDestination } from "@/lib/api-types";
@@ -81,6 +83,7 @@ export type PlatformStream = {
 };
 
 export function usePlatformStream(platform: StreamPlatform): PlatformStream {
+  const streamOut = useHasFeature(FeatureStreamOut);
   const info = PLATFORMS[platform];
   const { slug, isHost } = useRoomUI();
   const { notify } = useToast();
@@ -193,7 +196,14 @@ export function usePlatformStream(platform: StreamPlatform): PlatformStream {
         ? `Sending to ${info.name} · press Go live there when the preview shows`
         : "Starts sending when the webinar is live";
 
-  const dialog = !isHost ? null : (
+  // Streaming out is Professional and up (2 Nov 2026): the dialog says so instead of a form.
+  const dialog = !isHost ? null : !streamOut ? (
+    <Modal open={open} onClose={close} title={`Stream to ${info.name}`}>
+      <PlanLock feature={FeatureStreamOut} title="Streaming out">
+        Send the session live to YouTube, LinkedIn, Facebook, Instagram or any RTMP address.
+      </PlanLock>
+    </Modal>
+  ) : (
     <Modal
       open={open}
       onClose={close}

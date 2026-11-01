@@ -124,14 +124,14 @@ export function captionsStatus(
   if (controls.serverCaptionsPending === true) {
     return {
       label: "Captions: on this device (server starting)",
-      title: `Captions are on for everyone. Each speaker's device makes them until server captions are live.${rec}`,
+      title: `Captions are on for everyone. Each speaker's device makes them until AI Live captions are live.${rec}`,
       onDevice: true,
     };
   }
   const why = reason?.trim() ? ` ${reason.trim()}` : "";
   return {
-    label: "Captions: on this device (server captions unavailable)",
-    title: `Captions are on for everyone, made on each speaker's device: server captions are unavailable.${why}${rec}`,
+    label: "Captions: on this device (AI Live captions unavailable)",
+    title: `Captions are on for everyone, made on each speaker's device: AI Live captions are unavailable.${why}${rec}`,
     onDevice: true,
   };
 }

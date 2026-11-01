@@ -122,21 +122,21 @@ func (s *Server) handleHostServerCaptions(w http.ResponseWriter, r *http.Request
 	 * device instead (caption-overlay.tsx), and says why with this message. */
 	if req.On && !s.hostHas(r.Context(), wb.Host.ID, types.FeatureCaptions) {
 		httpx.Error(w, http.StatusForbidden, "feature_off",
-			"Server captions are on the Business and Enterprise plans.")
+			"Device captions on your plan. AI Live captions are on Business and up.")
 		return
 	}
 	dispatcher, ok := dispatcherFor(sfu)
 	if req.On && (!s.serverCaptionsConfigured() || !ok) {
 		// The browser falls back to on-device captions on this answer.
 		httpx.Error(w, http.StatusServiceUnavailable, "server_captions_unavailable",
-			"Server captions aren't set up here. Captions will run on each speaker's device.")
+			"AI Live captions aren't set up here. Captions will run on each speaker's device.")
 		return
 	}
 
 	room := lk.RoomName(slug)
 	if req.On {
 		if wb.Status != types.StatusLive {
-			httpx.Error(w, http.StatusConflict, "not_live", "Server captions start once the session is live.")
+			httpx.Error(w, http.StatusConflict, "not_live", "AI Live captions start once the session is live.")
 			return
 		}
 		if err := s.store.SetServerCaptions(r.Context(), slug, true); err != nil {
@@ -148,7 +148,7 @@ func (s *Server) handleHostServerCaptions(w http.ResponseWriter, r *http.Request
 			s.log.Warn("server captions: dispatch failed", "slug", slug, "error", err)
 			_ = s.store.SetServerCaptions(r.Context(), slug, false)
 			httpx.Error(w, http.StatusBadGateway, "dispatch_failed",
-				"Couldn't start server captions. Captions will run on each speaker's device.")
+				"Couldn't start AI Live captions. Captions will run on each speaker's device.")
 			return
 		}
 		s.log.Info("server captions: dispatched", "slug", slug, "agent", s.captionAgentName())
@@ -386,7 +386,7 @@ func (s *Server) handleInternalCaption(w http.ResponseWriter, r *http.Request) {
 	display := wb.Controls.CaptionsEnabled
 	keep := display || wb.Controls.AIEnabled
 	if !requested || !keep || wb.Status != types.StatusLive {
-		httpx.Error(w, http.StatusConflict, "captions_off", "Server captions are off for this session.")
+		httpx.Error(w, http.StatusConflict, "captions_off", "AI Live captions are off for this session.")
 		return
 	}
 	if req.Partial && !display {

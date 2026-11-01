@@ -201,7 +201,7 @@ var Plans = []Plan{
 		Lead: "Everything in Professional, plus:",
 		Features: []string{
 			"Simulive: recordings played as live",
-			"Server live captions",
+			"AI Live captions",
 			"AI recaps, knowledge base and follow-ups",
 			"Chat spam filter",
 			"Zoom and every advanced feature",
