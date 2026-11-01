@@ -557,7 +557,7 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 		if !ok {
 			continue
 		}
-		matched, err := s.store.SetMessageStatus(ctx, h.ID, st.WAMID, st.Status, st.Error)
+		known, moved, err := s.store.SetMessageStatus(ctx, h.ID, st.WAMID, st.Status, st.Error)
 		if err != nil {
 			s.log.Error("whatsapp webhook: status", "error", err, "host", h.ID, "wamid", st.WAMID)
 			continue
@@ -569,10 +569,15 @@ func (s *Module) ingestWhatsApp(ctx context.Context, d wa.Delivery) {
 		s.recordPricing(ctx, h.ID, st)
 		// A status for a message we never stored is not an error — a send from
 		// before this table existed, or from an account that has since
-		// reconnected — so it is noted and dropped. A status that did not move
-		// forward also reports unmatched; the pricing line above still applied.
-		if !matched {
-			s.log.Info("whatsapp status for an unknown message", "host", h.ID, "status", st.Status)
+		// reconnected — so it is noted and dropped. A status that did not move a
+		// known message forward (the "sent" Meta reports for every send, or one
+		// arriving after a later one) is nothing to note; the pricing line above
+		// still applied.
+		if !known {
+			s.log.Info("whatsapp status for an unknown message", "host", h.ID, "status", st.Status, "wamid", st.WAMID)
+			continue
+		}
+		if !moved {
 			continue
 		}
 		if st.Status == "failed" {

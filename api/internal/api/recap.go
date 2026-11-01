@@ -57,8 +57,9 @@ var (
 const (
 	// recapClaimFor outlives one recap's model calls.
 	recapClaimFor = 5 * time.Minute
-	// recapLaneBudget bounds the recap lane of one tick; inside tickBudget.
-	recapLaneBudget = 85 * time.Second
+	// recapLaneBudget bounds the recap lane of one tick: inside tickRequestBudget (tick.go),
+	// and what a recap written inline gets (recapInlineBudget).
+	recapLaneBudget = 45 * time.Second
 	// recapPerTick is how many recaps one tick writes at most.
 	recapPerTick = 3
 	// recapMaxAttempts is how often a recap no provider answered is tried again.

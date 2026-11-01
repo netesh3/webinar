@@ -4,10 +4,12 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/netkumar/webcast/api/internal/api"
 	"github.com/netkumar/webcast/api/internal/config"
 	"github.com/netkumar/webcast/api/types"
 )
@@ -166,5 +168,51 @@ func TestTickChecksWhatsAppTokenDaily(t *testing.T) {
 	tick(t, h, testTickSecret)
 	if w := me(); w == nil || w.NeedsReconnect || w.TokenExpiresAt == "" {
 		t.Errorf("expiring token: %+v, want an expiry date and no reconnect", w)
+	}
+}
+
+/* A pass slower than the server's write timeout still gets its answer written, and the
+ * pass stops at the tick's budget (1 Nov 2026). The server here has a 200 ms write timeout
+ * standing in for cmd/server's 60 s; before the fix the 90 s lane outlived it, the answer
+ * was never written, and Cloud Run read the broken connection as a failed instance. */
+func TestTickAnswersPastWriteTimeoutWithinBudget(t *testing.T) {
+	h := newHarness(t, withTickSecret)
+	defer api.SetTickRequestBudget(700 * time.Millisecond)()
+	stopped := make(chan time.Duration, 1)
+	api.SetMaintenanceHook(h.server, func(ctx context.Context) {
+		start := time.Now()
+		<-ctx.Done()
+		stopped <- time.Since(start)
+	})
+	srv := httptest.NewUnstartedServer(h.handler)
+	srv.Config.WriteTimeout = 200 * time.Millisecond
+	srv.Start()
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/api/internal/tick", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Tick-Secret", testTickSecret)
+	start := time.Now()
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("tick past the write timeout: %v (the answer was never written)", err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), `"ran"`) {
+		t.Fatalf("tick = %d %s, want 200 ran", res.StatusCode, body)
+	}
+	if took := time.Since(start); took > 3*time.Second {
+		t.Errorf("tick took %v with a 700 ms budget", took)
+	}
+	select {
+	case d := <-stopped:
+		if d > 2*time.Second {
+			t.Errorf("the slow job ran %v; the tick's budget should have stopped it", d)
+		}
+	default:
+		t.Error("the slow job was never stopped")
 	}
 }

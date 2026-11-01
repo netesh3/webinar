@@ -260,3 +260,10 @@ func SweepBoxes(s *Server, ctx context.Context) {
 func PoolPoints(s *Server, ctx context.Context, wb types.Webinar) int {
 	return s.sessionPoints(ctx, wb)
 }
+
+// SetTickRequestBudget shortens POST /api/internal/tick's budget; the returned func restores it.
+func SetTickRequestBudget(d time.Duration) func() {
+	old := tickRequestBudget
+	tickRequestBudget = d
+	return func() { tickRequestBudget = old }
+}
