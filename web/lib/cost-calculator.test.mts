@@ -172,11 +172,11 @@ near(d.storage.heldGb, (12 * edgeGbPerViewerHour(1000, 96) + 25 * 1.75) * (30 / 
 const ent = calculateCost(business);
 assert.equal(ent.storage.plan, "Business");
 near(ent.storage.heldGb, (12 * edgeGbPerViewerHour(1000, 96) + 25 * 1.75) * held, 1e-6);
-// Worst case: every coach fills the quota. 2 / 2 / 10 / 10 / 100 / 500 GiB at R2's $0.015 (1 Nov 2026).
+// Worst case: every coach fills the quota. 2 / 2 / 10 / 100 / 500 GiB at R2's $0.015 (2 Nov 2026).
 const worst = quotaWorstCase(DEFAULT_INPUTS);
-assert.deepEqual(worst.map((w) => w.plan), ["No plan", "Basic", "Starter", "Professional", "Business", "Enterprise"]);
-near(worst[4].usd, 100 * 1.073741824 * 0.015, 1e-9);
-near(worst[4].platformUsd, worst[4].usd * 20, 1e-9);
+assert.deepEqual(worst.map((w) => w.plan), ["No plan", "Basic", "Professional", "Business", "Enterprise"]);
+near(worst[3].usd, 100 * 1.073741824 * 0.015, 1e-9);
+near(worst[3].platformUsd, worst[3].usd * 20, 1e-9);
 assert.equal(quotaFor(300).plan, "Professional");
 assert.equal(quotaFor(123).plan, "Professional");
 near(d.recordedHours, 37);

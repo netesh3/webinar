@@ -6244,10 +6244,11 @@ export const FeatureSimuliveAuto = "simulive_auto";
  */
 export const FeatureFollowupSend = "followup_send";
 /**
- *  FeatureCaptions is live server captions in the room (the caption agent). In the Business,
- * 	 * Enterprise and grandfathered Starter tiers since 1 Nov 2026 (migrations/0180; every tier
- * 	 * had it from 0142). Off: turning server captions on is refused 403 feature_off and the
- * 	 * room falls back to captions made on each speaker's device, which every plan has.
+ *  FeatureCaptions is live server captions in the room (the caption agent). In the Business
+ * 	 * and Enterprise tiers since 1 Nov 2026 (migrations/0180; every tier had it from 0142; the
+ * 	 * retired Starter's accounts keep it as their own override, migrations/0185). Off: turning
+ * 	 * server captions on is refused 403 feature_off and the room falls back to captions made on
+ * 	 * each speaker's device, which every plan has.
  */
 export const FeatureCaptions = "captions";
 /**
@@ -6265,14 +6266,14 @@ export const FeatureHLSDelivery = "hls_delivery";
 /**
  *  FeatureAudienceInsights is a webinar's audience by device (phone, laptop or tablet, and the
  * 	 * browser) and by location (country, region, city): the two breakdowns on its analytics, and
- * 	 * their API routes (403 feature_off without it). Professional and up, and Starter
+ * 	 * their API routes (403 feature_off without it). Professional and up
  * 	 * (migrations/0181, 1 Nov 2026); before that every host had them.
  */
 export const FeatureAudienceInsights = "audience_insights";
 /**
  *  FeatureStreamOut is streaming a session out: to YouTube (a pasted key, or the connected
- * 	 * channel), and to LinkedIn, Facebook, Instagram or any RTMP address. Professional and up,
- * 	 * and Starter (migrations/0183, 2 Nov 2026). Without it the API refuses every start (403
+ * 	 * channel), and to LinkedIn, Facebook, Instagram or any RTMP address. Professional and up
+ * 	 * (migrations/0183, 2 Nov 2026). Without it the API refuses every start (403
  * 	 * feature_off), the compositor gets none of the host's destinations, and the go-live
  * 	 * YouTube broadcast is not created.
  */
@@ -6280,13 +6281,14 @@ export const FeatureStreamOut = "stream_out";
 /**
  *  FeatureGoogleDrive is playing a video from the host's Google Drive into a session (the
  * 	 * Drive source in video share and the simulive picker, and the apps' Drive hand-off).
- * 	 * Business and up, and Starter (migrations/0183). The picker and the download run in the
- * 	 * browser; the server refuses the apps' hand-off without it.
+ * 	 * Business and up (migrations/0183; the retired Starter's accounts keep it, migrations/0185).
+ * 	 * The picker and the download run in the browser; the server refuses the apps' hand-off
+ * 	 * without it.
  */
 export const FeatureGoogleDrive = "google_drive";
 /**
  *  FeatureCSVExport is every host-facing file export: registrants, attendance, engagement,
- * 	 * the session report, the transcript and the chat. Professional and up, and Starter
+ * 	 * the session report, the transcript and the chat. Professional and up
  * 	 * (migrations/0183). What the host can see on screen stays visible; only the file is refused
  * 	 * (403 feature_off).
  */
@@ -8859,6 +8861,12 @@ export interface AdminUser {
    */
   recordingRetentionDays?: number /* int */;
   defaultRecordingRetentionDays: number /* int */;
+  /**
+   *  SubscriptionStatus is the subscription's state (trialing, active, past_due, canceled),
+   * 	 * empty with no subscription. PlanAttendees is the plan's attendee cap (PlanAttendeeCap).
+   */
+  subscriptionStatus?: string;
+  planAttendees: number /* int */;
 }
 /**
  *  AdminStats is the admin dashboard's first read.
@@ -9537,20 +9545,15 @@ export interface SetUserMaxDurationRequest {
  *  Plan is a paid tier. Empty is the launch default: no subscription, and the
  *  * attendee ceiling every beta host has. See PlanAttendeeCap.
  *  *
- *  * The lineup from 31 Oct 2026 is Basic, Professional, Business and Enterprise. Starter is
- *  * grandfathered: the plan the first subscribers bought as "Professional" (₹3,999, 200
- *  * attendees, 3 on stage), renamed by migrations/0179 so they keep their limits and price
- *  * while Professional moves up. It is never offered to a new buyer (billing.Plan.Retired).
+ *  * The lineup from 31 Oct 2026 is Basic, Professional, Business and Enterprise. The
+ *  * grandfathered Starter of 0179 was retired on 2 Nov 2026: its accounts moved to Professional
+ *  * (migrations/0185), equal or more on every limit.
  */
 export type Plan = string;
 export const PlanBasic: Plan = "basic";
 export const PlanProfessional: Plan = "professional";
 export const PlanBusiness: Plan = "business";
 export const PlanEnterprise: Plan = "enterprise";
-/**
- * PlanStarter is grandfathered: kept for its existing subscribers, sold to nobody new.
- */
-export const PlanStarter: Plan = "starter";
 /**
  * PlanLaunchAttendees is the ceiling with no plan: what one shared SFU carries reliably.
  */
@@ -9568,7 +9571,7 @@ export interface SetAudienceCapRequest {
 /**
  * PlanIDsText is the valid plan ids in words, for an error message.
  */
-export const PlanIDsText = "basic, professional, business, enterprise, starter, or empty for none";
+export const PlanIDsText = "basic, professional, business, enterprise, or empty for none";
 /**
  *  WhatsAppConsent is GET /api/webinars/{slug}/whatsapp-consent: what the register
  *  * page needs to decide whether to ask a signed-in person for their phone and for

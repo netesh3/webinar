@@ -5,14 +5,16 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/netkumar/webcast/api/internal/billing"
 	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
-/* Pricing v3 (31 Oct 2026): Basic, Professional, Business and Enterprise on sale, Starter
- * grandfathered. See migrations/0179. */
+/* Pricing v3 (31 Oct 2026): Basic, Professional, Business and Enterprise on sale. See
+ * migrations/0179. The grandfathered Starter of 0179 was retired into Professional on 2 Nov 2026
+ * (migrations/0185). */
 
 // The migrated tier matrix is store.TierFeatures for every switch the plans differ by.
 func TestTierMatrixIsTheLaunchMatrix(t *testing.T) {
@@ -38,15 +40,9 @@ func TestTierMatrixIsTheLaunchMatrix(t *testing.T) {
 			}
 		}
 	}
-	// The grandfathered tier keeps what Professional had before: none of the new switches, and
-	// server captions, which it had from 0142 (migrations/0180 keeps them).
-	for _, k := range store.PricingV3Features {
-		if slices.Contains(byPlan[types.PlanStarter], k) {
-			t.Errorf("starter gained %s", k)
-		}
-	}
-	if !slices.Contains(byPlan[types.PlanStarter], types.FeatureCaptions) {
-		t.Error("starter lost server captions")
+	// Starter is gone (migrations/0185): no tier rows left for it.
+	if _, ok := byPlan["starter"]; ok {
+		t.Errorf("a starter tier is left: %v", byPlan["starter"])
 	}
 	// No plan captions on each speaker's device (1 Nov 2026).
 	if slices.Contains(byPlan[""], types.FeatureCaptions) {
@@ -104,69 +100,118 @@ func TestEntitlementsPerPlan(t *testing.T) {
 	}
 }
 
-/* Starter is grandfathered: an account on it keeps its 200 attendees, 3 on stage and its name,
- * and may renew it at its price; nobody else can buy it or trial it, and the price list does
- * not show it. */
-func TestStarterIsGrandfathered(t *testing.T) {
+/* Starter retired (2 Nov 2026, migrations/0185): an account the old shape had on the ₹3,999
+ * Starter is on Professional after it, with server captions and Google Drive kept as its own
+ * overrides (Starter's tier had them, Professional's does not) unless they were off for it.
+ * Its running Razorpay subscription keeps the ₹3,999 amount it was created with: the renewal is
+ * matched by subscription id, so it keeps the account on Professional rather than being refused,
+ * and an unpaid one-time Starter order still fulfils at the amount it was created for. */
+func TestRetiredStarterMovesToProfessionalAndKeepsRenewing(t *testing.T) {
 	h, _ := billingHarness(t)
 	ctx := t.Context()
-
-	// A new buyer is refused Starter, both ways, and the catalogue does not offer it.
-	h.signup("New Buyer", "new-starter@example.com", true)
-	res, raw := h.do(http.MethodPost, "/api/billing/orders", types.CreateBillingOrderRequest{Plan: "starter", Period: "monthly", Currency: "INR"})
-	h.wantError(res, raw, http.StatusUnprocessableEntity, "plan_retired")
-	h.setPhone("+91 98111 00179")
-	if code, _, body := h.startTrial("starter"); code != http.StatusUnprocessableEntity || errorCode(t, []byte(body)) != "plan_retired" {
-		t.Fatalf("starter trial: %d %s, want 422 plan_retired", code, body)
+	original, err := h.store.PlanFeatures(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, raw = h.do(http.MethodGet, "/api/billing/plans", nil)
-	var cat types.BillingCatalogue
-	h.decode(raw, &cat)
-	for _, p := range cat.Plans {
-		if p.ID == "starter" {
-			t.Fatal("the catalogue offers starter")
+	t.Cleanup(func() {
+		if err := h.store.SetPlanFeatures(context.Background(), original); err != nil {
+			t.Errorf("restore plan features: %v", err)
 		}
+	})
+
+	// Subscriber: a Razorpay subscription, started as a Professional trial and then written
+	// back to the old shape (Starter, ₹3,999 a month).
+	sub := h.signup("Old Starter Sub", "retire-sub@example.com", false)
+	h.setPhone("+91 98111 00185")
+	code, co, raw := h.startTrial("professional")
+	if code != http.StatusCreated {
+		t.Fatalf("start: %d %s", code, raw)
+	}
+	if code, _, raw := h.verifyTrial(co.SubscriptionID, "pay_auth_185"); code != http.StatusOK {
+		t.Fatalf("verify: %d %s", code, raw)
+	}
+	h.logout()
+	// Buyer: an unpaid one-time order, written back to a Starter order for ₹3,999 a month.
+	buyer := h.signup("Old Starter Order", "retire-order@example.com", true)
+	order := h.buy("professional", billing.Monthly, billing.INR)
+	h.logout()
+	// Off: Google Drive turned off for the subscriber stays off and is not made an override.
+	h.exec(store.AllowStarterSQL)
+	h.exec(`INSERT INTO plan_features (plan, feature, enabled) VALUES
+		('starter', 'whiteboard', true), ('starter', 'meetings', true), ('starter', 'captions', true),
+		('starter', 'audience_insights', true), ('starter', 'stream_out', true),
+		('starter', 'google_drive', true), ('starter', 'csv_export', true)
+		ON CONFLICT (plan, feature) DO UPDATE SET enabled = true`)
+	h.exec(`INSERT INTO plan_limits (plan, limit_key, value) VALUES
+		('starter', 'recording_storage_bytes', 10::bigint * 1024 * 1024 * 1024)
+		ON CONFLICT (plan, limit_key) DO UPDATE SET value = EXCLUDED.value`)
+	h.exec(`UPDATE subscriptions SET plan = 'starter' WHERE user_id = '` + sub.ID + `'`)
+	h.exec(`UPDATE billing_subscriptions SET plan = 'starter' WHERE user_id = '` + sub.ID + `'`)
+	h.exec(`UPDATE billing_orders SET plan = 'starter', amount = 4_718_82, tax = 719_82 WHERE razorpay_order_id = '` + order.OrderID + `'`)
+	forceFeature(t, h, sub.ID, types.FeatureGoogleDrive, false)
+	if u, _ := h.store.UserByID(ctx, sub.ID); u.Plan != "starter" {
+		t.Fatalf("old shape: subscriber on %q, want starter", u.Plan)
+	}
+
+	if err := h.store.ConvertRetireStarter(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	u, err := h.store.UserByID(ctx, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Plan != types.PlanProfessional || types.PlanAttendeeCap(u.Plan) < 200 || types.PlanStageCap(u.Plan) < 3 {
+		t.Fatalf("after 0185: plan %q (%d attendees, %d on stage), want professional and no less than Starter",
+			u.Plan, types.PlanAttendeeCap(u.Plan), types.PlanStageCap(u.Plan))
+	}
+	for _, k := range []string{types.FeatureCaptions, types.FeatureAudienceInsights, types.FeatureStreamOut, types.FeatureCSVExport} {
+		if !u.HasFeature(k) {
+			t.Errorf("the moved subscriber lost %s: %v", k, u.Features)
+		}
+	}
+	if u.HasFeature(types.FeatureGoogleDrive) {
+		t.Error("google_drive was off for the subscriber and came back")
+	}
+	var own []string
+	if err := h.store.Pool().QueryRow(ctx, `SELECT features FROM users WHERE id = $1::uuid`, sub.ID).Scan(&own); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(own, types.FeatureCaptions) || slices.Contains(own, types.FeatureCSVExport) {
+		t.Errorf("own overrides = %v, want captions (Starter's, not Professional's) and not csv_export (Professional's)", own)
+	}
+	var left int
+	if err := h.store.Pool().QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM subscriptions WHERE plan = 'starter') +
+		(SELECT count(*) FROM billing_orders WHERE plan = 'starter') +
+		(SELECT count(*) FROM billing_subscriptions WHERE plan = 'starter') +
+		(SELECT count(*) FROM plan_features WHERE plan = 'starter') +
+		(SELECT count(*) FROM plan_limits WHERE plan = 'starter')`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("starter rows left after 0185: %d (err %v)", left, err)
+	}
+	if _, err := h.store.Pool().Exec(ctx, `INSERT INTO plan_features (plan, feature, enabled) VALUES ('starter', 'zoom', true)`); err == nil {
+		t.Fatal("the CHECK still allows a starter tier")
+	}
+
+	// The ₹3,999 subscription renews: the charge is matched by subscription id, not price.
+	h.login("retire-sub@example.com")
+	periodEnd := time.Now().Add(30 * 24 * time.Hour).Unix()
+	h.subWebhook("subscription.charged", co.SubscriptionID, "active", periodEnd,
+		`{"id":"pay_starter_renew","amount":471882,"currency":"INR","status":"captured","method":"upi","vpa":"old@okaxis"}`)
+	if st := h.myBilling(); st.Status != "active" || st.Plan != "professional" || st.PaidUntil == "" {
+		t.Fatalf("after the ₹3,999 renewal: %+v, want active on professional", st)
+	}
+	if a := h.me(); a.Plan != types.PlanProfessional || a.AttendeeCap != types.PlanAttendeeCap(types.PlanProfessional) {
+		t.Fatalf("after the ₹3,999 renewal: plan %q cap %d", a.Plan, a.AttendeeCap)
 	}
 	h.logout()
 
-	// An existing Starter subscriber (migrations/0179 renamed their Professional).
-	old := h.signup("Old Subscriber", "old-starter@example.com", true)
-	if _, err := h.store.SetUserPlan(ctx, old.ID, types.PlanStarter); err != nil {
-		t.Fatal(err)
+	// The unpaid ₹3,999 order is paid: checked against its own amount, so it fulfils.
+	if res := h.webhook("payment.captured", order.OrderID, "pay_starter_order", 4_718_82, "INR"); res.StatusCode != http.StatusOK {
+		t.Fatalf("order webhook: %d", res.StatusCode)
 	}
-	if a := h.me(); a.Plan != types.PlanStarter || a.AttendeeCap != 200 {
-		t.Fatalf("starter account: plan %q cap %d, want starter and 200", a.Plan, a.AttendeeCap)
-	}
-	if wb := h.newWebinar("Starter room", func(in *types.WebinarInput) { in.AttendeeLimit = 300 }); wb.AttendeeLimit != 200 {
-		t.Fatalf("starter webinar asked 300 = %d, want 200", wb.AttendeeLimit)
-	}
-	plan, _, err := h.store.StageCapForUser(ctx, old.ID)
-	if err != nil || types.PlanStageCap(plan) != 3 {
-		t.Fatalf("starter stage cap = %d (err %v), want 3", types.PlanStageCap(plan), err)
-	}
-	// Renewing at the grandfathered price works, and the billing card names the plan.
-	co := h.buy("starter", billing.Yearly, billing.INR)
-	if co.Subtotal != 39_948_00 || co.PlanName != "Starter" {
-		t.Fatalf("starter renewal: %+v, want ₹39,948 Starter", co)
-	}
-	res, raw = h.do(http.MethodPost, "/api/billing/verify", types.VerifyBillingPaymentRequest{
-		OrderID: co.OrderID, PaymentID: "pay_starter",
-		Signature: billing.Sign(rzpSecret, []byte(co.OrderID+"|pay_starter")),
-	})
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("verify: %d %s", res.StatusCode, raw)
-	}
-	var vr types.VerifyBillingPaymentResponse
-	h.decode(raw, &vr)
-	if vr.Account.Plan != types.PlanStarter || vr.Billing.PlanName != "Starter" || vr.Billing.Attendees != 200 {
-		t.Fatalf("after renewing: plan %q, billing %+v", vr.Account.Plan, vr.Billing)
-	}
-	if st := h.myBilling(); st.PlanName != "Starter" || !st.Active {
-		t.Fatalf("billing card: %+v", st)
-	}
-	// Moving up to a plan on sale is an ordinary purchase.
-	if co := h.buy("professional", billing.Monthly, billing.INR); co.Subtotal != 9_999_00 {
-		t.Fatalf("starter moving to professional: %+v", co)
+	if b, err := h.store.UserByID(ctx, buyer.ID); err != nil || b.Plan != types.PlanProfessional {
+		t.Fatalf("the ₹3,999 order did not fulfil: plan %q (err %v)", b.Plan, err)
 	}
 }
 
@@ -200,7 +245,6 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 		_, _ = h.store.Pool().Exec(context.Background(), `
 			DELETE FROM plan_limits WHERE plan IN ('basic', 'enterprise');
 			INSERT INTO plan_limits (plan, limit_key, value) VALUES
-			    ('starter',      'recording_storage_bytes', 10::bigint  * 1024 * 1024 * 1024),
 			    ('professional', 'recording_storage_bytes', 10::bigint  * 1024 * 1024 * 1024),
 			    ('business',     'recording_storage_bytes', 100::bigint * 1024 * 1024 * 1024),
 			    ('basic',        'recording_storage_bytes', 2::bigint   * 1024 * 1024 * 1024),
@@ -240,6 +284,8 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 		capsBefore[id] = map[string]int{"professional": 200, "business": 300, "enterprise": 500}[string(u.Plan)]
 	}
 
+	// 0179 to 0183 predate 0185 and write 'starter' rows: replay them with it allowed, then 0185.
+	h.exec(store.AllowStarterSQL)
 	if err := h.store.ConvertPricingV3(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -252,14 +298,18 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 	if err := h.store.ConvertStreamOut(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := h.store.ConvertRetireStarter(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, c := range []struct {
 		id       string
 		plan     types.Plan
 		has, not []string
 	}{
-		// The old Professional is Starter, instant webinars gone with the tier (per host only).
-		{pro.ID, types.PlanStarter, nil, []string{types.FeatureInstantWebinar, types.FeatureZoom}},
+		// The old Professional was Starter until 0185 and is Professional now: captions kept as
+		// their override, instant webinars gone with the tier (per host only).
+		{pro.ID, types.PlanProfessional, []string{types.FeatureCaptions}, []string{types.FeatureInstantWebinar, types.FeatureZoom}},
 		// The old Business is Professional: WhatsApp from the tier, Zoom kept as their override.
 		{biz.ID, types.PlanProfessional, []string{types.FeatureWhatsAppCRM, types.FeatureZoom}, nil},
 		// Zoom was off for this one: it stays off, and is not made an override.
@@ -274,7 +324,7 @@ func TestPricingV3MigrationKeepsEverySubscribersLimitsAndSwitches(t *testing.T) 
 		if u.Plan != c.plan {
 			t.Errorf("%s: plan %q, want %q", c.id, u.Plan, c.plan)
 		}
-		if want, ok := capsBefore[c.id]; ok && types.PlanAttendeeCap(u.Plan) != want {
+		if want, ok := capsBefore[c.id]; ok && types.PlanAttendeeCap(u.Plan) < want {
 			t.Errorf("%s: attendee cap %d after, %d before", c.id, types.PlanAttendeeCap(u.Plan), want)
 		}
 		for _, k := range c.has {

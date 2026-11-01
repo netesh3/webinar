@@ -45,13 +45,8 @@ func (s *Server) handleStartTrial(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "bad_request", "Could not read that request.")
 		return
 	}
-	// Plans on sale online only: no trial of a contact-only plan or the grandfathered Starter.
+	// Plans on sale online only: no trial of a contact-only plan.
 	quote, err := billing.NewQuote(req.Plan, billing.Monthly, billing.TrialCurrency, s.cfg.BillingGSTPercent)
-	if errors.Is(err, billing.ErrRetired) {
-		httpx.Error(w, http.StatusUnprocessableEntity, "plan_retired",
-			"That plan is no longer offered. Pick one of the plans on the pricing page.")
-		return
-	}
 	if errors.Is(err, billing.ErrContactOnly) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "contact_sales",
 			"This plan is set up with our team. Write to us and we'll get you started.")

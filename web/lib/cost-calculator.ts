@@ -102,11 +102,10 @@ export const DEFAULT_FEATURES: Record<FeatureKey, boolean> = {
 };
 
 /** Storage quota by plan (migrations 0148, 0179 and 0180), GiB: recordings and uploaded videos
- *  together. The attendee cap picks the plan; Starter is the grandfathered ₹3,999 plan. */
+ *  together. The attendee cap picks the plan (Starter retired, migrations/0185, 2 Nov 2026). */
 export const RECORDING_QUOTAS: { plan: string; cap: number | null; gib: number }[] = [
   { plan: "No plan", cap: null, gib: 2 },
   { plan: "Basic", cap: 100, gib: 2 },
-  { plan: "Starter", cap: 200, gib: 10 },
   { plan: "Professional", cap: 300, gib: 10 },
   { plan: "Business", cap: 500, gib: 100 },
   { plan: "Enterprise", cap: 1000, gib: 500 },
@@ -437,9 +436,9 @@ export const PRESETS: Record<Preset, { label: string; usage: Partial<CostInputs>
   },
 };
 
-/** Attendee caps by plan tier (types.PlanAttendeeCap, 31 Oct 2026): Basic, the grandfathered
- *  Starter, Professional, Business, Enterprise. */
-export const PLAN_CAPS = [100, 200, 300, 500, 1000] as const;
+/** Attendee caps by plan tier (types.PlanAttendeeCap, 31 Oct 2026): Basic, Professional,
+ *  Business, Enterprise. */
+export const PLAN_CAPS = [100, 300, 500, 1000] as const;
 
 export const DEFAULT_INPUTS: CostInputs = {
   provider: "do",
@@ -709,7 +708,7 @@ export function boxRunHours(p: ProviderRates, platformSessionHours: number, plat
 
 /** The plan the attendee cap stands for, and its recording quota in GB. */
 export function quotaFor(cap: number): { plan: string; gb: number } {
-  const q = RECORDING_QUOTAS.find((x) => x.cap === cap) ?? RECORDING_QUOTAS[3];
+  const q = RECORDING_QUOTAS.find((x) => x.cap === cap) ?? RECORDING_QUOTAS[2];
   return { plan: q.plan, gb: q.gib * GIB };
 }
 

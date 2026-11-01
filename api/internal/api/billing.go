@@ -37,7 +37,6 @@ import (
 var gstinPattern = regexp.MustCompile(`^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$`)
 
 func (s *Server) billingCatalogue() types.BillingCatalogue {
-	// Grandfathered plans (Starter) are not listed: nobody new may buy them.
 	onSale := billing.OnSale()
 	plans := make([]types.BillingPlan, 0, len(onSale))
 	for _, p := range onSale {
@@ -100,20 +99,7 @@ func (s *Server) handleCreateBillingOrder(w http.ResponseWriter, r *http.Request
 		req.Currency = billing.INR
 	}
 	user := userFromContext(r.Context())
-	/* A grandfathered plan (Starter) is priced only for an account already on it, renewing
-	 * at the price it has; anyone else is told it is no longer sold. */
-	current, err := s.store.PlanForUser(r.Context(), user.ID)
-	if err != nil {
-		s.fail(w, r, "billing: current plan", err)
-		return
-	}
-	quote, err := billing.NewQuoteFor(req.Plan, req.Period, strings.ToUpper(req.Currency), s.cfg.BillingGSTPercent,
-		req.Plan != "" && string(current) == req.Plan)
-	if errors.Is(err, billing.ErrRetired) {
-		httpx.Error(w, http.StatusUnprocessableEntity, "plan_retired",
-			"That plan is no longer offered. Pick one of the plans on the pricing page.")
-		return
-	}
+	quote, err := billing.NewQuote(req.Plan, req.Period, strings.ToUpper(req.Currency), s.cfg.BillingGSTPercent)
 	if errors.Is(err, billing.ErrContactOnly) {
 		httpx.Error(w, http.StatusUnprocessableEntity, "contact_sales",
 			"This plan is set up with our team. Write to us and we'll get you started.")

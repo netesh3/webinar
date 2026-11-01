@@ -1,29 +1,14 @@
-/* What an admin setting costs US, per account, so whoever turns one on knows the bill it can
- * run up. Shown beside each setting on the admin Accounts screen.
+/* Stage traffic and egress prices shared by the admin cost calculator and "Cost by host"
+ * (lib/cost-calculator.ts, lib/host-costs.ts).
  *
- * Estimates at list prices (2026-10): Bunny Standard network $0.01/GB (Europe, North
- * America) to $0.03/GB (Asia); GCP internet egress ~$0.12/GB; a c2d-highcpu-4 egress
- * worker ~$0.18/hour; B2 storage ~$0.006/GB-month; a DigitalOcean c-4 ~$0.125/hour with 5 TB
- * of pooled transfer. Update the numbers here when a price changes — nothing else repeats them. */
-
-import {
-  FeatureAI,
-  FeatureClips,
-  FeatureCloudRecording,
-  FeatureInstantWebinar,
-  FeatureJoinWithoutRegistration,
-  FeatureRepurpose,
-  FeatureWhatsAppCRM,
-  FeatureWhiteboard,
-  FeatureZoom,
-} from "./api-types.ts";
+ * (2 Nov 2026) The per-account "Cost of these settings" texts that used to live here went with
+ * the Accounts tab redesign; only the numbers the two calculators read are left.
+ *
+ * Estimates at list prices (2026-10): GCP internet egress ~$0.12/GB. Update the numbers here
+ * when a price changes — nothing else repeats them. */
 
 export const GCP_EGRESS_PER_GB = 0.12;
 export const GB_PER_MBPS_HOUR = 0.45; // 1 Mbps for an hour
-
-function usd(n: number): string {
-  return n < 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(n < 10 ? 1 : 0)}`;
-}
 
 /** Stage traffic out of the SFU for `n` people on stage: each receives the other n-1 at
  *  ~0.6–2 Mbps (360p–720p tiles), so it grows with the square of the stage. */
@@ -31,59 +16,3 @@ export function stageMbps(n: number): [number, number] {
   const pairs = Math.max(0, n * (n - 1));
   return [pairs * 0.6, pairs * 2];
 }
-
-/** One line on what a stage of `n` costs per live hour on a GCP-hosted video server. */
-export function stageCostText(n: number): string {
-  const [lo, hi] = stageMbps(n);
-  const cost = (mbps: number) => mbps * GB_PER_MBPS_HOUR * GCP_EGRESS_PER_GB;
-  if (n <= 1) return "1 person on stage: no stage-to-stage traffic.";
-  return (
-    `${n} on stage: ~${Math.round(lo)}–${Math.round(hi)} Mbps out of the video server, ` +
-    `≈ ${usd(cost(lo))}–${usd(cost(hi))} per live hour on the Mumbai (GCP) server; ` +
-    `inside the DigitalOcean box's pooled transfer. Grows with the square of the stage.`
-  );
-}
-
-export const COSTS = {
-  canHost:
-    "Every live hour uses the video server: the DigitalOcean box (≈ $0.125/hour while it is up, " +
-    "transfer pooled) and, for every webinar, the Edge CDN ≈ $0.011–0.034 per attendee-hour.",
-  maxDuration:
-    "Longer sessions multiply every per-hour cost (video server traffic, Edge CDN, egress " +
-    "workers, recording) for each webinar this host runs.",
-  mediaQuota: "Object storage at ≈ $0.006 per GB per month — 1 GB is about a cent a month.",
-  plan:
-    "Sets the attendee and stage caps, so the worst-case hour: e.g. Business, 500 attendees " +
-    "on Edge ≈ $5.50–17/hour of CDN plus a 10-person stage (≈ $3–10/hour on GCP). Enterprise " +
-    "allows 1,000 and a 100-person stage.",
-  videoServer:
-    "DigitalOcean Bangalore (default): ≈ $0.125/hour while the box is up, transfer pooled. " +
-    "Mumbai (GCP): stage traffic ≈ $0.12/GB and an Edge egress worker ≈ $0.18/hour per live " +
-    "webinar.",
-} as const;
-
-/** Cost lines for the features in the catalogue, by key. */
-export const FEATURE_COSTS: Record<string, string> = {
-  [FeatureCloudRecording]:
-    "An encode while recording (a worker ≈ $0.18/hour on pooled servers) and ~1.5–2 GB stored " +
-    "per recorded hour ≈ $0.01 per hour of recording per month.",
-  [FeatureClips]:
-    "AI on gpt-5-mini (AI_MODEL_HIGHLIGHTS): picking highlights and planning reels ≈ $0.01 each " +
-    "per hour of recording, post text ≈ $0.003 per clip, inside the AI caps. The videos are made " +
-    "on the video server between sessions, at no extra server cost; an admin's \"Make it now\" " +
-    "starts the on-demand server for them (its hourly rate until the queue is made). Each video " +
-    "counts against the host's recording storage.",
-  [FeatureWhatsAppCRM]:
-    "Messages are billed by Meta to the host's own WhatsApp Business account; to us, only the " +
-    "media library's storage.",
-  [FeatureZoom]: "Runs on the host's own Zoom account: no video cost to us.",
-  [FeatureJoinWithoutRegistration]: "No direct cost; can bring more attendees into each live hour.",
-  [FeatureInstantWebinar]: "No direct cost beyond the live hours it starts.",
-  [FeatureWhiteboard]: "Negligible: it travels on the existing data channel.",
-  [FeatureAI]:
-    "OpenAI gpt-5-nano ≈ $0.05 in / $0.40 out per million tokens: a fraction of a cent per " +
-    "draft. Capped per host (AI_HOST_MONTHLY_USD, default $2) and in all (AI_MONTHLY_USD, $20).",
-  [FeatureRepurpose]:
-    "gpt-5-nano again, inside the same AI caps: about $0.002–0.005 per draft for an hour's " +
-    "session (the transcript read once per draft); a long session is summarised once first.",
-};

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -84,7 +85,7 @@ func TestServerCaptionsAreBusinessAndUp(t *testing.T) {
 		want bool
 	}{
 		{"", false}, {types.PlanBasic, false}, {types.PlanProfessional, false},
-		{types.PlanStarter, true}, {types.PlanBusiness, true}, {types.PlanEnterprise, true},
+		{types.PlanBusiness, true}, {types.PlanEnterprise, true},
 	} {
 		if _, err := h.store.SetUserPlan(ctx, acct.ID, c.plan); err != nil {
 			t.Fatal(err)
@@ -168,7 +169,12 @@ func TestPricingGatesMigrationKeepsWhatSubscribersHad(t *testing.T) {
 	h.exec(`INSERT INTO plan_features (plan, feature, enabled) VALUES
 		('basic', 'cloud_recording', true), ('professional', 'captions', true)
 		ON CONFLICT (plan, feature) DO UPDATE SET enabled = true`)
+	// 0180 predates 0185 and writes a Starter row: replay it with 'starter' allowed, then retire it.
+	h.exec(store.AllowStarterSQL)
 	if err := h.store.ConvertPricingGates(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.store.ConvertRetireStarter(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if u, _ := h.store.UserByID(ctx, basic.ID); !u.HasFeature(types.FeatureCloudRecording) {

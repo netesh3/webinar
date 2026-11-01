@@ -159,3 +159,24 @@ func TestPricingV3SQLMatchesMigration(t *testing.T) {
 		}
 	}
 }
+
+func TestRetireStarterSQLMatchesMigration(t *testing.T) {
+	body, err := migrationFS.ReadFile("migrations/0185_retire_starter.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), RetireStarterSQL) {
+		t.Fatalf("0185 drifted from RetireStarterSQL:\n%s", body)
+	}
+	// No plan id the code knows is left out of the CHECKs, and starter is in none of them.
+	for _, plan := range PlanTiers {
+		if plan != "" && !strings.Contains(RetireStarterSQL, "'"+string(plan)+"'") {
+			t.Errorf("RetireStarterSQL's CHECKs leave out %s", plan)
+		}
+	}
+	for _, line := range strings.Split(RetireStarterSQL, "\n") {
+		if strings.Contains(line, "CHECK") && strings.Contains(line, "starter") {
+			t.Errorf("a CHECK still allows starter: %s", line)
+		}
+	}
+}

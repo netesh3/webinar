@@ -9,8 +9,8 @@
  * the server's, or the Go tests fail. The yearly rule and the list-price rule are the
  * server's too (billing.yearly, billing.YearlyList), and lib/plans.test.mts pins them.
  *
- * The grandfathered Starter (the first subscribers' ₹3,999 plan) is not here: it is never
- * shown to anyone new. The server keeps it for the accounts on it.
+ * The grandfathered Starter (the first subscribers' ₹3,999 plan) was retired on 2 Nov 2026: its
+ * accounts moved to Professional (migrations/0185).
  *
  * Pure: no React, no DOM, so it runs under node tests (lib/plans.test.mts). */
 
@@ -208,7 +208,7 @@ export function findPlan(id: PlanId): Plan {
   return p;
 }
 
-/** The page's plan for a server plan id, or undefined (the grandfathered Starter). */
+/** The page's plan for a server plan id, or undefined (no plan, or an id the page does not know). */
 export function planForServer(server: string): Plan | undefined {
   return PLANS.find((p) => p.server === server);
 }

@@ -1,7 +1,6 @@
 package billing
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -112,7 +111,7 @@ func TestPricingV3Lineup(t *testing.T) {
 	}
 	for _, w := range want {
 		p, ok := FindPlan(string(w.id))
-		if !ok || p.ContactOnly || p.Retired {
+		if !ok || p.ContactOnly {
 			t.Fatalf("%s should be on sale online", w.id)
 		}
 		if p.Attendees() != w.attendees || p.StageSeats() != w.stage {
@@ -200,35 +199,5 @@ func TestYearlyListIsTheChargeOverOneFifth(t *testing.T) {
 		if got := YearlyList(charge); got != want {
 			t.Errorf("YearlyList(%d) = %d, want %d", charge, got, want)
 		}
-	}
-}
-
-/* Starter is grandfathered: kept with its limits and price for the accounts on it, never
- * offered or sold to anyone else. */
-func TestStarterIsGrandfathered(t *testing.T) {
-	p, ok := FindPlan("starter")
-	if !ok || !p.Retired {
-		t.Fatal("starter should be kept, retired")
-	}
-	if p.Attendees() != 200 || p.StageSeats() != 3 {
-		t.Errorf("starter caps = %d / %d, want 200 / 3", p.Attendees(), p.StageSeats())
-	}
-	if m, _ := p.Price(INR, Monthly); m != 3_999_00 {
-		t.Errorf("starter INR monthly = %d, want ₹3,999", m)
-	}
-	for _, s := range OnSale() {
-		if s.ID == types.PlanStarter {
-			t.Error("starter is on sale")
-		}
-	}
-	if _, err := NewQuote("starter", Monthly, INR, 18); !errors.Is(err, ErrRetired) {
-		t.Errorf("a new buyer's starter quote: err %v, want ErrRetired", err)
-	}
-	q, err := NewQuoteFor("starter", Yearly, INR, 18, true)
-	if err != nil || q.Subtotal != 39_948_00 {
-		t.Errorf("an existing starter renewing yearly: %+v %v, want ₹39,948", q, err)
-	}
-	if !types.PlanStarter.Valid() {
-		t.Error("starter must stay a valid plan id for its subscribers")
 	}
 }
