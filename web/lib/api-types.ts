@@ -4832,6 +4832,11 @@ export const NotifyRecordingExpiring: NotificationKind = "recording_expiring";
  * 	 * (api/internal/api/sfu_box.go).
  */
 export const NotifyOpsAlert: NotificationKind = "ops_alert";
+/**
+ *  NotifyWhatsAppLimited is the host's bell when Meta limits their WhatsApp number
+ * 	 * (error 131048, spam rate limit) and the outbox pauses their messages.
+ */
+export const NotifyWhatsAppLimited: NotificationKind = "whatsapp_limited";
 export const MaxReminders = 3;
 export const MinReminderOffset = 1;
 export const MaxReminderOffset = 30 * 24 * 60;

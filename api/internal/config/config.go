@@ -432,6 +432,11 @@ type Config struct {
 	 * status callback names a category but not an amount. Micros of a rupee
 	 * (1_000_000 = ₹1): "IN:utility=130000,US=40000". Empty keeps the built-in card. */
 	WhatsAppRates string
+	/* WhatsAppSendPerSec caps the WhatsApp outbox: this many sends a second from each
+	 * business phone number, and from this instance in all (WHATSAPP_SEND_PER_SEC, default
+	 * 40). Meta's default is 80 a second per number (developers.facebook.com/docs/whatsapp/
+	 * throughput); half leaves room for the host's own app and for Meta's 130429 margin. */
+	WhatsAppSendPerSec int
 
 	/* Supabase Auth — unused for browser login (first-party Google OAuth uses
 	 * GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET). Kept so POST /api/auth/supabase
@@ -637,6 +642,7 @@ func Load() (Config, error) {
 		MetaWebhookVerifyToken:  env("META_WEBHOOK_VERIFY_TOKEN", ""),
 		WhatsAppGraphURL:        strings.TrimRight(env("WHATSAPP_GRAPH_URL", ""), "/"),
 		WhatsAppRates:           env("WHATSAPP_RATES", ""),
+		WhatsAppSendPerSec:      envInt("WHATSAPP_SEND_PER_SEC", 40),
 		SupabaseURL:             strings.TrimRight(env("SUPABASE_URL", ""), "/"),
 		SupabaseProjectURL:      strings.TrimRight(env("SUPABASE_PROJECT_URL", ""), "/"),
 		SupabaseAnonKey:         env("SUPABASE_ANON_KEY", ""),

@@ -407,7 +407,7 @@ Every number below is from the deployed configuration, not a target.
 | Supabase session pooler ceiling | 15 clients, whole project | `deploy/SUPABASE.md` |
 | Sweeper tick | 30 s | `sweeper.go` |
 | Email outbox per tick | 100 | `flushOutbox` |
-| WhatsApp outbox per tick | 100 | `flushWhatsAppOutbox` |
+| WhatsApp outbox per flush | 400 read, 40/s, 20 s budget (§10.2) | `flushWhatsAppOutbox` (`engage/wa_outbox.go`) |
 | Drip steps per tick | 100 | `dripStepsPerSweep` |
 | Bot sessions woken per tick | 50 | `botSessionsPerSweep` |
 | Bot steps per conversation | 60 | `botNodesPerSession` |
@@ -421,30 +421,55 @@ failure this pool size was chosen after.
 
 ### 10.2 Outbound throughput
 
-100 WhatsApp rows per 30 s = **200/min = 12,000/hour, for the whole
-deployment**, not per host. The queue is `ORDER BY due_at, created_at` across
-every host.
+Since 1 Nov 2026 (`engage/wa_outbox.go`; the outage that led to it is in
+[observability.md](observability.md)):
 
-Consequences to design around:
+| Knob | Value | Why |
+| --- | --- | --- |
+| Send rate | **40/s per business number, and 40/s per instance in all**, burst 40 (`WHATSAPP_SEND_PER_SEC`) | Meta allows 80/s per number by default ([throughput](https://developers.facebook.com/docs/whatsapp/throughput)); half leaves room for the host's own app |
+| One flush | 20 s budget; a send starts only with 10 s left | Inside the tick's 50 s request budget (`api/tick.go`) |
+| Rows read per flush | rate × 10 s = **400** (bounded 100–500) | What one flush can send |
+| Sends in flight | up to 40 workers, holding **no** DB connection | |
+| DB connections per flush | **≤ 3**: one dispatcher (read, re-check, claim a second's rows in one `UPDATE … RETURNING`), two outcome writers | The pool is 6 per instance on the transaction pooler; requests keep the rest |
+| Senders across instances | one, the `outbox:whatsapp` lease | So the instance cap is the deployment's cap; `ClaimSends` (`FOR UPDATE SKIP LOCKED`, pending only) would split rows even without it |
 
-- A 10,000-recipient broadcast takes **~50 minutes** to drain.
-- While it drains, another host's `wa_reminder_1h` sits behind it. A one-hour
-  reminder that arrives 50 minutes late is wrong.
-- Meta is not the bottleneck. Cloud API does ~80 messages/second by default;
-  per-WABA 24-hour caps (250 / 1k / 10k / 100k business-initiated, by tier)
-  bind the **host**, not us.
+Measured (`TestWhatsAppBigCampaignThroughputAndConnections`, a fake Meta answering
+in 200 ms): **2,000 sends in 5 flushes, 49 s of sending, 40.8/s, at most 3 pool
+connections.**
 
-So the sweeper's fairness, not Graph, is the first thing to fix as hosts are
-added. Two options, cheapest first:
+What that means in production: the tick comes once a minute (`deploy/cloudflare/tick-worker`),
+and each flush sends for about 10 s, so a campaign drains at **~400 a minute
+(~24,000 an hour)**, 40/s while a flush runs. A 10,000-recipient broadcast takes
+about 25 minutes. A registration or approval starts a flush of its own, so busy
+signups add passes. Sustained 40/s would need the flush outside the tick request
+(a worker with CPU always allocated); that is a deployment change, not this code.
 
-1. **Per-host quota per tick** — `ROW_NUMBER() OVER (PARTITION BY host_id)` in
+Each message is sent at most once: a row is claimed `sent` before it goes to Meta;
+a send with no answer is retired, not retried.
+
+Meta's limits ([error codes](https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes),
+[pair rate limit](https://developers.facebook.com/docs/whatsapp/cloud-api/overview#pair-rate-limits)):
+
+| Code | Meta's meaning | The outbox |
+| --- | --- | --- |
+| 130429 | Cloud API throughput reached | That number sends nothing more this flush; its rows go back to pending, no attempt counted |
+| 80007 | WABA rate limit | Same as 130429 |
+| 131056 | Pair rate limit: one message per 6 s to the same person | That row is retried with backoff; the contact's later rows wait their turn |
+| 131048 | Spam rate limit on the number | The host's rows go back to pending for this flush; a `whatsapp_limited` bell alert, at most once a day |
+| 131049 | Held back for healthy ecosystem engagement (per recipient; Meta: wait 24 h) | That row is retired as failed with Meta's reason; the campaign carries on |
+
+Still open: the queue is one `ORDER BY due_at, created_at` across every host, so a
+big broadcast can hold another host's one-hour reminder for a few minutes. Two
+options, cheapest first:
+
+1. **Per-host quota per flush** — `ROW_NUMBER() OVER (PARTITION BY host_id)` in
    `PendingWhatsApp`, take the first N per host. One host can no longer own a
-   tick. No new infrastructure.
+   flush. No new infrastructure.
 2. **Priority column** — reminders and confirmations ahead of broadcast and
    drip rows at the same `due_at`. Transactional beats marketing.
 
-Do (1) before the first host with more than ~2,000 contacts. Do (2) with it if
-broadcasts and reminders ever share a busy hour.
+Per-WABA 24-hour caps (250 / 1k / 10k / 100k business-initiated, by tier) bind
+the **host**, not us.
 
 ### 10.3 Known defect: the sweeper is not single-writer
 
