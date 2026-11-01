@@ -10,6 +10,13 @@ index document, so GET `/` 404s on the bucket itself. The `downloads-root` Worke
 which matches only `/` and 302s to the download page. Installers stay on the R2 custom
 domain. The publisher also writes `index.html` as the same pointer.
 
+**The page is hidden until an admin turns it on** (Admin, Dashboard, Site settings,
+"Downloads page"; `site_settings.downloads_visible`, migration 0184, read through
+`/api/config`). While hidden, `/download` 307s to `/` for everyone but admins, and every
+link to it is left out (`web/lib/downloads-visibility.ts`). The bucket, `latest.json` and the
+`downloads-root` Worker are unchanged either way: the Worker's 302 to `/download` then lands
+on the home page, and installed apps keep auto-updating.
+
 This file is the contract between the publisher (`scripts/downloads/publish.mjs`, run by
 `.github/workflows/desktop-build.yml` and `.github/workflows/mobile-build.yml`) and everything
 that reads the bucket (the web page, the desktop auto-updater, people).

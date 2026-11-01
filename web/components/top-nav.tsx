@@ -13,7 +13,7 @@ import { ButtonLink } from "./ui";
 import { HostAlerts } from "./host-alerts";
 import { MessagesNavButton } from "@/engage";
 import { EmailNavLink } from "./email/email-nav";
-import { useInOwnApp } from "./get-app-link";
+import { useShowGetApp } from "./get-app-link";
 import { indexable } from "@/lib/plans";
 import { useIOSApp } from "./ios-app";
 
@@ -87,7 +87,7 @@ function homeHrefFor(canHost: boolean): string {
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const inOwnApp = useInOwnApp();
+  const showGetApp = useShowGetApp();
   const { appName } = useAppConfig();
   const { account, status, signOut } = useSession();
   const { registrations } = useRegistrations();
@@ -182,7 +182,7 @@ export function TopNav() {
                   label: "Guides & blog",
                   onSelect: () => router.push("/blog"),
                 },
-                ...(!inOwnApp
+                ...(showGetApp
                   ? [{ kind: "action" as const, label: "Get the app", onSelect: () => router.push("/download") }]
                   : []),
                 { kind: "separator" },

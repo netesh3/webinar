@@ -61,6 +61,8 @@ const CONFIG_FALLBACK: AppConfig = {
    * second before the real config lands than a wrong one. */
   featureCatalogue: [],
   featureGroups: [],
+  // Hidden until the server says otherwise (lib/downloads-visibility.ts).
+  downloadsVisible: false,
 };
 
 const ConfigContext = createContext<AppConfig>(CONFIG_FALLBACK);

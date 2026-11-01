@@ -4054,6 +4054,30 @@ export interface SetSiteBannerRequest {
 }
 
 //////////
+// source: site_settings.go
+
+/**
+ * SiteSettings is GET /api/admin/site-settings and the admin's PUT answer.
+ */
+export interface SiteSettings {
+  /**
+   *  DownloadsVisible is whether /download and every link to it are shown to people who
+   * 	 * are not admins. False by default, while the apps are not ready.
+   */
+  downloadsVisible: boolean;
+  /**
+   * UpdatedAt is RFC 3339; empty before an admin first saves.
+   */
+  updatedAt?: string;
+}
+/**
+ * SetSiteSettingsRequest is PUT /api/admin/site-settings.
+ */
+export interface SetSiteSettingsRequest {
+  downloadsVisible: boolean;
+}
+
+//////////
 // source: slots.go
 
 export const SlotConfirmation = "confirmation";
@@ -10336,6 +10360,12 @@ export interface AppConfig {
    * FeatureGroups are the headings the catalogue is filed under (Feature.Group), in order.
    */
   featureGroups: FeatureGroup[];
+  /**
+   *  DownloadsVisible is the admin's site-wide switch for /download (SiteSettings): when
+   * 	 * false the page answers with a redirect home for everyone but admins, and the web drops
+   * 	 * every link to it. False by default.
+   */
+  downloadsVisible: boolean;
 }
 /**
  *  TelemetryEvent is one entry in a POST /telemetry batch — the shape is

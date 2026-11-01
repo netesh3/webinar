@@ -4967,6 +4967,10 @@ type AppConfig struct {
 	FeatureCatalogue []Feature `json:"featureCatalogue"`
 	// FeatureGroups are the headings the catalogue is filed under (Feature.Group), in order.
 	FeatureGroups []FeatureGroup `json:"featureGroups"`
+	/* DownloadsVisible is the admin's site-wide switch for /download (SiteSettings): when
+	 * false the page answers with a redirect home for everyone but admins, and the web drops
+	 * every link to it. False by default. */
+	DownloadsVisible bool `json:"downloadsVisible"`
 }
 
 /* TelemetryEvent is one entry in a POST /telemetry batch — the shape is
