@@ -131,7 +131,7 @@ ENV_VARS=(
   "SESSION_SECRET=${SESSION_SECRET}"
   # The boot budget check (api/internal/store/dbconfig.go) needs to know how many
   # instances can exist; same number as --max-instances below.
-  "DB_BUDGET_MAX_INSTANCES=${MAX_INSTANCES:-3}"
+  "DB_BUDGET_MAX_INSTANCES=${MAX_INSTANCES:-6}"
 )
 
 # Database connection routing and pool knobs. All optional; unset keeps the
@@ -377,10 +377,13 @@ DEPLOY_ARGS=(
   # (DB_MAX_CONNS + 1 LISTEN) must fit when queries use the session pooler
   # (2 x 3 x 5 = 30: failed against 15, exactly fills 30).
   # With DATABASE_URL on the transaction pooler (:6543) only the LISTEN
-  # connections count: 2 x 3 x 1 = 6. The API logs this arithmetic at boot and
+  # connections count: 2 x 6 x 1 = 12. The API logs this arithmetic at boot and
   # warns when it does not fit. See deploy/SUPABASE.md "Connection budget".
+  #
+  # 6, not 3, since the 1 Nov 2026 outage: instances taken out of rotation but kept
+  # alive by open event streams filled all three slots and every request got 429.
   --min-instances "${MIN_INSTANCES:-0}"
-  --max-instances "${MAX_INSTANCES:-3}"
+  --max-instances "${MAX_INSTANCES:-6}"
   # 500 requests at once per instance, not Cloud Run's default 80. Every Edge viewer holds
   # one request open for the whole webinar (the event stream: chat, Q&A, polls), so at 80
   # the three instances above stopped at ~240 viewers and everything after — their streams
