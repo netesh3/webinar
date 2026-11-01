@@ -37,8 +37,8 @@ func TestPlanSetsTheAttendeeCeiling(t *testing.T) {
 		return acct
 	}
 	setPlan("platinum", http.StatusUnprocessableEntity)
-	// Every plan id an admin may assign, the grandfathered Starter included.
-	for _, p := range []types.Plan{types.PlanBasic, types.PlanStarter, types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise} {
+	// Every plan id an admin may assign.
+	for _, p := range []types.Plan{types.PlanBasic, types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise} {
 		if acct := setPlan(p, http.StatusOK); acct.Plan != p || acct.AttendeeCap != types.PlanAttendeeCap(p) {
 			t.Fatalf("admin sets %s: plan %q cap %d", p, acct.Plan, acct.AttendeeCap)
 		}
@@ -46,7 +46,7 @@ func TestPlanSetsTheAttendeeCeiling(t *testing.T) {
 	h.login("plan-coach@test.dev")
 
 	/* (31 Oct 2026) Each plan's cap is its webinars' ceiling, under MAX_ATTENDEES (500 in
-	 * the test config): Basic 100, Starter 200, Professional 300, Business 500, Enterprise
+	 * the test config): Basic 100, Professional 300, Business 500, Enterprise
 	 * 1,000 (so 500 here). No flat 300 per webinar any more. */
 	in := cloudInput(wb.Topic, wb.StartsAt, false)
 	var raised types.Webinar
@@ -55,7 +55,6 @@ func TestPlanSetsTheAttendeeCeiling(t *testing.T) {
 		cap, limit int
 	}{
 		{types.PlanBasic, 100, 100},
-		{types.PlanStarter, 200, 200},
 		{types.PlanProfessional, 300, 300},
 		{types.PlanBusiness, 500, 500},
 		{types.PlanEnterprise, 1000, 500},

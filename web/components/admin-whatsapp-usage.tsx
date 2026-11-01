@@ -18,7 +18,6 @@ const WINDOWS: Days[] = [7, 30, 90];
 
 const PLAN_NAME: Record<string, string> = {
   basic: "Basic",
-  starter: "Starter",
   professional: "Professional",
   business: "Business",
   enterprise: "Enterprise",

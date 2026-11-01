@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/netkumar/webcast/api/internal/api"
+	"github.com/netkumar/webcast/api/internal/store"
 	"github.com/netkumar/webcast/api/types"
 )
 
@@ -133,7 +134,7 @@ func TestAudienceInsightsAreProfessionalAndUp(t *testing.T) {
 		plan types.Plan
 		want int
 	}{{"", http.StatusForbidden}, {types.PlanBasic, http.StatusForbidden}, {types.PlanProfessional, http.StatusOK},
-		{types.PlanBusiness, http.StatusOK}, {types.PlanEnterprise, http.StatusOK}, {types.PlanStarter, http.StatusOK}} {
+		{types.PlanBusiness, http.StatusOK}, {types.PlanEnterprise, http.StatusOK}} {
 		if _, err := h.store.SetUserPlan(ctx, host.ID, c.plan); err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +153,12 @@ func TestAudienceInsightsAreProfessionalAndUp(t *testing.T) {
 	if _, err := h.store.SetUserPlan(ctx, host.ID, types.PlanBasic); err != nil {
 		t.Fatal(err)
 	}
+	// 0181 predates 0185 and writes a Starter row: replay it with 'starter' allowed, then retire it.
+	h.exec(store.AllowStarterSQL)
 	if err := h.store.ConvertAudienceInsights(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.store.ConvertRetireStarter(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if u, _ := h.store.UserByID(ctx, host.ID); !u.HasFeature(types.FeatureAudienceInsights) {

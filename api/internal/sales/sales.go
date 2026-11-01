@@ -79,7 +79,6 @@ PLANS (prices before tax; a yearly plan is paid once for the year`)
 		fmt.Fprintf(&b, "; %d%% GST is added to INR prices at checkout", gstPercent)
 	}
 	b.WriteString("):\n")
-	// Plans on sale only: the grandfathered Starter is never offered (31 Oct 2026).
 	for _, p := range billing.OnSale() {
 		if p.ContactOnly {
 			// Not sold online: no price to quote, so a question about it reaches a person.

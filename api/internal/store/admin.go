@@ -420,9 +420,8 @@ func (s *Store) ConvertPricingV3(ctx context.Context) error {
 	return err
 }
 
-// PlanTiers is every tier an admin configures, "" being no plan, in the order the plans are
-// sold, with the grandfathered Starter last.
-var PlanTiers = []types.Plan{"", types.PlanBasic, types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise, types.PlanStarter}
+// PlanTiers is every tier an admin configures, "" being no plan, in the order the plans are sold.
+var PlanTiers = []types.Plan{"", types.PlanBasic, types.PlanProfessional, types.PlanBusiness, types.PlanEnterprise}
 
 /* PricingGatesSQL tightens the tiers after 0179 (migrations/0180, 1 Nov 2026): server captions
  * for Business, Enterprise and the grandfathered Starter only, cloud recording from Professional
@@ -542,6 +541,51 @@ func (s *Store) ConvertAudienceInsights(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx, AudienceInsightsSQL)
 	return err
 }
+
+/* RetireStarterSQL moves every Starter account to Professional, keeping any switch Starter's
+ * tier gave them as their own override, and takes 'starter' out of the plan CHECKs
+ * (migrations/0185, 2 Nov 2026). One shot: migrations/0185 runs it, and a store test checks this
+ * text still matches. Tests apply it to data written in the old shape. */
+const RetireStarterSQL = `UPDATE users u
+   SET features = u.features || ARRAY(
+         SELECT s.feature FROM plan_features s
+          WHERE s.plan = 'starter' AND s.enabled
+            AND NOT EXISTS (SELECT 1 FROM plan_features p
+                             WHERE p.plan = 'professional' AND p.feature = s.feature AND p.enabled)
+            AND NOT (s.feature = ANY (u.features)) AND NOT (s.feature = ANY (u.features_off))
+          ORDER BY s.feature)
+ WHERE effective_plan(u.id) = 'starter'
+    OR EXISTS (SELECT 1 FROM subscriptions s
+                WHERE s.user_id = u.id AND s.plan = 'starter'
+                  AND s.status IN ('trialing', 'active', 'past_due'));
+UPDATE subscriptions         SET plan = 'professional' WHERE plan = 'starter';
+UPDATE billing_orders        SET plan = 'professional' WHERE plan = 'starter';
+UPDATE billing_subscriptions SET plan = 'professional' WHERE plan = 'starter';
+UPDATE ai_default_off_undo   SET plan = 'professional' WHERE plan = 'starter';
+DELETE FROM plan_features WHERE plan = 'starter';
+DELETE FROM plan_limits   WHERE plan = 'starter';
+
+ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_plan_check;
+ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_plan_check
+    CHECK (plan IN ('basic', 'professional', 'business', 'enterprise'));
+ALTER TABLE plan_features DROP CONSTRAINT IF EXISTS plan_features_plan_check;
+ALTER TABLE plan_features ADD CONSTRAINT plan_features_plan_check
+    CHECK (plan IN ('', 'basic', 'professional', 'business', 'enterprise'));
+ALTER TABLE plan_limits DROP CONSTRAINT IF EXISTS plan_limits_plan_check;
+ALTER TABLE plan_limits ADD CONSTRAINT plan_limits_plan_check
+    CHECK (plan IN ('', 'basic', 'professional', 'business', 'enterprise'));`
+
+// ConvertRetireStarter applies RetireStarterSQL. Tests only.
+func (s *Store) ConvertRetireStarter(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, RetireStarterSQL)
+	return err
+}
+
+/* AllowStarterSQL puts 'starter' back into the plan CHECKs, for a test that replays a migration
+ * from before 0185 (RetireStarterSQL takes it out again). Tests only. */
+const AllowStarterSQL = `ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_plan_check;
+ALTER TABLE plan_features DROP CONSTRAINT IF EXISTS plan_features_plan_check;
+ALTER TABLE plan_limits DROP CONSTRAINT IF EXISTS plan_limits_plan_check;`
 
 // ConvertPricingGates applies PricingGatesSQL. Tests only.
 func (s *Store) ConvertPricingGates(ctx context.Context) error {
@@ -700,7 +744,8 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		       coalesce((SELECT sum(m.bytes) FROM crm_media_files m WHERE m.host_id = u.id), 0)::bigint,
 		       u.stage_cap, u.meeting_cap,
 		       u.recording_quota_bytes, plan_recording_quota_bytes(u.id), recording_quota_bytes(u.id),
-		       recording_used_bytes(u.id), u.recording_retention_days
+		       recording_used_bytes(u.id), u.recording_retention_days,
+		       coalesce((SELECT s.status FROM subscriptions s WHERE s.user_id = u.id), '')
 		  FROM users u
 		 WHERE (lower(u.email) LIKE $1 OR lower(u.name) LIKE $1)
 		   AND ($3 = '' OR u.account_kind = $3)
@@ -725,7 +770,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 			&u.AccountKind, &u.SFUProject, &u.RegistrationCount, &u.LastWebinarTopic,
 			&u.MediaQuotaBytes, &u.MediaUsedBytes, &u.StageCap, &u.MeetingCap,
 			&u.RecordingQuotaBytes, &u.PlanRecordingLimitBytes, &u.RecordingLimitBytes,
-			&u.RecordingUsedBytes, &u.RecordingRetentionDays); err != nil {
+			&u.RecordingUsedBytes, &u.RecordingRetentionDays, &u.SubscriptionStatus); err != nil {
 			return nil, err
 		}
 		u.CreatedAt = createdAt.Format(time.RFC3339)
@@ -734,6 +779,7 @@ func (s *Store) AdminUsers(ctx context.Context, search string, kind types.Accoun
 		if u.StageCap != nil {
 			u.StageSeats = *u.StageCap
 		}
+		u.PlanAttendees = types.PlanAttendeeCap(u.Plan)
 		u.PlanMeetingSeats = types.PlanMeetingCap(u.Plan)
 		u.MeetingSeats = u.PlanMeetingSeats
 		if u.MeetingCap != nil {

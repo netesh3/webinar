@@ -74,10 +74,6 @@ type Plan struct {
 	/* ContactOnly is a plan sold by conversation, not online: the pricing page says
 	 * "Contact us", and orders and trials for it are refused. An admin assigns it. */
 	ContactOnly bool
-	/* Retired is a grandfathered plan: kept so its subscribers keep their limits, their
-	 * price and its name on their billing card, but not on the pricing page and never sold
-	 * to anyone new. Only an account already on it may buy it again (NewQuoteFor). */
-	Retired bool
 }
 
 /* YearlyOffPercent is how a yearly price is presented: this much off its list price, which
@@ -152,7 +148,7 @@ func thousands(n int) string {
 	return s
 }
 
-/* Plans is the price list, in display order, the grandfathered Starter last.
+/* Plans is the price list, in display order.
  *
  * Edit here to change prices: the pricing page, the order summary and the amount
  * Razorpay charges all read from this one table. web/lib/plans.ts repeats the plans for
@@ -224,36 +220,14 @@ var Plans = []Plan{
 		Monthly:     map[string]int64{INR: 39_999_00, USD: 499_00},
 		ContactOnly: true,
 	},
-	{
-		// Grandfathered (31 Oct 2026): the first subscribers' "Professional", renamed by
-		// migrations/0179. Their Razorpay subscriptions keep charging what they agreed to.
-		ID:   types.PlanStarter,
-		Name: "Starter",
-		Who:  "For coaches and consultants",
-		Lead: "Includes:",
-		Features: []string{
-			"Registration pages & email reminders",
-			"Polls, quizzes, Q&A and recording",
-			"Engagement Score",
-		},
-		StorageGB: 10,
-		Monthly:   map[string]int64{INR: 3_999_00, USD: 49_00},
-		Retired:   true,
-	},
 }
 
-// OnSale is the plans the pricing page lists: every plan but the grandfathered ones.
+// OnSale is the plans the pricing page lists: every plan (Starter retired, 2 Nov 2026).
 func OnSale() []Plan {
-	out := make([]Plan, 0, len(Plans))
-	for _, p := range Plans {
-		if !p.Retired {
-			out = append(out, p)
-		}
-	}
-	return out
+	return append([]Plan(nil), Plans...)
 }
 
-// FindPlan returns the plan with this id, a grandfathered one included.
+// FindPlan returns the plan with this id.
 func FindPlan(id string) (Plan, bool) {
 	for _, p := range Plans {
 		if string(p.ID) == id {
@@ -321,9 +295,6 @@ var ErrUnknownPlan = errors.New("unknown plan, period or currency")
 // ErrContactOnly is a plan that is not sold online (see Plan.ContactOnly).
 var ErrContactOnly = errors.New("plan is sold by contacting us")
 
-// ErrRetired is a grandfathered plan asked for by an account not already on it (Plan.Retired).
-var ErrRetired = errors.New("plan is no longer sold")
-
 /* NewQuote prices a plan.
  *
  * GST applies to INR only: a USD buyer is paying from outside India, which is an
@@ -332,22 +303,12 @@ var ErrRetired = errors.New("plan is no longer sold")
  * paisa, half up.
  */
 func NewQuote(planID, period, currency string, gstPercent int) (Quote, error) {
-	return NewQuoteFor(planID, period, currency, gstPercent, false)
-}
-
-/* NewQuoteFor is NewQuote that can price a grandfathered plan: keepRetired is true only for
- * an account already on that plan, renewing it at the price it has (handleCreateBillingOrder).
- * Everyone else is refused it with ErrRetired. */
-func NewQuoteFor(planID, period, currency string, gstPercent int, keepRetired bool) (Quote, error) {
 	plan, ok := FindPlan(planID)
 	if !ok {
 		return Quote{}, ErrUnknownPlan
 	}
 	if plan.ContactOnly {
 		return Quote{}, ErrContactOnly
-	}
-	if plan.Retired && !keepRetired {
-		return Quote{}, ErrRetired
 	}
 	sub, ok := plan.Price(currency, period)
 	if !ok {

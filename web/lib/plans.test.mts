@@ -97,7 +97,7 @@ assert.equal(gstOn(39, "USD"), 0);
 assert.equal(formatPrice(2999, "INR"), "₹2,999");
 assert.equal(formatPrice(149, "USD"), "$149");
 
-// The lineup: Basic, Professional ("pro"), Business, Enterprise; Starter is not offered.
+// The lineup: Basic, Professional ("pro"), Business, Enterprise; Starter is retired (2 Nov 2026).
 assert.deepEqual(
   PLANS.map((p) => p.id),
   PLAN_IDS,

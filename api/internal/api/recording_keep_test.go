@@ -144,7 +144,6 @@ func TestRecordingQuotaByPlanAndOverride(t *testing.T) {
 		// migrations/0179 moved the ids up with their storage; 0180 (1 Nov 2026) set the plans on sale.
 		{"", false, 2 * gib},
 		{types.PlanBasic, false, 2 * gib},
-		{types.PlanStarter, false, 10 * gib},
 		{types.PlanProfessional, false, 10 * gib},
 		{types.PlanBusiness, false, 100 * gib},
 		{types.PlanEnterprise, false, 500 * gib},

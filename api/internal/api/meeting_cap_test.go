@@ -8,10 +8,10 @@ import (
 )
 
 // Meetings by plan (1 Nov 2026): Basic 10, Professional 20, Business 100, Enterprise 300; no
-// plan and the grandfathered Starter 10. Webinars keep their own stage caps (TestPlanStageCap).
+// plan 10. Webinars keep their own stage caps (TestPlanStageCap).
 func TestPlanMeetingCap(t *testing.T) {
 	for plan, want := range map[types.Plan]int{
-		"": 10, types.PlanStarter: 10, types.PlanBasic: 10, types.PlanProfessional: 20,
+		"": 10, types.PlanBasic: 10, types.PlanProfessional: 20,
 		types.PlanBusiness: 100, types.PlanEnterprise: 300,
 	} {
 		if got := types.PlanMeetingCap(plan); got != want {
