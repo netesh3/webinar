@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { CONTACT, mailto } from "@/lib/contact";
 import {
   COMPARISON,
@@ -25,6 +25,7 @@ import {
   type Period,
   type Plan,
 } from "@/lib/plans";
+import { allOpen, rowCountLabel, sectionAnchor, sectionFromHash, setAll, toggleSection } from "@/lib/compare-accordion";
 import "@/app/landing.css";
 import "@/app/plans.css";
 
@@ -257,6 +258,9 @@ function CellView({ cell, plan, label }: { cell: Cell; plan: string; label: stri
   return <span className="pl-val">{cell}</span>;
 }
 
+// The comparison's sections, in order: the accordion's ids.
+const SECTION_IDS = COMPARISON.map((g) => g.id);
+
 /** The sticky header's price and button for one plan. */
 export type CompareHead = { price: ReactNode; cta: ReactNode };
 
@@ -278,6 +282,22 @@ function staticHead(plan: Plan): CompareHead {
  * with the feature column pinned. `head` gives /pricing's live prices and buy buttons. */
 export function CompareTable({ head = staticHead }: { head?: (plan: Plan) => CompareHead }) {
   const plans = PLAN_IDS.map(findPlan);
+  /* Every section starts collapsed (2 Nov 2026), on the server too, so nothing renders open and
+   * then closes. A section's header opens or closes it; #compare-<section> opens that one. */
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const everyOpen = allOpen(open, SECTION_IDS);
+  useEffect(() => {
+    const fromHash = () => {
+      const id = sectionFromHash(window.location.hash, SECTION_IDS);
+      if (!id) return;
+      setOpen((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+      // After the rows are in, so the section lands where the browser would have put it.
+      requestAnimationFrame(() => document.getElementById(sectionAnchor(id))?.scrollIntoView({ block: "start" }));
+    };
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    return () => window.removeEventListener("hashchange", fromHash);
+  }, []);
   return (
     <section className="section pl-compare" id="compare" aria-labelledby="compare-title">
       <div className="wrap">
@@ -286,6 +306,16 @@ export function CompareTable({ head = staticHead }: { head?: (plan: Plan) => Com
           <h2 id="compare-title" className="h2">
             Compare <em>all features</em>
           </h2>
+        </div>
+        <div className="pl-accordion-bar">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            aria-controls={SECTION_IDS.map((id) => `${sectionAnchor(id)}-rows`).join(" ")}
+            onClick={() => setOpen(setAll(SECTION_IDS, !everyOpen))}
+          >
+            {everyOpen ? "Collapse all" : "Expand all"}
+          </button>
         </div>
         <div
           className="pl-table-wrap"
@@ -312,28 +342,48 @@ export function CompareTable({ head = staticHead }: { head?: (plan: Plan) => Com
                 })}
               </tr>
             </thead>
-            {COMPARISON.map((g) => (
-              <tbody key={g.id}>
-                <tr className="pl-group">
-                  <th scope="colgroup" colSpan={plans.length + 1}>
-                    {g.title}
-                  </th>
-                </tr>
-                {g.rows.map((r) => (
-                  <tr key={r.label}>
-                    <th scope="row" title={r.hint}>
-                      {r.label}
-                      {r.hint && <small>{r.hint}</small>}
-                    </th>
-                    {plans.map((p) => (
-                      <td key={p.id} className={p.popular ? "pl-pop" : undefined}>
-                        <CellView cell={r.cells[p.id]} plan={p.name} label={r.label} />
-                      </td>
+            {COMPARISON.map((g) => {
+              const isOpen = open.has(g.id);
+              const anchor = sectionAnchor(g.id);
+              return (
+                <Fragment key={g.id}>
+                  <tbody id={anchor} className="pl-section">
+                    <tr className="pl-group">
+                      <th scope="colgroup" colSpan={plans.length + 1}>
+                        <button
+                          type="button"
+                          className="pl-group-toggle"
+                          aria-expanded={isOpen}
+                          aria-controls={`${anchor}-rows`}
+                          onClick={() => setOpen((prev) => toggleSection(prev, g.id))}
+                        >
+                          <svg className="ic pl-chevron" viewBox="0 0 24 24" aria-hidden>
+                            <path d="m9 6 6 6-6 6" />
+                          </svg>
+                          <span className="pl-group-title">{g.title}</span>
+                          <span className="pl-group-count">{rowCountLabel(g.rows.length)}</span>
+                        </button>
+                      </th>
+                    </tr>
+                  </tbody>
+                  <tbody id={`${anchor}-rows`} hidden={!isOpen}>
+                    {g.rows.map((r) => (
+                      <tr key={r.label}>
+                        <th scope="row" title={r.hint}>
+                          {r.label}
+                          {r.hint && <small>{r.hint}</small>}
+                        </th>
+                        {plans.map((p) => (
+                          <td key={p.id} className={p.popular ? "pl-pop" : undefined}>
+                            <CellView cell={r.cells[p.id]} plan={p.name} label={r.label} />
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            ))}
+                  </tbody>
+                </Fragment>
+              );
+            })}
           </table>
         </div>
       </div>
