@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/netkumar/webcast/api/internal/billing"
 	"github.com/netkumar/webcast/api/internal/httpx"
 	"github.com/netkumar/webcast/api/internal/lk"
 	"github.com/netkumar/webcast/api/types"
@@ -69,7 +70,7 @@ func stageCount(parts []types.LiveParticipant, except string) int {
 // stageFullMessage is what the host (or the attendee accepting) reads.
 func stageFullMessage(capacity int) string {
 	return fmt.Sprintf("The stage is full: your plan allows %d people on stage at once. "+
-		"Move someone back to the audience first.", capacity)
+		"Move someone back to the audience first.", capacity) + upgradeHint(capacity, billing.Plan.StageSeats, " on stage")
 }
 
 func writeStageFull(w http.ResponseWriter, capacity int) {
@@ -103,7 +104,7 @@ func (s *Server) bulkStageFits(w http.ResponseWriter, r *http.Request, sfu RoomM
 	}
 	httpx.Error(w, http.StatusConflict, "stage_full", fmt.Sprintf(
 		"That would put %d people on stage, and your plan allows %d at once. "+
-			"Bring people on one at a time instead.", total, capacity))
+			"Bring people on one at a time instead.", total, capacity)+upgradeHint(capacity, billing.Plan.StageSeats, " on stage"))
 	return false
 }
 

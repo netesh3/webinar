@@ -1453,6 +1453,11 @@ const (
 	 * have not run yet (Server.applyHostDelivery); live and ended sessions keep theirs. A new
 	 * key on purpose: edge_delivery was the old beta switch (migrations/0159, 0160). */
 	FeatureHLSDelivery = "hls_delivery"
+	/* FeatureAudienceInsights is a webinar's audience by device (phone, laptop or tablet, and the
+	 * browser) and by location (country, region, city): the two breakdowns on its analytics, and
+	 * their API routes (403 feature_off without it). Professional and up, and Starter
+	 * (migrations/0181, 1 Nov 2026); before that every host had them. */
+	FeatureAudienceInsights = "audience_insights"
 )
 
 // Feature groups: the admin screen's headings (Feature.Group).
@@ -1461,6 +1466,7 @@ const (
 	FeatureGroupAI           = "ai"
 	FeatureGroupDelivery     = "delivery"
 	FeatureGroupIntegrations = "integrations"
+	FeatureGroupAnalytics    = "analytics"
 )
 
 // FeatureGroup is one heading of the admin screen's feature list.
@@ -1475,6 +1481,7 @@ var FeatureGroups = []FeatureGroup{
 	{Key: FeatureGroupAI, Label: "AI"},
 	{Key: FeatureGroupDelivery, Label: "Delivery & recording"},
 	{Key: FeatureGroupIntegrations, Label: "Integrations"},
+	{Key: FeatureGroupAnalytics, Label: "Analytics"},
 }
 
 // Delivery modes (Webinar.Delivery).
@@ -1626,6 +1633,13 @@ var Features = []Feature{
 		Label:       "Zoom",
 		Description: "Let this host connect Zoom and schedule a session as a Zoom meeting or webinar. Off means sessions stay in this app.",
 		Group:       FeatureGroupIntegrations,
+	},
+	// Analytics.
+	{
+		Key:         FeatureAudienceInsights,
+		Label:       "Audience by device and location",
+		Description: "A webinar's audience by device (phone, laptop or tablet, and the browser) and by location (country, region, city) in its analytics. Professional and up. Off hides both breakdowns and the API refuses them.",
+		Group:       FeatureGroupAnalytics,
 	},
 }
 

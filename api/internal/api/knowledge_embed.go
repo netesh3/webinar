@@ -64,6 +64,9 @@ func (s *Server) aiEmbed(ctx context.Context, hostID string, inputs []string) ([
 	if s.embedder == nil || !s.embedder.Enabled() {
 		return nil, ai.ErrUnavailable
 	}
+	if err := s.aiPlanCheck(ctx, types.AIFeatureEmbed, hostID); err != nil {
+		return nil, err
+	}
 	if err := s.aiCapCheck(ctx, types.AIFeatureEmbed, hostID); err != nil {
 		return nil, err
 	}

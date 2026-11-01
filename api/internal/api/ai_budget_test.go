@@ -145,6 +145,8 @@ func TestAIUsageIsRecordedAndReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The backstop at the point of spend (1 Nov 2026): only a host with ai reaches the model.
+	forceFeature(t, h, host.ID, types.FeatureAI, true)
 
 	r, err := api.AIComplete(h.server, ctx, types.AIFeatureWebinarSetup, host.ID, aiHello)
 	if err != nil || r.Text != "hi there" {
@@ -180,6 +182,8 @@ func TestAIHostCapRefusesThatHostOnly(t *testing.T) {
 	ctx := context.Background()
 	coach, _ := h.store.UserByEmail(ctx, "priya@acme.dev")
 	other, _ := h.store.UserByEmail(ctx, "neeraj@acme.dev")
+	forceFeature(t, h, coach.ID, types.FeatureAI, true)
+	forceFeature(t, h, other.ID, types.FeatureAI, true)
 
 	// $0.045, then $0.09: the call that crosses the line is allowed, the next is not.
 	for i := 0; i < 2; i++ {
@@ -203,6 +207,7 @@ func TestAIGlobalCapRefusesEveryone(t *testing.T) {
 	h, _ := aiHarness(t, "hi", func(c *config.Config) { c.AIMonthlyUSD = 0.04 })
 	ctx := context.Background()
 	coach, _ := h.store.UserByEmail(ctx, "priya@acme.dev")
+	forceFeature(t, h, coach.ID, types.FeatureAI, true)
 	if _, err := api.AIComplete(h.server, ctx, types.AIFeatureSalesChat, "", aiHello); err != nil {
 		t.Fatal(err)
 	}

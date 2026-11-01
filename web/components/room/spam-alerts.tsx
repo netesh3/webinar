@@ -1,5 +1,7 @@
 "use client";
 
+import { PlanLock } from "../ui";
+import { SPAM_FILTER_FEATURE } from "@/lib/plan-gate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { SpamFlag, SpamFlagsResponse, SpamSettingsPatch } from "@/lib/api-types";
@@ -131,9 +133,17 @@ export function FlaggedFilter({ flagged, count, onChange }: {
 /** The Flagged view of one panel: the flags of its kind, waiting first, each with its
  *  one-click actions, and the session's spam settings at the foot. */
 export function FlaggedList({ kind }: { kind: SpamKind }) {
-  const { spam } = useRoomUI();
+  const { spam, controls } = useRoomUI();
   const [busy, setBusy] = useState<string | null>(null);
   const data = spam?.data;
+  // The filter, rules included, comes with AI on Business and up (1 Nov 2026): locked, not empty.
+  if (!controls.aiAvailable) {
+    return (
+      <PlanLock feature={SPAM_FILTER_FEATURE} title="Chat spam filter">
+        Spam and links caught in chat and Q&amp;A, with one-click clean-up.
+      </PlanLock>
+    );
+  }
   if (!spam || !data) {
     return <p className="py-8 text-center text-[12.5px] text-ink-3">Loading…</p>;
   }

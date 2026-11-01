@@ -245,6 +245,9 @@ func (s *Server) writeAndSaveRecap(ctx context.Context, wb types.Webinar, in aiw
 	switch {
 	case errors.Is(err, errAILimit):
 		return recap, &recapOutcome{status: types.RecapSkipped, reason: types.RecapReasonAILimit}
+	case errors.Is(err, errAINotOnPlan):
+		// Not on the plan (any more): skipped for good, never retried.
+		return recap, &recapOutcome{status: types.RecapSkipped, reason: types.RecapReasonAIOff}
 	case errors.Is(err, ai.ErrUnavailable):
 		return recap, &recapOutcome{status: types.RecapFailed, reason: types.RecapReasonAIUnavailable, retry: true}
 	case err != nil:

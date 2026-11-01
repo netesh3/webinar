@@ -81,10 +81,16 @@ func (s *Server) syncCaptionAgent(ctx context.Context, wb types.Webinar, sfu Roo
 		return false
 	}
 	slug := wb.ID
-	transcript := s.sessionAIAllowed(ctx, wb)
-	display := wb.Controls.CaptionsEnabled && s.hostHas(ctx, wb.Host.ID, types.FeatureCaptions)
+	/* (1 Nov 2026) The agent is Deepgram, paid per minute: it is only ever sent for a host whose
+	 * plan has server captions (types.FeatureCaptions), for the captions or for the AI's
+	 * transcript alike. Without it the AI's transcript is the one the speakers' browsers make
+	 * (web/lib/ai-session.ts captionEngine captures whenever the agent is not live) and post to
+	 * the API, which the recap reads the same way. */
+	serverCaptions := s.hostHas(ctx, wb.Host.ID, types.FeatureCaptions)
+	transcript := serverCaptions && s.sessionAIAllowed(ctx, wb)
+	display := serverCaptions && wb.Controls.CaptionsEnabled
 	if !display && !transcript {
-		if wb.Controls.CaptionsEnabled {
+		if wb.Controls.CaptionsEnabled || s.sessionAIAllowed(ctx, wb) {
 			s.log.Info("server captions unavailable, captions run on-device",
 				"slug", slug, "reason", "feature_off")
 		}

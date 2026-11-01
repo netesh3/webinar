@@ -65,6 +65,7 @@ func TestJoinRecordsTheDeviceOncePerAttendee(t *testing.T) {
 		t.Run(delivery, func(t *testing.T) {
 			h := newHarness(t, edgeConfig)
 			h.signup("Device Host", "device-host-"+delivery+"@test.dev", true)
+			insightsHost(t, h)
 			wb := h.liveWebinar("Devices", func(in *types.WebinarInput) { in.Delivery = delivery })
 
 			phone := h.registerAsGuest(wb.ID, "phone@test.dev")

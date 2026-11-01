@@ -143,10 +143,11 @@ export const PLANS: Plan[] = [
  * of them: no cloud recording (the presenter records on their own computer), no WhatsApp and no
  * server captions (captions run on each speaker's device). Whiteboard and meetings are on every
  * plan and not listed. clips, instant_webinar and hls_delivery are on no plan (an admin's switch
- * for one host). The chat spam filter needs ai. Read by web_plans_test.go. */
+ * for one host). The chat spam filter needs ai. audience_insights (devices and locations) is
+ * Professional and up (migrations/0181). Read by web_plans_test.go. */
 export const TIER_FEATURES: Record<PlanId, string[]> = {
   basic: [],
-  pro: ["cloud_recording", "whatsapp_crm"],
+  pro: ["cloud_recording", "whatsapp_crm", "audience_insights"],
   business: [
     "cloud_recording",
     "whatsapp_crm",
@@ -159,6 +160,7 @@ export const TIER_FEATURES: Record<PlanId, string[]> = {
     "followup_send",
     "repurpose",
     "captions",
+    "audience_insights",
   ],
   enterprise: [
     "cloud_recording",
@@ -172,6 +174,7 @@ export const TIER_FEATURES: Record<PlanId, string[]> = {
     "followup_send",
     "repurpose",
     "captions",
+    "audience_insights",
   ],
 };
 
@@ -593,10 +596,10 @@ export const COMPARISON: CompareGroup[] = [
     id: "analytics",
     title: "Analytics & exports",
     rows: [
-      all("Attendance by device", {
+      tier("audience_insights", "Attendance by device", {
         hint: "Phone, laptop or tablet, and the browser",
       }),
-      all("Attendance by location", { hint: "Country and city" }),
+      tier("audience_insights", "Attendance by location", { hint: "Country, region and city" }),
       all("CSV exports", {
         hint: "Registrants, attendance, engagement and transcripts",
         detail: "Your data is yours: export registrants, attendance, engagement and transcripts.",

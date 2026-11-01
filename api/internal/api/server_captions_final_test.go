@@ -15,6 +15,7 @@ func TestTranscriptWantedAnswersForRealLoadTestAndGone(t *testing.T) {
 	h := newHarness(t, captionsConfig)
 	ctx := context.Background()
 	h.signup("Wanted Host", "srvcap-wanted@test.dev", true)
+	serverCaptionsHost(t, h)
 	real := h.liveWebinar("A real session", nil)
 	h.signup("Wanted LT Host", "srvcap-wanted-lt@loadtest.invalid", true)
 	test := h.liveWebinar("A load test", nil)

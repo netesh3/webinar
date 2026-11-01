@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { AudienceLocations } from "@/lib/api-types";
+import { FeatureAudienceInsights, type AudienceLocations } from "@/lib/api-types";
+import { ApiError } from "@/lib/http";
 import { cityRows, countryRows, indiaStateRows, locationsNote } from "@/lib/audience-locations";
 import { Bars, WindowPicker, type Days } from "./audience-devices";
 import { Alert } from "./controls";
-import { Card } from "./ui";
+import { Card, PlanLock } from "./ui";
 
 /* The audience by location: the top countries, India by state, and the top cities. Counts from
  * the join requests, as Cloudflare places each person's network (GET
@@ -33,6 +34,9 @@ export function AudienceLocationsBreakdown({ data }: { data: AudienceLocations }
 export function WebinarAudienceLocations({ load }: { load: (signal: AbortSignal) => Promise<AudienceLocations> }) {
   const [data, setData] = useState<AudienceLocations | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The host's plan has no audience insights (Professional and up, 1 Nov 2026): the API says
+  // 403 feature_off, and the section is shown locked rather than as an error.
+  const [locked, setLocked] = useState(false);
   useEffect(() => {
     const ctl = new AbortController();
     load(ctl.signal)
@@ -42,6 +46,10 @@ export function WebinarAudienceLocations({ load }: { load: (signal: AbortSignal)
       })
       .catch((e: unknown) => {
         if (ctl.signal.aborted) return;
+        if (e instanceof ApiError && e.code === "feature_off") {
+          setLocked(true);
+          return;
+        }
         setError(e instanceof Error ? e.message : "Could not load locations.");
       });
     return () => ctl.abort();
@@ -50,8 +58,13 @@ export function WebinarAudienceLocations({ load }: { load: (signal: AbortSignal)
     <div className="mt-4 rounded-xl border border-line bg-surface p-4">
       <h3 className="text-[13.5px] font-semibold">Audience by location</h3>
       <div className="mt-2">
+        {locked && (
+          <PlanLock feature={FeatureAudienceInsights} title="Audience by device and location">
+            See which devices and browsers your audience joined from, and where they are: country, region and city.
+          </PlanLock>
+        )}
         {error && <Alert tone="error">{error}</Alert>}
-        {!data && !error && <p className="text-[12.5px] text-ink-3">Loading…</p>}
+        {!data && !error && !locked && <p className="text-[12.5px] text-ink-3">Loading…</p>}
         {data && <AudienceLocationsBreakdown data={data} />}
       </div>
     </div>

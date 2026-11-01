@@ -1,5 +1,6 @@
 "use client";
 
+import { PlanLock } from "./plan-lock";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -28,10 +29,10 @@ import {
   onHostListsDropped,
 } from "@/lib/host-list-cache";
 import { useVisibleRefresh } from "@/lib/visible-refresh";
-import { type Webinar, type WebinarInput } from "@/lib/api-types";
+import { FeatureSimulive, type Webinar, type WebinarInput } from "@/lib/api-types";
 import { deliveryOffer } from "@/lib/delivery-policy";
 import { useDeliveryPolicy } from "@/lib/use-delivery-policy";
-import { simuliveCardOffered } from "@/lib/host-features";
+import { hasFeature, simuliveCardOffered } from "@/lib/host-features";
 import {
   instantDeliveryFor,
   readInstantDelivery,
@@ -463,6 +464,12 @@ export function HostWebinarsScreen() {
               subtitle="Replay a past recording as a scheduled live session"
             />
           </SimuliveCreateCard>
+        )}
+        {/* Locked, not missing, on a plan without it (Business and up, 1 Nov 2026). */}
+        {!offerSimulive && status === "signed-in" && !hasFeature(account, FeatureSimulive) && (
+          <PlanLock feature={FeatureSimulive} title="Simulive">
+            Replay a past recording as a scheduled live session, with live chat and Q&amp;A.
+          </PlanLock>
         )}
         {createActions.includes("instant") && (
           <div className="flex flex-col gap-1.5">

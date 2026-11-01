@@ -35,6 +35,26 @@ func TestAIDefaultOffSQLMatchesMigration(t *testing.T) {
 	}
 }
 
+func TestAudienceInsightsSQLMatchesMigration(t *testing.T) {
+	body, err := migrationFS.ReadFile("migrations/0181_audience_insights.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), AudienceInsightsSQL) {
+		t.Fatalf("0181 drifted from AudienceInsightsSQL:\n%s", body)
+	}
+	for plan, keys := range TierFeatures {
+		has := false
+		for _, k := range keys {
+			has = has || k == types.FeatureAudienceInsights
+		}
+		inSQL := strings.Contains(AudienceInsightsSQL, "('"+string(plan)+"',")
+		if has != inSQL || has != (plan != types.PlanBasic) {
+			t.Errorf("%s: audience_insights in TierFeatures %v, in the SQL %v", plan, has, inSQL)
+		}
+	}
+}
+
 func TestPricingGatesSQLMatchesMigration(t *testing.T) {
 	body, err := migrationFS.ReadFile("migrations/0180_pricing_gates.sql")
 	if err != nil {

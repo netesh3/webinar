@@ -1,5 +1,6 @@
 "use client";
 
+import { PlanLock } from "../plan-lock";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmModal, Modal, Spinner, Alert } from "../controls";
 import { SparklesIcon, TrashIcon } from "../icons";
@@ -123,10 +124,11 @@ export function KnowledgeScreen() {
 
       {!hasAI ? (
         <div className="mt-6">
-          <Empty
-            title={noAI ? "AI isn't switched on for this account" : "AI knowledge isn't switched on for this account"}
-            hint={noAI ? "AI knowledge is part of the AI features. Ask us to switch AI on for your account." : "Ask us to switch AI knowledge on for your account."}
-          />
+          {/* Locked with the plan that has it (1 Nov 2026), whichever switch is missing. */}
+          <PlanLock feature={noAI ? FeatureAI : FeatureAIKnowledge} title="AI knowledge base">
+            Upload documents, links or an Obsidian vault, and the AI drafts answers to your attendees&apos; questions
+            from them.
+          </PlanLock>
         </div>
       ) : (
         <>

@@ -1,5 +1,6 @@
 "use client";
 
+import { PlanBadge, UpgradeLink } from "../plan-lock";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { Alert } from "../controls";
 import { SparklesIcon } from "../icons";
@@ -44,7 +45,18 @@ export function WriteWithAI({ form, set }: { form: FormState; set: SetForm }) {
   const [undo, setUndo] = useState<SetupFill | null>(null);
   const inFlight = useRef(false);
 
-  if (!(account?.features ?? []).includes(FeatureAI)) return null;
+  // Locked, not hidden, on a plan without AI (Business and up, 1 Nov 2026).
+  if (!(account?.features ?? []).includes(FeatureAI))
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-3">
+          <SparklesIcon className="size-3.5" />
+          Write with AI
+        </span>
+        <PlanBadge feature={FeatureAI} />
+        <UpgradeLink />
+      </div>
+    );
 
   const write = async () => {
     const text = idea.trim();
