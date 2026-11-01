@@ -121,7 +121,10 @@ export class WranglerR2Store {
 
   async #wrangler(args) {
     try {
-      const { stdout, stderr } = await run("npx", ["--yes", "wrangler@4", ...args, "--remote"], {
+      // WRANGLER_PROFILE selects a saved OAuth login (this Mac: webinarliv → company account).
+      const profile = process.env.WRANGLER_PROFILE?.trim();
+      const prefix = profile ? ["--profile", profile] : [];
+      const { stdout, stderr } = await run("npx", ["--yes", "wrangler@4", ...prefix, ...args, "--remote"], {
         cwd: tmpdir(),
         maxBuffer: 32 * 1024 * 1024,
         env: { ...process.env, CI: "1" },

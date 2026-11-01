@@ -149,7 +149,30 @@ signed release.
 
 ## Releasing
 
-- **Desktop, macOS:** on the owner's Mac, build, sign and notarize, then
+On the owner's Mac (GitHub-hosted Mac/Android/iOS builds are off until
+`HOSTED_*_BUILD=true`), one command pulls `main`, bumps versions, signs, and
+publishes:
+
+```sh
+./release-apps.sh            # Mac + Android APK + iOS TestFlight
+./release-apps.sh --help
+```
+
+It reads live versions from `latest.json` / App Store Connect, bumps the patch
+(and Android `versionCode` / iOS build), writes signed artifacts, then:
+
+- Mac DMGs → this bucket (`publish.mjs desktop --platform mac`, Wrangler profile
+  `webinarliv` on the company account)
+- Android APK → this bucket; the Play AAB is left in `apps/mobile/android/dist/`
+  for a Play Console upload (the script does not submit Play review)
+- iOS IPA → TestFlight via `altool` (not App Review)
+
+`apps/desktop/package.json` is bumped locally and **not committed**. Windows is
+CI: commit that bump, push `main`, then
+`./release-apps.sh --only windows --windows --skip-pull --skip-bump`
+or `gh workflow run desktop-build.yml --ref main -f publish_windows=true`.
+
+- **Desktop, macOS (manual):** build, sign and notarize, then
   `node scripts/downloads/publish.mjs desktop --platform mac --version <version> --dir apps/desktop/release --signed-mac true`.
   (With `vars.HOSTED_MAC_BUILD=true`, a `desktop-v<version>` tag also builds macOS on
   macos-latest and the `publish` job publishes it.)
@@ -252,4 +275,6 @@ node scripts/downloads/publish.mjs android --version 0.1.0 --version-code 1 \
 
 Against the real bucket it needs `R2_DOWNLOADS_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID` and
 `AWS_SECRET_ACCESS_KEY` (the R2 token) and the AWS CLI v2. `R2_DOWNLOADS_ENDPOINT`
-overrides the S3 endpoint (a local S3 server for testing).
+overrides the S3 endpoint (a local S3 server for testing). On this Mac, without
+those keys, `publish.mjs` uses Wrangler OAuth. Set `WRANGLER_PROFILE=webinarliv`
+(the release script does) so uploads go to the company account, not a personal login.

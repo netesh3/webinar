@@ -58,6 +58,14 @@ and uploads the files as the `desktop-mac` and `desktop-windows` artifacts.
 
 ### Releasing
 
+On the owner's Mac, `./release-apps.sh` pulls `main`, bumps this
+`package.json`, signs and notarizes macOS, and publishes the DMGs to
+https://downloads.webinarliv.com. It does not commit the bump; Windows still
+needs that version on `origin/main` plus
+`gh workflow run desktop-build.yml --ref main -f publish_windows=true`.
+
+Manual:
+
 1. Bump `version` in `package.json` (and run `npm install` so the lock file follows).
 2. Merge, then tag the merge commit `desktop-v<version>` and push the tag.
 3. CI builds both platforms, then publishes the installers and the update feed

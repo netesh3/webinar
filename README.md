@@ -77,6 +77,7 @@ anything already healthy, so running it twice is safe. Logs go to
 | `./stop.sh` | stop web, API, SFU (Postgres left alone) |
 | `./stop.sh --db` | also stop Postgres |
 | `./stop.sh --all` | also close the E2E's headless browsers |
+| `./release-apps.sh` | pull `main`, build signed Mac/iOS/Android, publish |
 
 ### Git worktrees (UI vs hotfixes)
 
@@ -448,6 +449,21 @@ gh secret set DATABASE_URL -R netesh3/webinar   # paste Supabase URI when prompt
 
 Leave `CLOUD_SQL_INSTANCE` unset when using Supabase. LiveKit install notes:
 [`deploy/livekit-box/README.md`](deploy/livekit-box/README.md).
+
+### Native apps (this Mac)
+
+GitHub-hosted Mac / Android / iOS builds are off. From the `webinar` checkout on
+`main`:
+
+```bash
+./release-apps.sh
+```
+
+Pulls `origin/main`, bumps patch versions, signs Mac + Android + iOS, publishes
+Mac and the Android APK to [downloads.webinarliv.com](https://downloads.webinarliv.com),
+and uploads the IPA to TestFlight. It does not submit App Review or Play review
+(the Play AAB is left under `apps/mobile/android/dist/`). Details:
+[`docs/downloads.md`](docs/downloads.md) and [`docs/app-signing-setup.md`](docs/app-signing-setup.md).
 
 ## Scaling past 500
 

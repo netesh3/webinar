@@ -1,7 +1,7 @@
 {
   "name": "webinarliv-desktop",
   "productName": "Webinar Liv",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Webinar Liv desktop app for macOS and Windows",
   "author": {

@@ -1,5 +1,8 @@
 node_modules/
 .DS_Store
+# Local signed artifacts from scripts/release-apps.sh (never commit).
+android/dist/
+ios/dist/
 # Firebase config for Android push: keep out of git (README.md, "Push notifications").
 android/app/google-services.json
 ios/App/App/GoogleService-Info.plist
