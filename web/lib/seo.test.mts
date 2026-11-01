@@ -17,8 +17,13 @@ import { POSTS } from "../content/blog/index.ts";
 const ORIGIN = "https://example.test";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-for (const indexable of [false, true]) {
-  const entries = sitemapEntries(ORIGIN, POSTS, { indexable });
+for (const [indexable, downloadsVisible] of [
+  [false, false],
+  [true, false],
+  [false, true],
+  [true, true],
+] as const) {
+  const entries = sitemapEntries(ORIGIN, POSTS, { indexable, downloadsVisible });
   const urls = entries.map((e) => e.url);
   const paths = urls.map((u) => u.slice(ORIGIN.length) || "/");
 
@@ -30,9 +35,11 @@ for (const indexable of [false, true]) {
   }
 
   // The public pages.
-  for (const path of ["/", "/pricing", "/signup", "/blog", "/privacy", "/terms", "/contact", "/integrations/zoom", "/download"]) {
+  for (const path of ["/", "/pricing", "/signup", "/blog", "/privacy", "/terms", "/contact", "/integrations/zoom"]) {
     assert.ok(paths.includes(path), `sitemap is missing ${path}`);
   }
+  // The Downloads page only while an admin has it switched on.
+  assert.equal(paths.includes("/download"), downloadsVisible, "/download follows the admin switch");
   // Categories with posts, and only those.
   for (const c of CATEGORY_IDS) {
     const has = POSTS.some((p) => p.category === c);
@@ -58,7 +65,7 @@ for (const indexable of [false, true]) {
 
 // The blog index and categories change when their newest post does.
 {
-  const entries = sitemapEntries(ORIGIN, POSTS, { indexable: false });
+  const entries = sitemapEntries(ORIGIN, POSTS, { indexable: false, downloadsVisible: false });
   const newest = POSTS.map((p) => p.updated ?? p.date).sort().at(-1);
   assert.equal(entries.find((e) => e.url === `${ORIGIN}/blog`)?.lastModified, newest);
 }

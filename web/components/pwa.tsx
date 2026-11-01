@@ -1,7 +1,8 @@
 "use client";
 
 /* Web Push, as UI. The site still registers /sw.js for notifications; it does not offer
- * a PWA. Native Mac/iOS/Android/desktop downloads live at /download ("Get the app").
+ * a PWA. Native Mac/iOS/Android/desktop downloads live at /download ("Get the app"), and
+ * nothing here mentions the app while an admin has that page hidden (useShowGetApp).
  *
  *   PwaBoot          registers /sw.js after the page has loaded, and swallows Chrome's
  *                    install prompt so the browser does not offer a PWA on its own.
@@ -17,7 +18,7 @@ import { MaterialIcon } from "./icons";
 import { Alert, Spinner, Toggle } from "./controls";
 import { useSession, useToast } from "./providers";
 import { Button, Card } from "./ui";
-import { GetAppLink } from "./get-app-link";
+import { GetAppLink, useShowGetApp } from "./get-app-link";
 import type { PushKind, PushPreference, PushPreferencesResponse } from "@/lib/api-types";
 import { isNativeAppUA } from "@/lib/device";
 import {
@@ -185,6 +186,7 @@ export function PushOptIn({
   const { ctx, dismiss } = useCardContext(slug);
   const { account, status } = useSession();
   const { notify } = useToast();
+  const showGetApp = useShowGetApp();
   const what = meeting ? "meeting" : "webinar";
 
   const state = ctx
@@ -257,12 +259,18 @@ export function PushOptIn({
             {ctx ? unblockHint(ctx.ua, ctx.touch) : null}
             {fallback ? ` ${fallback}` : ""}
           </>
-        ) : state === "install" ? (
+        ) : state === "install" && showGetApp ? (
           <>
             <strong className="block text-ink">Get the app for notifications</strong>
             Safari on iPhone and iPad can&apos;t notify you from a website tab. The Webinar Liv app
             can.{fallback ? ` ${fallback}` : ""}{" "}
             <GetAppLink className="font-medium text-brand hover:underline">Get the app</GetAppLink>
+          </>
+        ) : state === "install" ? (
+          <>
+            <strong className="block text-ink">This browser can&apos;t notify you</strong>
+            Safari on iPhone and iPad can&apos;t notify you from a website tab.
+            {` ${fallback ?? `Keep this link to get back to the ${what}.`}`}
           </>
         ) : state === "unsupported" ? (
           <>
@@ -319,6 +327,7 @@ const LABELS: Record<string, { label: string; description: string }> = {
 export function NotificationsSection({ canHost }: { canHost: boolean }) {
   const { state, setBusy, refresh } = usePushState();
   const { notify } = useToast();
+  const showGetApp = useShowGetApp();
   const [prefs, setPrefs] = useState<PushPreferencesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -397,10 +406,14 @@ export function NotificationsSection({ canHost }: { canHost: boolean }) {
             <h3 className="text-[13.5px] font-semibold">This device</h3>
             {state === "hidden" ? (
               <p className="mt-1 text-[12.5px] text-ink-2">This browser can&apos;t get notifications.</p>
-            ) : state === "install" ? (
+            ) : state === "install" && showGetApp ? (
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
                 On iPhone and iPad, notifications work in the app.{" "}
                 <GetAppLink className="font-medium text-brand hover:underline">Get the app</GetAppLink>
+              </p>
+            ) : state === "install" ? (
+              <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">
+                Safari on iPhone and iPad can&apos;t get notifications from a website.
               </p>
             ) : state === "blocked" ? (
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-2">

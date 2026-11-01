@@ -113,6 +113,9 @@ func (a sfuPool) KeyProvider() lkauth.KeyProvider { return a.pool }
 func NewSFUPool(p *lk.Pool) SFUPool { return sfuPool{pool: p} }
 
 type Server struct {
+	// siteSettingsCache caches the site-wide switches row (site_settings.go).
+	siteSettingsCache siteSettingsCache
+
 	// siteBanner caches the maintenance banner row (site_banner.go).
 	siteBanner siteBannerCache
 	cfg        config.Config
@@ -637,6 +640,8 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(s.requireAdmin)
 			r.Put("/site-banner", s.handleAdminSetSiteBanner)
+			r.Get("/site-settings", s.handleAdminSiteSettings)
+			r.Put("/site-settings", s.handleAdminSetSiteSettings)
 
 			r.Get("/debug/goroutines", s.handleDebugGoroutines)
 			r.Get("/stats", s.handleAdminStats)
@@ -1078,5 +1083,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		// travels with the operator settings rather than with the accounts.
 		FeatureCatalogue: types.Features,
 		FeatureGroups:    types.FeatureGroups,
+		DownloadsVisible: s.siteSettings(r.Context()).DownloadsVisible,
 	})
 }

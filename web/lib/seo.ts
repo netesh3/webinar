@@ -94,11 +94,13 @@ function latest(dates: string[]): string | undefined {
 const changed = (p: Post) => p.updated ?? p.date;
 
 /** Every public page, then every post. `indexable` is lib/plans' indexable(): the
- *  proposal page /features is noindex until it is true (/pricing/proposed redirects to /pricing since 31 Oct 2026). */
+ *  proposal page /features is noindex until it is true (/pricing/proposed redirects to /pricing since 31 Oct 2026).
+ *  `downloadsVisible` is the admin's Downloads page switch (lib/downloads-visibility.ts):
+ *  /download is listed only while it is on. */
 export function sitemapEntries(
   origin: string,
   posts: readonly Post[],
-  opts: { indexable: boolean },
+  opts: { indexable: boolean; downloadsVisible: boolean },
 ): SitemapEntry[] {
   const pages: (Omit<SitemapEntry, "url"> & { path: string })[] = [
     { path: "/", lastModified: MARKETING_UPDATED, changeFrequency: "weekly", priority: 1 },
@@ -109,7 +111,9 @@ export function sitemapEntries(
         ]
       : []),
     { path: "/signup", lastModified: MARKETING_UPDATED, changeFrequency: "monthly", priority: 0.8 },
-    { path: "/download", lastModified: DOWNLOAD_UPDATED, changeFrequency: "weekly", priority: 0.6 },
+    ...(opts.downloadsVisible
+      ? [{ path: "/download", lastModified: DOWNLOAD_UPDATED, changeFrequency: "weekly" as const, priority: 0.6 }]
+      : []),
     { path: "/blog", lastModified: latest(posts.map(changed)), changeFrequency: "weekly", priority: 0.7 },
     // Only categories that have posts; an empty listing is not worth indexing.
     ...CATEGORY_IDS.filter((c: BlogCategory) => posts.some((p) => p.category === c)).map((c) => ({

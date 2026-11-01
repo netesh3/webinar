@@ -90,6 +90,7 @@ import {
 import { DateRangeField } from "./date-picker";
 import { AdminRecordingPurge } from "./admin-recording-purge";
 import { AdminSiteBanner } from "./admin-site-banner";
+import { AdminSiteSettings } from "./admin-site-settings";
 import { Avatar, Badge, ButtonLink, Card, Empty, SectionTitle } from "./ui";
 import { AdminDashboard, type WebinarStatusFilter } from "./admin-dashboard";
 import { AdminSales } from "./admin-sales";
@@ -170,6 +171,7 @@ export function AdminScreen({
         {tab === "dashboard" && (
           <>
             <AdminSiteBanner />
+            <AdminSiteSettings />
             <AdminDashboard onAccounts={() => setTab("accounts")} onWebinars={openWebinars} />
             <AdminRecordingPurge />
           </>

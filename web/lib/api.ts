@@ -1,6 +1,8 @@
 import type {
   SetSiteBannerRequest,
   SiteBanner,
+  SetSiteSettingsRequest,
+  SiteSettings,
   AdminSFUBox,
   AdminSFUPool,
   BrandVoice,
@@ -1704,6 +1706,14 @@ export const api = {
   /** The site-wide maintenance banner (api/internal/api/site_banner.go). Polled by every page. */
   siteBanner: () => request<SiteBanner>("/api/site-banner", fresh),
   adminSetSiteBanner: (req: SetSiteBannerRequest) => put<SiteBanner>("/api/admin/site-banner", req),
+  /** Site-wide switches (api/internal/api/site_settings.go). Everyone else reads them from
+   *  /api/config; a save drops this tab's cached copy so the next read is fresh. */
+  adminSiteSettings: () => request<SiteSettings>("/api/admin/site-settings", fresh),
+  adminSetSiteSettings: async (req: SetSiteSettingsRequest) => {
+    const out = await put<SiteSettings>("/api/admin/site-settings", req);
+    dropCache("/api/config");
+    return out;
+  },
   /** Starts "Delete all recordings", or does the next step of the run in progress. confirm
    *  must be exactly RecordingPurgeConfirm; call again until latest.phase is "done". */
   adminRunRecordingPurge: (confirm: string) =>
